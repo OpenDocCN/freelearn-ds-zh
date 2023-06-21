@@ -5,45 +5,6 @@
 > 最好的选择是好处多于坏处的选择，不是毫无坏处的选择。——《原则》，生活原则 5.6.c
 
 * [在线阅读](https://ds.apachecn.org)
-## 目录
-
-+   [UCB DS100 数据科学的原理与技巧](docs/ds100-textbook-zh/SUMMARY.md)
-+   [UCB Prob140 面向数据科学的概率论](docs/prob140-textbook-zh/SUMMARY.md)
-+   [计算与推断思维](docs/data8-textbook-zh/SUMMARY.md)
-+   [利用 Python 进行数据分析 · 第 2 版](docs/pyda-2e-zh/SUMMARY.md)
-+   [Python 自然语言处理 第二版](docs/nlp-py-2e/SUMMARY.md)
-+   [斯坦福 Stats60 21 世纪的统计思维](docs/stats-thinking-21-zh/SUMMARY.md)
-+   [TutorialsPoint NumPy 教程](docs/tutorialspoint-numpy.md)
-+   [NumPy 秘籍中文第二版](docs/numpy-cookbook-2e/SUMMARY.md)
-+   [NumPy 初学者指南中文第三版](docs/numpy-beginners-guide-3e/SUMMARY.md)
-+   [NumPy 基础知识](docs/numpy-essentials/SUMMARY.md)
-+   [精通 NumPy 数值分析](docs/master-num-comp-numpy/SUMMARY.md)
-+   [NumPy 数组学习手册](docs/learn-numpy-array/SUMMARY.md)
-+   [Pandas 秘籍](docs/pandas-cookbook/SUMMARY.md)
-+   [Pandas 学习手册中文第二版](docs/learning-pandas-2e/SUMMARY.md)
-+   [精通 Pandas](docs/master-pandas/SUMMARY.md)
-+   [NumPy 和 Pandas 数据分析实用指南](docs/handson-data-analysis-numpy-pandas/SUMMARY.md)
-+   [精通 Pandas 探索性分析](docs/master-exp-analysis-pandas/SUMMARY.md)
-+   [UCSD COGS108 数据科学实战中文笔记](docs/ucsd-cogs108-notes/SUMMARY.md)
-+   [USF MSDS501 计算数据科学中文讲义](docs/usf-msds501-notes/SUMMARY.md)
-+   [社交媒体挖掘](docs/social-media-mining/SUMMARY.md)
-+   [数据科学和人工智能技术笔记](docs/ds-ai-tech-notes/SUMMARY.md)
-+   [Python 和 Jupyter 数据科学入门](docs/begin-ds-py-jupyter/SUMMARY.md)
-+   [精通 Python 数据科学](docs/master-py-ds/SUMMARY.md)
-+   [Python 数据科学本质论](docs/py-ds-essentials/SUMMARY.md)
-+   [数据科学思想](docs/thoughtful-ds/SUMMARY.md)
-+   [数据科学实战秘籍](docs/prac-ds-cb/SUMMARY.md)
-+   [时间序列分析实战](docs/prac-ts-anal/SUMMARY.md)
-+   [Python 真实世界的数据科学](docs/py-real-world-ds/SUMMARY.md)
-
-<!--
-无需翻译：
-
-Data Analysis with Python
-Data Science with Python
-Python: End-to-end Data Analysis
--->
-
 ## 下载
 
 ### Docker
