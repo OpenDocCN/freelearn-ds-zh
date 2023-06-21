@@ -4,22 +4,22 @@
 > 
 > 最好的选择是好处多于坏处的选择，不是毫无坏处的选择。——《原则》，生活原则 5.6.c
 
-* [在线阅读](https://ds.apachecn.org)
+* [在线阅读](https://ds.flygon.net)
 ## 下载
 
 ### Docker
 
 ```
-docker pull apachecn0/apachecn-ds-zh
-docker run -tid -p <port>:80 apachecn0/apachecn-ds-zh
+docker pull apachecn0/flygon-ds-zh
+docker run -tid -p <port>:80 apachecn0/flygon-ds-zh
 # 访问 http://localhost:{port} 查看文档
 ```
 
 ### NPM
 
 ```
-npm install -g apachecn-ds-zh
-apachecn-ds-zh <port>
+npm install -g flygon-ds-zh
+flygon-ds-zh <port>
 # 访问 http://localhost:{port} 查看文档
 ```
 
