@@ -1,4 +1,3 @@
-+   [TutorialsPoint NumPy 教程](docs/tutorialspoint-numpy.md)
 +   [NumPy 秘籍中文第二版](docs/numpy-cookbook-2e/README.md)
 +   [NumPy 初学者指南中文第三版](docs/numpy-beginners-guide-3e/README.md)
 +   [NumPy 基础知识](docs/numpy-essentials/README.md)
@@ -9,8 +8,6 @@
 +   [精通 Pandas](docs/master-pandas/README.md)
 +   [NumPy 和 Pandas 数据分析实用指南](docs/handson-data-analysis-numpy-pandas/README.md)
 +   [精通 Pandas 探索性分析](docs/master-exp-analysis-pandas/README.md)
-+   [社交媒体挖掘](docs/social-media-mining/README.md)
-+   [数据科学和人工智能技术笔记](docs/ds-ai-tech-notes/README.md)
 +   [Python 和 Jupyter 数据科学入门](docs/begin-ds-py-jupyter/README.md)
 +   [精通 Python 数据科学](docs/master-py-ds/README.md)
 +   [Python 数据科学本质论](docs/py-ds-essentials/README.md)
