@@ -1,5 +1,3 @@
-+   [利用 Python 进行数据分析 · 第 2 版](docs/pyda-2e-zh/README.md)
-+   [Python 自然语言处理 第二版](docs/nlp-py-2e/README.md)
 +   [TutorialsPoint NumPy 教程](docs/tutorialspoint-numpy.md)
 +   [NumPy 秘籍中文第二版](docs/numpy-cookbook-2e/README.md)
 +   [NumPy 初学者指南中文第三版](docs/numpy-beginners-guide-3e/README.md)
