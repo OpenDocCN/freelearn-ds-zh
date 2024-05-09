@@ -1,4 +1,5 @@
 +   [每个程序员都应该知道的 40 个算法](docs/40-algo-shld-know/README.md)
++   [Python 应用计算思维](docs/app-cmp-thk-py/README.md)
 +   [Python 数学应用](docs/app-math-py/README.md)
 +   [Python 和 Jupyter 数据科学入门](docs/begin-ds-py-jupyter/README.md)
 +   [NumPy 和 Pandas 数据分析实用指南](docs/handson-data-analysis-numpy-pandas/README.md)
