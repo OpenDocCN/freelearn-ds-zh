@@ -1,25 +1,25 @@
-# 飞龙的数据科学与分析译文集
+# FreeLearning 数据科学与分析译文集
 
 > 协议：[CC BY-NC-SA 4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 > 
 > 最好的选择是好处多于坏处的选择，不是毫无坏处的选择。——《原则》，生活原则 5.6.c
 
-* [在线阅读](https://ds.flygon.net)
+* [在线阅读](https://flds.flygon.net)
 ## 下载
 
 ### Docker
 
 ```
-docker pull apachecn0/flygon-ds-zh
-docker run -tid -p <port>:80 apachecn0/flygon-ds-zh
+docker pull apachecn0/freelearn-ds-zh
+docker run -tid -p <port>:80 apachecn0/freelearn-ds-zh
 # 访问 http://localhost:{port} 查看文档
 ```
 
 ### NPM
 
 ```
-npm install -g flygon-ds-zh
-flygon-ds-zh <port>
+npm install -g freelearn-ds-zh
+freelearn-ds-zh <port>
 # 访问 http://localhost:{port} 查看文档
 ```
 
