@@ -6,6 +6,7 @@
 +   [Python GPU 编程实用指南](docs/hsn-gpu-prog-py/README.md)
 +   [NumPy 数组学习手册](docs/learn-numpy-array/README.md)
 +   [Pandas 学习手册中文第二版](docs/learning-pandas-2e/README.md)
++   [CUDA 编程学习手册](docs/lrn-cuda-prog/README.md)
 +   [精通 Pandas 探索性分析](docs/master-exp-analysis-pandas/README.md)
 +   [精通 NumPy 数值分析](docs/master-num-comp-numpy/README.md)
 +   [精通 Pandas](docs/master-pandas/README.md)
