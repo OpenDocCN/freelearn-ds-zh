@@ -1,0 +1,1437 @@
+- en: '4'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '4'
+- en: Advanced NGS Data Processing
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 高级NGS数据处理
+- en: If you work with **next-generation sequencing** (**NGS**) data, you know that
+    quality analysis and processing are two of the great time-sinks in getting results.
+    In the first part of this chapter, we will delve deeper into NGS analysis by using
+    a dataset that includes information about relatives – in our case, a mother, a
+    father, and around 20 offspring. This is a common technique for performing quality
+    analysis, as pedigree information will allow us to make inferences on the number
+    of errors that our filtering rules might produce. We will also take the opportunity
+    to use the same dataset to find genomic features based on existing annotations.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您使用**下一代测序**（**NGS**）数据，您会知道质量分析和处理是获取结果中的两个主要时间消耗。在本章的第一部分，我们将通过使用包含亲属信息的数据集来深入探讨NGS分析
+    - 在我们的情况下，是一个母亲、一个父亲和大约20个后代的数据集。这是进行质量分析的常见技术，因为家系信息将允许我们推断出我们的过滤规则可能产生的错误数量。我们还将利用同一数据集来查找基于现有注释的基因组特征。
+- en: 'The last recipe of this chapter will delve into another advanced topic using
+    NGS data: metagenomics. We will QIIME2, a Python package for metagenomics, to
+    analyze data.'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的最后一个配方将深入探讨使用NGS数据的另一个高级主题：宏基因组学。我们将使用QIIME2，一个用于宏基因组学的Python包，来分析数据。
+- en: If you are using Docker, please use the tiagoantao/bioinformatics_base image.
+    The QIIME2 content has a special setup process that will be discussed in the relevant
+    recipe.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您使用Docker，请使用tiagoantao/bioinformatics_base镜像。有关QIIME2内容的特殊设置过程将在相关配方中讨论。
+- en: 'In this chapter, there are the following recipes:'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章包括以下配方：
+- en: Preparing a dataset for analysis
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 准备用于分析的数据集
+- en: Using Mendelian error information for quality control
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用门利因错误信息进行质量控制
+- en: Exploring data with standard statistics
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用标准统计方法探索数据
+- en: Finding genomic features from sequencing annotations
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从测序注释中找到基因组特征
+- en: Doing metagenomics with QIIME2
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用QIIME2进行宏基因组学
+- en: Preparing a dataset for analysis
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备用于分析的数据集
+- en: 'Our starting point will be a VCF file (or equivalent) with calls made by a
+    genotyper (**Genome Analysis Toolkit** (**GATK**) in our case), including annotations.
+    As we will be filtering NGS data, we need reliable decision criteria to call a
+    site. So, how do we get that information? Generally, we can’t, but if we need
+    to do so, there are three basic approaches:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的起点将是一个VCF文件（或等效文件），其中包含由基因分析工具（在我们的情况下是**基因组分析工具包**（**GATK**））进行的调用，包括注释信息。因为我们将过滤NGS数据，我们需要可靠的决策标准来调用一个位点。那么，我们如何获取这些信息？一般来说，我们做不到，但如果我们确实需要这样做，有三种基本方法：
+- en: Using a more robust sequencing technology for comparison – for example, using
+    Sanger sequencing to verify NGS datasets. This is cost-prohibitive and can only
+    be done for a few loci.
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用更强大的测序技术进行比较 - 例如，使用Sanger测序验证NGS数据集。这种方法成本高昂，只能用于少数基因位点。
+- en: Sequencing closely related individuals, for example, two parents and their offspring.
+    In this case, we use Mendelian inheritance rules to decide whether a certain call
+    is acceptable or not. This was the strategy used by both the Human Genome Project
+    and the Anopheles gambiae 1000 Genomes project.
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于测序密切相关的个体，例如两个父母及其后代。在这种情况下，我们使用门利因遗传规则来决定某个调用是否可接受。这是人类基因组计划和安非蚊1000基因组计划均采用的策略。
+- en: Finally, we can use simulations. This setup is not only quite complex but also
+    of dubious reliability. It’s more of a theoretical option.
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 最后，我们可以使用模拟。这种设置不仅相当复杂，而且可靠性存疑。这更多是一个理论选项。
+- en: In this chapter, we will use the second option, based on the Anopheles gambiae
+    1000 Genomes project. This project makes available information based on crosses
+    between mosquitoes. A cross will include the parents (mother and father) and up
+    to 20 offspring.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将使用第二个选项，基于安非蚊1000基因组计划。该项目提供了基于蚊子杂交的信息。一个杂交会包括父母（母亲和父亲）以及最多20个后代。
+- en: In this recipe, we are going to prepare our data for usage in the later recipes.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个配方中，我们将准备我们的数据，以便在后续配方中使用。
+- en: Getting ready
+  id: totrans-18
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: 'We will download our files in HDF5 format for faster processing. Please be
+    advised that these files are quite big; you will need a good network connection
+    and plenty of disk space:'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将以HDF5格式下载文件以加快处理速度。请注意，这些文件相当大；您需要良好的网络连接和充足的磁盘空间：
+- en: '[PRE0]'
+  id: totrans-20
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: The files have four crosses with around 20 offspring each. We will use chromosome
+    arms 3L and 2L. At this stage, we also compute Mendelian errors (a subject of
+    the next recipe, so we will delay a detailed discussion until then).
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些文件有四个交叉，每个交叉大约有 20 个后代。我们将使用染色体臂 3L 和 2L。在这一阶段，我们也计算孟德尔误差（这是下一个食谱的主题，因此我们将在那时详细讨论）。
+- en: The relevant notebook is `Chapter04/Preparation.py`. There is also a local sample
+    metadata file in the directory called `samples.tsv`.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相关的笔记本文件是`Chapter04/Preparation.py`。目录中还有一个名为`samples.tsv`的本地样本元数据文件。
+- en: How to do it…
+  id: totrans-23
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作……
+- en: 'After downloading the data, follow these steps:'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下载数据后，按照以下步骤操作：
+- en: 'First, start with a few imports:'
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，从一些导入开始：
+- en: '[PRE1]'
+  id: totrans-26
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Let’s get the sample metadata:'
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们获取样本元数据：
+- en: '[PRE2]'
+  id: totrans-28
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: We also print some basic information about the cross we are going to use and
+    all the parents.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还打印一些关于我们将要使用的交叉和所有父母的基本信息。
+- en: 'We prepare to deal with chromosome arm 3L based on its HDF5 file:'
+  id: totrans-30
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们准备根据其 HDF5 文件处理染色体臂 3L：
+- en: '[PRE3]'
+  id: totrans-31
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'The code to compute Mendelian errors is the following:'
+  id: totrans-32
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算孟德尔误差的代码如下：
+- en: '[PRE4]'
+  id: totrans-33
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: We will discuss this in the next recipe, *Using Mendelian error information
+    for quality control*.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在下一个食谱中讨论这个问题，*使用孟德尔误差信息进行质量控制*。
+- en: 'We now define a support generator and function to select acceptable positions
+    and accumulate basic data:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们定义一个支持生成器和函数，用于选择可接受的位置并累积基本数据：
+- en: '[PRE5]'
+  id: totrans-36
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'We now need to find the indexes of our cross (mother, father, and 20 offspring)
+    on the HDF5 file:'
+  id: totrans-37
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们需要找到在 HDF5 文件中交叉的索引（母亲、父亲和 20 个后代）：
+- en: '[PRE6]'
+  id: totrans-38
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Finally, we will actually compute Mendelian errors and save them to disk:'
+  id: totrans-39
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们将实际计算孟德尔误差并将其保存到磁盘：
+- en: '[PRE7]'
+  id: totrans-40
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'We will now generate an efficient NumPy array with annotations and Mendelian
+    error information:'
+  id: totrans-41
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们现在将生成一个高效的带注释和孟德尔误差信息的 NumPy 数组：
+- en: '[PRE8]'
+  id: totrans-42
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Buried in this code is one of the most important decisions of the whole chapter:
+    how do we weigh Mendelian errors? In our case, we only store a 1 if there is any
+    kind of error, and we store a 0 if there is none. An alternative would be to count
+    the number of errors – as we have up to 20 offspring, that would require some
+    sophisticated statistical analysis that we will not be doing here.'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这段代码中埋藏着整个章节中最重要的决定之一：我们如何权衡孟德尔误差？在我们的案例中，如果有任何误差，我们只存储 1，如果没有误差，我们存储 0。另一种选择是计数错误的数量——因为我们有最多
+    20 个后代，这将需要一些复杂的统计分析，而我们这里不进行这种分析。
+- en: 'Changing gears, let’s extract some information from chromosome arm 2L now:'
+  id: totrans-44
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 转换思路，现在让我们从染色体臂 2L 提取一些信息：
+- en: '[PRE9]'
+  id: totrans-45
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Here, we are only interested in the parents:'
+  id: totrans-46
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在这里，我们只关心父母：
+- en: '[PRE10]'
+  id: totrans-47
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'We extract the sample DP for each parent:'
+  id: totrans-48
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们提取每个父母的样本 DP：
+- en: '[PRE11]'
+  id: totrans-49
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Now, we have prepared the dataset for analysis in this chapter.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们已经为本章的分析准备好了数据集。
+- en: Using Mendelian error information for quality control
+  id: totrans-51
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用孟德尔误差信息进行质量控制
+- en: 'So, how can we infer the quality of calls using Mendelian inheritance rules?
+    Let’s look at expectations for different genotypical configurations of the parents:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，如何使用孟德尔遗传规则推断调用质量呢？让我们看看父母不同基因型配置的预期结果：
+- en: For a certain potential bi-allelic SNP, if the mother is AA and the father is
+    also AA, then all offspring will be AA.
+  id: totrans-53
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于某个潜在的双等位基因 SNP，如果母亲是 AA 且父亲也是 AA，则所有后代将是 AA。
+- en: If the mother is AA and the father TT, then all offspring will have to be heterozygous
+    (AT). They always get an A from the mother, and they always get a T from the father.
+  id: totrans-54
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果母亲是 AA，父亲是 TT，则所有后代必须是杂合子（AT）。他们总是从母亲那里得到一个 A，总是从父亲那里得到一个 T。
+- en: If the mother is AA and the father is AT, then the offspring can be either AA
+    or AT. They always get an A from the mother, but they can get either an A or a
+    T from the father.
+  id: totrans-55
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果母亲是 AA，父亲是 AT，则后代可以是 AA 或 AT。他们总是从母亲那里得到一个 A，但可以从父亲那里得到一个 A 或一个 T。
+- en: If both the mother and the father are heterozygous (AT), then the offspring
+    can be anything. In theory, there is not much we can do here.
+  id: totrans-56
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果母亲和父亲都是杂合子（AT），则后代可以是任何基因型。从理论上讲，在这种情况下我们无法做太多。
+- en: In practice, we can ignore mutations, which is safe to do with most eukaryotes.
+    The number of mutations (noise, from our perspective) is several orders of magnitude
+    lower than the signal we are looking for.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，我们可以忽略突变，这是在大多数真核生物中都可以安全做到的。从我们的角度来看，突变（噪声）的数量比我们正在寻找的信号低几个数量级。
+- en: In this recipe, we are going to do a small theoretical study of the distribution
+    and Mendelian errors, and further process the data for downstream analysis based
+    on errors. The relevant notebook file is `Chapter04/Mendel.py`.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个例子中，我们将进行一个小的理论研究，分析分布和孟德尔错误，并进一步处理数据以便下游分析。这相关的笔记本文件是 `Chapter04/Mendel.py`。
+- en: How to do it…
+  id: totrans-59
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做…
+- en: 'We will need a few imports:'
+  id: totrans-60
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们需要几个导入：
+- en: '[PRE12]'
+  id: totrans-61
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Before we do any empirical analysis, let’s try to understand what information
+    we can extract from the case where the mother is AA and the father is AT. Let’s
+    answer the question, *If we have 20 offspring, what is the probability of all
+    of them being heterozygous?*:'
+  id: totrans-62
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在进行任何经验分析之前，让我们尝试理解在母亲是 AA 且父亲是 AT 的情况下我们可以提取什么信息。我们来回答这个问题，*如果我们有 20 个后代，所有后代为杂合子的概率是多少？*：
+- en: '[PRE13]'
+  id: totrans-63
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'We get the following output:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们得到以下输出：
+- en: '![Figure 4.1 - Results from 100,000 simulations: the number of offspring that
+    are heterozygous for certain loci where the mother is AA and the father is heterozygous
+    ](img/B17942_04_1.jpg)'
+  id: totrans-65
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.1 - 来自 100,000 次模拟的结果：在母亲是 AA 且父亲是杂合子的情况下，后代在某些基因座上为杂合子的数量](img/B17942_04_1.jpg)'
+- en: 'Figure 4.1 - Results from 100,000 simulations: the number of offspring that
+    are heterozygous for certain loci where the mother is AA and the father is heterozygous'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.1 - 来自 100,000 次模拟的结果：在母亲是 AA 且父亲是杂合子的情况下，后代在某些基因座上为杂合子的数量
+- en: Here, we have done 100,000 simulations. In my case (this is stochastic, so your
+    result might vary), I got exactly zero simulations where all offspring were heterozygous.
+    Indeed, these are permutations with repetition, so the probability of all being
+    heterozygous is ![](img/Formula_04_001.png) or 9.5367431640625e-07 – not very
+    likely. So, even if for a single offspring, we can have AT or AA; for 20, it is
+    very unlikely that all of them are of the same type. This is the information we
+    can use for a less naive interpretation of Mendelian errors.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们进行了 100,000 次模拟。就我而言（这是随机的，所以你的结果可能不同），我得到了零次模拟结果，其中所有的后代都是杂合子的。事实上，这些是带重复的排列，因此所有都是杂合子的概率是
+    ![](img/Formula_04_001.png) 或 9.5367431640625e-07——并不太可能。所以，即使对于单个后代，我们可能得到 AT
+    或 AA，对于 20 个后代来说，它们全部都是同一种类型的概率也非常小。这就是我们可以用来更深入解释孟德尔错误的信息。
+- en: 'Let’s repeat the analysis where the mother and the father are both AT:'
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们重复一下母亲和父亲都为 AT 的分析：
+- en: '[PRE14]'
+  id: totrans-69
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'The output is as follows:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出如下：
+- en: '![Figure 4.2 - Results from 100,000 simulations: the number of offspring that
+    are AA or heterozygous for a certain locus where both parents are also heterozygous
+    ](img/B17942_04_2.jpg)'
+  id: totrans-71
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.2 - 来自 100,000 次模拟的结果：在母亲和父亲都是杂合子的情况下，后代在某个基因座上为 AA 或杂合子的数量](img/B17942_04_2.jpg)'
+- en: 'Figure 4.2 - Results from 100,000 simulations: the number of offspring that
+    are AA or heterozygous for a certain locus where both parents are also heterozygous'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.2 - 来自 100,000 次模拟的结果：在母亲和父亲都是杂合子的情况下，后代在某个基因座上为 AA 或杂合子的数量
+- en: 'In this case, we have also permutations with repetition, but we have four possible
+    values, not two: AA, AT, TA, and TT. We end up with the same probability for all
+    individuals being AT: 9.5367431640625e-07\. It’s even worse (twice as bad, in
+    fact) for all of them being homozygous of the same type (all TT or all AA).'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，我们也有带重复的排列，但我们有四个可能的值，而不是两个：AA、AT、TA 和 TT。结果是所有个体为 AT 的概率相同：9.5367431640625e-07。对于所有个体都是同型合子的情况（所有为
+    TT 或者所有为 AA），情况更糟（实际上是两倍糟糕）。
+- en: 'OK, after this probabilistic prelude, let’s get down to more data-moving stuff.
+    The first thing that we will do is check how many errors we have. Let’s load the
+    data from the previous recipe:'
+  id: totrans-74
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 好的，在这个概率性的序言之后，让我们开始更多数据处理的工作。我们首先要做的是检查我们有多少个错误。让我们从前一个例子中加载数据：
+- en: '[PRE15]'
+  id: totrans-75
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Let’s see how many errors we have:'
+  id: totrans-76
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看看我们有多少个错误：
+- en: '[PRE16]'
+  id: totrans-77
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'The output is as follows:'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出如下：
+- en: '[PRE17]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: Not many of the calls have Mendelian errors – only around 5%, great.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 并不是所有的调用都有孟德尔错误——只有大约 5%，很好。
+- en: 'Let’s create a balanced set where roughly half of the set has errors. For that,
+    we will randomly drop a lot of good calls. First, we compute the fraction of errors:'
+  id: totrans-81
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们创建一个平衡集，其中大约一半的集合有错误。为此，我们将随机丢弃大量正常调用。首先，我们计算错误的比例：
+- en: '[PRE18]'
+  id: totrans-82
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'We use that information to get a set of accepted entries: all the errors plus
+    an approximately equal quantity of OK calls. We print the number of entries at
+    the end (this will vary as the OK list is stochastic):'
+  id: totrans-83
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们使用这些信息来获取一组被接受的条目：所有错误和一个大致相等数量的正常调用。我们在最后打印条目数量（这将随着 OK 列表的随机性而变化）：
+- en: '[PRE19]'
+  id: totrans-84
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Finally, we save it:'
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们保存它：
+- en: '[PRE20]'
+  id: totrans-86
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: There’s more…
+  id: totrans-87
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多……
+- en: 'With regards to Mendelian errors and their impact on cost functions, let’s
+    think about the following case: the mother is AA, the father is AT, and all offspring
+    are AA. Does this mean that the father is wrongly called, or that we failed to
+    detect a few heterozygous offspring? From this reasoning, it’s probably the father
+    that is wrongly called. This has an impact in terms of some more refined Mendelian
+    error estimation functions: it’s probably more costly to have a few offspring
+    wrong than just a single sample (the father) wrong. In this case, you might think
+    it’s trivial (the probability of having no heterozygous offspring is so low that
+    it’s probably the father), but if you have 18 offspring AA and two AT, is it still
+    “trivial”? This is not just a theoretical problem, because it severely impacts
+    the design of a proper cost function.'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于孟德尔错误及其对成本函数的影响，让我们思考以下情况：母亲是 AA，父亲是 AT，所有后代都是 AA。这是否意味着父亲的基因型判断错误，或者我们未能检测到一些杂合的后代？从这个推理来看，可能是父亲的基因型判断错误。这在一些更精细的孟德尔错误估计函数中有影响：让几个后代错误比仅仅一个样本（父亲）错误可能更有成本。在这种情况下，你可能会认为这很简单（没有杂合子后代的概率很低，所以可能是父亲的错误），但如果有18个后代是
+    AA，2个是 AT，那是否还能算“简单”呢？这不仅仅是一个理论问题，因为它会严重影响成本函数的设计。
+- en: Our function in a previous recipe, *Preparing the dataset for analysis*, is
+    naive but is enough for the level of refinement that will allow us to have some
+    interesting results further down the road.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在之前的食谱中的函数，*为分析准备数据集*，虽然很简单，但足够满足我们进一步获得有趣结果所需的精度。
+- en: Exploring the data with standard statistics
+  id: totrans-90
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用标准统计方法探索数据
+- en: Now that we have the insights for our Mendelian error analysis, let’s explore
+    the data in order to get more insights that might help us to better filter the
+    data. You can find this content in `Chapter04/Exploration.py`.
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了孟德尔错误分析的见解，让我们探索数据，以便获得更多可能帮助我们更好地过滤数据的见解。你可以在`Chapter04/Exploration.py`中找到此内容。
+- en: How to do it…
+  id: totrans-92
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做到……
+- en: 'We start, as usual, with the necessary imports:'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们像往常一样，先导入必要的库：
+- en: '[PRE21]'
+  id: totrans-94
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Then we load the data. We will use pandas to navigate it:'
+  id: totrans-95
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后我们加载数据。我们将使用 pandas 来导航：
+- en: '[PRE22]'
+  id: totrans-96
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Let’s ask pandas to show a histogram of all annotations:'
+  id: totrans-97
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们让 pandas 显示所有注释的直方图：
+- en: '[PRE23]'
+  id: totrans-98
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'The following histogram is generated:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 生成的直方图如下：
+- en: '![Figure 4.3 - Histogram of all annotations for a dataset with roughly 50%
+    of errors ](img/B17942_04_3.jpg)'
+  id: totrans-100
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.3 - 数据集中所有注释的直方图，错误约占50%](img/B17942_04_3.jpg)'
+- en: Figure 4.3 - Histogram of all annotations for a dataset with roughly 50% of
+    errors
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.3 - 数据集中所有注释的直方图，错误约占50%
+- en: 'For some annotations, we do not get interesting information. We can try to
+    zoom in, for example, with DP:'
+  id: totrans-102
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于某些注释，我们没有得到有趣的信息。我们可以尝试放大，举个例子，使用 DP：
+- en: '[PRE24]'
+  id: totrans-103
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: '![Figure 4.4 - Histogram zooming in on an area of interest for DP ](img/B17942_04_4.jpg)'
+  id: totrans-104
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.4 - 放大显示 DP 相关兴趣区域的直方图](img/B17942_04_4.jpg)'
+- en: Figure 4.4 - Histogram zooming in on an area of interest for DP
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.4 - 放大显示 DP 相关兴趣区域的直方图
+- en: We are actually dividing DP by the number of samples in order to get a more
+    meaningful number.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，我们将 DP 除以样本数，以便得到一个更有意义的数字。
+- en: 'We will split the dataset in two, one for the errors and the other for the
+    positions with no Mendelian errors:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们将把数据集分为两部分，一部分用于错误，另一部分用于没有孟德尔错误的位置：
+- en: '[PRE25]'
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Let’s have a look at `QUAL` and split it on 0.005, and check how we get errors
+    and correct calls split:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看一下 `QUAL` 并以 0.005 为分割点，检查我们如何得到错误和正确调用的分割：
+- en: '[PRE26]'
+  id: totrans-110
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'The result is as follows:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果如下：
+- en: '[PRE27]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: Clearly, `['QUAL']>0.005` gets lots of errors, while not getting lots of OK
+    positions. This is positive, as we have some hope for filtering it.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 显然，`['QUAL']>0.005`产生了很多错误，而没有产生很多正确的位置。这是积极的，因为我们有一些希望通过过滤来处理这些错误。
+- en: 'Let’s do the same with QD:'
+  id: totrans-114
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对 QD 做同样的处理：
+- en: '[PRE28]'
+  id: totrans-115
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Again, we have some interesting results:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再次，我们得到了有趣的结果：
+- en: '[PRE29]'
+  id: totrans-117
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Let’s take an area where there are fewer errors and study the relationships
+    between annotations on errors. We will plot annotations pairwise:'
+  id: totrans-118
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们选择一个错误较少的区域，研究注释之间的关系。我们将成对绘制注释：
+- en: '[PRE30]'
+  id: totrans-119
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'The preceding code generates the following output:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的代码生成了以下输出：
+- en: '![Figure 4.5 - Scatter matrix of annotations of errors for an area of the search
+    space ](img/B17942_04_5.jpg)'
+  id: totrans-121
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.5 - 搜索空间区域的错误注释散点矩阵](img/B17942_04_5.jpg)'
+- en: Figure 4.5 - Scatter matrix of annotations of errors for an area of the search
+    space
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.5 - 搜索空间区域的错误注释散点矩阵
+- en: 'And now do the same on the good calls:'
+  id: totrans-123
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在对正确的调用做相同的处理：
+- en: '[PRE31]'
+  id: totrans-124
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'The output is as follows:'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出结果如下：
+- en: '![Figure 4.6 - Scatter matrix of annotations of good calls for an area of the
+    search space ](img/B17942_04_6.jpg)'
+  id: totrans-126
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.6 - 搜索空间区域内良好标记的注释散点矩阵](img/B17942_04_6.jpg)'
+- en: Figure 4.6 - Scatter matrix of annotations of good calls for an area of the
+    search space
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.6 - 搜索空间区域内良好标记的注释散点矩阵
+- en: 'Finally, let’s see how our rules would perform on the complete dataset (remember
+    that we are using a dataset roughly composed of 50% errors and 50% OK calls):'
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，让我们看看我们的规则在完整数据集上的表现（记住，我们使用的数据集大约由50%的错误和50%的正确标记组成）：
+- en: '[PRE32]'
+  id: totrans-129
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'We get the following:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们得到如下结果：
+- en: '[PRE33]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: Let’s remember that there are roughly 10.9 million markers in our full dataset,
+    with around 5% errors.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们记住，我们的完整数据集中大约有1090万个标记，误差大约为5%。
+- en: 'Let’s get some statistics on our `good_corner`:'
+  id: totrans-133
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们获取一些关于我们`good_corner`的统计数据：
+- en: '[PRE34]'
+  id: totrans-134
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'The output is as follows:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出结果如下：
+- en: '[PRE35]'
+  id: totrans-136
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: So, we reduced the error rate to 0.33% (from 5%), while having only reduced
+    to 9.6 million markers.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，我们将误差率从5%降低到了0.33%，同时标记数量仅减少到了960万个。
+- en: There’s more…
+  id: totrans-138
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多……
+- en: Is a reduction in error from 5% to 0.3% while losing 12% of markers good or
+    bad? Well, it depends on what analysis you want to do next. Maybe your method
+    is resilient to loss of markers but not too many errors, in which case this might
+    help. But if it is the other way around, maybe you prefer to have the complete
+    dataset even if it has more errors. If you apply different methods, maybe you
+    will use different datasets from method to method. In the specific case of this
+    Anopheles dataset, there is so much data that reducing the size will probably
+    be fine for almost anything. But if you have fewer markers, you will have to assess
+    your needs in terms of markers and quality.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从5%的误差减少到0.3%，同时失去12%的标记，这样的变化是好还是坏呢？嗯，这取决于你接下来想要做什么样的分析。也许你的方法能抵御标记丢失，但不太容忍错误，如果是这种情况，这样的变化可能会有帮助。但如果情况相反，也许即使数据集错误更多，你也更倾向于保留完整的数据集。如果你使用不同的方法，可能会根据方法的不同而使用不同的数据集。在这个疟蚊数据集的具体案例中，数据量非常大，因此减少数据集大小对几乎所有情况都没有问题。但如果标记数量较少，你需要根据标记和质量来评估你的需求。
+- en: Finding genomic features from sequencing annotations
+  id: totrans-140
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从测序注释中寻找基因组特征
+- en: We will conclude this chapter and this book with a simple recipe that suggests
+    that sometimes you can learn important things from simple unexpected results,
+    and that apparent quality issues might mask important biological questions.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将以一个简单的步骤总结这一章及本书内容，表明有时你可以从简单的、意外的结果中学到重要的东西，而表面上的质量问题可能掩盖了重要的生物学问题。
+- en: We will plot read depth – `DP` – across chromosome arm 2L for all the parents
+    on our crosses. The recipe can be found in `Chapter04/2L.py`.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将绘制读取深度——`DP`——在染色体臂 2L 上所有交叉父本的分布情况。此步骤的代码可以在 `Chapter04/2L.py` 中找到。
+- en: How to do it…
+  id: totrans-143
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做……
+- en: 'We’ll get started with the following steps:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从以下步骤开始：
+- en: 'Let’s start with the usual imports:'
+  id: totrans-145
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们从常规导入开始：
+- en: '[PRE36]'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'Let’s load the data that we saved in the first recipe:'
+  id: totrans-147
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们加载在第一步中保存的数据：
+- en: '[PRE37]'
+  id: totrans-148
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'And let’s print the median DP for the whole chromosome arm, and a part of it
+    in the middle for all parents:'
+  id: totrans-149
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在让我们打印整个染色体臂的中位DP，以及其中部的一部分数据，针对所有父本：
+- en: '[PRE38]'
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The output is as follows:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出结果如下：
+- en: '[PRE39]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: Interestingly, the median for the whole chromosome sometimes does not hold for
+    that big region in the middle, so let’s dig further.
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有趣的是，整个染色体的中位数有时并不适用于中间的那个大区域，所以我们需要进一步挖掘。
+- en: 'We will print the median DP for 200,000 kbp windows across the chromosome arm.
+    Let’s start with the window code:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们将打印染色体臂上200,000 kb窗口的中位DP。让我们从窗口代码开始：
+- en: '[PRE40]'
+  id: totrans-155
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Let’s plot it:'
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们绘制它：
+- en: '[PRE41]'
+  id: totrans-157
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'The following plot shows the output:'
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 以下是绘制的结果：
+- en: '![Figure 4.7 - Median DP per window for all parents of the dataset on chromosome
+    arm 2L ](img/B17942_04_7.jpg)'
+  id: totrans-159
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.7 - 所有父本数据集在染色体臂 2L 上每个窗口的中位DP](img/B17942_04_7.jpg)'
+- en: Figure 4.7 - Median DP per window for all parents of the dataset on chromosome
+    arm 2L
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.7 - 所有父本数据集在染色体臂 2L 上每个窗口的中位DP
+- en: You will notice that for some mosquitoes, for example, the ones on the first
+    and last columns, there is a clear drop of DP in the middle of the chromosome
+    arm. In some of them, such as in the third column, there is a bit of drop – not
+    so pronounced. And for the bottom parent of the second column, there is no drop
+    at all.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你会注意到，在某些蚊子样本中，例如第一列和最后一列，染色体臂中间有明显的DP下降。在某些样本中，比如第三列的样本，下降程度较轻——不那么明显。对于第二列的底部父本样本，根本没有下降。
+- en: There’s more…
+  id: totrans-162
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多……
+- en: 'The preceding pattern has a biological cause that ends up having consequences
+    for sequencing: Anopheles mosquitoes might have a big chromosomal inversion in
+    the middle of arm 2L. Karyotypes that are not the same as those on the reference
+    genome used to make the calls are harder to call due to evolutionary divergence.
+    These make the number of sequencer reads in that area lower. This is very specific
+    to this species, but you might expect other kinds of features to appear in other
+    organisms.'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前述模式有一个生物学原因，最终对测序产生影响：按蚊可能在 2L 臂中间有一个大的染色体倒位。与用于做调用的参考基因组不同的核型，由于进化分化，较难进行调用。这导致该区域的测序读取数量较少。这在这种物种中特别明显，但你可能会期望在其他生物中也出现类似特征。
+- en: A more widely known case is `n`, then you can expect to see a DP of `n` times
+    the median across the genome.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个更广为人知的案例是 `n`，此时你可以预期在整个基因组中看到 `n` 倍于中位数的 DP。
+- en: 'But, in the general case, it is a good idea to be on the lookout for *strange*
+    results throughout the analysis. Sometimes, that is the hallmark of an interesting
+    biological feature, as it is here. Either that, or it’s a pointer to a mistake:
+    for example, **Principal Components Analysis** (**PCA**) can be used to find mislabeled
+    samples (as they might cluster in the wrong group).'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但在一般情况下，保持警惕并留意分析中的 *异常* 结果是个好主意。有时候，这正是一个有趣生物学特征的标志，就像这里一样。要么这就是指向一个错误的信号：例如，**主成分分析**（**PCA**）可以用来发现标签错误的样本（因为它们可能会聚集在错误的组中）。
+- en: Doing metagenomics with QIIME 2 Python API
+  id: totrans-166
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 QIIME 2 Python API 进行宏基因组学分析
+- en: 'Wikipedia says that metagenomics is the study of genetic material that’s recovered
+    directly from environmental samples. Note that “environment” here should be interpreted
+    broadly: in the case of our example, we will deal with gastrointestinal microbiomes
+    in a study of a fecal microbiome transplant in children with gastrointestinal
+    problems. The study is one of the tutorials of QIIME 2, which is one of the most
+    widely used applications for data analysis in metagenomics. QIIME 2 has several
+    interfaces: a GUI, a command line, and a Python API called the Artifact API.'
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Wikipedia 表示，宏基因组学是直接从环境样本中回收遗传物质的研究。注意，这里的“环境”应广泛理解：在我们的例子中，我们将处理肠道微生物组，研究的是儿童肠道问题中的粪便微生物组移植。该研究是
+    QIIME 2 的其中一个教程，QIIME 2 是最广泛使用的宏基因组数据分析应用之一。QIIME 2 有多个接口：图形用户界面（GUI）、命令行界面和一个称为
+    Artifact API 的 Python API。
+- en: 'Tomasz Kościółek has an outstanding tutorial for using the Artifact API based
+    on the most well-developed (client-based, not artifact-based) tutorial on QIIME
+    2, the *“Moving Pictures” tutorial* ([http://nbviewer.jupyter.org/gist/tkosciol/29de5198a4be81559a075756c2490fde](http://nbviewer.jupyter.org/gist/tkosciol/29de5198a4be81559a075756c2490fde)).
+    Here, we will create a Python version of the fecal microbiota transplant study
+    that’s available, as with the client interface, at [https://docs.qiime2.org/2022.2/tutorials/fmt/](https://docs.qiime2.org/2022.2/tutorials/fmt/).
+    You should get familiar with it as we won’t go into the details of the biology
+    here. I do follow a more convoluted route than Tomasz: this will allow you to
+    get a bit more acquainted with QIIME 2 Python internals. After you get this experience,
+    you will probably want to follow Tomasz’s route, not mine. However, the experience
+    you get here will make you more comfortable and confident with QIIME’s internals.'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Tomasz Kościółek 提供了一个出色的 Artifact API 使用教程，基于 QIIME 2 最成熟的（客户端基础的，而非基于 Artifact
+    的）教程，即 *“Moving Pictures”* 教程（[http://nbviewer.jupyter.org/gist/tkosciol/29de5198a4be81559a075756c2490fde](http://nbviewer.jupyter.org/gist/tkosciol/29de5198a4be81559a075756c2490fde)）。在这里，我们将创建一个
+    Python 版本的粪便微生物群移植研究，正如客户端接口一样，详细内容可参见 [https://docs.qiime2.org/2022.2/tutorials/fmt/](https://docs.qiime2.org/2022.2/tutorials/fmt/)。你应该熟悉它，因为我们不会在这里深入探讨生物学的细节。我走的路线比
+    Tomasz 更为复杂：这将帮助你更好地了解 QIIME 2 Python 的内部结构。获得这些经验后，你可能更倾向于按照 Tomasz 的路线，而非我的路线。然而，你在这里获得的经验将使你在使用
+    QIIME 的内部功能时更加舒适和自信。
+- en: Getting ready
+  id: totrans-169
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备开始
+- en: This recipe is slightly more complicated to set up. We will have to create a
+    `conda` environment where packages from QIIME 2 are segregated from packages from
+    all other applications. The steps that you need to follow are simple.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个设置稍微复杂一些。我们将需要创建一个 `conda` 环境，将 QIIME 2 的软件包与其他应用程序的软件包分开。你需要遵循的步骤很简单。
+- en: 'On OS X, use the following code to create a new `conda` environment:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 OS X 上，使用以下代码创建一个新的 `conda` 环境：
+- en: '[PRE42]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'On Linux, use the following code to create the environment:'
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Linux 上，使用以下代码创建环境：
+- en: '[PRE43]'
+  id: totrans-174
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: If these instructions do not work, check the QIIME 2 website for an updated
+    version ([https://docs.qiime2.org/2022.2/install/native](https://docs.qiime2.org/2022.2/install/native)).
+    QIIME 2 is updated regularly.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果这些指令不起作用，请查看QIIME 2网站上的更新版本（[https://docs.qiime2.org/2022.2/install/native](https://docs.qiime2.org/2022.2/install/native)）。QIIME
+    2会定期更新。
+- en: 'At this stage, you need to enter the QIIME 2 `conda` environment by using `source
+    activate qiime2-2022.2`. If you want to get to the standard `conda` environment,
+    use `source deactivate` instead. We will want to install `jupyter lab` and `jupytext`:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个阶段，你需要通过使用`source activate qiime2-2022.2`进入QIIME 2的`conda`环境。如果你想回到标准的`conda`环境，可以使用`source
+    deactivate`。我们将安装`jupyter lab`和`jupytext`：
+- en: '[PRE44]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: You might want to install other packages you want inside QIIME 2’s environment
+    using `conda install`.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能想要在QIIME 2的环境中使用`conda install`安装其他你想要的包。
+- en: 'To prepare for Jupyter execution, you should install the QIIME 2 extension,
+    as follows:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了准备Jupyter执行，你应该安装QIIME 2扩展，方法如下：
+- en: '[PRE45]'
+  id: totrans-180
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: TIP
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: The extension is highly interactive and allows you to look at data from different
+    viewpoints that cannot be captured in this book. The downside is that it won’t
+    work in `nbviewer` (some cell outputs won’t be visible with the static viewer).
+    Remember to interact with the outputs from the extension, since many are dynamic.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该扩展具有高度交互性，允许你从不同的视角查看数据，这些视角在本书中无法捕捉。缺点是它不能在`nbviewer`中工作（某些单元格的输出在静态查看器中无法显示）。记得与扩展中的输出进行交互，因为许多输出是动态的。
+- en: You can now start Jupyter. The notebook can be found in the `Chapter4/QIIME2_Metagenomics.py`
+    file.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你现在可以启动Jupyter。Notebook可以在`Chapter4/QIIME2_Metagenomics.py`文件中找到。
+- en: WARNING
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 警告
+- en: Due to the fluidity of package installation with QIIME, we don’t provide a Docker
+    environment for it. This means that if you are working from our Docker installation
+    you will have to download the recipe and install the packages manually.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于QIIME的包安装具有流动性，我们没有为其提供Docker环境。这意味着如果你是通过我们的Docker安装工作，你将需要下载食谱并手动安装这些包。
+- en: You can find the instructions to get the data of both the Notebook files and
+    the QIIME 2 tutorial.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以找到获取Notebook文件和QIIME 2教程数据的说明。
+- en: How to do it...
+  id: totrans-187
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Let’s take a look at the following steps:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看一下接下来的步骤：
+- en: 'Let’s start by checking what plugins are available:'
+  id: totrans-189
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们首先检查一下有哪些插件可用：
+- en: '[PRE46]'
+  id: totrans-190
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: We are also accessing the demultiplexing plugin and its summarize action.
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还在访问解混插件及其摘要操作。
+- en: 'Let’s take a peek at the summarize action, namely `inputs`, `outputs`, and
+    `parameters`:'
+  id: totrans-192
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们来看看摘要操作，即`inputs`、`outputs`和`parameters`：
+- en: '[PRE47]'
+  id: totrans-193
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'The output will be as follows:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出将如下所示：
+- en: '[PRE48]'
+  id: totrans-195
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'We will now load the first dataset, demultiplex it, and visualize some demultiplexing
+    statistics:'
+  id: totrans-196
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们将加载第一个数据集，对其进行解混，并可视化一些解混统计数据：
+- en: '[PRE49]'
+  id: totrans-197
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'Here is a part of the output from the QIIME extension for Juypter:'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是来自QIIME扩展为Jupyter提供的输出的一部分：
+- en: '![Figure 4.8 - A part of the output of the QIIME2 extension for Jupyter ](img/B17942_04_8.jpg)'
+  id: totrans-199
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 4.8 - QIIME 2扩展为Jupyter提供的输出部分](img/B17942_04_8.jpg)'
+- en: Figure 4.8 - A part of the output of the QIIME2 extension for Jupyter
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.8 - QIIME 2扩展为Jupyter提供的输出部分
+- en: Remember that the extension is iterative and provides substantially more information
+    than only this chart.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，扩展是迭代的，并且提供的信息比仅仅这张图表多得多。
+- en: TIP
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: The original data for this recipe is supplied in QIIME 2 format. Obviously,
+    you will have your own original data in some other format (probably FASTQ) – see
+    the *There’s more...* section for a way to load a standard format.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱的原始数据是以QIIME 2格式提供的。显然，你将拥有自己原始数据的其他格式（可能是FASTQ格式）—请参见*还有更多...*部分，了解如何加载标准格式。
+- en: QIIME 2’s `.qza` and `.qzv` formats are simply zipped files. You can have a
+    look at the content with `unzip`.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: QIIME 2的`.qza`和`.qzv`格式只是压缩文件。你可以通过`unzip`查看其内容。
+- en: The chart will be similar to in the QIIME CLI tutorial, but be sure to check
+    the interactive quality plot of our output.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图表将类似于QIIME CLI教程中的图表，但务必检查我们输出的交互质量图。
+- en: 'Let’s do the same for the second dataset:'
+  id: totrans-206
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们对第二个数据集做相同的操作：
+- en: '[PRE50]'
+  id: totrans-207
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'Let’s use the DADA2 ([https://github.com/benjjneb/dada2](https://github.com/benjjneb/dada2))
+    plugin for quality control:'
+  id: totrans-208
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们使用DADA2（[https://github.com/benjjneb/dada2](https://github.com/benjjneb/dada2)）插件进行质量控制：
+- en: '[PRE51]'
+  id: totrans-209
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Let’s extract some statistics from denoising (first set):'
+  id: totrans-210
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们从去噪（第一组）中提取一些统计数据：
+- en: '[PRE52]'
+  id: totrans-211
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: Again, the result can be found online in the QIIME 2 CLI version of the tutorial.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同样，结果可以在QIIME 2命令行版本的教程中找到。
+- en: 'Now, let’s do the same for the second set:'
+  id: totrans-213
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，让我们对第二组数据做相同的操作：
+- en: '[PRE53]'
+  id: totrans-214
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'Now, merge the denoised data:'
+  id: totrans-215
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，合并去噪后的数据：
+- en: '[PRE54]'
+  id: totrans-216
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: 'Then, gather some quality statistics from the merge:'
+  id: totrans-217
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，从合并结果中收集一些质量统计数据：
+- en: '[PRE55]'
+  id: totrans-218
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: 'Finally, let’s get some information about the merged sequences:'
+  id: totrans-219
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，让我们获取一些关于合并序列的信息：
+- en: '[PRE56]'
+  id: totrans-220
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: There’s more...
+  id: totrans-221
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容...
+- en: 'The preceding code does not show you how to import data. The actual code will
+    vary from case to case (single-end data, paired-end data, or already-demultiplexed
+    data), but for the main QIIME 2 tutorial, *Moving Pictures*, assuming that you
+    have downloaded the single-end, non-demultiplexed data and barcodes into a directory
+    called `data`, you can do the following:'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上面的代码没有展示如何导入数据。实际代码会根据情况有所不同（单端数据、双端数据，或已经解多重条形码的数据），但对于主要的 QIIME 2 教程《*移动图像*》，假设你已经将单端、未解多重条形码的数据和条形码下载到名为`data`的目录中，你可以执行以下操作：
+- en: '[PRE57]'
+  id: totrans-223
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: As stated in the preceding code, if you look on GitHub for this notebook, the
+    static `nbviewer` system will not be able to render the notebook correctly (you
+    have to run it yourself). This is far from perfect; it is not interactive, since
+    the quality is not great, but at least it lets you get an idea of the output without
+    running the code.
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如上面的代码所述，如果你在 GitHub 上查看这个笔记本，静态的`nbviewer`系统将无法正确渲染笔记本（你需要自己运行它）。这远非完美；它不具备交互性，质量也不是很好，但至少它能让你在不运行代码的情况下大致了解输出结果。

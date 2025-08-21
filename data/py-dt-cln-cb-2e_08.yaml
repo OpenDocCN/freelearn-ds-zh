@@ -1,0 +1,2190 @@
+- en: '8'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '8'
+- en: Encoding, Transforming, and Scaling Features
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编码、转换和缩放特征
+- en: Our data cleaning efforts are often intended to prepare that data for use with
+    a machine learning algorithm. Machine learning algorithms typically require some
+    form of encoding of variables. Our models also often perform better with some
+    form of scaling so that features with higher variability do not overwhelm the
+    optimization. We show examples of that in this chapter and of how standardizing
+    addresses the issue.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据清理工作通常是为了准备数据，以便将其用于机器学习算法。机器学习算法通常需要对变量进行某种形式的编码。我们的模型通常也需要进行某种形式的缩放，以防止具有更高变异性的特征压倒优化过程。本章中将展示相关的例子，并说明标准化如何解决这个问题。
+- en: Machine learning algorithms typically require some form of encoding of variables.
+    We almost always need to encode our features for algorithms to understand them
+    correctly. For example, most algorithms cannot make sense of the values *female*
+    or *male*, or know not to treat zip codes as ordinal. Although not typically necessary,
+    scaling is often a very good idea when we have features with vastly different
+    ranges. When we are using algorithms that assume a Gaussian distribution of our
+    features, some form of transformation may be required for our features to be consistent
+    with that assumption.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机器学习算法通常需要对变量进行某种形式的编码。我们几乎总是需要对特征进行编码，以便算法能够正确理解它们。例如，大多数算法无法理解 *female* 或
+    *male* 这些值，或者无法意识到不能将邮政编码当作有序数据处理。尽管通常不必要，但当我们的特征范围差异巨大时，缩放通常是一个非常好的选择。当我们使用假设特征服从高斯分布的算法时，可能需要对特征进行某种形式的转换，以使其符合该假设。
+- en: 'Specifically, we explore the following in this chapter:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们将探讨以下内容：
+- en: Creating training datasets and avoiding data leakage
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 创建训练数据集并避免数据泄漏
+- en: Identifying irrelevant or redundant observations to be removed
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 识别并移除无关或冗余的观测值
+- en: 'Encoding categorical features: one-hot encoding'
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对类别特征进行编码：独热编码
+- en: 'Encoding categorical features: ordinal encoding'
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对类别特征进行编码：有序编码
+- en: Encoding features with medium or high cardinality
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对中等或高基数的特征进行编码
+- en: Transforming features
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 转换特征
+- en: Binning features
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 分箱特征
+- en: '*k*-means binning'
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*k*-均值分箱'
+- en: Scaling features
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 缩放特征
+- en: Technical requirements
+  id: totrans-14
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: You will need pandas, NumPy, and Matplotlib to complete the recipes in this
+    chapter. I used pandas 2.1.4, but the code will run on pandas 1.5.3 or later.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成本章的配方，你需要使用 pandas、NumPy 和 Matplotlib。我使用的是 pandas 2.1.4，但代码也能在 pandas 1.5.3
+    或更高版本上运行。
+- en: The code in this chapter can be downloaded from the book’s GitHub repository,
+    [https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition).
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码可以从本书的 GitHub 仓库下载，[https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition)。
+- en: Creating training datasets and avoiding data leakage
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 创建训练数据集并避免数据泄漏
+- en: One of the biggest threats to the performance of our models is data leakage.
+    **Data leakage** occurs whenever our models are informed by data that is not in
+    the training dataset. We sometimes inadvertently assist our model training with
+    information that cannot be gleaned from the training data alone, and we end up
+    with a too-rosy assessment of our model’s accuracy.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对我们模型性能的最大威胁之一就是数据泄漏。**数据泄漏**指的是当我们的模型被告知一些不在训练数据集中的数据时发生的情况。我们有时会无意中用一些训练数据本身无法提供的信息来帮助模型训练，结果导致我们对模型准确性的评估过于乐观。
+- en: Data scientists do not really intend for this to happen, hence the term “leakage.”
+    This is not a “*don’t do it*” kind of discussion. We all know not to do it. This
+    is more of a “*which steps should I take to avoid the problem?*” discussion. It
+    is actually quite easy to have some data leakage unless we develop routines to
+    prevent it.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据科学家并不希望发生这种情况，因此才有了“泄漏”这一术语。这不是一个“*不要这样做*”的讨论。我们都知道不该这么做。这更像是一个“*我该采取哪些步骤来避免这个问题？*”的讨论。实际上，除非我们制定出防止泄漏的程序，否则很容易发生数据泄漏。
+- en: For example, if we have missing values for a feature, we might impute the mean
+    across the whole dataset for those values. However, in order to validate our model,
+    we subsequently split our data into training and testing datasets. We would then
+    have accidentally introduced data leakage into our training dataset, since information
+    from the full dataset (the global mean) would have been used.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果我们在某个特征中有缺失值，我们可能会用整个数据集的均值来填充这些缺失值。然而，为了验证我们的模型，我们随后将数据拆分为训练集和测试集。这样，我们可能会不小心将数据泄露引入训练集，因为数据集的完整信息（全局均值）已被使用。
+- en: Data leakage can significantly compromise our model evaluation, making it look
+    like our predictions are much more reliable than they actually are. Among the
+    practices that data scientists have adopted to avoid this is to establish separate
+    training and testing datasets as close to the beginning of the analysis as possible.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据泄漏会严重影响我们的模型评估，使得预测结果看起来比实际更可靠。数据科学家为了避免这种情况，采取的一个做法是尽可能在分析开始时就建立独立的训练集和测试集。
+- en: '**Note**'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**注意**'
+- en: I have mainly used the term *variable* in this book when referring to some statistical
+    property of something that can be counted or measured, such as age or duration
+    of time. I have used *column* when referring to some specific operation or attribute
+    of a column of data in a dataset. In this chapter, I will frequently use the word
+    feature to refer to variables used for predictive analysis. In machine learning,
+    we typically refer to features (also known as independent or predictor variables)
+    and targets (also known as dependent or response variables).
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本书中，我主要使用 *变量* 这个术语，指的是可以计数或衡量的某些统计属性，比如年龄或时间长度。我使用 *列* 这个术语时，指的是数据集中某一列数据的特定操作或属性。在本章中，我将频繁使用特征一词，指的是用于预测分析的变量。在机器学习中，我们通常称特征（也叫自变量或预测变量）和目标（也叫因变量或响应变量）。
+- en: Getting ready
+  id: totrans-24
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work extensively with the scikit-learn library throughout this chapter.
+    You can use `pip` to install scikit-learn with `pip install scikit-learn`. The
+    code in this chapter uses `sklearn` version 0.24.2.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，我们将广泛使用 scikit-learn 库。你可以通过 `pip` 安装 scikit-learn，命令是 `pip install scikit-learn`。本章的代码使用的是
+    `sklearn` 版本 0.24.2。
+- en: We can use scikit-learn to create training and testing DataFrames for the **National
+    Longitudinal Survey of Youth** (**NLS**) data.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用 scikit-learn 来创建 **国家青少年纵向调查**（**NLS**）数据的训练和测试 DataFrame。
+- en: '**Data note**'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: The National Longitudinal Survey of Youth is conducted by the United States
+    Bureau of Labor Statistics. This survey started with a cohort of individuals in
+    1997 who were born between 1980 and 1985, with annual follow-ups each year through
+    2023\. For this recipe, I pulled 104 variables on grades, employment, income,
+    and attitudes toward government from the hundreds of data items on the survey.
+    The NLS data can be downloaded for public use from `nlsinfo.org`.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 国家青少年纵向调查由美国劳工统计局进行。该调查始于1997年，调查对象为1980年至1985年间出生的一群人，每年进行一次跟踪调查，直到2023年。本案例中，我从数百个调查数据项中提取了104个与成绩、就业、收入以及对政府态度相关的变量。NLS
+    数据可以从 `nlsinfo.org` 下载，供公众使用。
+- en: How to do it...
+  id: totrans-29
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'We will use scikit-learn to create training and testing data:'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 scikit-learn 来创建训练和测试数据：
+- en: 'First, we import the `train_test_split` module from `sklearn` and load the
+    NLS data:'
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们从 `sklearn` 导入 `train_test_split` 模块并加载 NLS 数据：
+- en: '[PRE0]'
+  id: totrans-32
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Then, we can create training and testing DataFrames for the features (`X_train`
+    and `X_test`) and the target (`y_train` and `y_test`). `wageincome20` is the target
+    variable in this example. We set the `test_size` parameter to 0.3 to leave 30%
+    of the observations for testing. We will only work with the **Scholastic Assessment
+    Test** (**SAT**) and **Grade Point Average** (**GPA**) data from the NLS. We need
+    to remember to set a value for `random_state` to make sure we will get the same
+    DataFrames should we need to rerun `train_test_split` later:'
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们可以为特征（`X_train` 和 `X_test`）以及目标（`y_train` 和 `y_test`）创建训练和测试 DataFrame。在这个例子中，`wageincome20`
+    是目标变量。我们将 `test_size` 参数设置为 0.3，留出30%的样本用于测试。我们将只使用来自 NLS 的 **学术评估测试**（**SAT**）和
+    **绩点**（**GPA**）数据。我们需要记住为 `random_state` 设置一个值，以确保如果以后需要重新运行 `train_test_split`，我们可以得到相同的
+    DataFrame：
+- en: '[PRE1]'
+  id: totrans-34
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Let’s take a look at the training DataFrames created with `train_test_split`.
+    We get the expected number of observations, 6,288, 70% of the total number of
+    observations in the NLS DataFrame of 8,984:'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看看使用`train_test_split`创建的训练 DataFrame。我们得到了预期的观测值数量 6,288，占 NLS DataFrame
+    总数 8,984 的 70%：
+- en: '[PRE2]'
+  id: totrans-36
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '[PRE3]'
+  id: totrans-37
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '[PRE4]'
+  id: totrans-38
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: '[PRE5]'
+  id: totrans-39
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '[PRE6]'
+  id: totrans-40
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: '[PRE7]'
+  id: totrans-41
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'Let’s also look at the testing DataFrames. We get 30% of the observations as
+    we expected:'
+  id: totrans-42
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们还来看一下测试 DataFrame。正如我们预期的那样，我们得到了 30% 的观测数据：
+- en: '[PRE8]'
+  id: totrans-43
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[PRE9]'
+  id: totrans-44
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[PRE10]'
+  id: totrans-45
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: '[PRE11]'
+  id: totrans-46
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: These steps demonstrated how to create training and testing DataFrames.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些步骤展示了如何创建训练和测试的 DataFrame。
+- en: How it works...
+  id: totrans-48
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: For data scientists who use Python, and regularly use machine learning algorithms,
+    `train_test_split` is a very popular option to avoid data leakage while preparing
+    data for analysis.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于使用 Python 的数据科学家，并且经常使用机器学习算法的人员来说，`train_test_split`是一个非常流行的选择，可以在准备数据进行分析时避免数据泄漏。
+- en: '`train_test_split` will return four DataFrames: a DataFrame with training data
+    consisting of the features or independent variables we intend to use in our analysis,
+    a DataFrame with testing data for those same variables, a DataFrame with training
+    data for our target variable (also known as a response or dependent variable),
+    and a testing DataFrame with that target variable.'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`train_test_split`将返回四个 DataFrame：一个包含训练数据的 DataFrame，其中包含我们打算在分析中使用的特征或自变量，一个包含这些变量测试数据的
+    DataFrame，一个包含目标变量（也称为响应或因变量）训练数据的 DataFrame，以及一个包含目标变量的测试 DataFrame。'
+- en: The first arguments of `test_train_split` can take DataFrames, NumPy arrays,
+    or some other two-dimensional array-like structure. Here, we pass a pandas DataFrame
+    with our features to the first argument, and then another pandas DataFrame with
+    just our target variable. We also specify that we want the testing data to be
+    30% of our dataset’s rows.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`test_train_split`的第一个参数可以接受 DataFrame、NumPy 数组或其他二维数组结构。在这里，我们将包含特征的 pandas
+    DataFrame 传递给第一个参数，然后将仅包含目标变量的另一个 pandas DataFrame 传递给第二个参数。我们还指定希望测试数据占数据集行的
+    30%。'
+- en: Rows are selected randomly by `test_train_split`. We need to provide a value
+    for `random_state` if we want to reproduce the split.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 行是由`test_train_split`随机选择的。如果我们想要重现这个拆分结果，我们需要为`random_state`提供一个值。
+- en: See also
+  id: totrans-53
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: When our projects involve predictive modeling and evaluation of these models,
+    our data preparation needs to be part of a machine learning pipeline, which often
+    starts with splitting the data between training and testing data. Scikit-learn
+    provides great tools for constructing machine learning pipelines that go from
+    data preparation all the way through to model evaluation. A good resource for
+    mastering those techniques is my book *Data Cleaning and Exploration with Machine
+    Learning*.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的项目涉及预测建模和评估这些模型时，我们的数据准备需要成为机器学习管道的一部分，通常从训练数据和测试数据的划分开始。Scikit-learn 提供了很好的工具来构建从数据准备到模型评估的机器学习管道。一本很好的资源是我的书*《机器学习中的数据清洗与探索》*。
+- en: We will use `sklearn`'s `train_test_split` to create separate training and testing
+    DataFrames in the rest of this chapter. Next, we begin our feature engineering
+    work by removing features that are obviously unhelpful because they have the same
+    data as another feature, or there is no variation in the responses.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章的其余部分，我们将使用`sklearn`的`train_test_split`来创建独立的训练和测试 DataFrame。接下来，我们通过移除显然无用的特征开始特征工程工作，因为这些特征与其他特征的数据相同，或者响应值没有变化。
+- en: Removing redundant or unhelpful features
+  id: totrans-56
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 移除冗余或无用的特征
+- en: During the process of data cleaning and manipulation, we often end up with data
+    that is no longer meaningful. Perhaps we subsetted data based on a single feature
+    value and we have retained that feature, even though it now has the same value
+    for all observations. Alternatively, for the subset of the data that we are using,
+    two features have the same value. Ideally, we catch those redundancies during
+    our data cleaning. However, if we do not catch them during that process, we can
+    use the open source `feature-engine` package to help us with that.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在数据清洗和操作的过程中，我们常常会得到一些不再有意义的数据。也许我们根据单一特征值对数据进行了子集划分，并保留了该特征，尽管现在它对所有观测值都有相同的值。或者，在我们使用的数据子集中，两个特征的值相同。理想情况下，我们会在数据清洗过程中捕捉到这些冗余。然而，如果我们在该过程中没有捕捉到它们，我们可以使用开源的`feature-engine`包来帮助我们解决这个问题。
+- en: There also may be features that are so highly correlated that it is very unlikely
+    that we could build a model that could use all of them effectively. `feature-engine`
+    has a method, `DropCorrelatedFeatures`, that makes it easy to remove a feature
+    when it is highly correlated with another feature.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 也可能存在一些特征之间高度相关，以至于我们几乎不可能构建出能够有效使用所有特征的模型。`feature-engine`提供了一个名为`DropCorrelatedFeatures`的方法，可以在特征与另一个特征高度相关时轻松删除该特征。
+- en: Getting ready
+  id: totrans-59
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work extensively with the `feature-engine` and `category_encoders` packages
+    in this chapter. You can use pip to install these packages with `pip install feature-engine`
+    and `pip install category_encoders`. The code in this chapter uses version 1.7.0
+    of `feature-engine` and version 2.6.3 of `category_encoders`. Note that either
+    `pip install feature-engine` or `pip install feature_engine` will work.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将大量使用`feature-engine`和`category_encoders`包。你可以通过pip安装这些包，命令为`pip install
+    feature-engine`和`pip install category_encoders`。本章的代码使用的是`feature-engine`的1.7.0版本和`category_encoders`的2.6.3版本。注意，`pip
+    install feature-engine`和`pip install feature_engine`都可以正常工作。
+- en: We will work with land temperature data, in addition to the NLS data, in this
+    section. We will only load temperature data for Poland here.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将使用土地温度数据，除了NLS数据外，这里我们只加载波兰的温度数据。
+- en: '**Data note**'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: The land temperature DataFrame has the average temperature reading (in ^°C)
+    in 2023 from over 12,000 stations across the world, although a majority of the
+    stations are in the United States. The raw data was retrieved from the Global
+    Historical Climatology Network integrated database. It is made available for public
+    use by the United States National Oceanic and Atmospheric Administration at [https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly).
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 土地温度DataFrame包含了2023年来自全球超过12,000个气象站的平均温度数据（单位为^°C），尽管大部分气象站位于美国。原始数据来自全球历史气候网络（Global
+    Historical Climatology Network）集成数据库。这些数据由美国国家海洋和大气管理局（NOAA）提供，公众可以在[https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly)上访问。
+- en: How to do it...
+  id: totrans-64
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Let’s import the modules we need from `feature_engine` and `sklearn`, and then
+    load the NLS data and temperature data for Poland. The data from Poland was pulled
+    from a larger dataset of 12,000 weather stations across the world. We use `dropna`
+    to drop observations with any missing data:'
+  id: totrans-65
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们从`feature_engine`和`sklearn`中导入所需的模块，然后加载NLS数据和波兰的温度数据。波兰的数据来自一个包含全球12,000个气象站的更大数据集。我们使用`dropna`方法删除含有任何缺失数据的观测值：
+- en: '[PRE12]'
+  id: totrans-66
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Next, we create training and testing DataFrames, as we did in the previous
+    section:'
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们将创建训练和测试的DataFrame，就像在上一节中所做的那样：
+- en: '[PRE13]'
+  id: totrans-68
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'We can use the pandas `corr` method to see how these features are correlated:'
+  id: totrans-69
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以使用pandas的`corr`方法来查看这些特征之间的相关性：
+- en: '[PRE14]'
+  id: totrans-70
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: '[PRE15]'
+  id: totrans-71
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: '`gpaoverall` is highly correlated with `gpascience`, `gpaenglish`, and `gpamath`.
+    The `corr` method returns the Pearson coefficients by default. This is fine when
+    we can assume a linear relationship between the features. When this assumption
+    does not make sense, we should consider requesting Spearman coefficients instead.
+    We can do that by passing `spearman` to the method parameter of `corr`.'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`gpaoverall`与`gpascience`、`gpaenglish`和`gpamath`高度相关。`corr`方法默认返回皮尔逊相关系数。当我们可以假设特征之间存在线性关系时，这种方式是合适的。但当这一假设不成立时，我们应该考虑请求斯皮尔曼相关系数。我们可以通过将`spearman`传递给`corr`方法的参数来实现这一点。'
+- en: Let’s drop features that have a correlation higher than 0.75 with another feature.
+    We pass 0.75 to the `threshold` parameter of `DropCorrelatedFeatures`, and we
+    indicate that we want to use Pearson coefficients and evaluate all features by
+    setting variables to `None`. We use the `fit` method on the training data and
+    then transform both the training and testing data. The `info` method shows that
+    the resulting training DataFrame (`X_train_tr`) has all of the features except
+    `gpaoverall`, which has a `0.79` and `0.84` correlation with `gpascience` and
+    `gpaenglish`, respectively (`DropCorrelatedFeatures` will evaluate from left to
+    right, so if `gpamath` and `gpaoverall` are highly correlated, it will drop `gpaoverall`.
+  id: totrans-73
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们删除与其他特征的相关性超过 0.75 的特征。我们将 0.75 传递给 `DropCorrelatedFeatures` 的 `threshold`
+    参数，并且通过将变量设置为 `None` 来表示我们希望使用皮尔逊系数并评估所有特征。我们在训练数据上使用 `fit` 方法，然后对训练和测试数据进行转换。`info`
+    方法显示，结果训练 DataFrame (`X_train_tr`) 中包含所有特征，除了 `gpaoverall`，它与 `gpascience` 和 `gpaenglish`
+    的相关性分别为 `0.79` 和 `0.84`（`DropCorrelatedFeatures` 会从左到右进行评估，因此如果 `gpamath` 和 `gpaoverall`
+    高度相关，它会删除 `gpaoverall`）。
+- en: 'If `gpaoverall` had been to the left of `gpamath`, it would have dropped `gpamath`):'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果 `gpaoverall` 在 `gpamath` 的左边，它将删除 `gpamath`：
+- en: '[PRE16]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: '[PRE17]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: We would typically evaluate a feature more carefully before deciding to drop
+    it. However, there are times when feature selection is part of a pipeline and
+    we need to automate the process. This can be done with `DropCorrelatedFeatures`,
+    since all `feature_engine` methods can be brought into a scikit-learn pipeline.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通常会在决定删除某个特征之前仔细评估它。然而，有时特征选择是管道的一部分，我们需要自动化这个过程。这可以通过 `DropCorrelatedFeatures`
+    实现，因为所有 `feature_engine` 方法都可以被带入 scikit-learn 管道。
+- en: 'Let’s now create training and testing DataFrames from the land temperatures
+    data for Poland. The value of `year` is the same for all observations, as is the
+    value for `country`. The value for `latabs` is also the same as for `latitude`
+    for each observation:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在让我们从波兰的土地温度数据中创建训练和测试 DataFrame。`year` 的值对所有观测值都是相同的，`country` 的值也是相同的。每个观测值的
+    `latabs` 值也与 `latitude` 相同：
+- en: '[PRE18]'
+  id: totrans-79
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: '[PRE19]'
+  id: totrans-80
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: '[PRE20]'
+  id: totrans-81
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: '[PRE21]'
+  id: totrans-82
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: '[PRE22]'
+  id: totrans-83
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: '[PRE23]'
+  id: totrans-84
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: '[PRE24]'
+  id: totrans-85
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: '[PRE25]'
+  id: totrans-86
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Let’s drop features with the same value throughout the training dataset. Notice
+    that `year` and `country` are removed after the transform:'
+  id: totrans-87
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们删除在训练数据集中值相同的特征。注意，`year` 和 `country` 在转换后被删除：
+- en: '[PRE26]'
+  id: totrans-88
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: '[PRE27]'
+  id: totrans-89
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'Let’s drop features that have the same values as other features. In this case,
+    the transform drops `latitude`, which has the same values as `latabs`:'
+  id: totrans-90
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们删除那些与其他特征值相同的特征。在这种情况下，转换会删除 `latitude`，因为它与 `latabs` 的值相同：
+- en: '[PRE28]'
+  id: totrans-91
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: '[PRE29]'
+  id: totrans-92
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: How it works...
+  id: totrans-93
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: This fixes some obvious problems with our features in the NLS data and the temperature
+    data for Poland. We dropped `gpaoverall` from a DataFrame that has the other GPA
+    features because it is highly correlated with them. We also removed redundant
+    data, dropping features with the same value throughout the DataFrame and features
+    that duplicate the values of another feature.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这解决了我们在 NLS 数据和波兰温度数据中的一些显而易见的问题。我们从包含其他 GPA 特征的 DataFrame 中删除了 `gpaoverall`，因为它与其他特征高度相关。我们还移除了冗余数据，删除了整个
+    DataFrame 中值相同的特征和重复其他特征值的特征。
+- en: In *step 6*, we used the `fit` method of the *feature engine* `selection` object.
+    This gathers the information needed to do the transformation we request after
+    that. The transformation in this case is to drop features with constant values.
+    We typically perform the fitting on training data only. We can combine the fit
+    and transform on the training data by using `fit_transform`, which we will do
+    in most of this chapter.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *步骤 6* 中，我们使用了 *feature engine* 中 `selection` 对象的 `fit` 方法。这收集了进行后续转换所需的信息。在这种情况下，转换是删除具有常量值的特征。我们通常只在训练数据上执行拟合。我们可以通过使用
+    `fit_transform` 将拟合和转换结合在一起，这将在本章的大部分内容中使用。
+- en: 'The rest of this chapter explores somewhat messier feature engineering challenges:
+    encoding, transforming, binning, and scaling.'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的其余部分探讨了一些较为复杂的特征工程挑战：编码、转换、分箱和缩放。
+- en: 'Encoding categorical features: one-hot encoding'
+  id: totrans-97
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编码类别特征：独热编码
+- en: There are several reasons why we may need to encode features before using them
+    in most machine learning algorithms. First, these algorithms typically require
+    numeric data. Second, when a categorical feature is represented with numbers,
+    for example, 1 for female and 2 for male, we need to encode the values so that
+    they are recognized as categorical. Third, the feature might actually be ordinal,
+    with a discrete number of values that represent some meaningful ranking. Our models
+    need to capture that ranking. Finally, a categorical feature might have a large
+    number of values (known as high cardinality), and we might want our encoding to
+    collapse categories.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在大多数机器学习算法中，我们可能需要对特征进行编码，原因有几个。首先，这些算法通常要求数据为数值型。其次，当一个类别特征用数字表示时，例如，女性为 1，男性为
+    2，我们需要对这些值进行编码，使其被识别为类别数据。第三，该特征可能实际上是顺序的，具有离散的值，这些值表示某种有意义的排序。我们的模型需要捕捉到这种排序。最后，一个类别特征可能具有大量取值（称为高基数），我们可能希望通过编码来合并某些类别。
+- en: We can handle the encoding of features with a limited number of values, say
+    15 or fewer, with one-hot encoding. We go over one-hot encoding in this recipe
+    and then discuss ordinal encoding in the next recipe. We will look at strategies
+    for handling categorical features with high cardinality after that.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用独热编码来处理具有有限取值的特征，假设取值为 15 或更少。我们将在本节中介绍独热编码，接下来讨论顺序编码。随后，我们将讨论如何处理高基数类别特征的策略。
+- en: One-hot encoding takes a feature and creates a binary vector for each value
+    of that feature. So, if a feature, called *letter*, has three unique values, *A*,
+    *B*, and *C*, one-hot encoding creates three binary vectors to represent those
+    values. The first binary vector, which we can call *letter_A*, has 1 whenever
+    *letter* has a value of *A*, and 0 when it is *B* or *C*. *letter_B* and *letter_C*
+    would be coded similarly. The transformed features, *letter_A*, *letter_B*, and
+    *letter_C*, are often referred to as **dummy variables**. *Figure 8.1* illustrates
+    one-hot encoding.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 独热编码对每个特征的取值创建一个二进制向量。所以，如果一个特征，称为 *letter*，有三个唯一的值，*A*、*B* 和 *C*，独热编码会创建三个二进制向量来表示这些值。第一个二进制向量，称为
+    *letter_A*，当 *letter* 的值为 *A* 时为 1，当它是 *B* 或 *C* 时为 0。*letter_B* 和 *letter_C*
+    也会按类似的方式编码。经过转换的特征 *letter_A*、*letter_B* 和 *letter_C*，通常被称为 **虚拟变量**。*图 8.1* 展示了独热编码的示意图。
+- en: '| **letter** | **letter_A** | **letter_B** | **letter_C** |'
+  id: totrans-101
+  prefs: []
+  type: TYPE_TB
+  zh: '| **letter** | **letter_A** | **letter_B** | **letter_C** |'
+- en: '| A | 1 | 0 | 0 |'
+  id: totrans-102
+  prefs: []
+  type: TYPE_TB
+  zh: '| A | 1 | 0 | 0 |'
+- en: '| B | 0 | 1 | 0 |'
+  id: totrans-103
+  prefs: []
+  type: TYPE_TB
+  zh: '| B | 0 | 1 | 0 |'
+- en: '| C | 0 | 0 | 1 |'
+  id: totrans-104
+  prefs: []
+  type: TYPE_TB
+  zh: '| C | 0 | 0 | 1 |'
+- en: 'Figure 8.1: One-hot encoding of a categorical feature'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.1：类别特征的独热编码
+- en: Getting ready
+  id: totrans-106
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will use the `OneHotEncoder` and `OrdinalEncoder` modules in the next two
+    recipes from `feature_engine` and `scikit_learn`, respectively. We will continue
+    working with the NLS data.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在接下来的两个食谱中使用 `feature_engine` 和 `scikit_learn` 中的 `OneHotEncoder` 和 `OrdinalEncoder`
+    模块。我们将继续使用 NLS 数据。
+- en: How to do it...
+  id: totrans-108
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'A number of features from the NLS data are appropriate for one-hot encoding.
+    We encode some of those features in the following code blocks:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来自 NLS 数据的若干特征适合进行独热编码。我们在以下代码块中编码其中的一些特征：
+- en: Let’s start by importing the `OneHotEncoder` module from `feature_engine` and
+    loading the data. We also import the `OrdinalEncoder` module from `scikit-learn`,
+    since we will use it later.
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们从导入 `feature_engine` 中的 `OneHotEncoder` 模块和加载数据开始。我们还导入了 `scikit-learn` 中的
+    `OrdinalEncoder` 模块，因为我们稍后将使用它。
+- en: '[PRE30]'
+  id: totrans-111
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Next, we create training and testing DataFrames for the NLS data.
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们为 NLS 数据创建训练和测试 DataFrame。
+- en: 'For our purposes in this recipe, we drop rows with missing data:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们为了简化处理，会丢弃缺失数据的行：
+- en: '[PRE31]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'One option we have for the encoding is the pandas `get_dummies` method. We
+    can use it to indicate that we want to convert the `gender` and `maritalstatus`
+    features. `get_dummies` gives us a dummy variable for each value of `gender` and
+    `maritalstatus`. For example, `gender` has the values Female and Male. `get_dummies`
+    creates a feature, `gender_Female`, which is 1 when `gender` is Female and 0 when
+    `gender` is Male. When `gender` is Male, `gender_Male` is 1 and `gender_Female`
+    is 0\. This is a tried-and-true method of doing this encoding that has served
+    statisticians well for many years:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以选择的编码方式之一是 pandas 的 `get_dummies` 方法。我们可以使用它来指示我们希望转换 `gender` 和 `maritalstatus`
+    特征。`get_dummies` 为 `gender` 和 `maritalstatus` 的每个取值创建一个虚拟变量。例如，`gender` 有 Female
+    和 Male 两个取值。`get_dummies` 创建一个特征 `gender_Female`，当 `gender` 为 Female 时其值为 1，当
+    `gender` 为 Male 时其值为 0。当 `gender` 为 Male 时，`gender_Male` 为 1，`gender_Female` 为
+    0。这是一种经过验证的方法，统计学家多年来一直使用它进行编码：
+- en: '[PRE32]'
+  id: totrans-116
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: '[PRE33]'
+  id: totrans-117
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: We are not creating a new DataFrame with `get_dummies` because we will be using
+    a different technique to do the encoding later in this recipe.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们没有使用`get_dummies`创建一个新的DataFrame，因为我们将在这个食谱的后续步骤中使用另一种技术来进行编码。
+- en: We typically create *k*-1 dummy variables for *k* unique values for a feature.
+    So, if `gender` has two values in our data, we only need to create one dummy variable.
+    If we know the value for `gender_Female`, we also know the value of `gender_Male`,
+    so the latter variable is redundant. Similarly, we know the value of `maritalstatus_Divorced`
+    if we know the values of the other `maritalstatus` dummies. Creating a redundancy
+    in this way is inelegantly referred to as the **dummy variable trap**. To prevent
+    this problem, we drop one dummy from each group.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通常为特征的*k*个唯一值创建*k*-1个虚拟变量。因此，如果`gender`在我们的数据中有两个值，我们只需要创建一个虚拟变量。如果我们知道`gender_Female`的值，也就知道`gender_Male`的值，因此后者是多余的。类似地，如果我们知道其他`maritalstatus`虚拟变量的值，我们就能知道`maritalstatus_Divorced`的值。以这种方式创建冗余被不优雅地称为**虚拟变量陷阱**。为了避免这个问题，我们从每个组中删除一个虚拟变量。
+- en: '**Note**'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**注意**'
+- en: For some machine learning algorithms, such as linear regression, dropping one
+    dummy variable is actually required. In estimating the parameters of a linear
+    model, the matrix is inverted. If our model has an intercept, and all dummy variables
+    are included, the matrix cannot be inverted.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于某些机器学习算法，比如线性回归，删除一个虚拟变量实际上是必需的。在估计线性模型的参数时，矩阵需要进行求逆。如果我们的模型有截距，并且包括所有虚拟变量，那么矩阵就无法求逆。
+- en: 'We can set the `get_dummies` `drop_first` parameter to `True` to drop the first
+    dummy from each group:'
+  id: totrans-122
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以将`get_dummies`的`drop_first`参数设置为`True`，以从每个组中删除第一个虚拟变量：
+- en: '[PRE34]'
+  id: totrans-123
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: '[PRE35]'
+  id: totrans-124
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: An alternative to `get_dummies` is the one-hot encoder in either `sklearn` or
+    `feature_engine`. These one-hot encoders have the advantage that they can be easily
+    brought into a machine learning pipeline, and they can persist information gathered
+    from the training dataset to the testing dataset.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`get_dummies`的替代方法是`sklearn`或`feature_engine`中的独热编码器。这些独热编码器的优势在于它们可以轻松集成到机器学习管道中，并且能够将从训练数据集中获取的信息传递到测试数据集中。'
+- en: Let’s use the `OneHotEncoder` from `feature_engine` to do the encoding. We set
+    `drop_last` to `True` to drop one of the dummies from each group. We fit the encoding
+    to the training data and then transform both the training and testing data.
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们使用`feature_engine`中的`OneHotEncoder`进行编码。我们将`drop_last`设置为`True`，以从每个组中删除一个虚拟变量。然后我们将编码拟合到训练数据上，并对训练数据和测试数据进行转换。
+- en: '[PRE36]'
+  id: totrans-127
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: '[PRE37]'
+  id: totrans-128
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: This demonstrates that one-hot encoding is a fairly straightforward way to prepare
+    nominal data for a machine learning algorithm.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这证明了独热编码是一种相当简单的方法，用于为机器学习算法准备名义数据。
+- en: How it works...
+  id: totrans-130
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的…
+- en: The pandas `get_dummies` method is a handy way to create dummy variables or
+    one-hot encoding. We saw this in *step 3* where we simply passed the training
+    DataFrame, and the columns where we want dummy variables, to `get_dummies`. Notice
+    that we used `float` for `dtype`. Depending on your version of pandas, this is
+    necessary to return 0 and 1 values rather than true and false values.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pandas的`get_dummies`方法是创建虚拟变量或独热编码的便捷方式。我们在*步骤3*中看到了这一点，当时我们只需将训练DataFrame和需要虚拟变量的列传递给`get_dummies`。请注意，我们为`dtype`使用了`float`。根据你的pandas版本，可能需要这样做，以返回0和1的值，而不是true和false的值。
+- en: We typically need to remove one of the values in a dummy variable group to avoid
+    the *dummy variable trap*. We can set `drop_first` to `True` to drop the first
+    dummy variable from each dummy variable group. We did that in *step 4*.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通常需要从虚拟变量组中删除一个值，以避免*虚拟变量陷阱*。我们可以将`drop_first`设置为`True`，以从每个虚拟变量组中删除第一个虚拟变量。这就是我们在*步骤4*中所做的。
+- en: We looked at another tool for one-hot encoding, `feature_engine`, in *step 5*.
+    We are able to accomplish the same task as `get_dummies` using *feature_engine’s*
+    `OneHotEncoder`. The advantage of using `feature_engine` is its variety of tools
+    for working within scikit-learn data pipelines, including being able to handle
+    categories in either the training or testing DataFrame, but not in both.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*步骤5*中查看了另一个独热编码工具`feature_engine`。我们能够使用*feature_engine*的`OneHotEncoder`完成与`get_dummies`相同的任务。使用`feature_engine`的优势是它提供了多种工具，可在scikit-learn数据管道中使用，包括能够处理训练集或测试集中的类别，但不能同时处理两者。
+- en: There’s more
+  id: totrans-134
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: I did not discuss scikit-learn’s own one-hot encoder in this recipe. It works
+    very much like the one-hot encoder for `feature_engine`. There is not much advantage
+    of using one rather than the other, although I find it handy that `feature_engine`'s
+    `transform` and `fit_transform` methods return DataFrames, whereas those methods
+    for scikit-learn return a NumPy array.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我没有在本教程中讨论 scikit-learn 自带的 one-hot 编码器。它的工作原理与 `feature_engine` 的 one-hot 编码器非常相似。虽然使用其中一个没有比使用另一个有太多优势，但我发现
+    `feature_engine` 的 `transform` 和 `fit_transform` 方法返回的是 DataFrame，而 scikit-learn
+    的这些方法返回的是 NumPy 数组，这一点挺方便的。
+- en: 'Encoding categorical features: ordinal encoding'
+  id: totrans-136
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编码类别特征：顺序编码
+- en: Categorical features can be either nominal or ordinal. Gender and marital status
+    are nominal. Their values do not imply order. For example, never married is not
+    a higher value than divorced.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类别特征可以是名义性的或顺序性的。性别和婚姻状况是名义性的，它们的值没有顺序。例如，未婚并不比离婚的值更高。
+- en: When a categorical feature is ordinal, however, we want the encoding to capture
+    the ranking of the values. For example, if we have a feature that has the values
+    low, medium, and high, one-hot encoding would lose this ordering. Instead, a transformed
+    feature with values of 1, 2, and 3 for low, medium, and high, respectively, would
+    be better. We can accomplish this with ordinal encoding.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，当类别特征是顺序时，我们希望编码能捕捉到值的排序。例如，如果我们有一个特征，值为低、中和高，那么 one-hot 编码会丢失这个排序。相反，如果我们将低、中、高分别转化为
+    1、2、3 的值，这样会更好。我们可以通过顺序编码来实现这一点。
+- en: The college enrollment feature on the NLS dataset can be considered an ordinal
+    feature. The values range from *1\. Not enrolled* to *3\. 4-year college*. We
+    should use ordinal encoding to prepare it for modeling. We do that next.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: NLS 数据集中的大学入学特征可以视为顺序特征。其值从 *1. 未入学* 到 *3. 4 年制大学*。我们应该使用顺序编码将其准备好用于建模。接下来，我们就这么做。
+- en: Getting ready
+  id: totrans-140
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will use the `OrdinalEncoder` module in this recipe from `scikit-learn`.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在本教程中使用来自 `scikit-learn` 的 `OrdinalEncoder` 模块。
+- en: How to do it...
+  id: totrans-142
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'College enrollment for 1999 might be a good candidate for ordinal encoding.
+    Let’s first take a look at the values of `colenroct99` prior to encoding. The
+    values are strings, but there is an implied order:'
+  id: totrans-143
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 1999 年的大学入学情况可能是顺序编码的一个很好的候选。让我们先查看 `colenroct99` 编码前的值。虽然这些值是字符串类型的，但它们有一个隐含的顺序：
+- en: '[PRE38]'
+  id: totrans-144
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: '[PRE39]'
+  id: totrans-145
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: '[PRE40]'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: '[PRE41]'
+  id: totrans-147
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: We need to be careful about assumptions of linearity here. For example, if we
+    are trying to model the impact of the college enrollment feature on some target
+    variable, we cannot assume that movement from 1 to 2 (from not enrolled in college
+    to enrolled for 2 years in college) has the same impact as movement from 2 to
+    3 (from 2-year college to 4-year college enrollment).
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要小心线性假设。例如，如果我们尝试建模大学入学特征对某个目标变量的影响，我们不能假设从 1 到 2 的变化（从未入学到入学 2 年）与从 2 到
+    3 的变化（从 2 年制大学到 4 年制大学入学）具有相同的影响。
+- en: 'We can tell the `OrdinalEncoder` to rank the values in the implied order by
+    passing the above array to the `categories` parameter. We can then use `fit_transform`
+    to transform the college enrollment field `colenroct99`. (The `fit_transform`
+    method of sklearn’s `OrdinalEncoder` returns a NumPy array, so we need to use
+    the pandas DataFrame method to create a DataFrame.) Finally, we join the encoded
+    features with the other features from the training data:'
+  id: totrans-149
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以通过将上述数组传递给 `categories` 参数，告诉 `OrdinalEncoder` 按照隐含的顺序对值进行排序。然后，我们可以使用 `fit_transform`
+    方法来转换大学入学字段 `colenroct99`。（sklearn 的 `OrdinalEncoder` 的 `fit_transform` 方法返回一个
+    NumPy 数组，因此我们需要使用 pandas DataFrame 方法来创建 DataFrame。）最后，我们将编码后的特征与训练数据中的其他特征连接起来：
+- en: '[PRE42]'
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'Let’s view a few observations from the resulting DataFrame. We should also
+    compare the counts of the original college enrollment feature to the transformed
+    feature:'
+  id: totrans-151
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们查看从结果 DataFrame 中获得的一些观测值。我们还应将原始大学入学特征与转换后的特征进行比较：
+- en: '[PRE43]'
+  id: totrans-152
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: '[PRE44]'
+  id: totrans-153
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: '[PRE45]'
+  id: totrans-154
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: '[PRE46]'
+  id: totrans-155
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: '[PRE47]'
+  id: totrans-156
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: '[PRE48]'
+  id: totrans-157
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: The ordinal encoding replaces the initial values for `colernoct99` with numbers
+    from 0 to 2\. It is now in a form that is consumable by many machine learning
+    models, and we have retained the meaningful ranking information.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 顺序编码将 `colenroct99` 的初始值替换为从 0 到 2 的数字。它现在的形式可以被许多机器学习模型使用，并且我们保留了有意义的排序信息。
+- en: How it works...
+  id: totrans-159
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: '*Scitkit-learn’s* `OrdinalEncoder` is fairly straightforward to use. We passed
+    an array of values to use for the categories that is sorted in a meaningful order.
+    We did this at the start of *step 2* when we instantiated an `OrdinalEncoder`
+    object. We then passed training data with just the `colenroct99` column to the
+    `fit_transform` method of the `OrdinalEncoder`. We then converted the NumPy array
+    returned by `fit_transform` to a DataFrame, using the training data index, and
+    we used `join` to append the rest of the training data.'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*Scitkit-learn* 的 `OrdinalEncoder` 使用起来非常简单。我们在 *步骤 2* 开始时实例化了一个 `OrdinalEncoder`
+    对象，并传递了一个按意义排序的值数组作为类别。然后，我们将仅包含 `colenroct99` 列的训练数据传递给 `OrdinalEncoder` 的 `fit_transform`
+    方法。最后，我们将 `fit_transform` 返回的 NumPy 数组转换为 DataFrame，并使用训练数据的索引，使用 `join` 方法将其余的训练数据附加到其中。'
+- en: There’s more
+  id: totrans-161
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 更多内容
+- en: Ordinal encoding is appropriate for non-linear models such as decision trees.
+    It might not make sense in a linear regression model because that would assume
+    that the distance between values was equally meaningful along the whole distribution.
+    In this example, that would assume that the increase from 0 to 1 (from no enrollment
+    to 2-year enrollment) is the same thing as the increase from 1 to 2 (from 2-year
+    enrollment to 4-year enrollment).
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 序数编码适用于非线性模型，如决策树。在线性回归模型中可能没有意义，因为这会假定值之间的距离在整个分布中是均等有意义的。在本例中，这将假定从 0 到 1
+    的增加（从未注册到两年注册）与从 1 到 2 的增加（从两年注册到四年注册）是相同的。
+- en: One-hot and ordinal encoding are relatively straightforward approaches to engineering
+    categorical features. It can be more complicated to deal with categorical features
+    when there are many more unique values. We go over a couple of techniques for
+    handling those features in the next section.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: One-hot 和序数编码是工程化分类特征的相对直接的方法。当有更多唯一值时，处理分类特征可能会更加复杂。我们将在下一节介绍处理这些特征的几种技术。
+- en: Encoding categorical features with medium or high cardinality
+  id: totrans-164
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 对具有中等或高基数的分类特征进行编码
+- en: When we are working with a categorical feature that has many unique values,
+    say 15 or more, it can be impractical to create a dummy variable for each value.
+    When there is high cardinality, a very large number of unique values, there may
+    be too few observations with certain values to provide much information for our
+    models. At the extreme, with an ID variable, there is just one observation for
+    each value.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们处理具有许多唯一值的分类特征时，比如 15 个或更多时，为每个值创建虚拟变量可能不切实际。当基数很高时，即唯一值的数量非常大时，某些值的观察次数可能太少，以至于无法为我们的模型提供足够的信息。极端情况下，对于
+    ID 变量，每个值只有一个观察结果。
+- en: There are a couple of ways to handle medium or high cardinality. One is to create
+    dummies for the top k categories and group the remaining values into an *other*
+    category. Another is to use feature hashing, also known as the hashing trick.
+    We will explore both strategies in this recipe.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 处理中等或高基数的分类特征有几种方法。一种方法是为前 k 个类别创建虚拟变量，并将其余的值分组到 *其他* 类别中。另一种方法是使用特征哈希，也称为哈希技巧。我们将在本示例中探讨这两种策略。
+- en: Getting ready
+  id: totrans-167
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We continue to use the `OneHotEncoder` from `feature_engine` in this recipe.
+    We will also use the `HashingEncoder` from `category_encoders`. We will be working
+    with COVID-19 data in this recipe, which has total cases and deaths by country,
+    as well as demographic data.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将继续使用 `feature_engine` 中的 `OneHotEncoder`。我们还将使用 `category_encoders`
+    中的 `HashingEncoder`。在这个例子中，我们将使用 COVID-19 数据，该数据包括各国的总病例和死亡情况，以及人口统计数据。
+- en: '**Data note**'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据注意**'
+- en: Our World in Data provides COVID-19 public use data at [https://ourworldindata.org/covid-cases](https://ourworldindata.org/covid-cases).
+    The data used in this recipe was downloaded on March 3, 2024.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Our World in Data 在 [https://ourworldindata.org/covid-cases](https://ourworldindata.org/covid-cases)
+    提供 COVID-19 的公共数据。本示例中使用的数据是在 2024 年 3 月 3 日下载的。
+- en: How to do it...
+  id: totrans-171
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'Let’s create training and testing DataFrames from the COVID-19 data, and then
+    import the `feature_engine` and `category_encoders` libraries:'
+  id: totrans-172
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们从 COVID-19 数据中创建训练和测试 DataFrame，然后导入 `feature_engine` 和 `category_encoders`
+    库：
+- en: '[PRE49]'
+  id: totrans-173
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'The feature region has 16 unique values, the first 5 of which have counts of
+    10 or more:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 区域特征有 16 个唯一值，其中前 5 个值的计数为 10 或更多：
+- en: '[PRE50]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: '[PRE51]'
+  id: totrans-176
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'We can use the `OneHotEncoder` from `feature_engine` again to encode the `region`
+    feature. This time, we use the `top_categories` parameter to indicate that we
+    only want to create dummies for the top 6 category values. Any values for `region`
+    that do not fall into the top 6 will have a 0 value for all of the dummies:'
+  id: totrans-177
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以再次使用`feature_engine`中的`OneHotEncoder`来编码`region`特征。这一次，我们使用`top_categories`参数来指示我们只想为前六个类别值创建虚拟变量。所有不属于前六名的`region`值将为所有虚拟变量赋值为0：
+- en: '[PRE52]'
+  id: totrans-178
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: '[PRE53]'
+  id: totrans-179
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: An alternative approach to one-hot encoding, when a categorical feature has
+    many unique values, is to use **feature hashing**.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当分类特征具有许多唯一值时，**特征哈希**是一种替代的独热编码方法。
+- en: Feature hashing maps a large number of unique feature values to a smaller number
+    of dummy variables. We can specify the number of dummy variables to create. Each
+    feature value maps to one and only one dummy variable combination. However, collisions
+    are possible—that is, some feature values might map to the same dummy variable
+    combination. The number of collisions increases as we decrease the number of requested
+    dummy variables.
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 特征哈希将大量唯一的特征值映射到较少的虚拟变量上。我们可以指定要创建的虚拟变量数量。每个特征值仅映射到一个虚拟变量组合。然而，冲突是可能的——也就是说，一些特征值可能映射到相同的虚拟变量组合。随着我们减少请求的虚拟变量数量，冲突的数量会增加。
+- en: 'We can use the `HashingEncoder` from `category_encoders` to do feature hashing.
+    We use `n_components` to indicate that we want 6 dummy variables (we copy the
+    `region` feature before we do the transform so that we can compare the original
+    values to the new dummies):'
+  id: totrans-182
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以使用`category_encoders`中的`HashingEncoder`来进行特征哈希。我们使用`n_components`来指定我们想要6个虚拟变量（在转换之前，我们复制了`region`特征，以便可以将原始值与新的虚拟变量进行比较）：
+- en: '[PRE54]'
+  id: totrans-183
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: '[PRE55]'
+  id: totrans-184
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: This gives us a large number of collisions, unfortunately. For example, Caribbean,
+    Central Africa, East Africa, and North Africa all get the same dummy variable
+    values. In this case at least, using one-hot encoding and specifying the number
+    of categories, or increasing the number of components for the hashing encoder,
+    would give us better results.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，这会导致大量的冲突。例如，加勒比地区、中非、东非和北非都获得相同的虚拟变量值。至少在这种情况下，使用独热编码并指定类别数量，或增加哈希编码器的组件数量，能为我们提供更好的结果。
+- en: How it works...
+  id: totrans-186
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: 'We used the `OneHotEncoder` from `feature_engine` in the same way we did in
+    the *Encoding categorical features: one-hot encoding* recipe. The difference here
+    is that we limited the dummies to the six regions with the most number of rows
+    (countries in this case). All countries not in one of the top six regions got
+    zeroes for all dummies, such as Algeria in *step 2*.'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们以与*编码分类特征：独热编码*配方相同的方式使用了`feature_engine`中的`OneHotEncoder`。这里的区别是，我们将虚拟变量限制为具有最多行数的六个区域（在这种情况下是国家）。所有不属于前六个区域的国家都会为所有虚拟变量赋值为零，例如*步骤
+    2*中的阿尔及利亚。
+- en: In *step 3*, we used the `HashingEncoder` from `category_encoders`. We indicated
+    the column to use, `region`, and that we wanted six dummies. We used the `fit_transform`
+    method of the `HashingEncoder` to fit and transform our data, just as we did with
+    the `OneHotEncoder` of `feature_engine` and the `OrdinalEncoder` of scikit-learn.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3*中，我们使用了`category_encoders`中的`HashingEncoder`。我们指定了要使用的列`region`，并且我们想要六个虚拟变量。我们使用了`HashingEncoder`的`fit_transform`方法来拟合和转换我们的数据，正如我们在`feature_engine`的`OneHotEncoder`和scikit-learn的`OrdinalEncoder`中所做的那样。
+- en: 'We have covered common encoding strategies in the last three recipes: one-hot
+    encoding, ordinal encoding, and feature hashing. Almost all of our categorical
+    features will require some kind of encoding before we can use them in a model.
+    But we sometimes need to alter our features in other ways, including with transformations,
+    binning, and scaling. We consider the reasons why we might need to alter our features
+    in these ways, and explore tools to do that, in the next three recipes.'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在最后三个配方中已经涵盖了常见的编码策略：独热编码、序数编码和特征哈希。在我们可以将几乎所有的分类特征应用到模型之前，几乎都会需要某种编码。但有时我们还需要以其他方式修改我们的特征，包括变换、分箱和缩放。我们将在接下来的三个配方中探讨修改特征的原因，并探索用于实现这些操作的工具。
+- en: Using mathematical transformations
+  id: totrans-190
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用数学变换
+- en: We sometimes want to use features that do not have a Gaussian distribution with
+    a machine learning algorithm that assumes our features are distributed in that
+    way. When that happens, we either need to change our minds about which algorithm
+    to use (choose KNN or random forest rather than linear regression, for example)
+    or transform our features so that they approximate a Gaussian distribution. We
+    go over a couple of strategies for doing the latter in this recipe.
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时候，我们希望使用的特征不具备高斯分布，而机器学习算法假设我们的特征是以这种方式分布的。当出现这种情况时，我们要么需要改变使用的算法（例如选择 KNN
+    或随机森林而不是线性回归），要么转换我们的特征，使其近似于高斯分布。在本示例中，我们讨论了几种实现后者的策略。
+- en: Getting ready
+  id: totrans-192
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will use the transformation module from feature engine in this recipe. We
+    continue to work with the COVID-19 data, which has one row for each country with
+    the total cases and deaths and some demographic data.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本示例中，我们将使用来自 feature engine 的 transformation 模块。我们继续使用 COVID-19 数据，其中每个国家都有总病例和死亡数以及一些人口统计数据。
+- en: How to do it...
+  id: totrans-194
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现...
+- en: 'We start by importing the `transformation` module from `feature_engine`, `train_test_split`
+    from `sklearn`, and `stats` from `scipy`. We also create a training and testing
+    DataFrame with the COVID-19 data:'
+  id: totrans-195
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先从 feature_engine 导入 transformation 模块，从 sklearn 导入 train_test_split，从 scipy
+    导入 stats。我们还使用 COVID-19 数据创建了训练和测试 DataFrame：
+- en: '[PRE56]'
+  id: totrans-196
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'Let’s take a look at how total cases by country are distributed. We should
+    also calculate the skew:'
+  id: totrans-197
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看看各国总病例分布如何。我们还应计算偏度：
+- en: '[PRE57]'
+  id: totrans-198
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: '[PRE58]'
+  id: totrans-199
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: '[PRE59]'
+  id: totrans-200
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'This produces the following histogram:'
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这产生了以下直方图：
+- en: '![](img/B18596_08_01.png)'
+  id: totrans-202
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_01.png)'
+- en: 'Figure 8.1: Histogram of total COVID-19 cases'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.1：总 COVID-19 病例的直方图
+- en: This illustrates the very high skew for total cases. It actually looks log-normal,
+    which is not surprising given the large number of very low values and several
+    very high values.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这说明了总病例的非常高的偏度。实际上，它看起来是对数正态分布，这并不奇怪，考虑到非常低的值和几个非常高的值的大量存在。
+- en: 'Let’s try a log transformation. All we need to do to get `feature_engine` to
+    do the transformation is to call `LogTransformer` and pass the feature or features
+    we would like to transform:'
+  id: totrans-205
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们尝试一个对数变换。要使 feature_engine 执行变换，我们只需调用 `LogTransformer` 并传递要转换的特征：
+- en: '[PRE60]'
+  id: totrans-206
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: '[PRE61]'
+  id: totrans-207
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: '[PRE62]'
+  id: totrans-208
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'This produces the following histogram:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这产生了以下直方图：
+- en: '![](img/B18596_08_02.png)'
+  id: totrans-210
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_02.png)'
+- en: 'Figure 8.2: Histogram of total COVID-19 cases with log transformation'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.2：经对数变换后的总 COVID-19 病例的直方图
+- en: Effectively, log transformations increase variability at the lower end of the
+    distribution and decrease variability at the upper end. This produces a more symmetrical
+    distribution. This is because the slope of the logarithmic function is steeper
+    for smaller values than for larger ones.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，对数变换增加了分布低端的变异性，并减少了高端的变异性。这产生了一个更对称的分布。这是因为对数函数的斜率对较小值比对较大值更陡。
+- en: 'This is definitely a big improvement, but let’s also try a Box-Cox transformation
+    to see what results we get:'
+  id: totrans-213
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 这确实是一个很大的改进，但我们还是尝试一个 Box-Cox 变换，看看得到的结果：
+- en: '[PRE63]'
+  id: totrans-214
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: '[PRE64]'
+  id: totrans-215
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: '[PRE65]'
+  id: totrans-216
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: 'This produces the following histogram:'
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这产生了以下直方图：
+- en: '![](img/B18596_08_03.png)'
+  id: totrans-218
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_03.png)'
+- en: 'Figure 8.3: Histogram of total COVID-19 cases with a Box-Cox transformation'
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.3：经 Box-Cox 变换后的总 COVID-19 病例的直方图
+- en: 'Box-Cox transformations identify a value for lambda between -5 and 5 that generates
+    a distribution that is closest to normal. It uses the following equation for the
+    transformation:'
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Box-Cox 变换可识别一个在 -5 到 5 之间的 lambda 值，生成最接近正态分布的分布。它使用以下方程进行变换：
+- en: '![](img/B18596_08_001.png)'
+  id: totrans-221
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_001.png)'
+- en: or
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或
+- en: '![](img/B18596_08_002.png)'
+  id: totrans-223
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_002.png)'
+- en: 'Where ![](img/B18596_08_003.png) is our transformed feature. Just for fun,
+    let’s see the value of lambda that was used to transform `total_cases`:'
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中 ![](img/B18596_08_003.png) 是我们的转换后特征。仅仅出于好奇，让我们看看用于转换 `total_cases` 的 lambda
+    值：
+- en: '[PRE66]'
+  id: totrans-225
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: '[PRE67]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: The lambda for the Box-Cox transformation is -0.02\. For comparison, the lambda
+    for a feature with a Gaussian distribution would be 1.000, meaning that no transformation
+    would be necessary.
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Box-Cox 变换的 lambda 是 -0.02。作为比较，具有高斯分布特征的 lambda 值为 1.000，意味着不需要进行任何变换。
+- en: How it works...
+  id: totrans-228
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理...
+- en: Many of our research or modeling projects require some transformation of features
+    or target variables for us to produce good results. Tools like *feature engine*
+    make it easy for us to incorporate such transformations in our data preparation
+    process. We imported the `transformation` module in *step 1*, and then we used
+    it to do a log transformation in *step 3* and a Box-Cox transformation in *step
+    4*.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的许多研究或建模项目需要对特征或目标变量进行某些转换，以便获得良好的结果。像*feature engine*这样的工具使我们能够轻松地在数据准备过程中结合这些转换。我们在*步骤1*中导入了`transformation`模块，然后在*步骤3*中使用它进行了对数转换，在*步骤4*中进行了Box-Cox转换。
+- en: The transformed total cases feature looked good after the log and Box-Cox transformations.
+    This will likely be an easier target to model. It is also easy to integrate this
+    transformation with a pipeline with other preprocessing steps. `Feature_engine`
+    has a number of other transformations that are implemented similarly to the log
+    and Box-Cox transformations.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 经过对数和Box-Cox转换后，转换后的总病例特征看起来不错。这可能是一个更容易建模的目标。将此转换与其他预处理步骤集成到管道中也非常简单。`Feature_engine`还有许多其他转换，类似于对数和Box-Cox转换。
+- en: See also
+  id: totrans-231
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 参见
+- en: You may be wondering how we make predictions or evaluate a model with a transformed
+    target. It is actually fairly straightforward to set up our pipeline to restore
+    values to their original values when we make predictions. I go over this in detail
+    in my book *Data Cleaning and Exploration with Machine Learning*.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会想，我们是如何使用转换后的目标进行预测或评估模型的。实际上，设置我们的管道以在进行预测时恢复值为原始值是相当简单的。我在我的书《数据清理与机器学习探索》中详细介绍了这一点。
+- en: 'Feature binning: equal width and equal frequency'
+  id: totrans-233
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 特征分箱：等宽和等频
+- en: 'We sometimes want to convert a feature from continuous to categorical. The
+    process of creating *k* equally spaced intervals from the minimum to the maximum
+    value of a distribution is called **binning**, or the somewhat less friendly **discretization**.
+    Binning can address several important issues with a feature: skew, excessive kurtosis,
+    and the presence of outliers.'
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们有时需要将一个特征从连续型转换为类别型。创建* k *个等间距区间，覆盖从最小值到最大值的分布过程称为**分箱**，或者更不友好的说法是**离散化**。分箱可以解决特征的几个重要问题：偏斜、过度峰度以及异常值的存在。
+- en: Getting ready
+  id: totrans-235
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: Binning might be a good choice with the COVID-19 total cases data. It might
+    also be useful with other variables in the dataset, including total deaths and
+    population, but we will only work with total cases for now. `total_cases` is the
+    target variable in the following code, so it is a column—the only column—on the
+    `y_train` DataFrame.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于COVID-19总病例数据，分箱可能是一个不错的选择。它也可能对数据集中的其他变量有用，包括总死亡人数和人口，但我们目前只处理总病例数据。`total_cases`是以下代码中的目标变量，因此它是`y_train`数据框中的一列——唯一的一列。
+- en: Let’s try equal width and equal frequency binning with the COVID-19 data.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们尝试使用COVID-19数据进行等宽和等频分箱。
+- en: How to do it...
+  id: totrans-238
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'We first need to import the `EqualFrequencyDiscretiser` and `EqualWidthDiscretiser`
+    from `feature_engine`. We also need to create training and testing DataFrames
+    from the COVID-19 data:'
+  id: totrans-239
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先需要从`feature_engine`导入`EqualFrequencyDiscretiser`和`EqualWidthDiscretiser`。我们还需要从COVID-19数据中创建训练和测试数据框：
+- en: '[PRE68]'
+  id: totrans-240
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: 'We can use the pandas `qcut` method, and its `q` parameter, to create 10 bins
+    of relatively equal frequency:'
+  id: totrans-241
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以使用pandas的`qcut`方法及其`q`参数来创建10个相对等频的分箱：
+- en: '[PRE69]'
+  id: totrans-242
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: '[PRE70]'
+  id: totrans-243
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: 'We can accomplish the same thing with the `EqualFrequencyDiscretiser`. First,
+    we define a function to run the transformation. The function takes a `feature_engine`
+    transformation and the training and testing DataFrames. It returns the transformed
+    DataFrames (it is not necessary to define a function, but it makes sense here,
+    since we will repeat these steps later in this recipe):'
+  id: totrans-244
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以通过`EqualFrequencyDiscretiser`实现相同的效果。首先，我们定义一个函数来运行转换。该函数接受一个`feature_engine`转换器以及训练和测试数据框。它返回转换后的数据框（虽然定义函数不是必要的，但在这里定义有意义，因为我们稍后会在本食谱中重复这些步骤）：
+- en: '[PRE71]'
+  id: totrans-245
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: 'Next, we create an `EqualFrequencyDiscretiser` transformer and call the `runtransform`
+    function we just created:'
+  id: totrans-246
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们创建一个`EqualFrequencyDiscretiser`转换器，并调用我们刚刚创建的`runtransform`函数：
+- en: '[PRE72]'
+  id: totrans-247
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: '[PRE73]'
+  id: totrans-248
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: This gives us the same results as `qcut`, but it has the advantage that it is
+    easier to bring into a machine learning pipeline, since we are using `feature_engine`
+    to produce it. The equal frequency binning addresses both the skew and outlier
+    problems.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这为我们提供了与`qcut`相同的结果，但它的优势在于，它更容易集成到机器学习管道中，因为我们使用`feature_engine`来生成它。等频分箱解决了偏斜和异常值问题。
+- en: 'The `EqualWidthDiscretiser` works similarly:'
+  id: totrans-250
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`EqualWidthDiscretiser`的工作方式类似：'
+- en: '[PRE74]'
+  id: totrans-251
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: '[PRE75]'
+  id: totrans-252
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: This is a far less successful transformation. Almost all of the values are at
+    the bottom of the distribution in the data prior to the binning, so it is not
+    surprising that equal width binning would have the same problem. It results in
+    only 6 bins, despite the fact that we have requested 10.
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个远未成功的转换。几乎所有的值都处于分布底部，所以平均宽度分箱会出现相同的问题是不奇怪的。尽管我们请求了10个箱，但结果只有6个。
+- en: 'Let’s examine the range of each bin. We can see here that the equal width binner
+    is not even able to construct equal width bins because of the small number of
+    observations at the top of the distribution:'
+  id: totrans-254
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们来看看每个箱的范围。我们可以看到，由于分布顶部观察值数量较少，等宽分箱器甚至不能构建等宽箱：
+- en: '[PRE76]'
+  id: totrans-255
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: '[PRE77]'
+  id: totrans-256
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: Although equal width binning was a bad choice in this case, there are many times
+    when it makes sense. It can be useful when data is more uniformly distributed,
+    or when the equal widths make sense substantively.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然在这种情况下等宽分箱是一个糟糕的选择，但有时它是有意义的。当数据更均匀分布或等宽的时候，它可以很有用。
+- en: k-means binning
+  id: totrans-258
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: k-means分箱
+- en: Another option is to use *k*-means clustering to determine the bins. The *k*-means
+    algorithm randomly selects *k* data points as centers of clusters, and then it
+    assigns the other data points to the closest cluster. The mean of each cluster
+    is computed, and the data points are reassigned to the nearest new cluster. This
+    process is repeated until the optimal centers are found.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个选项是使用*k*-means聚类来确定箱的位置。*k*-means算法随机选择*k*个数据点作为聚类的中心，然后将其他数据点分配到最近的聚类中。计算每个聚类的均值，然后将数据点重新分配到最近的新聚类中。这个过程重复进行，直到找到最佳的中心。
+- en: When *k*-means is used for binning, all data points in the same cluster will
+    have the same ordinal value.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当使用*k*-means进行分箱时，同一聚类中的所有数据点将具有相同的序数值。
+- en: Getting ready
+  id: totrans-261
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will use scikit-learn this time for our binning. *Scitkit-learn* has a great
+    tool for creating bins based on *k*-means, `KBinsDiscretizer`.
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这次我们将使用scikit-learn进行分箱。*Scitkit-learn*有一个很好的工具，可以基于*k*-means创建箱，即`KBinsDiscretizer`。
+- en: How to do it...
+  id: totrans-263
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'We start by instantiating a `KBinsDiscretizer` object. We will use it to create
+    bins with the COVID-19 cases data:'
+  id: totrans-264
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先实例化一个`KBinsDiscretizer`对象。我们将用它来创建COVID-19案例数据的箱：
+- en: '[PRE78]'
+  id: totrans-265
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: '[PRE79]'
+  id: totrans-266
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'Let’s compare the skew and kurtosis of the original total cases variable to
+    that of the binned variable. Recall that we would expect a skew of 0 and a kurtosis
+    near 3 for a variable with a Gaussian distribution. The distribution of the binned
+    variable is much closer to Gaussian:'
+  id: totrans-267
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们比较原始总案例变量的偏斜和峰度与分箱变量的偏斜和峰度。回想一下，我们期望具有高斯分布的变量的偏斜为0，峰度接近3。分箱变量的分布更接近高斯分布：
+- en: '[PRE80]'
+  id: totrans-268
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: '[PRE81]'
+  id: totrans-269
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: '[PRE82]'
+  id: totrans-270
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: '[PRE83]'
+  id: totrans-271
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE83]'
+- en: 'Let’s take a closer look at the range of total cases values in each bin. The
+    first bin goes up to 272,010 total cases, and the next goes up to 834,470\. There
+    is a fair bit of drop-off in terms of the number of countries after about 8.6
+    million total cases. We might consider reducing the number of bins to 5 or 6:'
+  id: totrans-272
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们更仔细地查看每个箱中总案例值的范围。第一个箱的范围达到272,010个总案例，下一个箱的范围达到834,470个。大约在860万个总案例后，国家数量有相当大的减少。我们可以考虑将箱的数量减少到5或6个：
+- en: '[PRE84]'
+  id: totrans-273
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE84]'
+- en: '[PRE85]'
+  id: totrans-274
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE85]'
+- en: These steps demonstrate how to use *k*-means for binning.
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些步骤展示了如何使用*k*-means进行分箱。
+- en: How it works...
+  id: totrans-276
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理...
+- en: All we need to run *k*-means binning is to instantiate a `KBinsDiscretizer`
+    object. We indicated the number of bins we wanted, `10`, and that we wanted the
+    bins to be `ordinal`. We specified `ordinal` because we want higher bin values
+    to reflect higher total cases values. We converted the NumPy array returned from
+    the scikit-learn `fit_transform` into a DataFrame. This is often not necessary
+    in a data pipeline, but we did it here because we will use the DataFrame in subsequent
+    steps.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行*k*-means分箱所需的全部是实例化一个`KBinsDiscretizer`对象。我们指定了我们想要的箱数`10`，并且我们希望箱是`ordinal`的。我们指定`ordinal`是因为我们希望较高的箱值反映出较高的总案例值。我们将从scikit-learn的`fit_transform`返回的NumPy数组转换为DataFrame。在数据流水线中，这通常是不必要的，但我们在这里这样做是因为我们将在后续步骤中使用DataFrame。
+- en: Binning can help us address skew, kurtosis, and outliers in our data. It does,
+    however, mask much of the variation in the feature and reduces its explanatory
+    potential. Often, some form of scaling, such as min-max or z-score, is a better
+    option. Let’s examine feature scaling in the next recipe.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分箱可以帮助我们处理数据中的偏斜、峰度和异常值。然而，它确实掩盖了特征变化的大部分，并降低了其解释能力。通常情况下，一些形式的缩放，如最小-最大或z分数，是更好的选择。让我们在下一个示例中来看一下特征缩放。
+- en: Feature scaling
+  id: totrans-279
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 特征缩放
+- en: Often, the features we want to use in our model are on very different scales.
+    Put another way, the distance between the min and max values, or the range, varies
+    substantially across possible features. In the COVID-19 data for example, the
+    `total cases` feature goes from 5,000 to almost 100 million, while `aged 65 or
+    older` goes from 9 to 27 (the number represents the percent of population).
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，想要在模型中使用的特征处于不同的尺度上。换句话说，最小值和最大值之间的距离，或范围，在不同的特征中有很大差异。例如，在 COVID-19 数据中，`total
+    cases` 特征的值从 5000 到近 1 亿，而 `aged 65 or older` 特征的值从 9 到 27（表示人口的百分比）。
+- en: Having features on very different scales impacts many machine learning algorithms.
+    For example, KNN models often use Euclidean distance, and features with greater
+    ranges will have greater influence on the model. Scaling can address this problem.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 特征的尺度差异会影响许多机器学习算法。例如，KNN 模型通常使用欧几里得距离，尺度更大的特征将对模型产生更大的影响。缩放可以解决这个问题。
+- en: 'We will go over two popular approaches to scaling in this section: **min-max
+    scaling** and **standard** (or **z-score**) scaling. Min-max scaling replaces
+    each value with its location in the range. More precisely:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节将介绍两种常见的缩放方法：**最小-最大缩放**和**标准**（或**z-score**）缩放。最小-最大缩放将每个值替换为其在范围中的位置。更具体地说：
+- en: '![](img/B18596_08_004.png)'
+  id: totrans-283
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_004.png)'
+- en: Here, *z*[ij] is the min-max score, *x*[ij] is the value for the *i*^(th) observation
+    of the *j*^(th) feature, and *min*[j] and *max*[j] are the min and max values
+    of the *j*^(th) feature.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*z*[ij] 是最小-最大得分，*x*[ij] 是 *i*^(th) 观测值对应的 *j*^(th) 特征的值，*min*[j] 和 *max*[j]
+    分别是 *j*^(th) 特征的最小值和最大值。
+- en: 'Standard scaling normalizes the feature values around a mean of 0\. Those who
+    studied undergraduate statistics will recognize it as the z-score. Specifically:'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 标准缩放将特征值标准化为均值为 0 的数据。那些学过本科统计学的人会认识到这就是 z-score。具体来说：
+- en: '![](img/B18596_08_005.png)'
+  id: totrans-286
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_005.png)'
+- en: Here, *x*[ij] is the value for the *i*^(th) observation of the *j*^(th) feature,
+    *u*[j] is the mean for feature *j*, and *s*[j] is the standard deviation for that
+    feature.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*x*[ij] 是 *i*^(th) 观测值对应的 *j*^(th) 特征的值，*u*[j] 是 *j* 特征的均值，*s*[j] 是该特征的标准差。
+- en: Getting ready
+  id: totrans-288
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: We will use scikit-learn’s preprocessing module for all of the transformations
+    in this recipe. We will work with the COVID-19 data again.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 scikit-learn 的预处理模块进行本食谱中的所有变换。我们将再次使用 COVID-19 数据。
+- en: How to do it...
+  id: totrans-290
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何进行...
+- en: 'We can use scikit-learn’s preprocessing module to get the min-max and standard
+    scalers:'
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用 scikit-learn 的预处理模块来获取最小-最大和标准缩放器：
+- en: 'We start by importing the `preprocessing` module and creating training and
+    testing DataFrames from the COVID-19 data:'
+  id: totrans-292
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先导入 `preprocessing` 模块，并从 COVID-19 数据中创建训练和测试 DataFrame：
+- en: '[PRE86]'
+  id: totrans-293
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE86]'
+- en: 'We can now run the min-max scaler. As we have done in previous recipes when
+    working with the scikit-learn `fit_transform`, we convert the NumPy array so that
+    it returns to a DataFrame using the columns and index from the training DataFrame.
+    Notice that all features now have values between 0 and 1:'
+  id: totrans-294
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们可以运行最小-最大缩放器。正如我们在之前的食谱中使用 scikit-learn 的 `fit_transform` 时所做的那样，我们将 NumPy
+    数组转换为 DataFrame，以便使用训练 DataFrame 的列和索引返回。注意，现在所有特征的值都在 0 到 1 之间：
+- en: '[PRE87]'
+  id: totrans-295
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE87]'
+- en: '[PRE88]'
+  id: totrans-296
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE88]'
+- en: 'We run the standard scaler in the same manner:'
+  id: totrans-297
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们以相同的方式运行标准缩放器：
+- en: '[PRE89]'
+  id: totrans-298
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE89]'
+- en: '[PRE90]'
+  id: totrans-299
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE90]'
+- en: 'If we have outliers in our data, robust scaling might be a good option. Robust
+    scaling subtracts the median from each value of a variable and divides that value
+    by the interquartile range. So, each value is:'
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果数据中有异常值，鲁棒缩放可能是一个不错的选择。鲁棒缩放从每个变量的值中减去中位数，并将该值除以四分位数间距。因此，每个值是：
+- en: '![](img/B18596_08_006.png)'
+  id: totrans-301
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_08_006.png)'
+- en: Where ![](img/B18596_08_007.png) is the value for the *j*^(th) feature, and
+    *median*[j], 3^(rd) *quantile*[j], and 1^(st) *quantile*[j], are the median, third,
+    and first quantile of the *j*^(th) feature, respectively. Robust scaling is less
+    sensitive to extreme values, since it does not use the mean or variance.
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中 ![](img/B18596_08_007.png) 是 *j*^(th) 特征的值，*median*[j]、3^(rd) *quantile*[j]
+    和 1^(st) *quantile*[j] 分别是 *j*^(th) 特征的中位数、第三四分位数和第一四分位数。鲁棒缩放对极端值的敏感度较低，因为它不使用均值或方差。
+- en: 'We can use scikit-learn’s `RobustScaler` module to do robust scaling:'
+  id: totrans-303
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以使用 scikit-learn 的 `RobustScaler` 模块来进行鲁棒缩放：
+- en: '[PRE91]'
+  id: totrans-304
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE91]'
+- en: '[PRE92]'
+  id: totrans-305
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE92]'
+- en: The previous steps demonstrate three popular scaling transformations, standard
+    scaling, min-max scaling, and robust scaling.
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的步骤演示了三种常见的缩放变换：标准缩放、最小-最大缩放和鲁棒缩放。
+- en: How it works...
+  id: totrans-307
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: We use feature scaling with most machine learning algorithms. Although it is
+    not often required, it yields noticeably better results. Min-max scaling and standard
+    scaling are popular scaling techniques, but there are times when robust scaling
+    might be the better option.
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在大多数机器学习算法中都使用特征缩放。虽然它并非总是必要的，但它会带来明显更好的结果。最小-最大缩放和标准缩放是常见的缩放技术，但有时使用鲁棒缩放可能是更好的选择。
+- en: '*Scitkit-learn’s* `preprocessing` module makes it easy to use a variety of
+    scaling transformations. We just need to instantiate the scaler and then run the
+    `fit`, `transform`, or `fit_transform` method.'
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*Scikit-learn*的`preprocessing`模块使得使用各种缩放转换变得简单。我们只需实例化缩放器，然后运行`fit`、`transform`或`fit_transform`方法。'
+- en: Summary
+  id: totrans-310
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: We have covered a wide range of feature engineering techniques in this chapter.
+    We used tools to drop redundant or highly correlated features. We explored the
+    most common kinds of encoding—one-hot, ordinal, and hashing encoding. We then
+    used transformations to improve the distribution of our features. Finally, we
+    used common binning and scaling approaches to address skew, kurtosis, and outliers,
+    and to adjust for features with widely different ranges. In the next chapter,
+    we’ll learn how to fix messy data when aggregating.
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中我们涵盖了广泛的特征工程技术。我们使用工具删除冗余或高度相关的特征。我们探讨了最常见的编码方法——独热编码、顺序编码和哈希编码。然后我们使用变换改善特征的分布。最后，我们使用常见的分箱和缩放方法来解决偏斜、峰度和异常值问题，并调整具有不同范围的特征。在下一章，我们将学习如何在汇总时修复杂乱的数据。
+- en: Leave a review!
+  id: totrans-312
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 留下评论！
+- en: Enjoying this book? Help readers like you by leaving an Amazon review. Scan
+    the QR code below to get a free eBook of your choice.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 享受这本书吗？通过留下亚马逊评论来帮助像您这样的读者。扫描下面的二维码，免费获取您选择的电子书。
+- en: '![](img/Review_copy.png)'
+  id: totrans-314
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Review_copy.png)'

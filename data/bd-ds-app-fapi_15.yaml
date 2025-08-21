@@ -1,0 +1,767 @@
+- en: '12'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '12'
+- en: Creating an Efficient Prediction API Endpoint with FastAPI
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 FastAPI 创建高效的预测 API 端点
+- en: In the previous chapter, we introduced the most common data science techniques
+    and libraries largely used in the Python community. Thanks to those tools, we
+    can now build machine learning models that can make efficient predictions and
+    classify data. Of course, we now have to think about a convenient interface so
+    that we can take advantage of their intelligence. This way, microservices or frontend
+    applications can ask our model to make predictions to improve the user experience
+    or business operations. In this chapter, we’ll learn how to do that with FastAPI.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们介绍了 Python 社区中广泛使用的最常见的数据科学技术和库。得益于这些工具，我们现在可以构建能够高效预测和分类数据的机器学习模型。当然，我们现在需要考虑一个便捷的接口，以便能够充分利用它们的智能。这样，微服务或前端应用程序就可以请求我们的模型进行预测，从而改善用户体验或业务运营。在本章中，我们将学习如何使用
+    FastAPI 实现这一点。
+- en: As we’ve seen throughout this book, FastAPI allows us to implement very efficient
+    REST APIs with a clear and lightweight syntax. In this chapter, you’ll learn how
+    to use them as efficiently as possible in order to serve thousands of prediction
+    requests. To help us with this task, we’ll introduce another library, Joblib,
+    which provides tools to help us serialize a trained model and cache predicted
+    results.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在本书中看到的，FastAPI 允许我们使用清晰而轻量的语法实现非常高效的 REST API。在本章中，你将学习如何以最有效的方式使用它们，以便处理成千上万的预测请求。为了帮助我们完成这项任务，我们将引入另一个库——Joblib，它提供了帮助我们序列化已训练模型和缓存预测结果的工具。
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们将涵盖以下主要内容：
+- en: Persisting a trained model with Joblib
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 Joblib 持久化已训练的模型
+- en: Implementing an efficient prediction endpoint
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实现高效的预测端点
+- en: Caching results with Joblib
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 Joblib 缓存结果
+- en: Technical requirements
+  id: totrans-8
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: For this chapter, you’ll require a Python virtual environment, just as we set
+    up in [*Chapter 1*](B19528_01.xhtml#_idTextAnchor024), *Python Development* *Environment
+    Setup*.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章需要你设置一个 Python 虚拟环境，就像我们在[*第1章*](B19528_01.xhtml#_idTextAnchor024)中设置的那样，*Python
+    开发环境* *设置*。
+- en: You’ll find all the code examples for this chapter in the dedicated GitHub repository
+    at [https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12).
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在专门的 GitHub 仓库中找到本章的所有代码示例，地址为[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12)。
+- en: Persisting a trained model with Joblib
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Joblib 持久化已训练的模型
+- en: In the previous chapter, you learned how to train an estimator with scikit-learn.
+    When building such models, you’ll likely obtain a rather complex Python script
+    to load your training data, pre-process it, and train your model with the best
+    set of parameters. However, when deploying your model in a web application such
+    as FastAPI, you don’t want to repeat this script and run all those operations
+    when the server is starting. Instead, you need a ready-to-use representation of
+    your trained model that you can just load and use.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，你学习了如何使用 scikit-learn 训练一个估计器。当构建这样的模型时，你可能会获得一个相当复杂的 Python 脚本来加载训练数据、进行预处理，并用最佳的参数集来训练模型。然而，在将模型部署到像
+    FastAPI 这样的 Web 应用程序时，你不希望在服务器启动时重复执行这些脚本和所有操作。相反，你需要一个现成的已训练模型表示，只需要加载并使用它即可。
+- en: 'This is what Joblib does. This library aims to provide tools for efficiently
+    saving Python objects to disk, such as large arrays of data or function results:
+    this operation is generally called **dumping**. Joblib is already a dependency
+    of scikit-learn, so we don’t even need to install it. Actually, scikit-learn itself
+    uses it internally to load the bundled toy datasets.'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是 Joblib 的作用。这个库旨在提供高效保存 Python 对象到磁盘的工具，例如大型数据数组或函数结果：这个操作通常被称为**持久化**。Joblib
+    已经是 scikit-learn 的一个依赖，因此我们甚至不需要安装它。实际上，scikit-learn 本身也在内部使用它来加载打包的示例数据集。
+- en: As we’ll see, dumping a trained model involves just one line of code with Joblib.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，使用 Joblib 持久化已训练的模型只需要一行代码。
+- en: Dumping a trained model
+  id: totrans-15
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 持久化已训练的模型
+- en: 'In this example, we’re using the newsgroups example we saw in the *Chaining
+    preprocessors and estimators with pipelines* section of [*Chapter 11*](B19528_11.xhtml#_idTextAnchor797),
+    *Introduction to Data Science in Python*. As a reminder, we load 4 of the 20 categories
+    in the `newsgroups` dataset and build a model to automatically categorize news
+    articles into those categories. Once we’ve done this, we dump the model into a
+    file called `newsgroups_model.joblib`:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中，我们使用了我们在[*第11章*](B19528_11.xhtml#_idTextAnchor797)中看到的newsgroups示例，*Python中的数据科学入门*一节的*链式预处理器和估算器*部分。为了提醒一下，我们加载了`newsgroups`数据集中20个类别中的4个，并构建了一个模型，将新闻文章自动分类到这些类别中。一旦完成，我们将模型导出到一个名为`newsgroups_model.joblib`的文件中：
+- en: chapter12_dump_joblib.py
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_dump_joblib.py
+- en: '[PRE0]'
+  id: totrans-18
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_dump_joblib.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_dump_joblib.py)'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_dump_joblib.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_dump_joblib.py)'
+- en: 'As you can see, Joblib exposes a function called `dump`, which simply expects
+    two arguments: the Python object to save and the path of the file.'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，Joblib提供了一个名为`dump`的函数，它仅需要两个参数：要保存的Python对象和文件路径。
+- en: 'Notice that we don’t dump the `model` variable alone: instead, we wrap it in
+    a tuple, along with the name of the categories, `target_names`. This allows us
+    to retrieve the actual name of the category after the prediction has been made
+    without us having to reload the training dataset.'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们并没有单独导出`model`变量：相反，我们将它和类别名称`target_names`一起封装在一个元组中。这使得我们能够在预测完成后检索类别的实际名称，而不必重新加载训练数据集。
+- en: 'If you run this script, you’ll see that the `newsgroups_model.joblib` file
+    was created:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你运行这个脚本，你会看到`newsgroups_model.joblib`文件已被创建：
+- en: '[PRE1]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Notice that this file is rather large: it’s more than 3 MB! It stores all the
+    probabilities of each word in each category, as computed by the multinomial Naive
+    Bayes model.'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，这个文件相当大：它超过了3 MB！它存储了每个词在每个类别中的概率，这些概率是通过多项式朴素贝叶斯模型计算得到的。
+- en: That’s all we need to do. This file now contains a static representation of
+    our Python model, which will be easy to store, share, and load. Now, let’s learn
+    how to load it and check that we can run predictions on it.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我们需要做的。这个文件现在包含了我们Python模型的静态表示，它将易于存储、共享和加载。现在，让我们学习如何加载它并检查我们是否可以对其进行预测。
+- en: Loading a dumped model
+  id: totrans-26
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 加载导出的模型
+- en: 'Now that we have our dumped model file, let’s learn how to load it again using
+    Joblib and check that everything is working. In the following example, we’re loading
+    the Joblib dump present in the `chapter12` directory of the examples repository
+    and running a prediction:'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经有了导出的模型文件，让我们学习如何使用Joblib再次加载它，并检查一切是否正常工作。在下面的示例中，我们将加载位于`chapter12`目录下的Joblib导出文件，并进行预测：
+- en: chapter12_load_joblib.py
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_load_joblib.py
+- en: '[PRE2]'
+  id: totrans-29
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_load_joblib.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_load_joblib.py)'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_load_joblib.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_load_joblib.py)'
+- en: All we need to do here is call the `load` function from Joblib and pass it as
+    a valid path to a dump file. The result of this function is the very same Python
+    object we dumped. Here, it’s a tuple composed of the scikit-learn estimator and
+    a list of categories.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们只需要调用Joblib的`load`函数，并将导出文件的有效路径传递给它。这个函数的结果是我们导出的相同Python对象。在这里，它是一个包含scikit-learn估算器和类别列表的元组。
+- en: 'Notice that we added some type hints: while not necessary, it helps mypy or
+    whichever IDE you use identify the nature of the objects you loaded and benefit
+    from type-checking and auto-completion.'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，我们添加了一些类型提示：虽然这不是必须的，但它帮助mypy或你使用的任何IDE识别加载对象的类型，并受益于类型检查和自动补全功能。
+- en: 'Finally, we run a prediction on the model: it’s a true scikit-learn estimator,
+    with all the necessary training parameters.'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们对模型进行了预测：它是一个真正的scikit-learn估算器，包含所有必要的训练参数。
+- en: That’s it! As you’ve seen, Joblib is straightforward to use. Nevertheless, it’s
+    an essential tool for exporting your scikit-learn models and being able to use
+    them in external services without repeating the training phase. Now, we can use
+    those dump files in FastAPI projects.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就这样！如你所见，Joblib的使用非常直接。尽管如此，它是一个重要工具，用于导出你的scikit-learn模型，并能够在外部服务中使用这些模型，而无需重复训练阶段。现在，我们可以在FastAPI项目中使用这些已保存的文件。
+- en: Implementing an efficient prediction endpoint
+  id: totrans-35
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现一个高效的预测端点
+- en: Now that we have a way to save and load our machine learning models, it’s time
+    to use them in a FastAPI project. As you’ll see, the implementation shouldn’t
+    be too much of a surprise if you’ve followed this book. The main part of the implementation
+    is the class dependency, which will take care of loading the model and making
+    predictions. If you need a refresher on class dependencies, check out [*Chapter
+    5*](B19528_05.xhtml#_idTextAnchor285), *Dependency Injection* *in FastAPI*.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经有了保存和加载机器学习模型的方法，是时候在FastAPI项目中使用它们了。正如你所看到的，如果你跟随本书的内容进行操作，实施过程应该不会太令你惊讶。实现的主要部分是类依赖，它将处理加载模型并进行预测。如果你需要复习类依赖的内容，可以查看[*第五章*](B19528_05.xhtml#_idTextAnchor285)，*FastAPI中的依赖注入*。
+- en: 'Let’s go! Our example will be based on the `newgroups` model we dumped in the
+    previous section. We’ll start by showing you how to implement the class dependency,
+    which will take care of loading the model and making predictions:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 开始吧！我们的示例将基于上一节中提到的`newgroups`模型。我们将从展示如何实现类依赖开始，这将处理加载模型并进行预测：
+- en: chapter12_prediction_endpoint.py
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_prediction_endpoint.py
+- en: '[PRE3]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py)'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py)'
+- en: 'First, we start by defining two Pydantic models: `PredictionInput` and `PredictionOutput`.
+    In a pure FastAPI philosophy, they will help us validate the request payload and
+    return a structured JSON response. Here, as input, we simply expect a `text` property
+    containing the text we want to classify. As output, we expect a `category` property
+    containing the predicted category.'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们定义了两个Pydantic模型：`PredictionInput`和`PredictionOutput`。按照纯FastAPI的理念，它们将帮助我们验证请求负载并返回结构化的JSON响应。在这里，作为输入，我们仅期望一个包含我们想要分类的文本的`text`属性。作为输出，我们期望一个包含预测类别的`category`属性。
+- en: 'The most interesting part of this extract is the `NewsgroupsModel` class. It
+    implements two methods: `load_model` and `predict`.'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个代码片段中最有趣的部分是`NewsgroupsModel`类。它实现了两个方法：`load_model`和`predict`。
+- en: The `load_model` method loads the model using Joblib, as we saw in the previous
+    section, and stores the model and targets in class properties. Hence, they will
+    be available to use in the `predict` method.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`load_model`方法使用Joblib加载模型，如我们在上一节中所见，并将模型和目标存储在类的属性中。因此，它们将可以在`predict`方法中使用。'
+- en: On the other hand, the `predict` method will be injected into the path operation
+    function. As you can see, it directly accepts `PredictionInput`, which will be
+    injected by FastAPI. Inside this method, we are making a prediction, as we usually
+    do with scikit-learn. We return a `PredictionOutput` object with the category
+    we predicted.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，`predict`方法将被注入到路径操作函数中。如你所见，它直接接受`PredictionInput`，这个输入将由FastAPI注入。在这个方法中，我们进行预测，就像我们通常在scikit-learn中做的那样。我们返回一个`PredictionOutput`对象，包含我们预测的类别。
+- en: You may have noticed that, first, we check whether the model and its targets
+    have been assigned in the class properties before performing the prediction. Of
+    course, we need to ensure `load_model` was called at some point before making
+    a prediction. You may be wondering why we are not putting this logic in an initializer,
+    `__init__`, so that we can ensure the model is loaded at class instantiation.
+    This would work perfectly fine; however, it would cause some issues. As we’ll
+    see, we are instantiating a `NewsgroupsModel` instance right after FastAPI so
+    that we can use it in our routes. If the loading logic was in `__init__`, the
+    model would be loaded whenever we imported some variables (such as the `app` instance)
+    from this file, such as in unit tests. In most cases, this would incur unnecessary
+    I/O operations and memory consumption. As we’ll see, it’s better to use the lifespan
+    handler of FastAPI to load the model when the app is run.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能已经注意到，首先我们在进行预测之前，会检查模型及其目标是否在类属性中被分配。当然，我们需要确保在进行预测之前，`load_model`已经被调用。你可能会想，为什么我们不把这个逻辑放在初始化函数`__init__`中，这样我们可以确保模型在类实例化时就加载。这种做法完全可行，但也会带来一些问题。正如我们所看到的，我们在FastAPI之后立即实例化了一个`NewsgroupsModel`实例，以便可以在路由中使用它。如果加载逻辑放在`__init__`中，那么每次我们从这个文件中导入一些变量（比如`app`实例）时，模型都会被加载，例如在单元测试中。在大多数情况下，这样会导致不必要的I/O操作和内存消耗。正如我们所看到的，最好使用FastAPI的生命周期处理器，在应用运行时加载模型。
+- en: 'The following extract shows the rest of the implementation, along with the
+    actual FastAPI route for handling predictions:'
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下摘录展示了其余的实现，并包含处理预测的FastAPI路由：
+- en: chapter12_prediction_endpoint.py
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_prediction_endpoint.py
+- en: '[PRE4]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py)'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_prediction_endpoint.py)'
+- en: As we mentioned previously, we are creating an instance of `NewsgroupsModel`
+    so that we can inject it into our path operation function. Moreover, we are implementing
+    a lifespan handler to call `load_model`. This way, we are making sure that the
+    model is loaded during application startup and is ready to use.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们之前提到的，我们创建了一个`NewsgroupsModel`实例，以便将其注入到路径操作函数中。此外，我们正在实现一个生命周期处理器来调用`load_model`。通过这种方式，我们确保在应用程序启动时加载模型，并使其随时可用。
+- en: 'The prediction endpoint is quite straightforward: as you can see, we directly
+    depend on the `predict` method, which will take care of injecting the payload
+    and validating it. We only have to return the output.'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 预测端点非常简单：正如你所看到的，我们直接依赖于`predict`方法，它会处理注入和验证负载。我们只需要返回输出即可。
+- en: 'That’s it! Once again, FastAPI makes our life very easy by allowing us to write
+    very simple and readable code, even for complex tasks. We can run this application
+    using Uvicorn, as usual:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就这样！再次感谢FastAPI，让我们的生活变得更加轻松，它让我们能够编写简单且可读的代码，即使是面对复杂的任务。我们可以像往常一样使用Uvicorn来运行这个应用：
+- en: '[PRE5]'
+  id: totrans-53
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Now, we can try to run some predictions with HTTPie:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们可以尝试使用HTTPie进行一些预测：
+- en: '[PRE6]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Our machine learning classifier is alive! To push this further, let’s see how
+    we can implement a simple caching mechanism using Joblib.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的机器学习分类器已经启动！为了进一步推动这一点，让我们看看如何使用Joblib实现一个简单的缓存机制。
+- en: Caching results with Joblib
+  id: totrans-57
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用Joblib缓存结果
+- en: 'If your model takes time to make predictions, it may be interesting to cache
+    the results: if the prediction for a particular input has already been done, it
+    makes sense to return the same result we saved on disk rather than running the
+    computations again. In this section, we’ll learn how to do this with the help
+    of Joblib.'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你的模型需要一定时间才能进行预测，缓存结果可能会非常有用：如果某个特定输入的预测已经完成，那么返回我们保存在磁盘上的相同结果比再次运行计算更有意义。在本节中，我们将学习如何借助Joblib来实现这一点。
+- en: Joblib provides us with a very convenient and easy-to-use tool to do this, so
+    the implementation is quite straightforward. The main concern will be about whether
+    we should choose standard or async functions to implement the endpoints and dependencies.
+    This will allow us to explain some of the technical details of FastAPI in more
+    detail.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Joblib为我们提供了一个非常方便且易于使用的工具，因此实现起来非常简单。主要的关注点是我们应该选择标准函数还是异步函数来实现端点和依赖关系。这样，我们可以更详细地解释FastAPI的一些技术细节。
+- en: 'We’ll build upon the example we provided in the previous section. The first
+    thing we must do is initialize a Joblib `Memory` class, which is the helper for
+    caching function results. Then, we can add a decorator to the functions we want
+    to cache. You can see this in the following example:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在前一节中提供的示例基础上进行构建。我们必须做的第一件事是初始化一个Joblib的`Memory`类，它是缓存函数结果的辅助工具。然后，我们可以为想要缓存的函数添加一个装饰器。你可以在以下示例中看到这一点：
+- en: chapter12_caching.py
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_caching.py
+- en: '[PRE7]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+- en: When initializing `memory`, the main argument is `location`, which is the directory
+    path where Joblib will store the results. Joblib automatically saves cached results
+    on the hard disk.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在初始化`memory`时，主要参数是`location`，它是Joblib存储结果的目录路径。Joblib会自动将缓存结果保存在硬盘上。
+- en: Then, you can see that we implemented a `predict` function, which accepts our
+    scikit-learn model and some text input and then returns the predicted category
+    index. This is the same prediction operation we’ve seen so far. Here, we extracted
+    it from the `NewsgroupsModel` dependency class because Joblib caching is primarily
+    designed to work with regular functions. Caching class methods is not recommended.
+    As you can see, we simply have to add a `@memory.cache` decorator on top of this
+    function to enable Joblib caching.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，你可以看到我们实现了一个`predict`函数，它接受我们的scikit-learn模型和一些文本输入，并返回预测的类别索引。这与我们之前看到的预测操作相同。在这里，我们将其从`NewsgroupsModel`依赖类中提取出来，因为Joblib缓存主要是为了与常规函数一起使用的。缓存类方法并不推荐。正如你所看到的，我们只需在这个函数上方添加一个`@memory.cache`装饰器来启用Joblib缓存。
+- en: Whenever this function is called, Joblib will check whether it has the result
+    on disk for the same arguments. If it does, it returns it directly. Otherwise,
+    it proceeds with the regular function call.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每当这个函数被调用时，Joblib会检查它是否已经有相同参数的结果保存在磁盘上。如果有，它会直接返回该结果。否则，它会继续进行常规的函数调用。
+- en: 'As you can see, we added an `ignore` argument to the decorator, which allows
+    us to tell Joblib to not take into account some arguments in the caching mechanism.
+    Here, we excluded the `model` argument. Joblib cannot dump complex objects, such
+    as scikit-learn estimators. This isn’t a problem, though: the model doesn’t change
+    between several predictions, so we don’t care about having it cached. If we make
+    improvements to our model and deploy a new one, all we have to do is clear the
+    whole cache so that older predictions are made again with the new model.'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如你所看到的，我们为装饰器添加了一个`ignore`参数，这允许我们告诉Joblib在缓存机制中忽略某些参数。这里，我们排除了`model`参数。Joblib无法存储复杂对象，比如scikit-learn估算器。但这不是问题：因为模型在多个预测之间是不会变化的，所以我们不关心是否缓存它。如果我们对模型进行了改进并部署了一个新的模型，我们只需要清除整个缓存，这样较早的预测就会使用新的模型重新计算。
+- en: 'Now, we can tweak the `NewsgroupsModel` dependency class so that it works with
+    this new `predict` function. You can see this in the following example:'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们可以调整`NewsgroupsModel`依赖类，使其与这个新的`predict`函数兼容。你可以在以下示例中看到这一点：
+- en: chapter12_caching.py
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_caching.py
+- en: '[PRE8]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+- en: In the `predict` method, we are calling the external `predict` function instead
+    of doing so directly inside the method, taking care to pass the model and the
+    input text as arguments. All we have to do after that is retrieve the corresponding
+    category name and build a `PredictionOutput` object.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`predict`方法中，我们调用了外部的`predict`函数，而不是直接在方法内部调用，并且注意将模型和输入文本作为参数传递。之后我们只需要做的就是获取对应的类别名称并构建一个`PredictionOutput`对象。
+- en: 'Finally, we have the REST API endpoints. Here, we added a `delete/cache` route
+    so that we can clear the whole Joblib cache with an HTTP request. This can be
+    seen in the following example:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们有了REST API端点。在这里，我们添加了一个`delete/cache`路由，以便通过HTTP请求清除整个Joblib缓存。你可以在以下示例中看到这一点：
+- en: chapter12_caching.py
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_caching.py
+- en: '[PRE9]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_caching.py)'
+- en: The `clear` method on the `memory` object removes all the Joblib cache files
+    on the disk.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`memory`对象上的`clear`方法会删除硬盘上所有的Joblib缓存文件。'
+- en: Our FastAPI application is now caching prediction results. If you make a request
+    with the same input twice, the second response will show you the cached result.
+    In this example, our model is fast, so you won’t notice a difference in terms
+    of execution time; however, this could be interesting with more complex models.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的FastAPI应用程序现在正在缓存预测结果。如果你使用相同的输入发出两次请求，第二次的响应将显示缓存结果。在这个例子中，我们的模型非常快，所以你不会注意到执行时间上的差异；然而，对于更复杂的模型，这可能会变得很有趣。
+- en: Choosing between standard or async functions
+  id: totrans-79
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 选择标准函数或异步函数
+- en: You may have noticed that we changed the `predict` method and the `prediction`
+    and `delete_cache` path operation functions so that they’re *standard,* *non-async*
+    functions.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能注意到我们已经修改了`predict`方法以及`prediction`和`delete_cache`路径操作函数，使它们成为*标准的*、*非异步的*函数。
+- en: Since the beginning of this book, we’ve shown you how FastAPI completely embraces
+    asynchronous I/O and why it’s good for the performance of your applications. We’ve
+    also recommended libraries that work asynchronously, such as database drivers,
+    to leverage that power.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自从本书开始以来，我们已经向你展示了FastAPI如何完全拥抱异步I/O，以及这对应用程序性能的好处。我们还推荐了能够异步工作的库，例如数据库驱动程序，以便利用这一优势。
+- en: 'In some cases, however, that’s not always possible. In this case, Joblib is
+    implemented to work synchronously. Nevertheless, it’s performing long I/O operations:
+    it reads and writes cache files on the hard disk. Hence, it will block the process
+    and won’t be able to answer other requests while this is happening, as we explained
+    in the *Asynchronous I/O* section of [*Chapter 2*](B19528_02.xhtml#_idTextAnchor032),
+    *Python* *Programming Specificities*.'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在某些情况下，这是不可能的。在这种情况下，Joblib被实现为同步工作。然而，它执行的是长时间的I/O操作：它在硬盘上读取和写入缓存文件。因此，它会阻塞进程，在此期间无法响应其他请求，正如我们在[*第2章*](B19528_02.xhtml#_idTextAnchor032)的*异步I/O*部分中所解释的那样，*Python*
+    *编程特性*。
+- en: 'To solve this, FastAPI implements a neat mechanism: *if you define a path operation
+    function or a dependency as a standard, non-async function, it’ll run it in a
+    separate thread*. This means that blocking operations, such as synchronous file
+    reading, won’t block the main process. In a sense, we could say that it mimics
+    an asynchronous operation.'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了解决这个问题，FastAPI实现了一个巧妙的机制：*如果你将路径操作函数或依赖项定义为标准的、非异步的函数，它将在一个单独的线程中运行*。这意味着阻塞操作，例如同步文件读取，不会阻塞主进程。从某种意义上说，我们可以说它模仿了一个异步操作。
+- en: 'To understand this, we’ll perform a simple experiment. In the following example,
+    we are building a dummy FastAPI application with three endpoints:'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了理解这一点，我们将进行一个简单的实验。在以下示例中，我们构建了一个包含三个端点的虚拟FastAPI应用程序：
+- en: '`/fast`, which directly returns a response'
+  id: totrans-85
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`/fast`，它直接返回响应'
+- en: '`/slow-async`, a path operation defined as `async`, which creates a synchronous
+    blocking operation that takes 10 seconds to run'
+  id: totrans-86
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`/slow-async`，一个定义为`async`的路径操作，创建一个同步阻塞操作，需要10秒钟才能完成'
+- en: '`/slow-sync`, a path operation that’s defined as a standard method, which creates
+    a synchronous blocking operation that takes 10 seconds to run'
+  id: totrans-87
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`/slow-sync`，一个作为标准方法定义的路径操作，创建一个同步阻塞操作，需要10秒钟才能完成'
+- en: 'You can read the corresponding code here:'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在这里查看相应的代码：
+- en: chapter12_async_not_async.py
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter12_async_not_async.py
+- en: '[PRE10]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_async_not_async.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_async_not_async.py)'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_async_not_async.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter12/chapter12_async_not_async.py)'
+- en: 'With this simple application, the goal is to see how those blocking operations
+    block the main process. Let’s run this application with Uvicorn:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过这个简单的应用程序，我们的目标是观察那些阻塞操作如何阻塞主进程。让我们使用Uvicorn运行这个应用程序：
+- en: '[PRE11]'
+  id: totrans-93
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Next, open two new terminals. In the first one, make a request to the `/``slow-async`
+    endpoint:'
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，打开两个新的终端。在第一个终端中，向`/``slow-async`端点发出请求：
+- en: '[PRE12]'
+  id: totrans-95
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Without waiting for the response, in the second terminal, make a request to
+    the `/``fast` endpoint:'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在没有等待响应的情况下，在第二个终端向`/``fast`端点发出请求：
+- en: '[PRE13]'
+  id: totrans-97
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: You’ll see that you have to wait 10 seconds before you get the response for
+    the `/fast` endpoint. This means that `/slow-async` blocked the process and prevented
+    the server from answering the other request while this was happening.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您会看到，您必须等待10秒钟才能收到`/fast`端点的响应。这意味着`/slow-async`阻塞了进程，导致服务器无法在此期间响应其他请求。
+- en: 'Now, let’s perform the same experiment with the `/``slow-sync` endpoint:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们在`/``slow-sync`端点进行相同的实验：
+- en: '[PRE14]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'And again, run the following command:'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再次运行以下命令：
+- en: '[PRE15]'
+  id: totrans-102
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: You’ll immediately get the response of `/fast` without having to wait for `/slow-sync`
+    to finish. Since it’s defined as a standard, non-async function, FastAPI will
+    run it in a thread to prevent blocking. However, bear in mind that sending the
+    task to a separate thread implies a small overhead, so it’s important to think
+    about the best approach to your current problem.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您将立即收到`/fast`的响应，而无需等待`/slow-sync`完成。由于它被定义为标准的非异步函数，FastAPI会在一个线程中运行它，以避免阻塞。但是请记住，将任务发送到单独的线程会带来一些开销，因此在解决当前问题时，需要考虑最佳的处理方式。
+- en: 'So, when developing with FastAPI, how can you choose between standard or async
+    functions for path operations and dependencies? The rules of thumb for this are
+    as follows:'
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，在使用FastAPI进行开发时，如何在路径操作和依赖之间选择标准函数和异步函数呢？以下是一些经验法则：
+- en: If the functions don’t involve long I/O operations (file reading, network requests,
+    and so on), define them as `async`.
+  id: totrans-105
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果函数不涉及长时间的I/O操作（例如文件读取、网络请求等），请将其定义为`async`。
+- en: 'If they involve I/O operations, see the following:'
+  id: totrans-106
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果涉及I/O操作，请参考以下内容：
+- en: Try to choose libraries that are compatible with asynchronous I/O, as we saw
+    for databases or HTTP clients. In this case, your functions will be `async`.
+  id: totrans-107
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 尝试选择与异步I/O兼容的库，正如我们在数据库或HTTP客户端中看到的那样。在这种情况下，您的函数将是`async`。
+- en: If it’s not possible, which is the case for Joblib caching, define them as standard
+    functions. FastAPI will run them in a separate thread.
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果不可能，如Joblib缓存的情况，请将它们定义为标准函数。FastAPI将会在单独的线程中运行它们。
+- en: Since Joblib is completely synchronous at making I/O operations, we switched
+    the path operations and the dependency method so that they were synchronous, standard
+    methods.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于Joblib在进行I/O操作时是完全同步的，我们将路径操作和依赖方法切换为同步的标准方法。
+- en: In this example, the difference is not very noticeable because the I/O operations
+    are small and fast. However, it’s good to keep this in mind if you have to implement
+    slower operations, such as for performing file uploads to cloud storage.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中，差异不太明显，因为I/O操作较小且快速。然而，如果您需要实现更慢的操作，例如将文件上传到云存储时，记得考虑这个问题。
+- en: Summary
+  id: totrans-111
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: Congratulations! You’re now able to build a fast and efficient REST API to serve
+    your machine learning models. Thanks to Joblib, you learned how to dump a trained
+    scikit-learn estimator into a file that’s easy to load and use inside your application.
+    We also saw an approach to caching prediction results using Joblib. Finally, we
+    discussed how FastAPI handles synchronous operations by sending them to a separate
+    thread to prevent blocking. While this was a bit technical, it’s important to
+    bear this aspect in mind when dealing with blocking I/O operations.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 恭喜！您现在可以构建一个快速高效的REST API来服务您的机器学习模型。感谢Joblib，您学会了如何将训练好的scikit-learn估计器保存到一个文件中，以便轻松加载并在您的应用程序中使用。我们还展示了使用Joblib缓存预测结果的方法。最后，我们讨论了FastAPI如何通过将同步操作发送到单独的线程来处理，以避免阻塞。虽然这有点技术性，但在处理阻塞I/O操作时，牢记这一点是很重要的。
+- en: We’re near the end of our FastAPI journey. Before letting you build awesome
+    data science applications by yourself, we will provide three more chapters to
+    push this a bit further and study more complex use cases. We’ll start with an
+    application that can perform real-time object detection, thanks to WebSockets
+    and a computer vision model.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的FastAPI之旅接近尾声。在让您独立构建令人惊叹的数据科学应用之前，我们将提供三个章节，进一步推动这一进程并研究更复杂的使用案例。我们将从一个可以执行实时物体检测的应用开始，得益于WebSocket和计算机视觉模型。

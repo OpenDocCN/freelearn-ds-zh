@@ -1,0 +1,1144 @@
+- en: '3'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '3'
+- en: Managing Data Quality Using Delta Live Tables
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Delta Live Tables 管理数据质量
+- en: This chapter introduces several techniques for managing the data quality of
+    datasets in a data pipeline. We’ll introduce **expectations** in **Delta Live
+    Tables** ( **DLT** ), which is a way to enforce certain data quality constraints
+    on arriving data before merging the data into downstream tables. Later in the
+    chapter, we’ll look at more advanced techniques such as quarantining bad data
+    for human intervention. Next, we’ll also see how we can decouple constraints so
+    that they can be managed separately by non-technical personas within your organization.
+    By the end of the chapter, you should have a firm understanding of how you can
+    take measures to ensure the data integrity of datasets in your lakehouse and how
+    to take appropriate action on data not meeting the expected criteria.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章介绍了几种在数据管道中管理数据集数据质量的技术。我们将介绍 **Delta Live Tables**（**DLT**）中的 **expectations**，这是一种在将数据合并到下游表之前，强制执行某些数据质量约束的方法。稍后我们将探讨一些更高级的技术，例如将不良数据隔离以供人工干预。接下来，我们还将展示如何解耦约束，以便可以由组织中非技术人员单独管理。到本章结束时，你应该能清楚地了解如何采取措施确保湖仓中数据集的数据完整性，并采取适当的行动处理不符合预期标准的数据。
+- en: 'In this chapter, we’re going to cover the following topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将覆盖以下主题：
+- en: Defining data constraints in Delta Lake
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在 Delta Lake 中定义数据约束
+- en: Using temporary datasets to validate data processing
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用临时数据集验证数据处理
+- en: An introduction to expectations
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 期望介绍
+- en: 'Hands-on exercise: writing your first data quality expectation'
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实践练习：编写你的第一个数据质量期望
+- en: Taking action on failed expectations
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对失败的期望采取行动
+- en: Applying multiple data quality expectations
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用多个数据质量期望
+- en: Decoupling expectations from a DLT pipeline
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 将期望与 DLT 管道解耦
+- en: Hands-on exercise – quarantining poor-quality data for correction
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实践练习 – 隔离低质量数据进行修正
+- en: Technical requirements
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: To follow along with this chapter, it’s recommended to have Databricks workspace
+    permissions to create an all-purpose cluster and a DLT pipeline using a cluster
+    policy. It’s also recommended to have Unity Catalog permissions to create and
+    use catalogs, schemas, and tables. All code samples can be downloaded from this
+    chapter’s GitHub repository, located at [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter03](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter03)
+    . We’ll be using the NYC yellow taxi dataset, which can be found on the Databricks
+    FileSystem at **/databricks-datasets/nyctaxi/tripdata/yellow** . This chapter
+    will create and run several new notebooks and DLT pipelines using the **Advanced**
+    product edition. As a result, the pipelines are estimated to consume around 10-20
+    **Databricks** **Units** ( **DBUs** ).
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了跟随本章的内容，建议拥有 Databricks 工作区权限，以创建通用集群和使用集群策略创建 DLT 管道。还建议拥有 Unity Catalog
+    权限，以创建和使用目录、模式和表。所有代码示例可以从本章的 GitHub 仓库下载，网址为 [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter03](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter03)。我们将使用纽约市黄出租车数据集，数据集位于
+    Databricks 文件系统的 **/databricks-datasets/nyctaxi/tripdata/yellow**。本章将创建并运行多个新的笔记本和
+    DLT 管道，使用 **Advanced** 产品版本。因此，预计这些管道将消耗约 10-20 **Databricks** **Units**（**DBUs**）。
+- en: Defining data constraints in Delta Lake
+  id: totrans-14
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 Delta Lake 中定义数据约束
+- en: Data constraints are an effective way of defining criteria that incoming data
+    must satisfy before being inserted into a Delta table. Constraints are defined
+    per column in a Delta table and are stored as additional table metadata.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据约束是一种有效的方式，用于定义进入 Delta 表之前必须满足的标准。约束是按列定义的，并作为额外的表元数据存储在 Delta 表中。
+- en: 'There are four different types of constraints available within the Databricks
+    Data Intelligence Platform:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Databricks 数据智能平台中提供了四种不同类型的约束：
+- en: '**NOT NULL** : Ensures that the data for a particular column in a table is
+    not null. The **NOT NULL** constraint was first introduced in the **StructField**
+    class definition of Apache Spark.'
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**NOT NULL**：确保表中某列的数据不为 null。**NOT NULL** 约束最初在 Apache Spark 的 **StructField**
+    类定义中引入。'
+- en: '**CHECK** : A Boolean expression that must evaluate to **True** for each row
+    before being inserted. Check constraints allow data engineers to enforce complex
+    validation logic that a particular column must satisfy.'
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**检查**：一个布尔表达式，在每一行插入之前，必须评估为**真**。检查约束允许数据工程师强制执行复杂的验证逻辑，确保特定列满足条件。'
+- en: '**PRIMARY KEY** : Establishes uniqueness for a particular column across all
+    the rows in a table. The **PRIMARY KEY** constraint is a special kind of constraint
+    as it is purely informative and is not enforced on the incoming data. As we’ll
+    see in the following example, a **NOT NULL** constraint must accompany a **PRIMARY**
+    **KEY** constraint.'
+  id: totrans-19
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**主键**：确保某一列在表的所有行中具有唯一性。**主键**约束是一种特殊的约束，它仅用于说明，不会强制执行传入的数据。正如我们在接下来的示例中看到的，**非空**约束必须与**主键**约束一起使用。'
+- en: '**FOREIGN KEY** : Establishes a relationship between a particular column and
+    another table. Like the **PRIMARY KEY** constraint, a **FOREIGN KEY** constraint
+    is also purely informative.'
+  id: totrans-20
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**外键**：建立某一列与另一个表之间的关系。像**主键**约束一样，**外键**约束也是纯粹的说明性约束。'
+- en: In addition, only the **NOT NULL** and **CHECK** constraints are enforced on
+    the incoming data.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，只有**非空**和**检查**约束会强制执行传入的数据。
+- en: '| **Constraint** | **Enforced** | **Informative** |'
+  id: totrans-22
+  prefs: []
+  type: TYPE_TB
+  zh: '| **约束** | **强制执行** | **说明性** |'
+- en: '| **NOT NULL** | ✔️ | ✖️ |'
+  id: totrans-23
+  prefs: []
+  type: TYPE_TB
+  zh: '| **非空** | ✔️ | ✖️ |'
+- en: '| **CHECK** | ✔️ | ✖️ |'
+  id: totrans-24
+  prefs: []
+  type: TYPE_TB
+  zh: '| **检查** | ✔️ | ✖️ |'
+- en: '| **PRIMARY KEY** | ✖️ | ✔️ |'
+  id: totrans-25
+  prefs: []
+  type: TYPE_TB
+  zh: '| **主键** | ✖️ | ✔️ |'
+- en: '| **FOREIGN KEY** | ✖️ | ✔️ |'
+  id: totrans-26
+  prefs: []
+  type: TYPE_TB
+  zh: '| **外键** | ✖️ | ✔️ |'
+- en: Table 3.1 – Data quality constraints can either be enforced or not enforced
+    on the Databricks Data Intelligence Platform
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表3.1 – 数据质量约束可以在Databricks数据智能平台上强制执行或不强制执行
+- en: Important note
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: The **PRIMARY KEY** constraint and the **FOREIGN KEY** constraint require the
+    Delta tables to be stored in Unity Catalog, otherwise a runtime error will be
+    thrown.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**主键**约束和**外键**约束要求Delta表存储在Unity Catalog中，否则将抛出运行时错误。'
+- en: 'Let’s look at how we can use constraints to define a hierarchical relationship
+    between two Delta tables in our lakehouse. First, create a new SQL-based notebook
+    within your Databricks notebook. Let’s start by defining a child table that will
+    contain data about the taxicab drivers, called **drivers** , with a primary key
+    defined on the **driver_id** column. Add the following code snippet to a new notebook
+    cell:'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何使用约束来定义湖仓中两个Delta表之间的层级关系。首先，在Databricks笔记本中创建一个新的基于SQL的笔记本。我们从定义一个子表开始，该表包含有关出租车司机的数据，名为**drivers**，并在**driver_id**列上定义主键。将以下代码片段添加到新的笔记本单元格中：
+- en: '[PRE0]'
+  id: totrans-31
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Next, let’s define a parent table, **rides** , having a primary key defined
+    for the **ride_id** column and a foreign key that references the **drivers** table.
+    Add the following code snippet below the first notebook cell:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们定义一个父表，**rides**，为**ride_id**列定义主键，并为其添加一个引用**drivers**表的外键。将以下代码片段添加到第一个笔记本单元格下方：
+- en: '[PRE1]'
+  id: totrans-33
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Attach the newly created notebook to an all-purpose cluster and execute the
+    notebook cells to create the parent and child tables. Finally, let’s navigate
+    to the newly defined tables in Catalog Explorer to generate an **Entity Relationship
+    Diagram** ( **ERD** ) directly from the Databricks Data Intelligence Platform.
+    From our Databricks workspace, click on **Catalog Explorer** on the left sidebar.
+    Navigate to the **yellow_taxi_catalog** catalog in Unity Catalog, in the preceding
+    example. Click on the defined schema and, finally, click on the parent table.
+    A side pane will expand, displaying metadata about our Delta table. Click on the
+    button titled **View Relationships** to view the ERD.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将新创建的笔记本附加到一个多用途集群，并执行笔记本单元格，以创建父表和子表。最后，让我们在目录资源管理器中导航到新定义的表，并直接从Databricks数据智能平台生成**实体关系图**（**ERD**）。在Databricks工作区中，点击左侧边栏的**目录资源管理器**。导航到上述示例中的**yellow_taxi_catalog**目录。在Unity
+    Catalog中点击定义的模式，然后点击父表。侧边栏将展开，显示有关Delta表的元数据。点击标题为**查看关系**的按钮，查看ERD。
+- en: '![Figure 3.1 – Data constraints can be used to define primary key and foreign
+    key relationships between Delta tables](img/B22011_03_001.jpg)'
+  id: totrans-35
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图3.1 – 数据约束可用于定义Delta表之间的主键和外键关系](img/B22011_03_001.jpg)'
+- en: Figure 3.1 – Data constraints can be used to define primary key and foreign
+    key relationships between Delta tables
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图3.1 – 数据约束可用于定义Delta表之间的主键和外键关系
+- en: As previously mentioned, the primary key and foreign key constraints are purely
+    informative and are not enforced on the incoming data. Instead, it’s recommended
+    to implement additional safeguards to ensure the data integrity of a primary key
+    column in a Delta table. Let’s look at a few effective strategies we can employ
+    to maintain the integrity of primary key columns defined in our lakehouse tables.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，主键和外键约束仅作为信息性约束，并不会强制应用于传入的数据。相反，建议实施额外的保护措施，以确保 Delta 表中主键列的数据完整性。让我们来看一些有效的策略，帮助我们维护在湖仓表中定义的主键列的完整性。
+- en: Using temporary datasets to validate data processing
+  id: totrans-38
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用临时数据集来验证数据处理
+- en: As we’ll see in this section, creating a view is an effective method for validating
+    the uniqueness of a primary key column. Additionally, we can also define alerts
+    in the Databricks Data Intelligence Platform to notify the data stewards of potential
+    data quality issues so that they can take appropriate measures to correct the
+    data integrity.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在本节中将看到的，创建视图是一种有效的验证主键列唯一性的方法。此外，我们还可以在 Databricks 数据智能平台中定义警报，通知数据管理员潜在的数据质量问题，以便他们能够采取适当的措施来纠正数据完整性问题。
+- en: 'We can leverage a view to validate the uniqueness of the primary key column.
+    Recall the **rides** and **drivers** tables we defined in the previous section.
+    In this example, we’re going to define a view on the incoming data to ensure the
+    uniqueness of a primary key column across the **rides** Delta table. Create a
+    new query in Databricks by navigating back to your workspace and right-clicking
+    to open a dialog box. Select **New** | **Query** to open a new query in the editor.
+    Next, rename the query with a meaningful name, such as **rides_pk_validation_vw**
+    . Finally, add the following query text to the open query and click the **Run**
+    button to validate that the query runs as expected:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以利用视图来验证主键列的唯一性。回顾前面部分我们定义的**rides**和**drivers**表。在这个例子中，我们将定义一个视图，用于验证**rides**
+    Delta 表中主键列的唯一性。通过返回到工作区并右键点击打开对话框，创建一个新的查询。选择**新建** | **查询**，在编辑器中打开一个新的查询。接下来，给查询重新命名，起一个有意义的名字，比如**rides_pk_validation_vw**。最后，添加以下查询文本并点击**运行**按钮，验证查询是否按预期运行：
+- en: '[PRE2]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: As it turns out, primary key uniqueness is essential in downstream reports for
+    the Yellow Taxi Corporation. Let’s create a new alert in the Databricks Data Intelligence
+    Platform to alert our data stewards of possible data corruption so that they can
+    take appropriate action when a duplicate primary key is inserted.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果表明，主键唯一性对 Yellow Taxi Corporation 的下游报告至关重要。让我们在 Databricks 数据智能平台中创建一个新的警报，提醒我们的数据管理员可能存在的数据损坏问题，以便他们能在插入重复主键时采取适当的措施。
+- en: 'First, let’s create a query that will be run by our alert. From the sidebar,
+    click on the **Queries** button and click the **Create query** button, which will
+    take us to the query editor in the Databricks Data Intelligence Platform. Rename
+    the query to something meaningful, such as **Rides Primary Key Uniqueness** .
+    Enter the following SQL text as the query body, click the **Save** button, and
+    select a workspace folder to save the query. Click the **Run** button and ensure
+    that the query runs successfully:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们创建一个将由警报运行的查询。从侧边栏点击**查询**按钮，再点击**创建查询**按钮，进入 Databricks 数据智能平台中的查询编辑器。将查询重命名为一个有意义的名称，如**Rides
+    主键唯一性**。输入以下 SQL 文本作为查询主体，点击**保存**按钮，并选择一个工作区文件夹来保存查询。点击**运行**按钮，确保查询成功运行：
+- en: '[PRE3]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: Next, from the sidebar, click on the **Alerts** button to navigate to the **Alerts**
+    UI. Then, click on the **Create alert** button to begin creating a new alert and
+    enter a descriptive name in the **Alert name** textbox, such as **Invalid Primary
+    Key on Rides Table** . In the **Query** dropdown, select the query we just created.
+    Click the **Send notification** checkbox and accept the default settings by clicking
+    the **Create alert** button. In a real-world scenario, this could be an email
+    chain for on-call data engineers or other popular notification destinations such
+    as Slack or Microsoft Teams.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，从侧边栏点击**警报**按钮，进入**警报**界面。然后，点击**创建警报**按钮，开始创建一个新的警报，并在**警报名称**文本框中输入描述性名称，如**无效的
+    Rides 表主键**。在**查询**下拉菜单中选择我们刚刚创建的查询。勾选**发送通知**复选框，并通过点击**创建警报**按钮接受默认设置。在实际场景中，这可以是一个发送给值班数据工程师的电子邮件链，或其他流行的通知渠道，如
+    Slack 或 Microsoft Teams。
+- en: This example is quite practical in real-world data pipelines. However, views
+    require the latest table state to be calculated each time a pipeline is run, as
+    well as the maintenance overhead of having to configure the notification alerts.
+    That’s a lot of configuration to maintain, which simply won’t scale as we add
+    more tables to our pipelines. What if there’s an easier way to declare data quality
+    as a part of our DLT pipeline declaration?
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个示例在现实世界的数据管道中非常实用。然而，视图需要在每次运行管道时计算最新的表状态，还需要维护通知警报的配置。这需要大量的配置来维护，随着我们向管道中添加更多的表格，这种方式显然无法扩展。如果我们有一种更简单的方法，将数据质量声明作为我们
+    DLT 管道声明的一部分，会怎样呢？
+- en: An introduction to expectations
+  id: totrans-47
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 期望介绍
+- en: Expectations are data quality rules defined alongside a dataset definition in
+    a DLT pipeline. The data quality rule is a Boolean expression applied to each
+    record passing through a particular dataset definition. The expression must evaluate
+    to **True** for the record to be marked as passing, else it will result in a failed
+    record indicating that the record has not passed data quality validation.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 期望是在 DLT 管道中与数据集定义一起定义的数据质量规则。数据质量规则是应用于每条通过特定数据集定义的记录的布尔表达式。表达式必须评估为**True**，才会标记该记录为通过，否则会导致记录失败，表明该记录未通过数据质量验证。
+- en: Furthermore, the DLT pipeline will record data quality metrics for each row
+    that gets processed in a data pipeline. For example, DLT will record the number
+    of records that have passed data quality validation, as well as the number of
+    records that have not.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，DLT 管道将记录每一行在数据管道中处理时的数据质量指标。例如，DLT 将记录通过数据质量验证的记录数，以及未通过的记录数。
+- en: Expectation composition
+  id: totrans-50
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 期望组合
+- en: 'Each expectation is comprised of three major components: a description, a Boolean
+    expression, and an action to take.'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个期望由三个主要组成部分组成：描述、布尔表达式和要采取的行动。
+- en: '![Figure 3.2 – The main components of a DLT expectation](img/B22011_03_002.jpg)'
+  id: totrans-52
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 3.2 – DLT 期望的主要组成部分](img/B22011_03_002.jpg)'
+- en: Figure 3.2 – The main components of a DLT expectation
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.2 – DLT 期望的主要组成部分
+- en: An expectation is declared using a DLT function decorator. The function decorator
+    specifies the type of action that should be taken whenever a particular constraint
+    or set of constraints eval uates to **False** . Additionally, the function decorator
+    accepts two input parameters, a short description that describes the data quality
+    constraint and a Boolean expression that must evaluate to **True** for a row to
+    be marked as passing validation.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 期望是通过 DLT 函数装饰器声明的。该函数装饰器指定当某个特定约束或一组约束评估为**False**时应该采取的操作。此外，函数装饰器接受两个输入参数：一个简短的描述，用于描述数据质量约束，以及一个布尔表达式，必须评估为**True**，才能将某一行标记为通过验证。
+- en: Hands-on exercise – writing your first data quality expectation
+  id: totrans-55
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实操练习 – 编写你的第一个数据质量期望
+- en: To get a feel for the DLT syntax, let’s work through a real-world example of
+    writing a data pipeline for a New York City cab company called the Yellow Taxi
+    Corporation. We’ll write a simple data pipeline, enforcing a data quality constraint
+    that can be applied to our incoming NYC Taxi data and warn us when there are records
+    that don’t adhere to our data quality specifications. In this scenario, we want
+    to ensure that the incoming trip data does not have any trips with a negative
+    total amount, since it would not be possible for our cab drivers to owe the riders
+    any money.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了熟悉 DLT 语法，让我们通过一个现实世界的例子来编写一个数据管道，模拟一个名为 Yellow Taxi Corporation 的纽约市出租车公司。我们将编写一个简单的数据管道，强制执行一个数据质量约束，适用于我们接收到的
+    NYC 出租车数据，并在有记录不符合我们数据质量规范时提醒我们。在这个场景中，我们希望确保接收的旅行数据中没有任何负数的总金额，因为我们的出租车司机不可能欠乘客任何钱。
+- en: Generating taxi trip data
+  id: totrans-57
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 生成出租车旅行数据
+- en: Let’s begin by logging into our Databricks workspace. For this exercise, you
+    will need to use the accompanying NYC Yellow Taxi trip data generator, which can
+    be downloaded from the chapter’s GitHub repo. Either import the data generator
+    notebook into your Databricks workspace or create a new Python notebook with the
+    following code snippet.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从登录 Databricks 工作区开始。本练习需要使用附带的 NYC Yellow Taxi 旅行数据生成器，可以从本章的 GitHub 仓库下载。你可以将数据生成器笔记本导入到
+    Databricks 工作区，或者创建一个新的 Python 笔记本并使用以下代码片段。
+- en: 'First, we’ll need to download the **dbldatagen** Python library, which will
+    help us randomly generate new taxi trip data. Add the following code snippet to
+    your notebook, which uses the **%pip** magic command to download the library:'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们需要下载 **dbldatagen** Python 库，它将帮助我们随机生成新的出租车行程数据。将以下代码片段添加到您的笔记本中，该代码片段使用
+    **%pip** 魔法命令来下载该库：
+- en: '[PRE4]'
+  id: totrans-60
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Now that the library has been installed, let’s define a Python function for
+    generating new taxi trip data according to our schema. We’ll specify columns for
+    typical taxi trip details, including the number of passengers, the fare amount,
+    the trip distance, and more:'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在库已经安装完成，让我们定义一个 Python 函数，根据我们的 schema 生成新的出租车行程数据。我们将指定列以记录典型的出租车行程细节，包括乘客数量、车费、行程距离等：
+- en: '[PRE5]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Now that we’ve defined a way to randomly generate new trip data, we’ll need
+    to define a location to store the new data so that it can be processed by a DLT
+    pipeline. In a new notebook cell, let’s create an empty directory on the **Databricks
+    File System** ( **DBFS** ) for storing our trip data:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经定义了随机生成新行程数据的方法，我们需要定义一个位置来存储这些新数据，以便 DLT 管道处理。 在新的笔记本单元中，让我们在 **Databricks
+    文件系统**（**DBFS**）上创建一个空目录，用于存储我们的行程数据：
+- en: '[PRE6]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Lastly, we’ll need a way to tie everything together. In a new notebook cell,
+    add the following **for** loop, which will call the **generate_taxi_trip_data**
+    function and write the data to the DBFS location:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们需要一种方式将所有内容连接起来。在新的笔记本单元中，添加以下 **for** 循环，该循环将调用 **generate_taxi_trip_data**
+    函数并将数据写入 DBFS 位置：
+- en: '[PRE7]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Next, create an all-purpose cluster to execute the trip data generator notebook.
+    Once the all-purpose cluster has been created, navigate to the new notebook and
+    click the cluster dropdown in the top navigation bar of the Databricks Data Intelligence
+    Platform. Select the name of the cluster you created and select **Attach** to
+    attach the trip data generator notebook to the cluster and execute all the cells.
+    The taxi trip data generator will append several new JSON files containing the
+    randomly generated trip data to the DBFS location.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，创建一个通用集群来执行行程数据生成器笔记本。一旦创建了通用集群，导航到新的笔记本并点击 Databricks 数据智能平台顶部导航栏中的集群下拉菜单。选择您创建的集群名称，然后选择
+    **Attach**，将行程数据生成器笔记本附加到集群并执行所有单元。出租车行程数据生成器将向 DBFS 位置追加几个包含随机生成的行程数据的 JSON 文件。
+- en: Creating a new DLT pipeline definition
+  id: totrans-68
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 创建一个新的 DLT 管道定义
+- en: Now that we’ve generated new data, let’s create another new notebook for our
+    DLT pipeline definition. Navigate to the workspace tab on the sidebar, drill down
+    to your user’s home directory, and create a new notebook by right-clicking and
+    selecting **Add Notebook** .
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经生成了新数据，让我们为 DLT 管道定义创建另一个新的笔记本。导航到侧边栏的工作区选项卡，深入到您用户的主目录，右键点击并选择 **添加笔记本**
+    来创建一个新的笔记本。
+- en: 'Give the new notebook a meaningful name such as **Chapter 3** **– Enforcing
+    Data Quality** . Begin by importing the DLT Python module as well as the PySpark
+    functions:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 给新的笔记本起一个有意义的名字，例如 **第3章** **– 强制数据质量**。首先导入 DLT Python 模块以及 PySpark 函数：
+- en: '[PRE8]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Next, let’s define a bronze table, **yellow_taxi_raw** , that will ingest the
+    taxi trip data that was written to the DBFS location by our taxi trip data generator:'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们定义一个铜表，**yellow_taxi_raw**，该表将接收由我们的出租车行程数据生成器写入 DBFS 位置的出租车行程数据：
+- en: '[PRE9]'
+  id: totrans-73
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: For the next layer of our data pipeline, the stakeholders within our organization
+    have asked us to provide a way for their business to report real-time financial
+    analytics of our incoming trip data. As a result, let’s add a silver table that
+    will transform the incoming stream of trip data, calculating the expected profits
+    and losses of our cab company, Yellow Taxi Corporation. In this example, we’re
+    going to take the total amount that was paid by the passengers and begin to calculate
+    how that money is allocated to fund different parts of the business and calculate
+    potential profits.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们数据管道的下一层，我们的组织中的利益相关者要求我们提供一种方式，让他们的业务能够实时报告我们 incoming 行程数据的财务分析。因此，让我们添加一个银表，将传入的行程数据流进行转换，计算我们出租车公司
+    Yellow Taxi Corporation 的预期利润和损失。在这个示例中，我们将取乘客支付的总金额，开始计算这笔钱如何分配到资助业务的不同部分，并计算潜在的利润。
+- en: 'Let’s define our silver table definition, **trip_data_financials** . The table
+    definition begins just like any normal streaming table definition. We begin by
+    defining a Python function that returns a streaming table. Next, we use the DLT
+    function annotations to declare this function as a streaming table with an optional
+    name, **trip_data_financials** , as well as a comment with descriptive text about
+    the streaming table. Create a new notebook cell, adding the following DLT dataset
+    definition for the silver table:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们定义我们的 silver 表定义，**trip_data_financials**。表定义开始就像任何普通的流式表定义一样。我们首先定义一个返回流式表的
+    Python 函数。接下来，我们使用 DLT 函数注解来声明此函数为流式表，并可选地为其指定名称 **trip_data_financials**，以及带有描述性文本的注释，描述此流式表。创建一个新的笔记本单元格，并为
+    silver 表添加以下 DLT 数据集定义：
+- en: '[PRE10]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: One thing that you may have noticed in our silver table declaration is a new
+    function decorator for enforcing a data quality constraint. In this case, we want
+    to ensure that the total amount reported in our trip data is greater than zero.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的 silver 表声明中，您可能注意到一个新函数装饰器，用于强制执行数据质量约束。在这种情况下，我们希望确保报告的旅行数据总金额大于零。
+- en: 'When our data pipeline is triggered to run and update the bronze and silver
+    datasets, the DLT system will inspect each row that is processed and evaluate
+    whether the Boolean expression for our data quality constraint evaluates to **True**
+    for the row:'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们的数据管道触发并更新铜级和银级数据集时，DLT 系统将检查每一行处理的情况，并评估该行的布尔表达式是否为**真**，从而符合我们的数据质量约束：
+- en: '[PRE11]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Within the body of the function definition, we are using the built-in PySpark
+    **withColumn()** and **expr()** functions to add four new columns to the output
+    of our bronze table – **driver_payment** , **vehicle_maintenance_fee** , **adminstrative_fee**
+    , and **potential_profits** . These columns are calculated by taking a percentage
+    of the original **trip_amount** column. In business terms, we are splitting the
+    total amount that was collected from the passengers into the driver’s payment,
+    fees collected to run the company, and potential profits for the company.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在函数定义的主体部分，我们使用内置的 PySpark **withColumn()** 和 **expr()** 函数为铜级表的输出添加四个新列——**driver_payment**、**vehicle_maintenance_fee**、**administrative_fee**
+    和 **potential_profits**。这些列通过从原始的 **trip_amount** 列中提取一定比例来计算。在商业术语中，我们将从乘客收取的总金额分配为司机的支付、公司运营费用和公司潜在的利润。
+- en: In the following section, we’ll look at the different types of actions that
+    the DLT system will take if an expectation Boolean expression is evaluated to
+    **False** . By default, the DLT system will simply record that the row failed
+    the Boolean expression for a particular row in the system logs and record the
+    data quality metrics in the system. In our silver table declaration, let’s assume
+    the default behavior of logging a warning message.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的章节中，我们将探讨当期望布尔表达式的值为**假**时，DLT 系统将采取的不同类型的操作。默认情况下，DLT 系统将仅记录该行未通过特定行的布尔表达式，并将数据质量指标记录到系统日志中。在我们的
+    silver 表声明中，假设默认行为是记录警告消息。
+- en: Running the data pipeline
+  id: totrans-82
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 运行数据管道
+- en: Let’s create a new data pipeline from our dataset declarations in our notebook.
+    Execute the notebook cells and ensure that there are no syntax errors. Next, the
+    Databricks Data Intelligence Platform will prompt you to create a new data pipeline.
+    Click the **Create pipeline** button to create a new DLT data pipeline. Next,
+    under the **Destination** settings, select a catalog and schema in Unity Catalog
+    where you would like to store the pipeline datasets. Under the **Compute** settings,
+    set **Min workers** to **1** and **Max workers** to **2** . Accept the defaults
+    by clicking the **Create** button. Finally, click the **Start** button to execute
+    the data pipeline. You will be taken to a visual representation of the dataflow
+    graph.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从我们在笔记本中的数据集声明创建一个新的数据管道。执行笔记本单元格并确保没有语法错误。接下来，Databricks 数据智能平台将提示您创建一个新的数据管道。点击**创建管道**按钮以创建新的
+    DLT 数据管道。接下来，在**目标**设置中，选择一个 Unity Catalog 中的目录和模式，您希望将管道数据集存储到其中。在**计算**设置中，将**最小工作节点数**设置为**1**，**最大工作节点数**设置为**2**。点击**创建**按钮以接受默认设置。最后，点击**启动**按钮执行数据管道。您将进入数据流图的可视化表示。
+- en: '![Figure 3.3 – The dataflow graph for our NYC Yellow Taxi Corp. pipeline](img/B22011_03_003.jpg)'
+  id: totrans-84
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 3.3 – 我们的 NYC Yellow Taxi Corp. 管道的数据流图](img/B22011_03_003.jpg)'
+- en: Figure 3.3 – The dataflow graph for our NYC Yellow Taxi Corp. pipeline
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.3 – 我们的 NYC Yellow Taxi Corp. 管道的数据流图
+- en: Behind the scenes, the DLT system will begin by creating and initializing a
+    new Databricks cluster and begin parsing the dataset definitions in our notebook
+    into a dataflow graph. As you can see, the DLT system will ingest the raw trip
+    data files from our DBFS location into the streaming table, **yellow_taxi_raw**
+    . Next, the system detects the dependency of our silver table, **trip_data_financials**
+    , and will immediately begin calculating our additional four columns in our silver
+    table. Along the way, our data quality constraint is being evaluated on the incoming
+    data in real time.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在后台，DLT 系统将通过创建并初始化一个新的 Databricks 集群，开始解析我们笔记本中的数据集定义，将其转换为数据流图。如您所见，DLT 系统将从我们的
+    DBFS 位置获取原始旅行数据文件，导入到流式表格**yellow_taxi_raw**中。接下来，系统检测到我们的银色表格**trip_data_financials**的依赖关系，并将立即开始计算银色表格中的额外四列。在此过程中，我们的数据质量约束正在实时评估传入数据。
+- en: Let’s look at the data quality in real time. Click on the silver table, and
+    the DLT UI will expand a pane on the right-hand side summarizing the silver table.
+    Click on the **Data quality** tab to view the data quality metrics. Notice that
+    the graph is being updated in real time as our data is processed. Of all the data
+    that has been processed by the data pipeline, you’ll notice that around 10% has
+    failed the **valid_total_amount** expectation – which is expected. The data generator
+    notebook will purposely publish records with a negative total amount to our cloud
+    storage location. We can easily see how much of our data is validating against
+    our defined data quality criteria and how much is not.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们实时查看数据质量。点击银色表格，DLT 用户界面将在右侧展开一个面板，汇总银色表格的内容。点击**数据质量**标签查看数据质量指标。注意到图表正在实时更新，因为我们的数据正在被处理。在所有已经被数据管道处理的数据中，您会注意到大约有10%未通过**valid_total_amount**的期望——这是预期的结果。数据生成笔记本会故意将总金额为负数的记录发布到我们的云存储位置。我们可以轻松地看到有多少数据符合我们定义的数据质量标准，多少不符合。
+- en: '![Figure 3.4 – The DLT UI will summarize the data quality metrics of our data
+    pipeline in real time](img/B22011_03_004.jpg)'
+  id: totrans-88
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 3.4 – DLT 用户界面将实时汇总我们数据管道的数据质量指标](img/B22011_03_004.jpg)'
+- en: Figure 3.4 – The DLT UI will summarize the data quality metrics of our data
+    pipeline in real time
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.4 – DLT 用户界面将实时汇总我们数据管道的数据质量指标。
+- en: Congratulations! You’ve written your first data quality constraint in Delta
+    Live Tables. By now, you should see just how easy yet powerful the DLT framework
+    is. In just a few lines of code, we’re able to enforce data quality constraints
+    on our incoming data, as well as to monitor the data quality in real time. This
+    gives data engineering teams more control over their data pipelines.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 恭喜！您已经在 Delta Live Tables 中编写了您的第一个数据质量约束。到目前为止，您应该已经看到了 DLT 框架是多么简单又强大。通过几行代码，我们能够强制执行传入数据的数据质量约束，并实时监控数据质量。这为数据工程团队提供了更多对数据管道的控制。
+- en: In the next section, we’ll see how data engineering teams can leverage DLT expectations
+    to react to potential data quality issues before leading to potential data corruption.
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将看到数据工程团队如何利用DLT期望来应对潜在的数据质量问题，从而在数据损坏之前进行反应。
+- en: Acting on failed expectations
+  id: totrans-92
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 对失败的期望采取行动
+- en: 'There are three types of actions that DLT can take when a particular record
+    violates the data constraints defined on a DLT dataset:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当某个记录违反了在 DLT 数据集上定义的数据约束时，DLT 可以采取三种类型的动作：
+- en: '**Warn** : When DLT encounters an expression violation, the record will be
+    recorded as a metric and will continue to be written to the downstream target
+    dataset .'
+  id: totrans-94
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**警告**：当 DLT 遇到表达式违规时，该记录将被记录为指标，并将继续写入下游目标数据集。'
+- en: '**Drop** : When DLT encounters an expression violation, the record will be
+    recorded as a metric and will be prevented from entering the downstream target
+    dataset .'
+  id: totrans-95
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**丢弃**：当 DLT 遇到表达式违规时，该记录将被记录为指标，并被阻止进入下游目标数据集。'
+- en: '**Fail** : When DLT encounters an expression violation, the pipeline update
+    will fail entirely until a data engineering team member can investigate and correct
+    the data violation or possible data corruption .'
+  id: totrans-96
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**失败**：当 DLT 遇到表达式违规时，管道更新将完全失败，直到数据工程团队成员能够调查并修正数据违规或可能的数据损坏。'
+- en: You should always choose one of the actions based on the individual use case
+    and on how you want to handle data that does not meet data quality rules. For
+    example, there may be times when data does not meet the defined data quality constraints
+    but logging the violating rows in the DLT system and monitoring the data quality
+    meets the requirements for a particular use case. On the other hand, there may
+    be scenarios where specific data quality constraints must be met, otherwise the
+    incoming data will break downstream processes. In that scenario, more aggressive
+    action such as failing the data pipeline run and rolling back transactions is
+    the appropriate behavior. In either scenario, the Delta Live Tables framework
+    gives data engineering teams full control to decide the fate of violating rows
+    and the power to define how the system should react.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该始终根据具体的用例选择一种动作，并根据如何处理不符合数据质量规则的数据来做出决定。例如，可能有时候数据未能满足定义的数据质量约束，但在 DLT 系统中记录违反的行并监控数据质量就能满足某个特定用例的要求。另一方面，可能会出现某些场景，其中必须满足特定的数据质量约束，否则传入的数据将破坏下游的处理流程。在这种情况下，更积极的行动，如使数据管道运行失败并回滚事务，是适当的行为。在这两种情况下，Delta
+    Live Tables 框架为数据工程团队提供了完全的控制权，以决定违反的行应该如何处理，并定义系统应如何响应。
+- en: Hands-on example – failing a pipeline run due to poor data quality
+  id: totrans-98
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实操示例 – 由于数据质量差导致管道运行失败
+- en: There may be scenarios when you want to immediately halt the execution of a
+    data pipeline update to intervene and correct the data, for example. In this case,
+    DLT expectations offer the ability to immediately fail a data pipeline run using
+    the **@dlt.expect_or_fail()** function decorator.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在某些情况下，你可能希望立即停止数据管道更新的执行，以便干预并修正数据。例如，在这种情况下，DLT 预期值提供了一个能力，使用 **@dlt.expect_or_fail()**
+    函数装饰器立即使数据管道运行失败。
+- en: If the operation is a table update, the transaction is immediately rolled back
+    to prevent contamination of bad data. Furthermore, DLT will track additional metadata
+    about processed records so that data engineering teams can pinpoint which record
+    in the dataset caused the failure.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果操作是表更新，事务会立即回滚，以防止污染坏数据。此外，DLT 将跟踪有关处理记录的附加元数据，以便数据工程团队能够找出数据集中的哪条记录导致了失败。
+- en: Let’s look at how we can update the earlier example of our Yellow Taxi Corporation
+    data pipeline. In this scenario, having a negative total amount would break downstream
+    financial reports. In this case, rather than simply record the rows that violate
+    the expectation, we’d like to fail the pipeline run, so that our data engineering
+    team can investigate potential issues in the data and take appropriate action
+    such as the manual correction of the data.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何更新之前的黄出租公司数据管道示例。在这种情况下，如果总金额为负数，会破坏下游的财务报告。在这种情况下，我们希望不是简单地记录违反预期的行，而是让管道运行失败，这样我们的数据工程团队可以调查数据中的潜在问题，并采取适当的措施，例如手动修正数据。
+- en: 'In the Delta Live Tables framework, adjusting the behavior of our data pipeline
+    is as simple as updating the function decorator of our silver table definition.
+    Let’s update the expectation with the **expect_or_fail** action:'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Delta Live Tables 框架中，调整数据管道的行为就像更新银色表定义的函数装饰器一样简单。让我们通过 **expect_or_fail**
+    动作来更新预期值：
+- en: '[PRE12]'
+  id: totrans-103
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'The full dataset definition for the silver table, **trip_data_financials**
+    , should look like the following code snippet:'
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 银色表 **trip_data_financials** 的完整数据集定义应如下所示：
+- en: '[PRE13]'
+  id: totrans-105
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: Next, let’s rerun the trip data generator to append additional files to the
+    raw landing zone in the Databricks file system. Once the trip data generator has
+    finished, navigate back to the Yellow Taxi Corporation data pipeline created earlier
+    and click the **Start** button to trigger another execution of the data pipeline.
+    For this chapter’s examples, the trip data generator will randomly generate trip
+    data with negative total amounts.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们重新运行行程数据生成器，将附加文件追加到 Databricks 文件系统中的原始登录区。一旦行程数据生成器完成，返回到之前创建的黄出租公司数据管道，并点击
+    **Start** 按钮以触发数据管道的另一次执行。在本章的示例中，行程数据生成器会随机生成具有负总金额的行程数据。
+- en: You should observe for this run of the data pipeline that the data pipeline
+    update failed with an error status.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该观察数据管道在本次运行中是否由于错误状态而导致更新失败。
+- en: '![Figure 3.5 – The dataflow graph will update to display an error when the
+    data quality constraint is violated](img/B22011_03_005.jpg)'
+  id: totrans-108
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图3.5 – 当数据质量约束被违反时，数据流图会更新并显示错误](img/B22011_03_005.jpg)'
+- en: Figure 3.5 – The dataflow graph will update to display an error when the data
+    quality constraint is violated
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.5 – 当数据质量约束被违反时，数据流图将更新并显示错误。
+- en: Expanding the failure message, you can see that the cause of the pipeline failure
+    was a violation of the expectation constraint.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 扩展失败信息，你可以看到管道失败的原因是违反了期望约束。
+- en: '![Figure 3.6 – The data pipeline logs will display the failed update due to
+    a violated expectation check](img/B22011_03_006.jpg)'
+  id: totrans-111
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 3.6 – 数据管道日志将显示由于违反期望检查而导致的更新失败](img/B22011_03_006.jpg)'
+- en: Figure 3.6 – The data pipeline logs will display the failed update due to a
+    violated expectation check
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.6 – 数据管道日志将显示由于违反期望检查而导致的更新失败
+- en: Applying multiple data quality expectations
+  id: totrans-113
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 应用多个数据质量期望
+- en: There may be times when a dataset author may want to apply more than one business
+    rule or data quality constraint on each row of a dataset. In that event, DLT provides
+    a special set of function decorators for specifying multiple data quality constraint
+    d efinitions.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时，数据集作者可能希望对数据集的每一行应用多个业务规则或数据质量约束。在这种情况下，DLT 提供了一套特殊的函数装饰器，用于指定多个数据质量约束定义。
+- en: The **@dlt.expect_all()** function decorator can be used to combine more than
+    one data quality constraint for a particular dataset. Similarly, **expect_all_or_drop()**
+    can be specified when incoming data should be dropped from entering a target table
+    unless all the criteria in the set of data quality constraints are satisfied.
+    Lastly, **expect_all_or_fail()** will fail a run of a data pipeline if any of
+    the criteria in a set of data quality constraints are not met by the incoming
+    data.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**@dlt.expect_all()** 函数装饰器可以用于为特定数据集组合多个数据质量约束。类似地，当传入数据必须满足所有数据质量约束中的标准，否则不允许进入目标表时，可以指定
+    **expect_all_or_drop()**。最后，如果传入数据未满足数据质量约束集中的任何标准，**expect_all_or_fail()** 将导致数据管道运行失败。'
+- en: 'Let’s look at how we might drop invalid taxicab trip data entries from entering
+    downstream datasets in our pipeline when the values don’t pass the validation
+    criteria:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看当出租车行程数据条目在未通过验证标准时，如何从下游数据集管道中丢弃这些无效数据：
+- en: '[PRE14]'
+  id: totrans-117
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: In the preceding example, we’ve defined a set of data constraints using the
+    expectations function decorators and we are applying them collectively to the
+    incoming data. Let’s imagine that losing a few records of the taxicab trip data
+    will not pose a threat to downstream processes. As a result, we’ve decided to
+    drop records that don’t pass the validation step in our expectation declaration.
+    With just a few extra lines of configuration, our data pipeline can enforce data
+    quality constraints on the incoming data and automatically react to data that
+    doesn’t pass the defined criteria.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在之前的示例中，我们使用期望函数装饰器定义了一组数据约束，并将它们集体应用到传入的数据。假设丢失一些出租车行程数据不会对下游过程造成威胁。因此，我们决定丢弃那些在我们期望声明中未通过验证步骤的记录。只需添加几行额外的配置，我们的数据管道就能在传入数据上执行数据质量约束，并自动对不符合定义标准的数据作出反应。
+- en: While we’ve only looked at data within the context of our DLT data pipeline,
+    let’s see how the DLT framework can validate data across multiple systems of data.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然我们仅仅是在我们的 DLT 数据管道中查看数据，但让我们看看 DLT 框架如何跨多个数据系统验证数据。
+- en: Decoupling expectations from a DLT pipeline
+  id: totrans-120
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将期望从 DLT 管道中解耦
+- en: Up until now, we’ve only worked with defining data quality constraints within
+    the table definition. However, there may be scenarios when you’d like to decouple
+    the data quality constraints from data pipeline definitions, allowing the data
+    engineering teams to work separately from the data analyst teams. This is especially
+    useful when a group of non-technical individuals determine the data quality criteria.
+    Furthermore, this design also provides even more flexibility to maintain and change
+    business rules as the business changes. For example, a real-world example would
+    be validating seasonal discount codes that change over time.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 直到现在，我们仅仅是在表格定义中定义了数据质量约束。然而，可能会有一些场景，你希望将数据质量约束与数据管道定义解耦，这样可以让数据工程团队与数据分析团队分开工作。当一群非技术人员决定数据质量标准时，这种方法尤其有用。此外，这种设计还提供了更多的灵活性，以便随着业务的变化维护和更改业务规则。例如，一个实际的例子是验证随时间变化的季节性折扣代码。
+- en: Let’s imagine that we have a group of non-technical business analysts who would
+    like to interact with the data quality constraints using a UI such as a web portal
+    in a browser window. In that case, we can load and save our data quality constraints
+    into a separate Delta table and then dynamically load the data quality constraints
+    at runtime.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们有一组非技术业务分析人员，他们希望通过浏览器窗口中的Web门户与数据质量约束进行交互。在这种情况下，我们可以将数据质量约束加载并保存到一个独立的Delta表中，然后在运行时动态加载这些数据质量约束。
+- en: 'Let’s begin by defining a data quality rules table. We’ll introduce three columns:
+    a column for the rule name, a column defining the data quality rule expression,
+    and a column identifying the dataset name – everything needed to create an expectation
+    using DLT:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从定义数据质量规则表开始。我们将引入三列：一列用于规则名称，一列定义数据质量规则表达式，另一列用于标识数据集名称——这些都是使用DLT创建期望所需的内容：
+- en: '[PRE15]'
+  id: totrans-124
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Let’s revisit the previous example for specifying multiple expectations using
+    a Python dictionary. In that example, we defined a **dict** data structure called
+    **assertions** . In this example, let’s convert it into a tabular format, inserting
+    the entries into our Delta table. Add the following SQL statement to a new notebook
+    cell:'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们回顾一下之前通过Python字典指定多个期望的示例。在那个示例中，我们定义了一个名为**assertions**的**dict**数据结构。在这个例子中，让我们将其转换为表格格式，将条目插入到我们的Delta表中。接下来，在新的笔记本单元中添加以下SQL语句：
+- en: '[PRE16]'
+  id: totrans-126
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Next, within the data pipeline notebook, we can create a helper function that
+    will read directly from our data quality rules table and translate each row to
+    a format that the DLT Expectation can interpret:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，在数据管道笔记本中，我们可以创建一个辅助函数，它将直接从我们的数据质量规则表读取，并将每一行转换为DLT期望可以理解的格式：
+- en: '[PRE17]'
+  id: totrans-128
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'We now have a Delta table that our non-technical data analysts can update using
+    a UI separate from our data pipeline, and we also have a helper function that
+    can read from the Delta table and translate the entries into a format that a DLT
+    expectation can interpret. Let’s see how these pieces tie together to create a
+    new dataset in our pipeline that dynamically loads the data quality requirements:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了一个Delta表，非技术数据分析人员可以通过与数据管道分离的UI进行更新；我们还创建了一个辅助函数，它可以从Delta表读取数据，并将表中的数据条目转换成DLT期望可以理解的格式。接下来，让我们看看这些部分如何结合在一起，创建一个新的数据集，动态加载数据质量要求：
+- en: '[PRE18]'
+  id: totrans-130
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: This design pattern provides the flexibility to maintain the data quality rules
+    separately from the data pipeline definition so that non-technical individuals
+    determine the data quality criteria. But what if we have a technical group of
+    individuals who want to stay involved in the quality of the data passing through
+    our data pipeline? Moreover, what if this group of individuals needs to be notified
+    of poor-quality data so that they can intervene and even manually correct the
+    data for the downstream processes to function? Let’s take a look at how we might
+    implement such a recovery process in the next hands-on exercise.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种设计模式提供了灵活性，可以将数据质量规则与数据管道定义分开维护，以便非技术人员确定数据质量标准。但是，如果我们有一个技术团队，想要保持参与并确保流经数据管道的数据质量如何呢？而且，如果这个团队需要接收到低质量数据的通知，以便他们能够介入，甚至手动修正数据以确保下游流程的正常运作，该如何处理呢？接下来，我们将展示如何在下一个实操练习中实现这样的数据修复过程。
+- en: Hands-on exercise – quarantining bad data for correction
+  id: totrans-132
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实操练习 – 隔离错误数据以便修正
+- en: In this example, we’re going to build a conditional data flow for data that
+    doesn’t meet our data quality requirements. This will allow us to isolate the
+    data that violates our data quality rules so that we can take appropriate action
+    later or even report on the data that violates the data quality constraints.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中，我们将构建一个条件数据流，用于处理不符合数据质量要求的数据。这将允许我们隔离违反数据质量规则的数据，以便稍后采取适当的措施，甚至报告违反数据质量约束的数据。
+- en: 'We’ll use the same Yellow Taxi Corporation example to illustrate building a
+    data quarantine zone concept. Let’s start off with a bronze table that ingests
+    the raw JSON data written to the DBFS location by the trip data generator:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用相同的黄出租公司（Yellow Taxi Corporation）示例来说明如何构建数据隔离区的概念。我们从一个铜级表（bronze table）开始，该表从行程数据生成器写入的原始JSON数据中获取数据，数据存储在DBFS位置：
+- en: '[PRE19]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Next, let’s begin by defining a few data quality rules on incoming data. Let’s
+    make sure that the trip data published to our DBFS location is sensible. We’ll
+    ensure that the total fare amount is greater than $ **0** and that the ride has
+    at least **1** passenger, otherwise, we’ll quarantine the trip data for further
+    review:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们开始定义一些关于传入数据的数据质量规则。我们确保发布到 DBFS 位置的行程数据是合理的。我们会确保总车费大于 **0**，并且行程至少有
+    **1** 名乘客，否则我们会将行程数据隔离以供进一步审核：
+- en: '[PRE20]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Now, let’s apply the two data quality rules to the incoming data by creating
+    another dataset with a calculated column, **is_valid** . This column will contain
+    the results of the data quality rules evaluated for each row:'
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们通过创建另一个带有计算列 **is_valid** 的数据集，将这两个数据质量规则应用于传入数据。该列将包含每一行数据所评估的数据质量规则结果：
+- en: '[PRE21]'
+  id: totrans-139
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: Finally, we can use the **is_valid** calculated column to split the streaming
+    table into two data flows – a data flow for all incoming data that has passed
+    the data quality assertions and a separate data flow for the incoming data that
+    has not.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们可以使用 **is_valid** 计算列将流式数据表拆分为两个数据流——一个用于所有通过数据质量断言的传入数据，另一个用于未通过数据质量断言的传入数据。
+- en: 'Let’s define a quarantine table in our data pipeline that will route the data
+    according to the evaluated data quality rules:'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在数据管道中定义一个隔离表，将数据按照评估的数据质量规则进行路由：
+- en: '[PRE22]'
+  id: totrans-142
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Finally, create a new DLT pipeline using the new notebook as the source. Provide
+    a meaningful name for the pipeline, such as **Chapter 3** **Quarantining Invalid
+    Data** . Select **Core** as the product edition and **Triggered** as the execution
+    mode. Next, select a target catalog and schema in Unity Catalog to store the pipeline
+    datasets. Accept the remaining default values and click the **Create** button
+    to create the new DLT pipeline. Finally, click on the **Start** button to trigger
+    a new pipeline execution run. Notice how the data is split into two downstream
+    tables – one table containing the rows that passed the data quality rules, and
+    a quarantine table containing the rows that have failed the data quality rules.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，使用新的笔记本作为源，创建一个新的 DLT 管道。为管道提供一个有意义的名称，如 **第 3 章** **隔离无效数据**。选择 **Core**
+    作为产品版本，并选择 **Triggered** 作为执行模式。接下来，在 Unity Catalog 中选择一个目标目录和模式来存储管道数据集。接受剩余的默认值，点击
+    **创建** 按钮以创建新的 DLT 管道。最后，点击 **开始** 按钮以触发新的管道执行。注意数据如何被分配到两个下游表——一个包含通过数据质量规则的数据行，另一个是包含未通过数据质量规则的数据行的隔离表。
+- en: '![Figure 3.7 – Data that fails data quality rules is split into a quarantine
+    table](img/B22011_03_007.jpg)'
+  id: totrans-144
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 3.7 – 未通过数据质量规则的数据被分配到隔离表中](img/B22011_03_007.jpg)'
+- en: Figure 3.7 – Data that fails data quality rules is split into a quarantine table
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 3.7 – 未通过数据质量规则的数据被分配到隔离表中
+- en: By implementing a quarantine table, we can report on the real-time metrics so
+    that stakeholders within our organization can be kept up to date on the quality
+    of our incoming data. Furthermore, the data stewards of our lakehouse can review
+    the data that has not passed the validation logic and even take appropriate action,
+    such as manually correcting the invalid data.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过实施隔离表，我们可以实时报告指标，让我们组织中的利益相关者能够及时了解传入数据的质量。此外，我们湖仓的数据管理员可以审查未通过验证逻辑的数据，甚至采取适当的措施，如手动修正无效数据。
+- en: Summary
+  id: totrans-147
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 小结
+- en: In this chapter, we covered a lot of topics surrounding the data quality of
+    the data in our lakehouse. We learned how the integrity of a table can be enforced
+    using **NOT NULL** and **CHECK** constraints in Delta Lake. We also defined relationships
+    between the tables in our lakehouse using **PRIMARY KEY** and **FOREIGN KEY**
+    constraints. Next, we saw how we could enforce primary key uniqueness across our
+    Delta tables using views to validate the data in our tables. We also saw just
+    how easy it was to update the behavior of our data pipeline when incoming rows
+    violated data quality constraints, allowing data engineering teams to react to
+    downstream processes that have the potential to break from poor-quality data.
+    Finally, we saw a practical example of how we can use expectations to create a
+    conditional data flow in our pipeline, allowing our data stewards to quarantine
+    and correct data that doesn’t meet the expected data quality.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们涵盖了围绕我们数据湖中数据质量的许多主题。我们学习了如何使用**NOT NULL**和**CHECK**约束在Delta Lake中强制表的完整性。我们还使用**PRIMARY
+    KEY**和**FOREIGN KEY**约束定义了我们数据湖中表之间的关系。接下来，我们看到了如何使用视图跨我们的Delta表强制主键唯一性，以验证我们表中的数据。我们还看到了当传入行违反数据质量约束时，如何轻松更新数据流水线行为的示例，从而允许数据工程团队对可能因低质量数据而导致下游流程中断做出反应。最后，我们看到了一个实际的示例，展示了如何使用期望在我们的管道中创建有条件的数据流，使我们的数据监护人能够隔离和纠正不符合预期数据质量的数据。
+- en: In the next chapter, we’re going to get into more advanced topics of maintaining
+    data pipelines in production. We’ll see how we can tune many different aspects
+    of data pipelines to scale to large volumes of data and meet real-time stream
+    processing demands such as high throughput and low latency.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章中，我们将深入探讨在生产环境中维护数据流水线的更高级主题。我们将看到如何调整数据流水线的许多不同方面，以扩展到大数据量，并满足实时流处理需求，如高吞吐量和低延迟。

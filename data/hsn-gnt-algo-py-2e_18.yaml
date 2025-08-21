@@ -1,0 +1,1670 @@
+- en: '14'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '14'
+- en: Beyond Local Resources – Scaling Genetic Algorithms in the Cloud
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 超越本地资源——在云端扩展遗传算法
+- en: This chapter builds on the previous one, which focused on using multiprocessing
+    to enhance genetic algorithm performance. It restructures the genetic algorithm
+    into a **client-server** model, where the client employs **asynchronous I/O**,
+    and the server manages fitness function calculations. The server component is
+    then deployed to the cloud via **AWS Lambda**, demonstrating a practical application
+    of serverless architecture in optimizing genetic algorithm computations.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章在上一章的基础上进行扩展，上一章专注于使用多进程来提高遗传算法的性能。本章将遗传算法重构为**客户端-服务器**模型，其中客户端采用**异步 I/O**，服务器管理适应度函数计算。然后，服务器组件通过**AWS
+    Lambda**部署到云端，展示了无服务器架构在优化遗传算法计算中的实际应用。
+- en: This chapter starts by discussing the advantages of dividing genetic algorithms
+    into client and server components. It then progresses to implementing this client-server
+    model while using the same One-Max benchmark problem from the previous chapter.
+    The server is built using Flask, while the client leverages Python’s `asyncio`
+    library for asynchronous operations. The chapter includes experiments with deploying
+    the Flask application on production-grade servers before ultimately deploying
+    it on AWS Lambda, a serverless computing service, showcasing how cloud resources
+    can be used to enhance the computational efficiency of genetic algorithms.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章首先讨论将遗传算法划分为客户端和服务器组件的优势。然后，逐步实现这一客户端-服务器模型，同时使用上一章的相同 One-Max 基准问题。服务器使用
+    Flask 构建，客户端则利用 Python 的 `asyncio` 库进行异步操作。本章包括在生产级服务器上部署 Flask 应用程序的实验，最后将其部署到
+    AWS Lambda（一个无服务器计算服务），展示如何利用云资源提升遗传算法的计算效率。
+- en: 'In this chapter, you will do the following:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，您将执行以下任务：
+- en: Understand the restructuring of genetic algorithms into a client-server model
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 理解遗传算法如何重构为客户端-服务器模型
+- en: Learn how to use Flask to create a server that performs fitness calculations
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 学习如何使用 Flask 创建一个执行适应度计算的服务器
+- en: Develop an asynchronous I/O client in Python that interacts with the Flask server
+    for genetic algorithm evaluations
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在 Python 中开发一个异步 I/O 客户端，与 Flask 服务器进行交互以进行遗传算法评估
+- en: Gain familiarity with Python WSGI HTTP servers such as Gunicorn and Waitress
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 熟悉 Python WSGI HTTP 服务器，如 Gunicorn 和 Waitress
+- en: Learn how to deploy the Flask server component to the cloud using Zappa for
+    serverless execution on AWS Lambda
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 学习如何使用 Zappa 将 Flask 服务器组件部署到云端，实现 AWS Lambda 上的无服务器执行
+- en: Technical requirements
+  id: totrans-10
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'In this chapter, we will be using Python 3 with the following supporting libraries:'
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将使用 Python 3 以及以下支持库：
+- en: '**deap**'
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**deap**'
+- en: '**numpy**'
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**numpy**'
+- en: '**aiohttp** – introduced in this chapter'
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**aiohttp** —— 本章介绍'
+- en: Important note
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: If you use the **requirements.txt** file we provide (see [*Chapter 3*](B20851_03.xhtml#_idTextAnchor091)),
+    these libraries are already included in your environment.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果您使用我们提供的**requirements.txt**文件（请参见 [*第3章*](B20851_03.xhtml#_idTextAnchor091)），这些库已经包含在您的环境中。
+- en: 'In addition, a separate server virtual environment will be created and used
+    for a separate server module, with the following supporting libraries:'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，将为独立的服务器模块创建并使用一个单独的虚拟环境，并包含以下支持库：
+- en: '**flask**'
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**flask**'
+- en: '**gunicorn**'
+  id: totrans-19
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**gunicorn**'
+- en: '**waitress**'
+  id: totrans-20
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**服务员**'
+- en: '**zappa**'
+  id: totrans-21
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**zappa**'
+- en: The programs that will be used in this chapter can be found in this book’s GitHub
+    repository at [https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14).
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章使用的程序可以在本书的 GitHub 仓库中找到，链接为 [https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14)。
+- en: 'Check out the following video to see the Code in Action:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请观看以下视频，查看代码演示：
+- en: '[https://packt.link/OEBOd](https://packt.link/OEBOd)'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://packt.link/OEBOd](https://packt.link/OEBOd)'
+- en: The next level in genetic algorithm performance –embracing a client-server architecture
+  id: totrans-25
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 遗传算法性能的下一阶段——采用客户端-服务器架构
+- en: In the previous chapter, we implemented our genetic algorithm in a multiprocessor
+    approach, leveraging the “embarrassingly parallelizable” nature of genetic algorithms
+    to significantly reduce the time required for each generation to complete. Recognizing
+    that the most time-consuming aspect of the algorithm is typically the computation
+    of the fitness function, we established a benchmark that simulates a CPU-intensive
+    fitness function. By employing Python’s built-in multiprocessing capabilities
+    as well as an external library named SCOOP, we successfully managed to decrease
+    the runtime substantially.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一章中，我们以多处理器方式实现了遗传算法，利用遗传算法的“极易并行化”特性，显著减少了每一代的计算时间。考虑到算法中最耗时的部分通常是适应度函数的计算，我们建立了一个模拟
+    CPU 密集型适应度函数的基准测试。通过利用 Python 内置的多进程功能以及名为 SCOOP 的外部库，我们成功地大幅减少了运行时间。
+- en: However, these implementations were constrained to a single program operating
+    on a single machine. When addressing real-world problems, this approach is likely
+    to encounter resource limitations of the machine—not just in terms of available
+    CPU cores but also in essential resources such as memory and storage. In contrast
+    to our benchmark program, which primarily consumes CPU time, real-world fitness
+    functions may have extensive demands for both processing power and memory, presenting
+    a significant challenge.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，这些实现仅限于在单台机器上运行的单一程序。在处理实际问题时，这种方法很可能会遇到机器资源的限制——不仅仅是可用的 CPU 核心，还包括内存和存储等基本资源。与我们的基准程序主要消耗
+    CPU 时间不同，实际的适应度函数可能对处理能力和内存都有较大的需求，这带来了巨大的挑战。
+- en: We have observed that the SCOOP library supports distributed computing by utilizing
+    additional machines on our network. However, in this chapter, we will explore
+    a different approach that involves dividing our program into two separate components.
+    This methodology will afford us greater flexibility in selecting the platforms
+    for these components. Such a strategy opens up opportunities for more diverse
+    and powerful computing solutions, including cloud-based services or specialized
+    hardware, thereby overcoming some limitations inherent in relying solely on networked
+    machines.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们观察到 SCOOP 库支持通过利用网络中的其他机器来进行分布式计算。然而，在本章中，我们将探索另一种方法，即将程序分为两个独立的组件。这种方法将使我们在选择这些组件的运行平台时具有更大的灵活性。这样的策略为更丰富、更强大的计算解决方案打开了可能性，包括基于云的服务或专用硬件，从而克服了仅依赖网络机器的一些固有限制。
+- en: The upcoming sections will detail the design and implementation of this new
+    structure, which we will carry out in several stages.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来的章节将详细介绍这一新结构的设计和实现过程，我们将分几个阶段进行。
+- en: Implementing a client-server model
+  id: totrans-30
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现客户端-服务器模型
+- en: 'Our plan is to divide the execution of the genetic algorithm into two distinct
+    parts—client and server—outlined as follows:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的计划是将遗传算法的执行分为两个独立的部分——客户端和服务器，具体如下：
+- en: '**Client Component**: The client will oversee the evolutionary logic in a centralized
+    manner. This includes managing the initialization of populations, selection processes,
+    and genetic operations such as crossover and mutation.'
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**客户端组件**：客户端将集中管理进化逻辑，包括种群初始化、选择过程，以及交叉和变异等遗传操作。'
+- en: '**Server Component**: The server will be tasked with executing the resource-intensive
+    fitness function calculations. It will employ multiprocessing to fully leverage
+    its computational resources, circumventing the limitations imposed by Python’s
+    **Global Interpreter** **Lock** (**GIL**).'
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**服务器组件**：服务器将负责执行资源密集型的适应度函数计算。它将利用多进程技术充分发挥计算资源，绕过 Python 的**全局解释器锁**（**GIL**）所带来的限制。'
+- en: '**Client’s Use of Asynchronous I/O**: Additionally, the client will employ
+    asynchronous I/O, which operates on a single-threaded, event-driven model. This
+    approach can efficiently handle I/O-bound tasks, allowing the program to concurrently
+    manage other operations while waiting for I/O processes to complete. In adopting
+    asynchronous I/O for server communication, the client is able to send a request
+    and then proceed with other tasks, rather than waiting passively for a response.
+    This is akin to a waiter who delivers a guest’s order to the kitchen and, instead
+    of waiting there, takes the next order from another table while the previous orders
+    are being prepared. Similarly, our client optimizes the workflow by not blocking
+    the main thread of execution while waiting for server responses.'
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**客户端的异步I/O使用**：此外，客户端将采用异步I/O，它基于单线程、事件驱动模型运行。这种方法可以高效地处理I/O绑定的任务，使程序在等待I/O进程完成时能够同时处理其他操作。在服务器通信中采用异步I/O后，客户端能够发送请求并继续进行其他任务，而无需被动等待响应。这就像一个服务员将客人的订单送到厨房，然后在等待的同时接收另一桌的订单，而不是呆在厨房旁等待。类似地，我们的客户端通过在等待服务器响应时不阻塞主执行线程，优化了工作流程。'
+- en: 'This client-server model and its operational dynamics are illustrated in the
+    following diagram:'
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个客户端-服务器模型及其操作动态在下图中有所说明：
+- en: '![Figure 14.1: Block diagram of the proposed client-server setup](img/B20851_14_1.jpg)'
+  id: totrans-36
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图14.1：所提议的客户端-服务器设置框图](img/B20851_14_1.jpg)'
+- en: 'Figure 14.1: Block diagram of the proposed client-server setup'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图14.1：所提议的客户端-服务器设置框图
+- en: Before we dive into implementing this model, it’s highly recommended to set
+    up a separate Python environment specifically for the server component, as described
+    in the next section.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们深入实现该模型之前，强烈建议为服务器组件设置一个单独的Python环境，具体内容将在下一节中介绍。
+- en: Using a separate environment
+  id: totrans-39
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用单独的环境
+- en: As we began coding in [*Chapter 3*](B20851_03.xhtml#_idTextAnchor091), *Using
+    the DEAP Framework*, we recommended creating a virtual environment for our programs,
+    utilizing tools such as `venv` or `conda`. Employing a virtual environment is
+    a best practice in Python development, as it allows us to keep the dependencies
+    of our projects isolated from both other Python projects and the system’s default
+    settings and dependencies.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们在[*第3章*](B20851_03.xhtml#_idTextAnchor091)《使用DEAP框架》中开始编码时所建议的，我们推荐为我们的程序创建一个虚拟环境，使用`venv`或`conda`等工具。使用虚拟环境是Python开发中的最佳实践，因为它使我们能够将项目的依赖项与其他Python项目及系统的默认设置和依赖项隔离开来。
+- en: 'Given that the client part manages the logic of the genetic algorithm and uses
+    the DEAP framework, we can continue developing it within the same environment
+    we’ve been using so far. However, it’s advisable to create a separate environment
+    for the server component. The reasoning is twofold: firstly, the server will not
+    be using the DEAP dependency but will instead rely on a different set of Python
+    libraries; and secondly, we ultimately plan to deploy the server outside our local
+    computer, so it’s preferable to have this deployment as lightweight as possible.'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 鉴于客户端部分管理遗传算法的逻辑并使用DEAP框架，我们可以继续在我们目前使用的相同环境中开发它。然而，建议为服务器组件创建一个单独的环境。原因有两个：首先，服务器将不使用DEAP依赖项，而是依赖于一组不同的Python库；其次，我们最终计划将服务器部署到本地计算机之外，因此最好将这个部署保持尽可能轻量级。
+- en: 'For reference, you can review the process of creating a virtual environment
+    using `venv` here: [https://docs.python.org/3/library/venv.html](https://docs.python.org/3/library/venv.html).'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 作为参考，您可以在此查看使用`venv`创建虚拟环境的过程：[https://docs.python.org/3/library/venv.html](https://docs.python.org/3/library/venv.html)。
+- en: 'Similarly, environment management using `conda` is described here: [https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html).'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类似地，使用`conda`进行环境管理的过程可以参考此链接：[https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)。
+- en: The code for the server module is best kept in a separate directory as well;
+    in our repository, we keep it in a directory named `server`, under the `chapter_13`
+    directory.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 服务器模块的代码最好也保存在一个单独的目录中；在我们的代码库中，我们将其保存在`chapter_13`目录下的`server`目录中。
+- en: Once we have created and activated a virtual environment for the server component,
+    we’re ready to dive into the coding of the components. But first, let’s take a
+    moment to recap the benchmark problem we’re tackling.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们为服务器组件创建并激活了虚拟环境，就可以开始编写组件代码。但在此之前，让我们先回顾一下我们正在解决的基准问题。
+- en: Revisiting the One-Max problem, yet again
+  id: totrans-46
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 再次回顾 One-Max 问题
+- en: As a reminder, in [*Chapter 13*](B20851_13.xhtml#_idTextAnchor326), *Accelerating
+    Genetic Algorithms*, we employed a version of the OneMax problem as a benchmark.
+    The goal of this program is to find the binary string of a specified length that
+    maximizes the sum of its digits. For our purposes, we used a reduced problem length
+    of 10 digits, along with smaller figures for the population size and the number
+    of generations. Additionally, we introduced a `busy_wait()` function into the
+    original fitness evaluation function. This function kept the CPU busy for three
+    seconds during each evaluation, significantly increasing the program’s execution
+    time. This setup allowed us to experiment with various multiprocessing schemes
+    and to compare their respective running durations.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提醒一下，在[*第13章*](B20851_13.xhtml#_idTextAnchor326)《加速遗传算法》中，我们使用了 OneMax 问题的一个版本作为基准。这个程序的目标是找到一个指定长度的二进制字符串，使其数字之和最大。为了我们的实验，我们使用了一个简化的
+    10 位问题长度，同时选择了较小的种群规模和代数。另外，我们在原始的适应度评估函数中加入了一个 `busy_wait()` 函数。该函数在每次评估时让 CPU
+    忙碌三秒钟，显著增加了程序的执行时间。这个设置让我们能够实验不同的多进程方案，并比较它们的运行时长。
+- en: For our experiments with the client-server model, we will continue to use this
+    same program, albeit with modifications tailored to our current requirements.
+    This approach will allow us to directly compare the results with those obtained
+    in the previous chapter.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们在客户端-服务器模型中的实验，我们将继续使用这个相同的程序，尽管会根据当前需求进行一些修改。这个方法让我们能够直接将结果与上一章得到的结果进行对比。
+- en: We are finally ready to write some code—starting with the server module, which
+    will be based on Flask, the Python web application framework.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们终于可以开始写一些代码了——从基于 Flask 的服务器模块开始，Flask 是一个 Python Web 应用框架。
+- en: Creating the server component
+  id: totrans-50
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建服务器组件
+- en: Flask, known for its lightweight and flexible nature, will be the cornerstone
+    of our server component in the Python environment. Its simplicity and user-friendly
+    approach make it a popular choice, especially for projects that require adaptability
+    across various platforms and cloud installations.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Flask 以其轻量级和灵活性著称，将是我们在 Python 环境中服务器组件的基石。它的简洁性和用户友好的设计使其成为流行的选择，尤其适用于需要跨平台和云端安装的项目。
+- en: 'To install Flask, make sure you are within the server’s virtual environment,
+    and use the following command:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 若要安装 Flask，确保你处于服务器的虚拟环境中，并使用以下命令：
+- en: '[PRE0]'
+  id: totrans-53
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: One of the key advantages of using Flask is that it requires minimal coding
+    effort on our part. We just need to write the handlers for incoming requests,
+    and Flask efficiently manages all the other underlying processes. Given that our
+    server component’s primary responsibility is to handle the calculation of the
+    fitness function, the amount of code we need to write is minimal.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 Flask 的一个关键优势是它几乎不需要我们编写大量代码。我们只需要编写处理请求的处理函数，而 Flask 高效地管理所有其他底层过程。由于我们服务器组件的主要职责是处理适应度函数的计算，因此我们需要编写的代码量非常少。
+- en: 'The relevant Python program we created is `fitness_evaluator.py`, available
+    at the following link:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们创建的相关 Python 程序是 `fitness_evaluator.py`，可以通过以下链接获取：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator.py)'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator.py)'
+- en: 'This program extends the minimal application outlined in Flask’s Quickstart
+    documentation, as detailed here:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该程序扩展了 Flask 快速入门文档中概述的最小应用，详细内容见此处：
+- en: 'First, we import the **Flask** class and create an instance of this class.
+    The **__name__** argument represents the name of the application’s module or package:'
+  id: totrans-58
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们导入 **Flask** 类并创建这个类的一个实例。**__name__** 参数表示应用模块或包的名称：
+- en: '[PRE1]'
+  id: totrans-59
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Next, we define the **welcome()** function for “health-check” purposes. This
+    function returns an HTML-formatted welcome message. When we direct our browser
+    to the base URL of the server, this message is displayed, confirming that the
+    server is operational. The **@app.route("/")** decorator specifies that this function
+    should be triggered by the root URL:'
+  id: totrans-60
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们定义**welcome()**函数，用于“健康检查”目的。该函数返回一个 HTML 格式的欢迎消息。当我们将浏览器指向服务器的根 URL 时，此消息将显示，确认服务器正在运行。**@app.route("/")**
+    装饰器指定该函数应由根 URL 触发：
+- en: '[PRE2]'
+  id: totrans-61
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'We then reuse the **busy_wait()** function from the previous chapter. This
+    function simulates a CPU-intensive fitness evaluation, of a duration specified
+    by the **DELAY_SECONDS** constant:'
+  id: totrans-62
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们重用上一章中的**busy_wait()**函数。此函数模拟一个计算密集型的适应性评估，持续时间由**DELAY_SECONDS**常量指定：
+- en: '[PRE3]'
+  id: totrans-63
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Finally, we define the actual fitness evaluation function, **oneMaxFitness()**.
+    Decorated by the **/one_max_fitness** route, it expects a value (the genetic individual)
+    to be passed in the URL, which is then processed by the function. The function
+    calls **busy_wait** to simulate processing, then calculates the sum of 1s in the
+    provided string and returns this sum as a string. We use strings as input and
+    output for this function to accommodate HTTP’s text-based data transmission in
+    web applications:'
+  id: totrans-64
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们定义实际的适应性评估函数**oneMaxFitness()**。该函数通过**/one_max_fitness**路由进行装饰，期望在 URL
+    中传递一个值（即遗传个体），然后由该函数进行处理。该函数调用**busy_wait**模拟处理过程，然后计算提供字符串中 1 的总和，并将该总和作为字符串返回。我们使用字符串作为该函数的输入和输出，以适应
+    HTTP 在 Web 应用中的基于文本的数据传输：
+- en: '[PRE4]'
+  id: totrans-65
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'To initiate our Flask-based web application, we first need to navigate into
+    the `server` directory, and then activate the server’s virtual environment. Once
+    activated, the application can be launched with the following command, executed
+    from the terminal within that environment:'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要启动基于 Flask 的 Web 应用程序，首先需要进入`server`目录，然后激活服务器的虚拟环境。激活后，可以使用以下命令启动应用程序，该命令需要在该环境的终端中执行：
+- en: '[PRE5]'
+  id: totrans-67
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'This yields the following output:'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE6]'
+  id: totrans-69
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: The warning regarding Flask’s built-in server is a reminder that it’s not designed
+    for performance optimization and is meant for development purposes only. However,
+    for our current needs, this server is perfectly appropriate to test and verify
+    the logic of our application. To do this, we can simply use a web browser on our
+    local machine.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于 Flask 内置服务器的警告是提醒我们，它并非为性能优化设计，仅供开发用途。然而，对于我们当前的需求，这个服务器完全适合用来测试和验证应用程序的逻辑。为此，我们只需在本地计算机上使用一个网页浏览器即可。
+- en: 'Upon opening a browser and navigating to the specified URL (`http://127.0.0.1:5000`),
+    we should see the “Welcome” message appear, indicating that our server is up and
+    running, as illustrated here:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 打开浏览器并访问指定的 URL（`http://127.0.0.1:5000`）时，我们应看到“欢迎”消息出现，表明我们的服务器正在运行，如图所示：
+- en: '![Figure 14.2: Display of the Welcome message at the server’s root URL](img/B20851_14_2.jpg)'
+  id: totrans-72
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.2：在服务器根 URL 显示欢迎消息](img/B20851_14_2.jpg)'
+- en: 'Figure 14.2: Display of the Welcome message at the server’s root URL'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 14.2：在服务器根 URL 显示欢迎消息
+- en: 'Next, let’s test the fitness function by navigating to the following URL: [http://127.0.0.1:5000/one_max_fitness/1100110010](http://127.0.0.1:5000/one_max_fitness/1100110010).'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们通过访问以下网址来测试适应性函数：[http://127.0.0.1:5000/one_max_fitness/1100110010](http://127.0.0.1:5000/one_max_fitness/1100110010)。
+- en: 'Accessing this URL internally triggers a call to the `oneMaxFitness()` function
+    with `1100110010` as the argument. As expected, after a delay of several seconds
+    (introduced by the `busy_wait()` function to simulate processing time), we receive
+    a response. The browser displays the number `5`, which represents the calculated
+    sum of 1s in the input string, as illustrated in the figure here:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 访问此 URL 会内部触发对`oneMaxFitness()`函数的调用，参数为`1100110010`。如预期的那样，在经过几秒钟的延迟后（由`busy_wait()`函数模拟处理时间），我们收到响应。浏览器显示数字`5`，表示输入字符串中
+    1 的总和，如图所示：
+- en: '![Figure 14.3: Testing the server’s fitness function via a browser](img/B20851_14_3.jpg)'
+  id: totrans-76
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.3：通过浏览器测试服务器的适应性函数](img/B20851_14_3.jpg)'
+- en: 'Figure 14.3: Testing the server’s fitness function via a browser'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 14.3：通过浏览器测试服务器的适应性函数
+- en: Now that we’ve successfully set up and verified the server, let’s move on to
+    implementing the client side.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经成功设置并验证了服务器，接下来让我们开始实现客户端。
+- en: Creating the client component
+  id: totrans-79
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建客户端组件
+- en: 'To start working on the client module, we need to switch back to the original
+    virtual environment used for our genetic algorithms’ programs. This can be done
+    by using a separate terminal or opening a new window in the IDE where this environment
+    is activated. The various programs implementing the client module can be found
+    at the following location:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要开始工作在客户端模块上，我们需要切换回原本用于基因算法程序的虚拟环境。这可以通过使用一个单独的终端或在 IDE 中打开一个新窗口来实现，在该环境中激活此虚拟环境。实现客户端模块的各个程序可以在以下位置找到：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14)'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/tree/main/chapter_14)'
+- en: 'The first program we’ll examine is `01_one_max_client.py`, which functions
+    as a straightforward (synchronous) client. This program can be found at the following
+    location:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将首先检查的程序是 `01_one_max_client.py`，它作为一个简单的（同步）客户端。该程序可以在以下位置找到：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/01_one_max_client.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/01_one_max_client.py)'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/01_one_max_client.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/01_one_max_client.py)'
+- en: 'This program adapts `01_one_max_start.py` from the previous chapter—the basic
+    OneMax problem solver. To support the delegation of fitness calculation to the
+    server, we made the following modifications:'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个程序改编自上一章的 `01_one_max_start.py`——基本的 OneMax 问题求解器。为了支持将适应度计算委托给服务器，我们做了以下修改：
+- en: The Python **urllib** module is imported. This module provides a suite of functions
+    and classes for working with URLs, which we will use to send HTTP requests to
+    the server and retrieve the responses.
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Python 的 **urllib** 模块被导入。该模块提供了一套用于处理 URL 的函数和类，我们将使用这些工具向服务器发送 HTTP 请求并获取响应。
+- en: 'The **BASE_URL** constant is defined to point to the base URL of the server:'
+  id: totrans-86
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**BASE_URL** 常量被定义为指向服务器的基础 URL：'
+- en: '[PRE7]'
+  id: totrans-87
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'The **oneMaxFitness()** function is renamed **oneMaxFitness_client()**. This
+    function converts the given individual—a list of integers (**0** or **1**)—into
+    a single string. It then uses the **urlopen()** function from **urllib** to send
+    this string to the fitness calculation endpoint on the server, by combining the
+    base URL with the function’s route and appending the string representing the individual.
+    The function waits (synchronously) for the response and converts it back to an
+    integer:'
+  id: totrans-88
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**oneMaxFitness()** 函数被重命名为 **oneMaxFitness_client()**。该函数将给定的个体——一个整数列表（**0**
+    或 **1**）——转换为一个单一的字符串。然后，它使用来自 **urllib** 的 **urlopen()** 函数，将该字符串发送到服务器上的适应度计算端点，通过将基础
+    URL 与函数的路由组合，并附加表示个体的字符串。该函数等待（同步）响应并将其转换回整数：'
+- en: '[PRE8]'
+  id: totrans-89
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'We can now launch this client program while the Flask server is up, and watch
+    the server’s output, showing requests coming in. It is evident that the requests
+    are coming one at a time, with a noticeable three-second delay between them. Meanwhile,
+    on the client side, the output mirrors what we observed in the previous chapter
+    before introducing multiprocessing:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在可以在 Flask 服务器启动的同时启动这个客户端程序，并观察服务器的输出，显示请求的到来。显然，请求是一个接一个到来的，每个请求之间有明显的三秒延迟。与此同时，在客户端侧，输出与我们在上一章引入多进程之前观察到的情况相似：
+- en: '[PRE9]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: The elapsed time is similar as well, roughly 3 seconds times the amount of fitness
+    function invocations (95), reaffirming the synchronous nature of our current client-server
+    interaction.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 经过的时间也差不多，大约是 3 秒乘以适应度函数调用次数（95），这再次确认了我们当前客户端-服务器交互的同步性质。
+- en: Now that the operation has been successful and the fitness function has been
+    effectively separated and moved to the server, let’s take the next step and convert
+    the client into an asynchronous one.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在操作已经成功，且适应度函数已被有效地分离并移至服务器，我们接下来的步骤是将客户端转变为异步客户端。
+- en: Creating the asynchronous client
+  id: totrans-94
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 创建异步客户端
+- en: 'To support asynchronous I/O, we are going to use `aiohttp`, a powerful Python
+    library for asynchronous HTTP client/server networking. This library, along with
+    its dependencies, can be installed in the client’s virtual environment using the
+    following command:'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了支持异步I/O，我们将使用`aiohttp`，这是一个强大的Python库，用于异步HTTP客户端/服务器网络通信。该库及其依赖项可以通过以下命令在客户端的虚拟环境中安装：
+- en: '[PRE10]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: The modules modified for the asynchronous version of the client include not
+    only the `02_one_max_async_client.py` program but also `elitism_async.py`, which
+    replaces `elitism.py` used in most of our programs so far. While `02_one_max_async_client.py`
+    contains the function that sends fitness calculation requests to the server, `elitism_async.py`
+    manages the main genetic algorithm loop and is responsible for calling that function.
+    The following subsections will delve into the details of these two programs.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 修改过的客户端异步版本模块不仅包括`02_one_max_async_client.py`程序，还包括`elitism_async.py`，它替代了我们迄今为止大多数程序中使用的`elitism.py`。`02_one_max_async_client.py`包含了发送适应度计算请求到服务器的函数，而`elitism_async.py`则管理主要的遗传算法循环，并负责调用该函数。以下小节将详细探讨这两个程序的细节。
+- en: Updating the OneMax solver
+  id: totrans-98
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 更新OneMax求解器
+- en: 'Let’s start with `02_one_max_async_client.py`, which can be found here:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从`02_one_max_async_client.py`开始，该程序可以在这里找到：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/02_one_max_async_client.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/02_one_max_async_client.py)'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/02_one_max_async_client.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/02_one_max_async_client.py)'
+- en: 'The differences from the previous, synchronous program `01_one_max_client.py`
+    are highlighted here:'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与之前的同步程序`01_one_max_client.py`相比，以下差异被突出了：
+- en: 'The **oneMaxFitness_client()** function has been renamed **async_oneMaxFitness_client()**.
+    In addition to **individual**, the new function also receives a **session** argument
+    of the **aiohttp.ClientSession** type; this object is responsible for managing
+    asynchronous requests while reusing connections. The function signature is preceded
+    by the **async** keyword, marking it as a *coroutine*. This designation allows
+    the function to pause its execution and yield control back to the event loop,
+    enabling the concurrent sending of requests:'
+  id: totrans-102
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**oneMaxFitness_client()**函数已经重命名为**async_oneMaxFitness_client()**。除了**individual**，新函数还接收一个**session**参数，其类型为**aiohttp.ClientSession**；该对象负责管理异步请求并重用连接。函数签名前加上**async**关键字，标志着它是一个*协程*。这一标记使得该函数能够暂停执行，并将控制权交还给事件循环，从而实现请求的并发发送：'
+- en: '[PRE11]'
+  id: totrans-103
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'The HTTP GET request to the server is sent using the **session** object. When
+    a response is received, it is available in the **response** variable:'
+  id: totrans-104
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用**session**对象发送HTTP GET请求到服务器。当收到响应时，响应内容将存储在**response**变量中：
+- en: '[PRE12]'
+  id: totrans-105
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: The **main()** function, which now utilizes calls to async functions, is defined
+    with the **async** keyword as well.
+  id: totrans-106
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**main()**函数现在利用异步函数调用，并用**async**关键字定义。'
+- en: 'The call to the genetic algorithm’s main loop now utilizes the **elitism_async**
+    module instead of the original **elitism**. This module will be examined shortly.
+    In addition, the call is preceded by the **await** keyword, required when calling
+    an async function, to signify the function’s ability to hand control back over
+    to the event loop:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 遗传算法主循环的调用现在使用**elitism_async**模块，而不是原来的**elitism**。这个模块稍后将进行详细讨论。此外，调用前加上了**await**关键字，这是调用异步函数时必须使用的，以表明该函数可以将控制权交回事件循环：
+- en: '[PRE13]'
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'The call to the **main()** function is made using **asyncio.run()**. This method
+    of invocation is used to designate the main entry point for running the asynchronous
+    program. It initiates and manages the **asyncio** event loop, thereby allowing
+    asynchronous tasks to be scheduled and executed:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对**main()**函数的调用是通过**asyncio.run()**进行的。这种调用方法用于指定异步程序的主入口点。它启动并管理**asyncio**事件循环，从而允许异步任务的调度和执行：
+- en: '[PRE14]'
+  id: totrans-110
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Updating the genetic algorithm loop
+  id: totrans-111
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 更新遗传算法循环
+- en: 'The counterpart program, `elitism_async.py`, can be found here:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相应的程序`elitism_async.py`可以在这里找到：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/elitism_async.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/elitism_async.py)'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/elitism_async.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/elitism_async.py)'
+- en: 'As previously mentioned, this program is a modified version of the familiar
+    `elitism.py`, tailored to execute the genetic algorithm’s main loop asynchronously
+    and manage the asynchronous calls to the fitness function. The key modifications
+    are highlighted here:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，该程序是熟悉的`elitism.py`的修改版，旨在异步执行遗传算法的主循环并管理对适应度函数的异步调用。以下是关键的修改部分：
+- en: 'First, an **aiohttp.TCPConnector** object is created before the loop starts.
+    This object is in charge of creating and managing TCP connections for sending
+    HTTP requests. The **limit** parameter is used here to control the number of simultaneous
+    connections to the server:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，在循环开始之前会创建一个**aiohttp.TCPConnector**对象。这个对象负责创建和管理用于发送HTTP请求的TCP连接。**limit**参数在这里用来控制与服务器的并发连接数：
+- en: '[PRE15]'
+  id: totrans-116
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Next, an **aiohttp.ClientSession** object is created. This session, which facilitates
+    the sending of HTTP requests asynchronously, is used throughout the rest of the
+    code. It’s also passed to the **async_oneMaxFitness_client()** function where
+    it is used to transmit requests to the server. The session remains active throughout
+    the loop, enabling responses to be matched with their respective requests as they
+    arrive:'
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，创建一个**aiohttp.ClientSession**对象。这个会话对象用于异步发送HTTP请求，并在代码的其余部分中使用。它也会被传递到**async_oneMaxFitness_client()**函数中，在那里它用来向服务器发送请求。会话在整个循环中保持活跃，从而确保响应与相应的请求能够匹配：
+- en: '[PRE16]'
+  id: totrans-118
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'The original calls to the fitness evaluation function, implemented using the
+    **map()** function to apply the **evaluate** operation to all individuals needing
+    updated fitness values (**invalid_ind**), are now replaced with the following
+    two lines of code. These lines create a list of **Task** objects named **evaluation_tasks**,
+    representing scheduled calls to the asynchronous fitness function, and then wait
+    for all of them to complete:'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 原先通过**map()**函数调用适应度评估函数，使用该函数对所有需要更新适应度值的个体（**invalid_ind**）进行**evaluate**操作，现在已被以下两行代码替代。这些代码行创建了一个名为**evaluation_tasks**的**Task**对象列表，表示调度的异步适应度函数调用，然后等待所有任务完成：
+- en: '[PRE17]'
+  id: totrans-120
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: We are now ready to use the new asynchronous client, as will be described next.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在已经准备好使用新的异步客户端，接下来将详细介绍。
+- en: Running the asynchronous client
+  id: totrans-122
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 运行异步客户端
+- en: 'First, ensure that the Flask server is operational. If it’s not already running,
+    you can start it using the following command:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，确保Flask服务器正在运行。如果它还没有启动，可以使用以下命令来启动：
+- en: '[PRE18]'
+  id: totrans-124
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: Next, let’s launch the `02_one_max_async_client.py` program and observe the
+    outputs both from the server and the client windows.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们启动`02_one_max_async_client.py`程序，并观察来自服务器和客户端窗口的输出。
+- en: 'In contrast to the previous experiment, it’s now evident that the requests
+    are reaching the server several at a time and are being handled concurrently.
+    On the client side, while the output appears similar to the previous run, the
+    runtime is significantly improved—more than 10 times faster:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与之前的实验相比，现在可以明显看到请求一次性到达服务器，并且是并发处理的。在客户端，尽管输出看起来与上次运行相似，但运行时间大大提高——速度提升超过10倍：
+- en: '[PRE19]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: Now that we have learned how to utilize a client-server model for the OneMax
+    problem, we’ll learn how to use a production app server to host the models.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经学会了如何使用客户端-服务器模型解决OneMax问题，接下来我们将学习如何使用生产环境应用服务器来托管模型。
+- en: Using a production-grade app server
+  id: totrans-129
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用生产级应用服务器
+- en: As we have mentioned before, the built-in server that comes with Flask is not
+    optimized for performance and is intended primarily for development purposes.
+    While it appears to perform adequately in our asynchronous experiment, when transitioning
+    an application to a production environment, it’s strongly recommended to use a
+    production-grade `mod_wsgi`. These servers are designed to meet the demands of
+    a production environment, offering enhanced performance, security, stability,
+    and scalability. As we will demonstrate next, migrating to one of these servers
+    is a relatively easy task.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们之前所提到的，Flask自带的内置服务器并没有针对性能进行优化，主要用于开发目的。虽然它在我们的异步实验中表现尚可，但当将应用程序迁移到生产环境时，强烈建议使用生产级别的`mod_wsgi`。这些服务器专为满足生产环境的需求而设计，提供增强的性能、安全性、稳定性和可扩展性。正如我们接下来将展示的，迁移到这些服务器之一是一个相对简单的任务。
+- en: Using the Gunicorn server
+  id: totrans-131
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用Gunicorn服务器
+- en: The first server option we will explore is **Gunicorn**, short for **Green unicorn**.
+    It is a widely used Python WSGI HTTP server for Unix systems, known for its simplicity
+    and efficiency, making it a popular choice for deploying Python web applications.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将探索的第一个服务器选项是**Gunicorn**，即**绿色独角兽**的缩写。它是一个广泛使用的Python WSGI HTTP服务器，专为Unix系统设计，以其简单和高效而著称，是部署Python
+    Web应用程序的热门选择。
+- en: Although Gunicorn is not natively supported on Windows, it can be used via the
+    **Windows Subsystem for Linux** (**WSL**), which is supported by Windows 10 and
+    later versions. WSL allows you to run a GNU/Linux environment directly on Windows,
+    unmodified, without the overhead of a traditional virtual machine or dual-boot
+    setup. Gunicorn can be installed and run within this Linux environment.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管Gunicorn在Windows上没有原生支持，但它可以通过**Windows Subsystem for Linux**（**WSL**）来使用，WSL由Windows
+    10及更高版本支持。WSL允许你在Windows上直接运行GNU/Linux环境，而无需传统虚拟机或双启动设置的开销。Gunicorn可以在这个Linux环境中安装和运行。
+- en: 'To install Gunicorn, make sure you are within the server’s virtual environment,
+    and use the following command:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要安装Gunicorn，确保你处于服务器的虚拟环境中，并使用以下命令：
+- en: '[PRE20]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Then, launch the server with the following command:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，使用以下命令启动服务器：
+- en: '[PRE21]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: The `-b` parameter, which is optional, is used here to run the server on the
+    local URL `127.0.0.1:5000`, aligning with the original Flask server configuration.
+    By default, Gunicorn runs on port `8000`.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`-b`参数是可选的，用于在本地URL `127.0.0.1:5000` 上运行服务器，与原Flask服务器配置保持一致。默认情况下，Gunicorn运行在端口`8000`上。'
+- en: The `--workers` argument specifies the number of worker processes. In the absence
+    of this argument, Gunicorn defaults to using a single worker process.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`--workers`参数指定了工作进程的数量。如果没有这个参数，Gunicorn默认使用一个工作进程。'
+- en: 'Once the Gunicorn server is up, running the client yields the following output:'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦Gunicorn服务器启动，运行客户端将产生以下输出：
+- en: '[PRE22]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Recall that the best theoretical result we can achieve in this experiment is
+    18 seconds, as we have 6 “rounds” of fitness calculation, and the best possible
+    result for each round is 3 seconds, the duration of a single fitness evaluation.
+    The result we obtained here is impressively close to that theoretical limit.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 回想一下，在这个实验中我们可以达到的最佳理论结果是18秒，因为我们有6个“轮次”的适应度计算，而每个轮次的最佳可能结果是3秒，即单次适应度评估的时间。我们在这里获得的结果令人印象深刻，接近这一理论极限。
+- en: In case you would like to use a server native to Windows, we will cover the
+    Waitress server in the next subsection.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你希望使用原生Windows服务器，我们将在下一小节介绍Waitress服务器。
+- en: Using the Waitress server
+  id: totrans-144
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用Waitress服务器
+- en: '**Waitress** is a production-quality pure-Python WSGI server. It’s a cross-platform
+    server compatible with various operating systems, including Unix, Windows, and
+    macOS.'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Waitress** 是一个生产级别的纯Python WSGI服务器。它是一个跨平台的服务器，兼容多种操作系统，包括Unix、Windows和macOS。'
+- en: Waitress is often used as an alternative to Gunicorn, especially in environments
+    where Gunicorn is not available or preferred, such as Windows, or when a pure-Python
+    solution is desired.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Waitress常作为Gunicorn的替代品使用，特别是在Gunicorn不可用或不被偏好的环境中，如Windows，或者当需要纯Python解决方案时。
+- en: 'To install Waitress, make sure you are within the server’s virtual environment,
+    and use the following command:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要安装Waitress，确保你处于服务器的虚拟环境中，并使用以下命令：
+- en: '[PRE23]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Next, we need to make a couple of modifications to our Flask application. The
+    modified program, `fitness_evaluator_waitress.py`, can be found here:'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们需要对Flask应用进行一些修改。修改后的程序`fitness_evaluator_waitress.py`可以在这里找到：
+- en: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator_waitress.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator_waitress.py)'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator_waitress.py](https://github.com/PacktPublishing/Hands-On-Genetic-Algorithms-with-Python-Second-Edition/blob/main/chapter_14/server/fitness_evaluator_waitress.py)'
+- en: 'The differences from the original program, `fitness_evaluator.py`, are highlighted
+    here:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与原始程序`fitness_evaluator.py`的不同之处在此处突出显示：
+- en: 'First, we import the **serve** function from the Waitress module:'
+  id: totrans-152
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们从Waitress模块中导入**serve**函数：
+- en: '[PRE24]'
+  id: totrans-153
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Then, we use the **serve()** function to launch the server from within the
+    program. This function allows us to specify the server’s configuration through
+    its arguments. In our case, we’re setting the host, port, and the number of threads
+    to handle requests:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用**serve()**函数从程序内部启动服务器。该函数允许我们通过参数指定服务器的配置。在我们的例子中，我们设置了主机、端口和处理请求的线程数：
+- en: '[PRE25]'
+  id: totrans-155
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'The server can be started by running the following program: `fitness_evaluator_waitress.py`.'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过运行以下程序可以启动服务器：`fitness_evaluator_waitress.py`。
+- en: Breaking out of the box
+  id: totrans-157
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 打破局限
+- en: The next logical step would be to deploy the server component of your application
+    to a separate platform. Doing so offers several key advantages, including scalability,
+    enhanced performance, and improved reliability. While deploying your server on-premises
+    using your own hardware is an option, leveraging **cloud computing services**
+    often provides a more efficient and effective solution. We will cover this in
+    more detail in the next section.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下一步的逻辑选择是将应用程序的服务器组件部署到一个单独的平台。这样做带来几个关键优势，包括可扩展性、增强的性能和更高的可靠性。虽然可以选择使用自己的硬件在本地部署服务器，但利用**云计算服务**通常能提供更高效和有效的解决方案。我们将在下一节中详细讨论这一点。
+- en: Reaching for the sky with cloud computing
+  id: totrans-159
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 通过云计算触及天空
+- en: Cloud computing services provide businesses and individuals with on-demand access
+    to a wide range of applications, storage solutions, and computing power over the
+    internet. These services eliminate the need for substantial upfront investment
+    in physical infrastructure, allowing users to pay only for the resources they
+    use. Cloud computing supports an extensive array of applications, ranging from
+    data storage and web hosting to advanced analytics and artificial intelligence,
+    revolutionizing how organizations manage and deploy IT solutions.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 云计算服务为企业和个人提供了按需访问各种应用程序、存储解决方案和计算能力的机会。这些服务消除了对物理基础设施的大量前期投资需求，使用户只需为所使用的资源付费。云计算支持广泛的应用，包括数据存储、网站托管、先进分析和人工智能等，彻底改变了组织管理和部署IT解决方案的方式。
+- en: Additional advantages of cloud platforms include high-level security measures,
+    data redundancy, and global reach, ensuring low latency for users worldwide. Moreover,
+    cloud services reduce the need for upfront capital investment in hardware and
+    minimize the burden of ongoing maintenance and upgrades. This approach enables
+    a greater focus on application development rather than infrastructure management.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 云平台的额外优势包括高级安全措施、数据冗余和全球覆盖，确保全球用户低延迟。此外，云服务减少了对硬件的前期资本投资需求，并最小化了持续维护和升级的负担。这种方法使得我们能更多地专注于应用程序开发，而非基础设施管理。
+- en: 'When considering the deployment of our Flask-based server component on a cloud
+    platform, it’s important to note that most major cloud service providers offer
+    straightforward methods to deploy Flask applications. For example, a Flask application
+    can be easily deployed to **Azure App Service**, a fully managed platform for
+    hosting web applications provided by Microsoft’s Azure cloud computing service.
+    This platform simplifies much of the deployment and management process, making
+    it a convenient choice for Flask deployments. Detailed instructions and guidelines
+    for deploying a Flask application to Azure App Service can be found at this link:'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在考虑将基于Flask的服务器组件部署到云平台时，重要的是要注意大多数主要云服务提供商都提供了简便的方法来部署Flask应用程序。例如，可以轻松将Flask应用程序部署到**Azure
+    App Service**，这是微软Azure云计算服务提供的一个完全托管的平台，用于托管Web应用程序。该平台简化了许多部署和管理过程，使其成为Flask部署的便捷选择。有关如何将Flask应用程序部署到Azure
+    App Service的详细说明和指南，可以在此链接中找到：
+- en: '[https://learn.microsoft.com/en-us/azure/app-service/quickstart-python](https://learn.microsoft.com/en-us/azure/app-service/quickstart-python)'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://learn.microsoft.com/zh-cn/azure/app-service/quickstart-python](https://learn.microsoft.com/zh-cn/azure/app-service/quickstart-python)'
+- en: 'Several other options are available from **Amazon Web Services** (**AWS**).
+    You can use **Amazon EC2** for comprehensive control over virtual servers, or
+    opt for **AWS Fargate** if you prefer a container-based compute service that doesn’t
+    require managing underlying servers. A more straightforward approach is using
+    **AWS Elastic Beanstalk**, a user-friendly service for deploying and scaling web
+    applications. Elastic Beanstalk automates various deployment details such as capacity
+    provisioning, load balancing, auto-scaling, and application health monitoring.
+    Deploying an existing Flask application to Elastic Beanstalk using the AWS **Command-Line
+    Interface** (**CLI**) is straightforward, as described here:'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**亚马逊网络服务**（**AWS**）提供了其他多个选项。您可以使用**Amazon EC2**来全面控制虚拟服务器，或者选择**AWS Fargate**，如果您更喜欢一种不需要管理底层服务器的基于容器的计算服务。一个更简单的选择是使用**AWS
+    Elastic Beanstalk**，这是一个用户友好的服务，用于部署和扩展Web应用程序。Elastic Beanstalk自动化了诸如容量配置、负载均衡、自动扩展和应用程序健康监控等各种部署细节。使用AWS
+    **命令行界面**（**CLI**）将现有的Flask应用程序部署到Elastic Beanstalk是直接的，具体步骤如下：'
+- en: '[https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-flask.html](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-flask.html)'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-flask.html](https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create-deploy-python-flask.html)'
+- en: In the rest of this chapter, however, our focus shifts to a fourth option—**AWS
+    Lambda**. AWS Lambda represents a paradigm shift in application deployment and
+    management. As a serverless computing service, it allows the execution of code
+    without the need for provisioning or managing servers, automatically scaling in
+    response to incoming requests. This serverless approach offers a distinct set
+    of benefits for deploying Flask applications.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在本章的其余部分，我们的重点转向第四个选项——**AWS Lambda**。AWS Lambda代表了应用程序部署和管理的范式转变。作为一项无服务器计算服务，它允许在无需配置或管理服务器的情况下执行代码，并根据传入的请求自动扩展。这个无服务器的方法为部署Flask应用程序提供了一套独特的优势。
+- en: Important – limitations of Lambda
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要——Lambda的限制
+- en: Before proceeding, it’s essential to remember that the AWS Lambda service, while
+    powerful and versatile, does have certain limitations and restrictions. The most
+    significant of these is the maximum execution time limit per function invocation,
+    currently set at 15 minutes. This means that for a genetic algorithm where a single
+    evaluation of the fitness function is expected to exceed this duration, the method
+    we describe next will not be suitable, and one of the aforementioned alternative
+    approaches, such as AWS Elastic Beanstalk, should be considered.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在继续之前，必须记住，尽管AWS Lambda服务功能强大且灵活，但它确实存在一些限制和约束。其中最重要的是每次函数调用的最大执行时间限制，目前为15分钟。这意味着，对于一个基因算法，如果单次适应度函数评估的时间预计超过该时限，则我们接下来描述的方法将不适用，应该考虑使用上述替代方法之一，如AWS
+    Elastic Beanstalk。
+- en: 'Other limitations of Lambda include constraints on memory and compute resources,
+    deployment package size, and the number of concurrent executions, as described
+    here:'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Lambda的其他限制包括内存和计算资源的限制、部署包大小的限制以及并发执行数量的限制，具体描述如下：
+- en: '[https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html).'
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html).'
+- en: Despite the aforementioned limitations, AWS Lambda remains a viable option for
+    numerous problems tackled by genetic algorithms. In many cases, the duration required
+    to complete a single evaluation of the fitness function falls well within the
+    15-minute execution time limit imposed by Lambda. Additionally, the resources
+    provided by the Lambda service are often more than adequate for these applications.
+    This compatibility makes AWS Lambda an attractive choice for executing genetic
+    algorithms efficiently, which we will explore in the following sections.
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管存在上述限制，AWS Lambda仍然是许多基因算法问题的可行选项。在许多情况下，完成一次适应度函数评估所需的时间远远在Lambda规定的15分钟执行时间限制之内。此外，Lambda服务提供的资源通常足够支持这些应用程序。这种兼容性使得AWS
+    Lambda成为高效执行基因算法的一个具有吸引力的选择，我们将在接下来的章节中探讨这一点。
+- en: AWS Lambda and API Gateway – a winning combination
+  id: totrans-172
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: AWS Lambda与API Gateway——完美组合
+- en: AWS Lambda is a serverless computing service offered by AWS, enabling the execution
+    of code without the need for server provisioning or management. As a prime example
+    of **Function-as-a-Service** (**FaaS**), a cloud computing model, Lambda empowers
+    developers to write and update code executed in response to specific events. In
+    this model, the underlying physical hardware, server operating system maintenance,
+    automatic scaling, and capacity provisioning are all managed by the platform,
+    allowing developers to concentrate on individual functions in their application
+    code. Lambda’s automatic scaling adjusts the compute capacity for each trigger,
+    ensuring high availability.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: AWS Lambda是AWS提供的一项无服务器计算服务，允许执行代码而无需服务器的配置或管理。作为**功能即服务**（**FaaS**）的典型例子，Lambda使开发者能够编写和更新响应特定事件的代码。在这种模型中，底层的物理硬件、服务器操作系统维护、自动扩展和容量配置都由平台管理，允许开发人员专注于应用代码中的各个功能。Lambda的自动扩展根据每次触发调整计算能力，确保高可用性。
+- en: The cost-effectiveness of using AWS Lambda lies in its billing structure, which
+    charges only for the actual compute time used, with no costs incurred when the
+    code is not running. Moreover, Lambda’s seamless integration with other AWS services
+    makes it an invaluable tool for developing complex applications. A key integration
+    is with **AWS API Gateway**, a fully managed service that serves as a “front door”
+    for applications, effectively enabling API Gateway to trigger Lambda functions
+    in response to HTTP requests. This integration facilitates the creation of serverless
+    architectures, where Lambda functions are invoked via API calls through API Gateway.
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用AWS Lambda的成本效益体现在其计费结构上，按实际使用的计算时间收费，当代码未运行时不会产生任何费用。此外，Lambda与其他AWS服务的无缝集成使其成为开发复杂应用程序的宝贵工具。一个关键的集成是与**AWS
+    API Gateway**，这是一个完全托管的服务，作为应用程序的“前门”，使API Gateway能够在HTTP请求响应中触发Lambda函数。这个集成促进了无服务器架构的创建，其中Lambda函数通过API
+    Gateway的API调用触发。
+- en: This powerful combination allows us to deploy our existing Flask application
+    to the AWS cloud, leveraging both the API Gateway and Lambda service. What’s more,
+    thanks to the Zappa framework, which will be described in the next section, we
+    can deploy our Flask application without any modifications, fully utilizing the
+    benefits of serverless architecture.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个强大的组合使我们能够将现有的Flask应用程序部署到AWS云中，利用API Gateway和Lambda服务。更重要的是，得益于Zappa框架（将在下一节中介绍），我们可以在不做任何修改的情况下部署Flask应用，充分利用无服务器架构的优势。
+- en: Serverless Python with Zappa
+  id: totrans-176
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 无服务器Python与Zappa
+- en: '**Zappa** is an open source framework that simplifies the deployment of Python
+    web applications on AWS Lambda. It’s particularly well-suited for Flask (as well
+    as Django—another Python web framework) applications. Zappa handles all of the
+    setup and configuration required to run a web application on Lambda, turning it
+    into a serverless application. This includes packaging the application, setting
+    up the necessary AWS configurations, and deploying it to Lambda.'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Zappa**是一个开源框架，简化了在AWS Lambda上部署Python Web应用程序的过程。它特别适用于Flask（以及Django——另一个Python
+    Web框架）应用程序。Zappa处理所有运行Web应用程序所需的设置和配置，将其转变为无服务器应用程序。这包括打包应用程序、设置必要的AWS配置并将其部署到Lambda上。'
+- en: In addition, Zappa provides features such as database migrations, scheduling
+    of function executions, and integration with various AWS services, making it a
+    comprehensive tool for deploying Python web applications on AWS Lambda.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，Zappa还提供数据库迁移、功能执行调度和与各种AWS服务的集成，使其成为一个综合性的工具，用于在AWS Lambda上部署Python Web应用程序。
+- en: 'To install Zappa, make sure you are within the server’s virtual environment,
+    and use the following command:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要安装Zappa，确保你在服务器的虚拟环境中，然后使用以下命令：
+- en: '[PRE26]'
+  id: totrans-180
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: Before proceeding further, it’s important to have a working AWS account, as
+    described in the next subsection.
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在继续之前，确保你有一个有效的AWS账户，具体步骤将在下一个小节中说明。
+- en: Setting up an AWS account
+  id: totrans-182
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 设置AWS账户
+- en: To be able to deploy our server to the AWS cloud, you need a valid AWS account.
+    The **AWS Free Tier**, available to new AWS customers, allows you to explore and
+    use AWS services for free within certain usage limits.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了能够将我们的服务器部署到AWS云，你需要一个有效的AWS账户。**AWS免费套餐**，新AWS用户可以使用，允许你在一定的使用限制内免费探索和使用AWS服务。
+- en: 'If you don’t currently have an AWS account, you can sign up for a free account
+    here:'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你目前还没有AWS账户，可以在这里注册一个免费账户：
+- en: '[https://aws.amazon.com/free/](https://aws.amazon.com/free/)'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://aws.amazon.com/free/](https://aws.amazon.com/free/)'
+- en: 'Next, install the AWS CLI by following the instructions available here:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，通过以下链接的说明安装 AWS CLI：
+- en: '[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)'
+- en: 'You will also need to set up your AWS credentials file, as described here:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你还需要设置你的 AWS 凭证文件，具体方法请参阅以下内容：
+- en: '[https://wellarchitectedlabs.com/common/documentation/aws_credentials/](https://wellarchitectedlabs.com/common/documentation/aws_credentials/)'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://wellarchitectedlabs.com/common/documentation/aws_credentials/](https://wellarchitectedlabs.com/common/documentation/aws_credentials/)'
+- en: These will be used by Zappa behind the scenes as we continue to deploy our service.
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些将在后台由 Zappa 使用，随着我们继续部署服务。
+- en: Deploying the server module to the Lambda service
+  id: totrans-191
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 部署服务器模块到 Lambda 服务
+- en: 'It’s time to deploy our Flask application to AWS using Zappa. Navigate into
+    the server directory, make sure the server virtual environment is active, and
+    issue the following command:'
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在是时候使用 Zappa 将我们的 Flask 应用程序部署到 AWS 了。进入服务器目录，确保服务器的虚拟环境已激活，然后执行以下命令：
+- en: '[PRE27]'
+  id: totrans-193
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: This will start an interactive dialog. Zappa will prompt you for various details
+    such as the production environment name (with `dev` as the default), a unique
+    S3 bucket name for storing files (it suggests a unique name for you), and the
+    name of your application (which should be set to `fitness_evaluator.app` in your
+    case). It will also ask about the global deployment option, with `n` as the default
+    choice. You can typically accept all the default values provided by Zappa during
+    this setup process.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将启动一个交互式对话框。Zappa 会提示你提供各种详细信息，例如生产环境名称（默认值为 `dev`）、用于存储文件的唯一 S3 桶名称（它会为你建议一个唯一名称），以及你的应用程序名称（在你的案例中应该设置为
+    `fitness_evaluator.app`）。它还会询问全局部署选项，默认选择是 `n`。在此设置过程中，你通常可以接受 Zappa 提供的所有默认值。
+- en: The outcome of this initialization process is a file named `zappa_settings.json`.
+    This file contains the deployment configuration for your application. If necessary,
+    you can manually edit this file to modify the configuration or add additional
+    options.
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该初始化过程的结果是一个名为 `zappa_settings.json` 的文件。此文件包含应用程序的部署配置。如果需要，你可以手动编辑此文件以修改配置或添加其他选项。
+- en: 'We are now ready to deploy our application. If you chose `dev` as the name
+    for your production environment during the Zappa configuration, use the following
+    command:'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经准备好部署应用程序。如果在 Zappa 配置过程中选择了 `dev` 作为生产环境的名称，请使用以下命令：
+- en: '[PRE28]'
+  id: totrans-197
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: The deployment process may take a few minutes. Once it’s complete, you will
+    see a message indicating `Deployment complete!` along with a URL. *This URL serves
+    as the base URL for your newly* *deployed application*.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部署过程可能需要几分钟。完成后，你将看到一个显示 `部署完成！` 的消息，并附有一个 URL。*此 URL 作为你新部署应用程序的基本 URL*。
+- en: We can now manually test the deployment by pointing a browser to the new URL.
+    The response `/one_max_fitness/1100110010` to the base URL. The response, `5`,
+    should be displayed after a few seconds.
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在可以通过将浏览器指向新 URL 来手动测试部署。响应 `/one_max_fitness/1100110010` 会返回基本 URL。几秒钟后，响应
+    `5` 应该会显示出来。
+- en: Before we continue to use our async client module with the newly deployed server,
+    we can log in to the AWS console to review what has been deployed. This step is
+    optional—if you’re already familiar with the AWS console, feel free to skip to
+    the following section.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们继续使用异步客户端模块与新部署的服务器进行交互之前，我们可以登录到 AWS 控制台查看已部署的内容。此步骤是可选的——如果你已经熟悉 AWS 控制台，可以跳过并直接进入下一节。
+- en: Examining the deployment on AWS
+  id: totrans-201
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 审查在 AWS 上的部署
+- en: To review the main components deployed by Zappa, start by logging in to the
+    AWS console at [https://aws.amazon.com/console/](https://aws.amazon.com/console/).
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要查看 Zappa 部署的主要组件，请首先登录到 AWS 控制台：[https://aws.amazon.com/console/](https://aws.amazon.com/console/)
+- en: 'Once logged in, navigate to the Lambda service, where you can view the list
+    of available Lambda functions. You should see your newly deployed function listed
+    there, similar to the following screen capture:'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 登录后，导航到 Lambda 服务，你可以查看可用的 Lambda 函数列表。你应该可以看到你的新部署函数，类似于以下屏幕截图：
+- en: '![Figure 14.4: The Lambda function created by the Zappa deployment](img/B20851_14_4.jpg)'
+  id: totrans-204
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.4: Zappa 部署创建的 Lambda 函数](img/B20851_14_4.jpg)'
+- en: 'Figure 14.4: The Lambda function created by the Zappa deployment'
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '图 14.4: Zappa 部署创建的 Lambda 函数'
+- en: In our case, the Lambda function created by Zappa is named `server-dev`. This
+    name is derived from the combination of the directory name where the application
+    resides (`server`) and the production environment name we chose (`dev`).
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的例子中，Zappa 创建的 Lambda 函数名为 `server-dev`。这个名字来源于应用程序所在目录的名称（`server`）和我们选择的生产环境名称（`dev`）的组合。
+- en: 'Clicking on the function’s name will bring us to the **Function overview**
+    screen, where we can further explore detailed information, such as the function’s
+    runtime environment, triggers, configuration settings, and monitoring metrics,
+    as seen here:'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点击函数名称将带我们进入**函数概览**屏幕，在这里我们可以进一步探索详细信息，如函数的运行时环境、触发器、配置设置和监控指标，如下所示：
+- en: '![Figure 14.5: The Lambda Function overview screen](img/B20851_14_5.jpg)'
+  id: totrans-208
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.5：Lambda 函数概览屏幕](img/B20851_14_5.jpg)'
+- en: 'Figure 14.5: The Lambda Function overview screen'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 14.5：Lambda 函数概览屏幕
+- en: 'Next, let’s navigate to the API Gateway service, where you can view the list
+    of available APIs. You should see our newly deployed API listed there, with the
+    same name as the Lambda function, as shown here:'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们进入 API 网关服务，您可以查看可用 API 的列表。您应该能看到我们新部署的 API，名称与 Lambda 函数相同，如下所示：
+- en: '![Figure 14.6: The API created by the Zappa deployment](img/B20851_14_6.jpg)'
+  id: totrans-211
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.6：Zappa 部署创建的 API](img/B20851_14_6.jpg)'
+- en: 'Figure 14.6: The API created by the Zappa deployment'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 14.6：Zappa 部署创建的 API
+- en: 'Clicking on the API’s name will bring us to the **Resources** screen; then,
+    selecting the **ANY** link will display a diagram that illustrates how the API
+    Gateway routes incoming requests to your Lambda function and how responses are
+    returned to the client, as shown in the following screen capture:'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点击 API 名称将带我们进入**资源**屏幕；然后，选择**ANY**链接将展示一个图表，说明 API 网关如何将传入的请求路由到 Lambda 函数，并将响应返回给客户端，如下图所示：
+- en: '![Figure 14.7: The API Gateway Resources screen](img/B20851_14_7.jpg)'
+  id: totrans-214
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 14.7：API 网关资源屏幕](img/B20851_14_7.jpg)'
+- en: 'Figure 14.7: The API Gateway Resources screen'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 14.7：API 网关资源屏幕
+- en: When you click on the Lambda symbol on the right side, it will display the name
+    of our Lambda function. This includes a hyperlink, which, when clicked, will take
+    us back to the page of our Lambda function.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当您点击右侧的 Lambda 图标时，它将显示我们的 Lambda 函数的名称。此名称包括一个超链接，点击后会带我们回到 Lambda 函数的页面。
+- en: Running the client with the Lambda-based server
+  id: totrans-217
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 运行基于 Lambda 的客户端服务器
+- en: 'To update our asynchronous client program, `02_one_max_async_client.py`, for
+    use with our newly deployed Lambda-based server, we only need to make a single
+    change: replace the existing `BASE_URL` variable value with the new URL provided
+    by the Zappa deployment.'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了更新我们的异步客户端程序 `02_one_max_async_client.py` 以适应我们新部署的基于 Lambda 的服务器，我们只需要做一个更改：将现有的
+    `BASE_URL` 变量值替换为 Zappa 部署提供的新 URL。
+- en: 'Once this is done, running the client yields output similar to previous runs,
+    demonstrating that the genetic algorithm operates the same way despite the change
+    in server infrastructure:'
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成这些操作后，运行客户端会得到与之前相似的输出，表明即使服务器基础设施发生变化，遗传算法的运行方式没有改变：
+- en: '[PRE29]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: Rerunning the client several times, the results indicate elapsed time values
+    of between 19 and 21 seconds, which are reasonable considering the server is operating
+    in a cloud environment with inherent network latency and serverless function initialization
+    times.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多次重新运行客户端，结果显示经过的时间值在 19 到 21 秒之间，考虑到服务器在云环境中运行，并且存在固有的网络延迟和无服务器功能初始化时间，这个时间是合理的。
+- en: Undeploying the server
+  id: totrans-222
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 退部署服务器
+- en: 'Once we’re finished using the server deployed via Zappa, it’s a good practice
+    to undeploy its infrastructure using the `zappa undeploy` command, initiated from
+    within our server’s virtual environment:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们使用完通过 Zappa 部署的服务器，最好通过在服务器的虚拟环境中执行 `zappa undeploy` 命令来退部署其基础设施：
+- en: '[PRE30]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: This action helps manage costs and resources efficiently by removing the deployed
+    AWS resources that are no longer in use.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个操作通过移除不再使用的 AWS 部署资源，帮助高效地管理成本和资源。
+- en: Summary
+  id: totrans-226
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, you learned how to restructure a genetic algorithm into a client-server
+    model. The client uses asynchronous I/O, while the server, built with Flask, handles
+    fitness function calculations. The server component was then successfully deployed
+    to the cloud using Zappa, making it operational as an AWS Lambda service. This
+    approach demonstrates the effective use of serverless computing in enhancing the
+    performance of genetic algorithms.
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，你学习了如何将遗传算法重构为客户端-服务器模型。客户端使用异步 I/O，而服务器则使用 Flask 构建，负责处理适应度函数的计算。然后，服务器组件通过
+    Zappa 成功地部署到云端，并作为 AWS Lambda 服务运行。这种方法展示了无服务器计算在提升遗传算法性能方面的有效应用。
+- en: In the next chapter, we’ll explore how genetic algorithms can be creatively
+    applied in the art world. Specifically, we’ll learn how these algorithms can be
+    used to reconstruct images of famous paintings using semi-transparent, overlapping
+    shapes. This approach not only offers a unique blend of art and technology but
+    also provides an insightful look into the versatile applications of genetic algorithms
+    in fields beyond traditional computing.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章中，我们将探讨遗传算法如何在艺术领域中得到创造性应用。具体来说，我们将学习如何利用这些算法，通过半透明的重叠形状重建著名画作的图像。这种方法不仅为艺术与技术提供了独特的结合，而且还为遗传算法在传统计算以外的领域提供了深刻的应用洞察。
+- en: Further reading
+  id: totrans-229
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进一步阅读
+- en: 'For more information on the topics that were covered in this chapter, please
+    refer to the following resources:'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 欲了解本章涵盖的更多内容，请参考以下资源：
+- en: '*Building Web Applications with Flask* by Italo Maia, June 2015'
+  id: totrans-231
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*使用 Flask 构建 Web 应用程序* 由 Italo Maia 编写，2015年6月'
+- en: '*Expert Python Programming: Master Python by learning the best coding practices
+    and advanced programming concepts, 4th Edition* by Michal Jaworski and Tarek Ziade,
+    May 2021 (the *Asynchronous* *programming* chapter)'
+  id: totrans-232
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*专家级 Python 编程：通过学习最佳编码实践和高级编程概念掌握 Python，第4版* 由 Michal Jaworski 和 Tarek Ziade
+    编写，2021年5月（*异步* *编程* 章节）'
+- en: '*AWS Lambda Quick Start Guide: Learn how to build and deploy serverless applications
+    on AWS* by Markus Klems, June 2018'
+  id: totrans-233
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*AWS Lambda 快速入门指南：学习如何在 AWS 上构建和部署无服务器应用程序* 由 Markus Klems 编写，2018年6月'
+- en: '*Mastering AWS Lambda: Learn how to build and deploy serverless applications*
+    by Yohan Wadia and Udita Gupta, August 2017'
+  id: totrans-234
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*掌握 AWS Lambda：学习如何构建和部署无服务器应用程序* 由 Yohan Wadia 和 Udita Gupta 编写，2017年8月'
+- en: 'Zappa framework documentation:'
+  id: totrans-235
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Zappa 框架文档：
+- en: '[https://github.com/zappa/Zappa](https://github.com/zappa/Zappa)'
+  id: totrans-236
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '[https://github.com/zappa/Zappa](https://github.com/zappa/Zappa)'
+- en: 'Python **asyncio** library:'
+  id: totrans-237
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Python **asyncio** 库：
+- en: '[https://docs.python.org/3/library/asyncio.html](https://docs.python.org/3/library/asyncio.html)'
+  id: totrans-238
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '[https://docs.python.org/3/library/asyncio.html](https://docs.python.org/3/library/asyncio.html)'

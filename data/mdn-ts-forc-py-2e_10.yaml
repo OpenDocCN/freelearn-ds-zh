@@ -1,0 +1,2475 @@
+- en: '8'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '8'
+- en: Forecasting Time Series with Machine Learning Models
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用机器学习模型进行时间序列预测
+- en: In the previous chapter, we started looking at machine learning as a tool to
+    solve the problem of time series forecasting. We talked about a few techniques
+    such as time delay embedding and temporal embedding, both of which cast a time
+    series forecasting problem as a classical regression problem from the machine
+    learning paradigm. In this chapter, we’ll look at these techniques in detail and
+    go through them in a practical sense using the London Smart Meters dataset we
+    have been working with throughout this book.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们开始将机器学习作为解决时间序列预测问题的工具。我们讨论了几种技术，如时间延迟嵌入和时间嵌入，这两者将时间序列预测问题作为机器学习范式中的经典回归问题。在本章中，我们将详细探讨这些技术，并通过本书中一直使用的伦敦智能电表数据集，实践这些技术。
+- en: 'In this chapter, we will cover the following topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下主题：
+- en: Training and predicting with machine learning models
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用机器学习模型进行训练和预测
+- en: Generating single-step forecast baselines
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 生成单步预测基准
+- en: Standardized code to train and evaluate machine learning models
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 标准化代码用于训练和评估机器学习模型
+- en: Training and predicting for multiple households
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 为多个家庭进行训练和预测
+- en: Technical requirements
+  id: totrans-8
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: You will need to set up the **Anaconda** environment following the instructions
+    in the *Preface* of the book to get a working environment with all the libraries
+    and datasets required for the code in this book. Any additional library will be
+    installed while running the notebooks.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您需要按照本书*前言*中的说明设置**Anaconda**环境，以便为本书中的代码提供一个包含所有必需库和数据集的工作环境。在运行笔记本时，任何额外的库都会被安装。
+- en: 'You will need to run the following notebooks before using the code in this
+    chapter:'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用本章代码之前，您需要运行以下笔记本：
+- en: '`02-Preprocessing_London_Smart_Meter_Dataset.ipynb` in `Chapter02`'
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`02-Preprocessing_London_Smart_Meter_Dataset.ipynb`位于`Chapter02`中'
+- en: '`01-Setting_up_Experiment_Harness.ipynb` in `Chapter04`'
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`01-Setting_up_Experiment_Harness.ipynb`位于`Chapter04`中'
+- en: '`01-Feature_Engineering.ipynb` in `Chapter06`'
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`01-Feature_Engineering.ipynb`位于`Chapter06`中'
+- en: '`02-Dealing_with_Non-Stationarity.ipynb` in `Chapter07`'
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`02-Dealing_with_Non-Stationarity.ipynb`位于`Chapter07`中'
+- en: '`02a-Dealing_with_Non-Stationarity-Train+Val.ipynb` in `Chapter07`'
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`02a-Dealing_with_Non-Stationarity-Train+Val.ipynb`位于`Chapter07`中'
+- en: The code for this chapter can be found at [https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter08](https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter08).
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码可以在[https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter08](https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter08)找到。
+- en: Training and predicting with machine learning models
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用机器学习模型进行训练和预测
+- en: In *Chapter 5*, *Time Series Forecasting as Regression*, we talked about a schematic
+    for supervised machine learning (*Figure 5.2*). In the schematic, we mentioned
+    that the purpose of a supervised learning problem is to come up with a function,
+    ![](img/B22389_08_001.png), where ![](img/B22389_08_002.png) is the predicted
+    value, *X* is the set of features as the input, ![](img/B22389_08_003.png) is
+    the model parameters, and *h* is the approximation of the ideal function. In this
+    section, we are going to talk about *h* in more detail and see how we can use
+    different machine learning models to estimate it.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第五章*，*时间序列预测作为回归*中，我们讨论了监督式机器学习的示意图（*图5.2*）。在示意图中，我们提到监督学习问题的目的是找到一个函数，![](img/B22389_08_001.png)，其中
+    ![](img/B22389_08_002.png) 是预测值，*X* 是作为输入的特征集，![](img/B22389_08_003.png) 是模型参数，*h*
+    是理想函数的近似。在本节中，我们将更详细地讨论 *h*，并看看如何使用不同的机器学习模型来估计它。
+- en: '*h* is any function that approximates the ideal function, but it can be thought
+    of as an element of all possible functions from a family of functions. More formally,
+    we can say the following:'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*h* 是任何近似理想函数的函数，但可以视为一个函数族中所有可能函数的元素。更正式地，我们可以这样说：'
+- en: '![](img/B22389_08_004.png)'
+  id: totrans-20
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_004.png)'
+- en: Here, *H* is a family of functions that we also call a model. For instance,
+    linear regression is a type of model or a family of functions. For each value
+    of the coefficients, the linear regression model gives you a different function
+    and *H* becomes the set of all possible functions a linear regression model can
+    produce.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*H* 是我们也称之为模型的一个函数族。例如，线性回归是一种模型或函数族。对于每个系数值，线性回归模型都会给出一个不同的函数，*H* 就是线性回归模型可以生成的所有可能函数的集合。
+- en: There are many families of functions, or models, available. For a more complete
+    understanding of the space, we will need to refer to other machine learning resources.
+    The *Further reading* section contains a few resources that may help you start
+    the journey. As for the scope of this book, we narrowly define it as the application
+    of machine learning models for forecasting, rather than machine learning in general.
+    And although we can use any regression model, we will only review a few popular
+    and useful ones for time series forecasting and see them in action. We leave it
+    to you to strike out on your own and explore the other algorithms to become familiar
+    with them as well. But before we look at the different models, we need to generate
+    a few baselines again.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多种函数或模型可供选择。为了更全面地理解这一领域，我们需要参考其他机器学习资源。*进一步阅读*部分包含了一些可能帮助您开始学习的资源。至于本书的范围，我们将其狭义地定义为应用机器学习模型进行预测，而不是机器学习的全部内容。尽管我们可以使用任何回归模型，但我们将仅回顾几个流行且有用的时间序列预测模型，并观察它们的实际应用。我们鼓励您自己探索其他算法，熟悉它们。然而，在查看不同模型之前，我们需要再次生成几个基准。
+- en: Generating single-step forecast baselines
+  id: totrans-23
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 生成单步预测基准
+- en: We reviewed and generated a few baseline models back in *Chapter 4*, *Setting
+    a Strong Baseline Forecast*. But there is a small issue – the prediction horizon.
+    In *Chapter 6*, *Feature Engineering for Time Series Forecasting*, we talked about
+    how the machine learning model can only predict one target at a time and that
+    we are sticking with a single-step forecast. The baselines we generated earlier
+    were not single-step, but multi-step. Generating a single-step forecast for baseline
+    algorithms such as ARIMA or ETS requires us to fit on history, predict one step
+    ahead, and then fit again using one more day. Predicting in such an iterative
+    fashion for our test or validation period requires us to do this iteration ~1,440
+    times (48 data points a day for 30 days) and repeat this for all the households
+    in our selected dataset (150, in our case). This would take quite a long time
+    to compute.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第4章*，*设置强基准预测*中回顾并生成了几个基准模型。但有一个小问题——预测范围。在*第6章*，*时间序列预测的特征工程*中，我们讨论了机器学习模型一次只能预测一个目标，而且我们坚持使用单步预测。我们之前生成的基准并非单步预测，而是多步预测。生成单步预测的基准算法，如ARIMA或ETS，需要我们根据历史数据进行拟合，预测一步，然后再次拟合，增加一天数据。以这种迭代方式对测试或验证期进行预测需要我们迭代约1,440次（每天48个数据点，30天），并且需要对我们选择的数据集中的所有家庭（在我们的例子中是150个）进行此操作。这将需要相当长的时间来计算。
+- en: We have chosen the naïve method and seasonal naïve (*Chapter 4*, *Setting a
+    Strong Baseline Forecast*), which can be implemented as native pandas methods,
+    as two baseline methods to generate single-step forecasts.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们选择了简单方法和季节性简单方法（*第4章*，*设置强基准预测*），这两种方法可以作为原生的pandas方法实现，用作生成单步预测的基准方法。
+- en: 'Naïve forecasts perform unreasonably well for single-step-ahead forecasts and
+    can be considered a strong baseline. In the `Chapter08` folder, there is a notebook
+    named `00-Single_Step_Backtesting_Baselines.ipynb` that generates these baselines
+    and saves them to disk. Let’s run the notebook now. The notebook generates the
+    baselines for both the validation and test datasets and saves the predictions,
+    metrics, and aggregate metrics to disk. The aggregate metrics for the test period
+    are as follows:'
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 简单预测在单步预测中表现异常好，可以被认为是一个强有力的基准。在`Chapter08`文件夹中，有一个名为`00-Single_Step_Backtesting_Baselines.ipynb`的笔记本，它生成这些基准并将其保存到磁盘。让我们现在运行这个笔记本。该笔记本会为验证集和测试集生成基准，并将预测、指标和聚合指标保存到磁盘。测试期的聚合指标如下：
+- en: '![Figure 8.1 – Aggregate metrics for a single-step baseline ](img/B22389_08_01.png)'
+  id: totrans-27
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.1 – 单步基准的聚合指标](img/B22389_08_01.png)'
+- en: 'Figure 8.1: Aggregate metrics for a single-step baseline'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.1：单步基准的聚合指标
+- en: To make training and evaluating these models easier, we have used a standard
+    structure throughout. Let’s quickly review that structure as well so that you
+    can follow along with the notebooks closely.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了简化这些模型的训练和评估，我们在整个过程中使用了统一的结构。让我们快速回顾一下这个结构，以便您能够更好地跟随笔记本的内容。
+- en: Standardized code to train and evaluate machine learning models
+  id: totrans-30
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 标准化代码以训练和评估机器学习模型
+- en: There are two main ingredients while training a machine learning model – *data*
+    and the *model* itself. Therefore, to standardize the pipeline, we defined three
+    configuration classes (`FeatureConfig`, `MissingValueConfig`, and `ModelConfig`)
+    and another wrapper class (`MLForecast`) over scikit-learn-style estimators `(.fit
+    - .predict`) to make the process smooth. Let’s look at each of them.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 训练机器学习模型时有两个主要因素 —— *数据* 和 *模型* 本身。因此，为了标准化流程，我们定义了三个配置类（`FeatureConfig`、`MissingValueConfig`
+    和 `ModelConfig`），以及一个封装类（`MLForecast`），用于 scikit-learn 风格的估算器（`.fit - .predict`），以使过程更加顺畅。让我们逐一了解它们。
+- en: '**Notebook alert:**'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**笔记本提示：**'
+- en: To follow along with the code, use the `01-Forecasting_with_ML.ipynb` notebook
+    in the `Chapter08` folder and the code in the `src` folder.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要跟随代码进行操作，请使用 `Chapter08` 文件夹中的 `01-Forecasting_with_ML.ipynb` 笔记本和 `src` 文件夹中的代码。
+- en: FeatureConfig
+  id: totrans-34
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: FeatureConfig
+- en: '`FeatureConfig` is a Python `dataclass` that defines a few key attributes and
+    functions that are necessary while processing the data. For instance, continuous,
+    categorical, and Boolean columns need separate kinds of preprocessing before being
+    fed into the machine learning model. Let’s see what `FeatureConfig` holds:'
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`FeatureConfig` 是一个 Python `dataclass`，定义了一些在处理数据时必需的关键属性和函数。例如，连续型、分类型和布尔型列需要分别进行预处理，才能输入机器学习模型。让我们看看
+    `FeatureConfig` 包含了什么：'
+- en: '`date`: A mandatory column that sets the name of the column with `date` in
+    the DataFrame.'
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`date`：一个必填列，设置 DataFrame 中 `date` 列的名称。'
+- en: '`target`: A mandatory column that sets the name of the column with `target`
+    in the DataFrame.'
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`target`：一个必填列，设置 DataFrame 中 `target` 列的名称。'
+- en: '`original_target`: If `target` contains a transformed target (log, differenced,
+    and so on), `original_target` specifies the name of the column with the target
+    without transformation. This is essential for calculating metrics such as MASE,
+    which relies on training history. If not given, it is assumed that `target` and
+    `original_target` are the same.'
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`original_target`：如果 `target` 包含已转换的目标（如对数转换、差分等），则 `original_target` 指定没有经过转换的目标列的名称。这对于计算依赖于训练历史的指标，如
+    MASE，非常重要。如果未提供此参数，则默认认为 `target` 和 `original_target` 是相同的。'
+- en: '`continuous_features`: A list of continuous features.'
+  id: totrans-39
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`continuous_features`：一个连续特征列表。'
+- en: '`categorical_features`: A list of categorical features.'
+  id: totrans-40
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`categorical_features`：一个分类特征列表。'
+- en: '`boolean_features`: A list of Boolean features. Boolean features are categorical
+    but only have two unique values.'
+  id: totrans-41
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`boolean_features`：一个布尔特征列表。布尔特征是分类特征，但只有两个独特值。'
+- en: '`index_cols`: A list of columns that are set as a DataFrame index while preprocessing.
+    Typically, we would give the datetime and, in some cases, the unique ID of a time
+    series as indices.'
+  id: totrans-42
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`index_cols`：在预处理过程中设置为 DataFrame 索引的列列表。通常，我们会将日期时间以及在某些情况下时间序列的唯一 ID 作为索引。'
+- en: '`exogenous_features`: A list of exogenous features. The features in the DataFrame
+    may be from the feature engineering process, such as the lags or rolling features,
+    but also external sources such as the temperature data in our dataset. This is
+    an optional field that lets us bifurcate the exogenous features from the rest
+    of the features. The items in this list should be a subset of `continuous_features`,
+    `categorical_features`, or `boolean_features`.'
+  id: totrans-43
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`exogenous_features`：一个外生特征列表。DataFrame 中的特征可能来自特征工程过程，如滞后或滚动特征，也可能来自外部数据源，例如我们数据集中的温度数据。这是一个可选字段，允许我们将外生特征与其余特征区分开来。此列表中的项应是
+    `continuous_features`、`categorical_features` 或 `boolean_features` 的子集。'
+- en: 'In addition to a bit of validation on the inputs, there is also a helpful method
+    called `get_X_y` in the class, with the following parameters:'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了对输入进行一些验证外，类中还有一个名为 `get_X_y` 的有用方法，包含以下参数：
+- en: '`df`: A DataFrame that contains all the necessary columns, including the target,
+    if available'
+  id: totrans-45
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`df`：一个包含所有必要列的 DataFrame，包括目标列（如果可用）。'
+- en: '`categorical`: A Boolean flag for including categorical features or not'
+  id: totrans-46
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`categorical`：一个布尔标志，用于指示是否包含分类特征。'
+- en: '`exogenous`: A Boolean flag for including exogenous features or not'
+  id: totrans-47
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`exogenous`：一个布尔标志，用于指示是否包含外生特征。'
+- en: The function returns a tuple of `(features, target, original_target)`.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该函数返回一个元组 `(features, target, original_target)`。
+- en: All we need to do is initialize the class, like any other class, with the feature
+    names separated into the parameters of the class. The entire code that contains
+    all the features is available in the accompanying notebook.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只需像初始化任何其他类一样，初始化该类，并将特征名称分配给类的参数。包含所有特征的完整代码可在随附的笔记本中找到。
+- en: 'After setting the `FeatureConfig` data class, we can pass any DataFrame with
+    the features defined to the `get_X_y` function to get the features, target, and
+    original target:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在设置`FeatureConfig`数据类后，我们可以将任何定义了特征的DataFrame传递给`get_X_y`函数，获取特征、目标和原始目标：
+- en: '[PRE0]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: As you can see, we are not using categorical features or exogenous features
+    here, as I want to focus on the core algorithms and show how they can be drop-in
+    replacements for other classical time series models we saw earlier. We will talk
+    about how to handle categorical features in *Chapter 15*, *Strategies for Global
+    Deep Learning Forecasting Models*.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，我们在这里没有使用类别特征或外生特征，因为我想专注于核心算法，并展示它们如何成为我们之前看到的其他经典时间序列模型的直接替代。我们将在*第15章*，*全球深度学习预测模型策略*中讨论如何处理类别特征。
+- en: MissingValueConfig
+  id: totrans-53
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: MissingValueConfig
+- en: Another key setting is how to deal with missing values. We saw a few ways to
+    fill in missing values from a time series context in *Chapter 3*, *Analyzing and
+    Visualizing Time Series Data*, and we have already filled in missing values and
+    prepared our datasets. But a few missing values will be created in the feature
+    engineering required to convert a time series into a regression problem. For instance,
+    when creating lag features, the earliest date in the dataset will not have enough
+    data to create a lag and will be left empty.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个关键设置是如何处理缺失值。我们在*第3章*，*分析与可视化时间序列数据*中看到了一些填充时间序列上下文中的缺失值的方法，并且我们已经填充了缺失值并准备好了数据集。但是，在将时间序列转换为回归问题所需的特征工程中，还会产生一些缺失值。例如，在创建滞后特征时，数据集中的最早日期将没有足够的数据来创建滞后，因此会留空。
+- en: '**Best practice:**'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践：**'
+- en: Although filling with zero or mean is the default or go-to method for the majority
+    of the data scientist community, we should always make an effort to fill in missing
+    values as intelligently as possible. In terms of lag features, filling with zero
+    can distort the feature. Instead of filling with zero, a backward fill (using
+    the earliest value in the column to fill backward) might be a much better fit.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管用零或均值填充是大多数数据科学家社区的默认方法或常用方法，但我们应该始终尽力尽可能智能地填充缺失值。在滞后特征方面，填充零可能会扭曲特征。与其填充零，不如使用向后填充（使用列中的最早值向后填充），这可能会更合适。
+- en: 'Some machine learning models handle empty or `NaN` features naturally, while
+    for other machine learning models, we will need to deal with such missing values
+    before training. It’s helpful if we can define a `config` in which we set for
+    a few columns where we expect `NaN` information on how to fill those. `MissingValueConfig`
+    is a Python `dataclass` that does just that. Let’s see what it holds:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一些机器学习模型自然处理空值或`NaN`特征，而对于其他机器学习模型，我们需要在训练之前处理这些缺失值。如果我们能定义一个`config`，为一些预期会有`NaN`信息的列设置如何填充这些缺失值，那将非常有帮助。`MissingValueConfig`是一个Python
+    `dataclass`，正是用来做这件事的。让我们看看它包含了什么：
+- en: '`bfill_columns`: A list of column names that need to use a backward fill strategy
+    to fill missing values.'
+  id: totrans-58
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bfill_columns`：需要使用向后填充策略来填充缺失值的列名列表。'
+- en: '`ffill_columns`: A list of column names that need to use a forward fill strategy
+    to fill missing values. If a column name is repeated across both `bfill_columns`
+    and `ffill_columns`, that column is filled using backward fill first and the rest
+    of the missing values are filled with the forward fill strategy.'
+  id: totrans-59
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`ffill_columns`：需要使用向前填充策略来填充缺失值的列名列表。如果某列名同时出现在`bfill_columns`和`ffill_columns`中，则该列首先使用向后填充，剩余的缺失值则使用向前填充策略。'
+- en: '`zero_fill_columns`: A list of column names that need to be filled with zeros.'
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`zero_fill_columns`：需要用零填充的列名列表。'
+- en: The order in which the missing values are filled is `bfill_columns`, then `ffill_columns`,
+    and then `zero_fill_columns`. As the default strategy, the data class uses the
+    column mean to fill in missing values so that even if you have not defined any
+    strategy for a column, the missing value will be filled in using a column mean.
+    There is a method called `impute_missing_values` that takes in the DataFrame and
+    fills the empty cells with a value according to the specified strategy.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 填充缺失值的顺序是`bfill_columns`，然后是`ffill_columns`，最后是`zero_fill_columns`。作为默认策略，数据类使用列均值填充缺失值，因此即使你没有为某列定义任何策略，缺失值也会使用列均值填充。有一个叫做`impute_missing_values`的方法，它接受DataFrame并根据指定的策略填充空单元格。
+- en: ModelConfig
+  id: totrans-62
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: ModelConfig
+- en: '`ModelConfig` is a Python `dataclass` that holds a few details regarding the
+    modeling process, such as whether to normalize the data, whether to fill in missing
+    values, and so on. Let’s take a detailed look at what it holds:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`ModelConfig`是一个Python的`dataclass`，它包含了关于建模过程的一些细节，比如是否对数据进行标准化、是否填充缺失值等等。让我们详细看一下它包含的内容：'
+- en: '`model`: This is a mandatory parameter that can be any scikit-learn-style estimator.'
+  id: totrans-64
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`model`: 这是一个必需的参数，可以是任何scikit-learn风格的估算器。'
+- en: '`name`: A string name or identifier for the model. If it’s not used, it will
+    revert to the name of the class that was passed in as `model`.'
+  id: totrans-65
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`name`: 模型的字符串名称或标识符。如果未使用该参数，它将恢复为作为`model`传递的类名称。'
+- en: '`normalize`: A Boolean flag to set whether to apply `StandardScaler` to the
+    input or not.'
+  id: totrans-66
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`normalize`: 一个布尔标志，用于设置是否对输入应用`StandardScaler`。'
+- en: '`fill_missing`: A Boolean flag to set whether to fill empty values before training
+    or not. Some models can handle `NaN` naturally, while others can’t.'
+  id: totrans-67
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`fill_missing`: 一个布尔标志，用于设置是否在训练之前填充空值。一些模型能够自然处理`NaN`，而其他模型则不能。'
+- en: '`encode_categorical`: A Boolean flag to set whether to encode categorical columns
+    as part of the fitting procedure. If `False`, categorical encoding is expected
+    to be done separately and included as part of continuous features.'
+  id: totrans-68
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`encode_categorical`: 一个布尔标志，用于设置是否在拟合过程中将类别列进行编码。如果为`False`，则期望单独进行类别编码，并将其作为连续特征的一部分包含。'
+- en: '`categorical_encoder`: If `encode_categorical` is `True`, `categorical_encoder`
+    is the scikit-learn-style encoder we can use.'
+  id: totrans-69
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`categorical_encoder`: 如果`encode_categorical`为`True`，则`categorical_encoder`是我们可以使用的scikit-learn风格的编码器。'
+- en: 'Let’s see how we can define the `ModelConfig` data class:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何定义`ModelConfig`数据类：
+- en: '[PRE1]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: This has just one method, `clone`, that clones the estimator, along with the
+    config, into a new instance.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它只有一个方法，`clone`，该方法会将估算器和配置克隆到一个新的实例中。
+- en: MLForecast
+  id: totrans-73
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: MLForecast
+- en: 'Last but not least, we have the wrapper class around a scikit-learn-style model.
+    It uses the different configurations we have discussed to encapsulate the training
+    and prediction functions. Let’s see what parameters are available when initializing
+    the model:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后但同样重要的是，我们有一个围绕scikit-learn风格模型的包装类。它使用我们之前讨论的不同配置来封装训练和预测函数。让我们看看初始化模型时有哪些可用的参数：
+- en: '`model_config`: The instance of the `ModelConfig` class we discussed in the
+    *ModelConfig* section.'
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`model_config`: 我们在*ModelConfig*部分讨论过的`ModelConfig`类的实例。'
+- en: '`feature_config`: The instance of the `FeatureConfig` class we discussed earlier.'
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`feature_config`: 我们之前讨论过的`FeatureConfig`类的实例。'
+- en: '`missing_config`: The instance of the `MissingValueConfig` class we discussed
+    earlier.'
+  id: totrans-77
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`missing_config`: 我们之前讨论过的`MissingValueConfig`类的实例。'
+- en: '`target_transformer`: The instance of target transformers from `src.transforms`.
+    It should support `fit`, `transform`, and `inverse_transform`. It should also
+    return `pd.Series` with a datetime index to work without errors. If we have done
+    the target transform separately, then this is also used to perform `inverse_transform`
+    during prediction.'
+  id: totrans-78
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`target_transformer`: 来自`src.transforms`的目标转换器实例。它应支持`fit`、`transform`和`inverse_transform`。它还应返回带有日期时间索引的`pd.Series`，以确保无错误运行。如果我们单独执行了目标转换，那么在预测时也会使用它来执行`inverse_transform`。'
+- en: '`MLForecast` has a few functions that can help us manage the life cycle of
+    a model, once initialized. Let’s take a look.'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`MLForecast`有一些功能，可以帮助我们管理模型生命周期，一旦初始化。让我们看一下。'
+- en: The fit function
+  id: totrans-80
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 拟合函数
+- en: 'The `fit` function is similar in purpose to the scikit-learn `fit` function
+    but does a little extra by handling the standardization, categorical encoding,
+    and target transformations using the information in the three configs. The parameters
+    of the function are as follows:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`fit`函数的目的与scikit-learn的`fit`函数相似，但它额外处理了标准化、类别编码和目标转换，使用了三个配置中的信息。该函数的参数如下：'
+- en: '`X`: This is the pandas DataFrame with features to be used in the model as
+    columns.'
+  id: totrans-82
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`X`: 这是一个包含要在模型中使用的特征（作为列）的pandas DataFrame。'
+- en: '`y`: This is the target and can be a pandas DataFrame, pandas Series, or a
+    numpy array.'
+  id: totrans-83
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`y`: 这是目标，可以是pandas DataFrame、pandas Series或numpy数组。'
+- en: '`is_transformed`: This is a Boolean parameter that lets us know whether the
+    target is already transformed or not. If `True`, the `fit` method won’t be transforming
+    the target, even if we have initialized the object with `target_transformer`.'
+  id: totrans-84
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`is_transformed`: 这是一个布尔参数，告诉我们目标是否已经被转换。如果为`True`，即使我们已经用`target_transformer`初始化了对象，`fit`方法也不会转换目标。'
+- en: '`fit_kwargs`: This is a Python dictionary of keyword arguments that need to
+    be passed to the `fit` function of the estimator.'
+  id: totrans-85
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`fit_kwargs`：这是一个Python字典，包含需要传递给估算器`fit`函数的关键字参数。'
+- en: The predict function
+  id: totrans-86
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: predict函数
+- en: 'The `predict` function handles inferencing. It wraps around the `predict` function
+    of the scikit-learn estimator, but like `fit`, it does a few other things, such
+    as standardization, categorical encoding, and reversing the target transformation.
+    There is only one parameter for this function:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`predict`函数处理推断。它是对scikit-learn估算器的`predict`函数的封装，但与`fit`一样，它还做了一些其他事情，比如标准化、分类编码和反转目标转换。这个函数只有一个参数：'
+- en: '`X`: The pandas DataFrame with features to be used in the model as columns.
+    The index of the DataFrame is passed on to the prediction.'
+  id: totrans-88
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`X`：一个包含特征的pandas DataFrame，作为模型的列。DataFrame的索引将传递到预测中。'
+- en: The feature_importance function
+  id: totrans-89
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: feature_importance函数
+- en: The `feature_importance` function retrieves the feature importance from the
+    model, if available. For linear models, it extracts the coefficients, while for
+    tree-based models, it extracts the built-in importance and returns it in a sorted
+    DataFrame.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`feature_importance`函数从模型中提取特征重要性（如果有的话）。对于线性模型，它提取系数；而对于基于树的模型，它提取内建的特征重要性并返回一个排序后的DataFrame。'
+- en: Helper functions for evaluating models
+  id: totrans-91
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 用于评估模型的辅助函数
+- en: 'While the other functions we saw earlier deal with core training and predicting,
+    we also want to evaluate the model, plot the results, and so on. We have also
+    defined these functions in the notebooks or in the code base. The below function
+    is to evaluate the models in the notebook:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然我们之前看到的其他函数处理了核心训练和预测，我们还希望评估模型、绘制结果等等。我们在笔记本或代码库中也定义了这些函数。下面的函数是用来在笔记本中评估模型的：
+- en: '[PRE2]'
+  id: totrans-93
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: This provides us with a standard way of evaluating all the different models,
+    as well as automating the process at scale. We also have a function for calculating
+    the metrics, `calculate_metrics`, defined in `src/forecasting/ml_forecasting.py`.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这为我们提供了评估所有不同模型的标准方法，并且能够在大规模上自动化这个过程。我们还有一个用于计算指标的函数`calculate_metrics`，它定义在`src/forecasting/ml_forecasting.py`中。
+- en: The standard implementation that we have provided with this book is in no way
+    a one-size-fits-all approach, but rather something that works best with the flow
+    and dataset of this book. Please do not consider it as a robust library, but rather
+    a good starting point and guide to help you develop your own code.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本书中提供的标准实现并非一刀切的方法，而是最适合本书的流程和数据集的方法。请不要将其视为一个强健的库，而是一个很好的起点和指南，帮助你开发自己的代码。
+- en: Now that we have the baselines and a standard way to apply different models,
+    let’s get back to what the different models are. For the discussion ahead, let’s
+    keep *time* out of our minds because we have converted a time series forecasting
+    problem into a regression problem and factored in *time* as a feature of the problem
+    (the lags and rolling features).
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了基准线和应用不同模型的标准方法，让我们回到讨论不同模型的内容。接下来的讨论中，我们暂时不考虑*时间*因素，因为我们已将时间序列预测问题转化为回归问题，并将*时间*作为问题的特征（滞后和滚动特征）进行处理。
+- en: Linear regression
+  id: totrans-97
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 线性回归
+- en: 'Linear regression is a family of functions that takes the following form:'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 线性回归是一类函数，具有以下形式：
+- en: '![](img/B22389_08_005.png)'
+  id: totrans-99
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_005.png)'
+- en: Here, *k* is the number of features in the model and ![](img/B22389_04_010.png)
+    are the parameters of the model. There is a ![](img/B22389_04_010.png) for each
+    feature, as well as a ![](img/B22389_07_017.png), which we call the intercept,
+    which is estimated from data. Essentially, the output is a linear combination
+    of the feature vectors, *X*[i]. As the name suggests, this is a linear function.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*k*是模型中的特征数量，且![](img/B22389_04_010.png)是模型的参数。每个特征都有一个![](img/B22389_04_010.png)，还有一个![](img/B22389_07_017.png)，我们称之为截距，它是从数据中估算出来的。实质上，输出是特征向量*X*[i]的线性组合。顾名思义，这是一个线性函数。
+- en: 'The model parameters can be estimated from data,D(*X*[i,] *y*[i]), using an
+    optimization method and loss, but the most popular method of estimation is using
+    **ordinary least squares** (**OLS**). Here, we find the model parameters, ![](img/B22389_04_010.png),
+    which minimizes the residual sum of squares (**mean squared error** (**MSE**)):'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模型参数可以通过数据D(*X*[i,] *y*[i])来估算，使用优化方法和损失函数，最常用的估算方法是**普通最小二乘法**（**OLS**）。在这里，我们找到模型参数![](img/B22389_04_010.png)，它最小化残差平方和（**均方误差**（**MSE**））：
+- en: '![](img/B22389_08_010.png)'
+  id: totrans-102
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_010.png)'
+- en: The loss function here is very intuitive. We are essentially minimizing the
+    distance between the training samples and our predicted points. The square term
+    acts as a technique that does not cancel out positive and negative errors. Apart
+    from the intuitiveness of the loss, another reason why this is widely chosen is
+    that an analytical solution exists for least squares and because of that, we don’t
+    need to resort to more compute-intensive optimization techniques such as gradient
+    descent.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里的损失函数非常直观。我们本质上是在最小化训练样本与我们预测点之间的距离。平方项作为一种技术，能够避免正负误差相互抵消。除了损失函数的直观性之外，另一个广泛选择它的原因是最小二乘法有解析解，因此我们不需要使用像梯度下降这样计算密集型的优化技术。
+- en: 'Linear regression has one foot firmly planted in statistics and with the right
+    assumptions, it can be a powerful tool. Commonly, five assumptions are associated
+    with linear regression, as follows:'
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 线性回归深深植根于统计学，在正确的假设下，它可以成为一个强大的工具。线性回归通常与五个假设相关，如下所示：
+- en: The relationship between the independent and dependent variables is linear.
+  id: totrans-105
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 自变量和因变量之间的关系是线性的。
+- en: The errors are normally distributed.
+  id: totrans-106
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 误差服从正态分布。
+- en: The variance of the errors is constant across all the values of the independent
+    variable.
+  id: totrans-107
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 误差的方差在所有自变量的值范围内是恒定的。
+- en: There is no autocorrelation in the errors.
+  id: totrans-108
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 误差中没有自相关性。
+- en: There is little to no correlation between independent variables (multi-collinearity).
+  id: totrans-109
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 自变量之间几乎没有相关性（多重共线性）。
+- en: But unless you are concerned about using linear regression to come up with prediction
+    intervals (a band in which the prediction would lie with some probability), we
+    can disregard all but the first assumption to some extent.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，除非你担心使用线性回归来得出预测区间（预测结果可能出现在某个区间内的概率），否则我们可以在一定程度上忽略除第一个假设外的所有假设。
+- en: The linearity assumption (the first assumption) is relevant because if the variables
+    are not linearly related, it will result in an underfit and thus poor performance.
+    We can get around this problem to some extent by projecting the inputs into a
+    higher dimensional space. Theoretically, we can project a non-linear problem into
+    a higher-dimensional space, where the problem is linear. For instance, let’s consider
+    a non-linear function, ![](img/B22389_08_011.png). If we run linear regression
+    in the input space of ![](img/B22389_08_012.png) and ![](img/B22389_08_013.png),
+    we know the resulting model will be highly underfitting. But if we project the
+    input space from ![](img/B22389_08_012.png) and ![](img/B22389_08_013.png) to
+    ![](img/B22389_08_016.png), ![](img/B22389_08_017.png), and ![](img/B22389_08_018.png)
+    by using a polynomial transform, the function for *y* becomes a perfect linear
+    fit.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 线性假设（第一个假设）很重要，因为如果变量之间不是线性相关的，会导致欠拟合，从而表现不佳。我们可以通过将输入投影到更高维空间中，在一定程度上解决这个问题。从理论上讲，我们可以将一个非线性问题投影到更高维空间，在那里问题变成线性。例如，考虑一个非线性函数，![](img/B22389_08_011.png)。如果我们在![](img/B22389_08_012.png)和![](img/B22389_08_013.png)的输入空间中运行线性回归，我们知道得到的模型将会严重欠拟合。但如果我们通过使用多项式变换将输入空间从![](img/B22389_08_012.png)和![](img/B22389_08_013.png)投影到![](img/B22389_08_016.png)，![](img/B22389_08_017.png)和![](img/B22389_08_018.png)，那么*y*的函数将成为完美的线性拟合。
+- en: The multi-collinearity assumption (the final assumption) is partly relevant
+    to the fit of the linear function because when we have highly correlated independent
+    variables, the estimated coefficients are highly unstable and difficult to interpret.
+    The fitted function would still be working well, but because we have multi-collinearity,
+    even small changes in the inputs would make the coefficients change magnitude
+    and sign. It is a best practice to check for multi-collinearity if you are using
+    a pure linear regression. This is typically a problem in time series because the
+    features we have extracted, such as the lag and rolling features, may be correlated
+    with each other. Therefore, we will have to be careful while using and interpreting
+    linear regression on time series data.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多重共线性假设（最后一个假设）与线性函数的拟合部分相关，因为当我们有高度相关的自变量时，估计的系数会变得非常不稳定且难以解释。拟合函数仍然能够很好地工作，但由于存在多重共线性，即使是输入中的微小变化也会导致系数的幅度和符号发生变化。如果你正在使用纯线性回归，检查多重共线性是一个最佳实践。这通常是时间序列中的一个问题，因为我们提取的特征，如滞后和滚动特征，可能会相互关联。因此，在使用和解释时间序列数据上的线性回归时，我们需要格外小心。
+- en: 'Now, let’s see how we can use linear regression and evaluate the fit of a sample
+    household from our validation dataset:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用线性回归并评估来自验证数据集的一个样本家庭的拟合效果：
+- en: '[PRE3]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'The single-step forecast looks good and is already better than the naïve forecast
+    (MAE = 0.173):'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单步预测看起来不错，且已经优于天真预测（MAE = 0.173）：
+- en: '![Figure 8.2 – Linear regression forecast ](img/B22389_08_02.png)'
+  id: totrans-116
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图8.2 – 线性回归预测](img/B22389_08_02.png)'
+- en: 'Figure 8.2: Linear regression forecast'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图8.2：线性回归预测
+- en: 'The coefficients of the model, ![](img/B22389_04_010.png) (which can be accessed
+    using the `coef_` attribute of a trained scikit-learn model), show how much influence
+    each feature has on the output. So, extracting and plotting them gives us our
+    first level of visibility into the model. Let’s take a look at the coefficients
+    of the model:'
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模型的系数，![](img/B22389_04_010.png)（可以通过已训练的 scikit-learn 模型的`coef_`属性访问），展示了每个特征对输出的影响程度。因此，提取并绘制这些系数为我们提供了对模型的第一层可视化。让我们来看看模型的系数：
+- en: '![Figure 8.3 – Feature importance of linear regression (top 15) ](img/B22389_08_03.png)'
+  id: totrans-119
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图8.3 – 线性回归的特征重要性（前15名）](img/B22389_08_03.png)'
+- en: 'Figure 8.3: Feature importance of linear regression (top 15)'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图8.3：线性回归的特征重要性（前15名）
+- en: If we look at the *Y*-axis in the feature importance chart, we can see it is
+    in billions as the coefficient for a couple of features is in orders of magnitude
+    in billions. We can also see that those features are Fourier series-based features,
+    which are correlated with each other. Even though we have a lot of coefficients
+    that are in billions, we can find them on both sides of zero, so they will essentially
+    cancel out each other in the function. This is the problem with multi-collinearity
+    that we talked about earlier. We can go about removing multi-collinear features
+    and then perform some sort of feature selection (forward selection or backward
+    elimination) to make the linear model even better.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们查看特征重要性图表中的*Y*轴，可以看到它是以十亿为单位的，因为某些特征的系数以十亿的数量级存在。我们还可以看到这些特征是基于傅里叶级数的特征，并且彼此相关。尽管我们有很多系数在十亿级别，但我们可以发现它们分布在零的两侧，因此它们在函数中实际上会相互抵消。这就是我们之前讨论的多重共线性问题。我们可以通过去除多重共线特征并进行某种特征选择（前向选择或后向消除）来使线性模型变得更好。
+- en: But instead of doing that, let’s look at a few modifications we can make to
+    the linear model that are a bit more robust to multi-collinearity and feature
+    selection.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，既然如此，不如我们来看看可以对线性模型进行的一些修改，这些修改能使其在面对多重共线性和特征选择时更为稳健。
+- en: Regularized linear regression
+  id: totrans-123
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 正则化线性回归
+- en: 'We briefly talked about regularization in *Chapter 5*, *Time Series Forecasting
+    as Regression*, and mentioned that regularization, in the general sense, is any
+    kind of constraint we place on the learning process to reduce the complexity of
+    the learned function. One of the ways linear models can become more complex is
+    by having a high magnitude of coefficients. For instance, in the linear fit, we
+    have a coefficient of 20 billion. Any small change in that feature is going to
+    cause a huge fluctuation in the resulting prediction. Intuitively, if we have
+    a large coefficient, the function becomes more flexible and complex. One way we
+    can fix this is to apply regularization in the form of weight decay. Weight decay
+    is when we add a term that penalizes the magnitude of the coefficients to the
+    loss function. The loss function, the residual sum of squares, now becomes as
+    follows:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第5章*《时间序列预测与回归》中简要讨论了正则化，并提到正则化在一般意义上是我们在学习过程中对学习函数复杂度进行约束的任何手段。线性模型变得更加复杂的一种方式是系数的幅度很大。例如，在线性拟合中，我们的系数为200亿。这个特征的任何微小变化都会导致预测结果出现巨大波动。直观地看，如果我们有一个较大的系数，函数就会变得更加灵活和复杂。我们可以通过应用正则化（如权重衰减）来解决这个问题。权重衰减是指在损失函数中加入一个惩罚项，用于惩罚系数的幅度。损失函数，即残差平方和，现在变为如下形式：
+- en: '![](img/B22389_08_020.png)'
+  id: totrans-125
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_020.png)'
+- en: Here, *W* is the weight decay and ![](img/B22389_08_021.png) is the strength
+    of regularization.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*W* 是权重衰减，![](img/B22389_08_021.png) 是正则化的强度。
+- en: '*W* is typically the norm of the weight matrix. In linear algebra, the norm
+    of a matrix is a measure of how large its elements are. There are many norms for
+    a matrix, but the two most common norms that are used for regularization are the
+    **L1** and **L2** norms. When we use the L1 norm to regularize linear regression,
+    we call it **lasso regression**, while when we use the L2 norm, we call it **ridge
+    regression**. When we apply weight decay regularization, we are forcing the coefficients
+    to be lower, which means that it also acts as an internal feature selection because
+    the features that don’t add a lot of value will get very low or zero (depending
+    on the type of regularization) coefficients, which means they contribute little
+    to nothing in the resulting function.'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*W* 通常是权重矩阵的范数。在线性代数中，矩阵的范数是衡量其元素大小的一种方式。矩阵有许多种范数，但用于正则化的两种最常见的范数是 **L1** 范数和
+    **L2** 范数。当我们使用 L1 范数来正则化线性回归时，我们称之为 **lasso 回归**，而当我们使用 L2 范数时，我们称之为 **ridge
+    回归**。当我们应用权重衰减正则化时，我们迫使系数变小，这意味着它也充当了内部特征选择的作用，因为那些没有提供太多价值的特征会得到非常小或零的系数（取决于正则化类型），这意味着它们在最终的函数中贡献甚微甚至没有贡献。'
+- en: 'The L1 norm is defined as the sum of the absolute values of the matrix. For
+    weight decay regularization, the L1 norm would be as follows:'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: L1 范数定义为矩阵各元素绝对值的和。对于权重衰减正则化，L1 范数可以表示为如下形式：
+- en: '![](img/B22389_08_022.png)'
+  id: totrans-129
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_022.png)'
+- en: 'The L2 norm is defined as the sum of squared values of a matrix. For weight
+    decay regularization, the L2 norm would be as follows:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: L2 范数定义为矩阵各个值的平方和。对于权重衰减正则化，L2 范数可以表示为如下形式：
+- en: '![](img/B22389_08_023.png)'
+  id: totrans-131
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_023.png)'
+- en: By adding this term to the loss function of linear regression, we are forcing
+    the coefficients to be small because while the optimizer is reducing the RSS,
+    it is also incentivized to reduce *W*.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过将这个项添加到线性回归的损失函数中，我们迫使系数变小，因为优化器在减少RSS的同时，还会激励它减少 *W*。
+- en: Another way we can think about regularization is in terms of linear algebra
+    and geometry.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们思考正则化的另一个方式是从线性代数和几何学的角度来看。
+- en: The following section discusses the geometric intuition of regularization. Although
+    it would make your understanding of regularization more solid, it is not essential
+    to be able to follow the rest of this book. So, feel free to skip the next section
+    and just read the *Key point* callout if you are pressed for time or if you want
+    to come back to it later when you have time.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来的部分讨论正则化的几何直觉。虽然这将使你对正则化的理解更加深刻，但它并不是理解本书其余部分的必备条件。所以，如果你时间紧迫或者以后有时间再回来复习，你可以跳过接下来的部分，只阅读
+    *关键点* 提示。
+- en: Regularization–a geometric perspective
+  id: totrans-135
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 正则化——几何视角
+- en: If we look at the L1 and L2 norms from a slightly different perspective, we
+    will see that they are measures of distance.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们从稍微不同的角度来看 L1 和 L2 范数，我们会发现它们是距离的度量。
+- en: 'Let *B* be the vector of all the coefficients, ![](img/B22389_04_010.png),
+    in linear regression. A vector is an array of numbers, but geometrically, it is
+    also an arrow from the origin to a point in the *n*-dimensional coordinate space.
+    Now, the L2 norm is nothing but the Euclidean distance from the origin on that
+    point in space defined by the vector, *B*. The L1 norm is the Manhattan distance
+    or taxicab distance from the origin on that point in space defined by the vector,
+    *B*. Let’s see this in a diagram:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让*B*表示线性回归中所有系数的向量，![](img/B22389_04_010.png)。向量是一个数字数组，但从几何学的角度来看，它也是从原点到*n*维坐标空间中某一点的箭头。现在，L2
+    范数仅仅是该向量 *B* 所定义的空间中从原点到该点的欧几里得距离。L1 范数是从原点到该点的曼哈顿距离或出租车距离，该点也由向量 *B* 定义。让我们通过图示来看看这一点：
+- en: '![Figure 8.4 – Euclidean versus Manhattan distance ](img/B22389_08_04.png)'
+  id: totrans-138
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.4 – 欧几里得距离与曼哈顿距离](img/B22389_08_04.png)'
+- en: 'Figure 8.4: Euclidean versus Manhattan distance'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.4：欧几里得距离与曼哈顿距离
+- en: Euclidean distance is the length of the direct path from the origin to the point.
+    But if we can only move parallel to the two axes, we will have to travel the distance
+    of ![](img/B22389_07_017.png) along the one axis first, and then a distance of
+    ![](img/B22389_07_018.png) along the other. This is the Manhattan distance.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 欧几里得距离是从原点到该点的直线距离。但如果我们只能平行于两个坐标轴移动，那么我们首先需要沿一个坐标轴走距离 ![](img/B22389_07_017.png)，然后再沿另一个坐标轴走距离
+    ![](img/B22389_07_018.png)。这就是曼哈顿距离。
+- en: Let’s say we are in a city (for example, Manhattan) where the buildings are
+    laid out in square blocks and the straight streets intersect at right angles,
+    and we want to travel from point A to point B. Euclidean distance is the direct
+    distance from point A to point B, which in the real sense is only possible if
+    we parkour along the tops of the buildings. On the other hand, the Manhattan distance
+    is the actual distance a taxicab would take while traveling along the right-angled
+    roads from point A to point B.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们在一个城市（例如曼哈顿），那里建筑物排布成方形街区，直路相交成直角，我们想从 A 点到 B 点。欧几里得距离是从 A 点到 B 点的直接距离，在现实中，只有在我们能在建筑物顶上进行跑酷的情况下才能实现。而曼哈顿距离则是出租车沿着直角道路从
+    A 点到 B 点的实际行驶距离。
+- en: To develop further geometrical intuition about the L1 and L2 norms, let’s do
+    one thought experiment. If we move the point, ![](img/B22389_08_027.png), in the
+    2D space while keeping the Euclidean distance or the L2 norm the same, we will
+    end up with a circle with its center at the origin. This becomes a sphere in 3D
+    and a hypersphere in *n*-D. If we trace out the same but keep the L1 norm the
+    same, we will end up with a diamond with its center at the origin. This would
+    become a cube in 3D and a hypercube in *n*-D.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了进一步发展对 L1 和 L2 范数的几何直觉，我们进行一个思想实验。如果我们在二维空间中移动点 ![](img/B22389_08_027.png)，同时保持欧几里得距离或
+    L2 范数不变，我们将得到一个以原点为中心的圆。在三维空间中，这将变成一个球体，在 *n* 维空间中则是一个超球体。如果我们保持 L1 范数不变而追踪相同的路径，我们将得到一个以原点为中心的菱形。在三维空间中，这将变成一个立方体，在
+    *n* 维空间中是一个超立方体。
+- en: 'Now, when we are optimizing for the weights, in addition to the main objective
+    of reducing the loss function, we are also encouraging the coefficients to stay
+    within a defined distance (norm) from the origin. Geometrically, this means that
+    we are asking the optimization to find a vector, ![](img/B22389_04_010.png), that
+    minimizes the loss function and stays within the geometric shape (circle or square)
+    defined by the norm. We can see this in the following diagram:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，当我们优化权重时，除了减少损失函数的主要目标外，我们还鼓励系数保持在一个定义的距离（范数）内，远离原点。从几何角度来看，这意味着我们要求优化找到一个向量
+    ![](img/B22389_04_010.png)，该向量在最小化损失函数的同时，也保持在由范数定义的几何形状（圆形或正方形）内。我们可以在以下图表中看到这一点：
+- en: '![Figure 8.5 – Regularization with the L1 Norm (lasso regression) versus the
+    L2 Norm (ridge regression) ](img/B22389_08_05.png)'
+  id: totrans-144
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.5 – 使用 L1 范数（套索回归）与 L2 范数（岭回归）进行正则化](img/B22389_08_05.png)'
+- en: 'Figure 8.5: Regularization with the L1 norm (lasso regression) versus the L2
+    norm (ridge regression)'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.5：使用 L1 范数（套索回归）与 L2 范数（岭回归）进行正则化
+- en: The concentric circles in the diagram are the contours of the loss function,
+    with the innermost being the lowest. As we move outward, the loss increases. So,
+    instead of selecting a ![](img/B22389_08_029.png), regularized regression will
+    select a ![](img/B22389_04_010.png) that intersects with the norm geometry.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图中的同心圆是损失函数的等高线，最内圈为最低点。随着我们向外移动，损失增加。因此，正则化回归不会选择 ![](img/B22389_08_029.png)，而是选择一个与范数几何形状相交的
+    ![](img/B22389_04_010.png)。
+- en: This geometric interpretation also makes understanding another key difference
+    between ridge and lasso regression easier. Lasso regression, because of the L1
+    norm, produces a sparse solution. Earlier, we mentioned that weight decay regularization
+    does implicit feature selection. But depending on whether you are applying the
+    L1 or L2 norm, the kind of implicit feature selection differs.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种几何解释也使得理解岭回归和套索回归之间的另一个关键区别变得更容易。由于 L1 范数的作用，套索回归会产生一个稀疏解。之前，我们提到过权重衰减正则化会进行隐式特征选择。但根据你是应用
+    L1 还是 L2 范数，隐式特征选择的方式是不同的。
+- en: '**Key point:**'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**关键点：**'
+- en: For an L2 norm, the coefficients of less relevant features are pushed close
+    to zero, but not exactly zero. The feature will still play a role in the final
+    function, but its influence will be minuscule. The L1 norm, on the other hand,
+    pushes the coefficients of such features completely to zero, resulting in a sparse
+    solution. Therefore, L1 regularization promotes sparsity and feature selection,
+    whereas L2 regularization reduces model complexity by shrinking the coefficients
+    toward zero without necessarily eliminating any.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于 L2 范数，较不相关特征的系数会被推近零，但不会完全为零。该特征仍然会在最终的函数中发挥作用，但其影响会微乎其微。另一方面，L1 范数则将这些特征的系数完全推向零，从而得到一个稀疏解。因此，L1
+    正则化促进稀疏性和特征选择，而 L2 正则化通过将系数缩小到接近零来减少模型复杂度，但不一定会完全消除任何系数。
+- en: This can be understood better using the geometrical interpretation of regularization.
+    In optimization, the interesting points are usually found in the extrema or *corners*
+    of a shape. There are no corners in a circle, so an L2 norm is created; the minima
+    can lie anywhere on the edge of the circle. But for the diamond, we have four
+    corners, and the minima would lie in those corners. So, with the L2 norm, the
+    solution can move very close to zero, but not necessarily zero. However, with
+    the L1 norm, the solution would be on the corners, where the coefficient can be
+    pushed to an absolute zero.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用正则化的几何解释可以更好地理解这一点。在优化中，通常在极值点或*角落*处找到有趣的点。圆形没有角落，因此创建了L2范数；极小值可以位于圆的任何边缘。但对于菱形，我们有四个角，极小值会出现在这些角落。因此，使用L2范数时，解可以接近零，但不一定是零。然而，使用L1范数时，解会出现在角落处，在那里系数可以被压缩到绝对零。
+- en: 'Now, let’s see how we can use ridge regression and evaluate the fit on a sample
+    household from our validation dataset:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用岭回归并评估我们验证数据集中一个家庭的拟合情况：
+- en: '[PRE4]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Let’s look at the single-step-ahead forecast from `RidgeCV`. It looks very
+    similar to linear regression. Even the MAE is the same for this household:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看看`RidgeCV`的单步预测。它看起来与线性回归非常相似。即使是MAE，对于这个家庭来说也完全相同：
+- en: '![Figure 8.6 – Ridge regression forecast ](img/B22389_08_06.png)'
+  id: totrans-154
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.6 – 岭回归预测](img/B22389_08_06.png)'
+- en: 'Figure 8.6: Ridge regression forecast'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.6：岭回归预测
+- en: 'But it is interesting to look at the coefficients with the L2 regularized model.
+    Let’s take a look at the coefficients of the model:'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但用L2正则化模型来看系数是很有意思的。让我们来看看模型的系数：
+- en: '![Figure 8.7 – Feature importance of ridge regression (top 15) ](img/B22389_08_07.png)'
+  id: totrans-157
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.7 – 岭回归特征重要性（前15名）](img/B22389_08_07.png)'
+- en: 'Figure 8.7: Feature importance of ridge regression (top 15)'
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.7：岭回归特征重要性（前15名）
+- en: Now, the *Y*-axis looks reasonable and small. The coefficients for the multi-collinear
+    features have shrunk to a more reasonable level. Features such as the lag features,
+    which should ideally be highly influential, have gained the top spots. As you
+    may recall, in the linear regression (*Figure 8.3*), these features were dwarfed
+    by the huge coefficients on the Fourier features. We have just plotted the top
+    15 features here, but if you look at the entire list, you will see that there
+    will be a lot of features for which the coefficients are close to zero.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，*Y*轴看起来合理且较小。多重共线性特征的系数已经缩小到一个更合理的水平。像滞后特征这样的特征，理应具有较大影响力，已经占据了前几位。正如你可能记得的，在线性回归中（*图
+    8.3*），这些特征被傅里叶特征的巨大系数所压制。我们这里只绘制了前15个特征，但如果查看完整的列表，你会看到很多特征的系数接近零。
+- en: 'Now, let’s try lasso regression on the sample household:'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们尝试对这个家庭样本进行套索回归：
+- en: '[PRE5]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Let’s look at the single-step-ahead forecast from `LassoCV`. Like ridge regression,
+    there is hardly any visual difference from linear regression:'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看看`LassoCV`的单步预测。像岭回归一样，与线性回归几乎没有视觉差异：
+- en: '![Figure 8.8 – Lasso regression forecast ](img/B22389_08_08.png)'
+  id: totrans-163
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.8 – 套索回归预测](img/B22389_08_08.png)'
+- en: 'Figure 8.8: Lasso regression forecast'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.8：套索回归预测
+- en: 'Let’s look at the coefficients of the model:'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看看模型的系数：
+- en: '![Figure 8.9 – Feature importance of lasso regression (top 15) ](img/B22389_08_09.png)'
+  id: totrans-166
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.9 – 套索回归特征重要性（前15名）](img/B22389_08_09.png)'
+- en: 'Figure 8.9: Feature importance of lasso regression (top 15)'
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.9：套索回归特征重要性（前15名）
+- en: The coefficients are very similar to ridge regression, but if you look at the
+    full list of coefficients (in the notebook), you will see that there are a lot
+    of features where the coefficients will be zero.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系数与岭回归非常相似，但如果查看完整的系数列表（在笔记本中），你会看到很多特征的系数为零。
+- en: Even with the same MAE, MSE, and so on, ridge or lasso regression is preferred
+    to linear regression because of the additional stability and robustness that comes
+    with regularized regression, especially for forecasting, where multi-collinearity
+    is almost always present. But we need to keep in mind that all the linear regression
+    models are still only capturing linear relationships. If the dataset has a non-linear
+    relationship, the resulting fit from linear regression won’t be as good and, sometimes,
+    will be terrible.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使在 MAE、MSE 等指标相同的情况下，岭回归或套索回归仍然比线性回归更受偏好，因为正则化回归带来了额外的稳定性和鲁棒性，尤其是在预测中，多重共线性几乎总是存在。但我们需要记住，所有的线性回归模型仍然只是捕捉线性关系。如果数据集具有非线性关系，那么线性回归的拟合效果不会太好，有时甚至会非常糟糕。
+- en: Now, let’s switch tracks and look at another class of models – **decision trees**.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们换个方向，看看另一类模型——**决策树**。
+- en: Decision trees
+  id: totrans-171
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 决策树
+- en: 'Decision trees are another family of functions that is much more expressive
+    than a linear function. Decision trees split the feature space into different
+    sub-spaces and fit a very simple model (such as an average) to each. Let’s understand
+    how this partitioning works with an example. Let’s consider a regression problem
+    for predicting *Y* with just one feature, *X*, as shown in the following diagram:'
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 决策树是另一类函数，其表达能力远超过线性函数。决策树将特征空间划分为不同的子空间，并对每个子空间拟合一个非常简单的模型（例如平均值）。让我们通过一个例子来理解这种划分是如何工作的。我们考虑一个回归问题，目标是预测*Y*，并且只有一个特征*X*，如下图所示：
+- en: '![Figure 8.10 – The feature space partitioned by a decision tree ](img/B22389_08_10.png)'
+  id: totrans-173
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.10 – 由决策树划分的特征空间](img/B22389_08_10.png)'
+- en: 'Figure 8.10: The feature space partitioned by a decision tree'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.10：由决策树划分的特征空间
+- en: Right away, we can see that fitting a linear function would result in an underfit.
+    But what decision trees do is split the feature space (here, it is just *X*) into
+    different regions where the target, *Y*, is similar and then fit a simple function
+    such as an average (because it is a regression problem). In this case, the decision
+    tree has split the feature space into partitions – A, B, and C. Now, for any *X*
+    that falls into partition A, the prediction function will return the average of
+    all the points in partition A.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以立即看到，拟合一个线性函数会导致欠拟合。但决策树的做法是将特征空间（在这里就是*X*）划分为不同的区域，其中目标*Y*是相似的，然后对每个区域拟合一个简单的函数，如平均值（因为这是一个回归问题）。在这种情况下，决策树将特征空间划分为
+    A、B 和 C 三个区域。现在，对于任何落入区域 A 的*X*，预测函数将返回区域 A 中所有点的平均值。
+- en: 'These partitions are formed by creating a decision tree using data. Intuitively,
+    a decision tree creates a set of if-else conditions and tries to arrive at the
+    best way to partition the feature space to maximize the homogeneity of the target
+    variable within the partition. One helpful way to understand what a decision tree
+    does is to think of data points as beads flowing down a tree, taking a path based
+    on its features, and ending up in a final resting place. Before we talk about
+    how to create a decision tree from data, let’s take a look at its components and
+    understand the terminology surrounding it:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些划分是通过使用数据创建决策树来形成的。直观地说，决策树通过创建一组 if-else 条件来划分特征空间，并尝试找到最佳的划分方式，以最大化目标变量在每个划分中的同质性。理解决策树作用的一种有帮助的方法是将数据点想象成珠子，沿着树流动，根据其特征选择路径，最终停留在一个最终位置。在我们讨论如何从数据中创建决策树之前，让我们先看看它的组成部分，并理解相关的术语：
+- en: '![Figure 8.11 – Anatomy of a decision tree ](img/B22389_08_11.png)'
+  id: totrans-177
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.11 – 决策树的结构](img/B22389_08_11.png)'
+- en: 'Figure 8.11: Anatomy of a decision tree'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.11：决策树的结构
+- en: There are two types of nodes in a decision tree—a **decision node** and a **leaf
+    node**. A decision node is the *if-else* statement we mentioned previously. This
+    node will have a condition based on whether the data points that flow down the
+    tree take the left or right **branch**. The decision node that sits right at the
+    top has a special name—the **root node**. Finally, the process of dividing the
+    data points based on a condition and directing it to the right or left branch
+    is called **splitting**. Leaf nodes are nodes that don’t have any other branches
+    below them. These are the final resting points in the *beads flowing down a tree*
+    analogy. These are the partitions we discussed earlier in this section.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 决策树中有两种类型的节点——**决策节点** 和 **叶节点**。决策节点是我们之前提到的 *if-else* 语句。这个节点将有一个基于数据点流向左支路或右支路的条件。位于最顶部的决策节点有一个特殊的名称——**根节点**。最后，根据条件划分数据点并将其导向右支路或左支路的过程被称为**划分**。叶节点是没有其他分支的节点。它们是“珠子流经树”的类比中的最终停靠点。这些就是我们在本节中讨论的划分。
+- en: 'Formally, we can define the function that’s been generated by a decision tree
+    that has *M* partitions, *P*[1], *P*[2], …, *P*[M], as follows:'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正式地，我们可以定义由具有 *M* 个划分的决策树生成的函数 *P*[1]、*P*[2]、…、*P*[M]，如下所示：
+- en: '![](img/B22389_08_031.png)'
+  id: totrans-181
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_031.png)'
+- en: Here, *x* is the input, *c*[m] is the constant response for the region, *P*[m],
+    and *I* is a function that is 1 if ![](img/B22389_08_032.png); otherwise, it’s
+    0.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*x* 是输入，*c*[m] 是该区域的常数响应，*P*[m]，而 *I* 是一个函数，当 ![](img/B22389_08_032.png)
+    时为 1；否则，它为 0。
+- en: For regression trees, we usually adopt the squared loss as the loss function.
+    In that case, *c*[m] is usually set as the average of all *y*, where the corresponding
+    *x* falls in the *P*[m] partition.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于回归树，我们通常采用平方损失作为损失函数。在这种情况下，*c*[m] 通常设置为所有 *y* 的平均值，其中对应的 *x* 落入 *P*[m] 划分中。
+- en: Now that we know how a decision tree functions, the only thing left to understand
+    is how to decide which feature to split on and where to split the feature.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们知道了决策树是如何工作的，剩下的就是理解如何决定在什么特征上进行划分，以及如何划分特征。
+- en: Many algorithms have been proposed over the years on how to create a decision
+    tree from data such as ID3, C4.5, CART, and so on. Using **Classification and
+    Regression Trees** (**CART**) is one of the most popular methods out of the lot
+    and supports regression as well. Therefore, we will just stick to CART in this
+    book. Classification Trees are used when the target variable is categorical (e.g.,
+    predicting a class label). Regression Trees are used when the target variable
+    is continuous (e.g., predicting a numerical value).
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多年来，已经提出了许多算法来根据数据创建决策树，比如 ID3、C4.5、CART 等。在这些算法中，使用 **分类与回归树**（**CART**）是最流行的方法之一，并且它也支持回归。因此，本书中我们将坚持使用
+    CART。分类树用于目标变量为类别型（例如，预测类标签）时。回归树用于目标变量为连续型（例如，预测数值）时。
+- en: 'The most optimal set of binary partitions that minimizes the sum of squares
+    globally is generally intractable. So, we adopt a greedy algorithm to create the
+    decision tree. Greedy optimization is a heuristic that builds up a solution stage
+    by stage, selecting a local optimum at each stage. Therefore, instead of finding
+    the best feature splits globally, we will create the decision tree, decision node
+    by decision node, where we choose the most optimal feature split at each stage.
+    For a regression tree, we choose a split feature, *f*, and split point, *s*, so
+    that it creates two partitions, *P*[1] and *P*[2], that minimize as follows:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 全局最优的二分划分集合，能够最小化平方和，通常是无法处理的。因此，我们采用贪心算法来创建决策树。贪心优化是一种启发式方法，它通过逐步构建解决方案，每一步选择局部最优解。因此，我们不会全局寻找最佳的特征划分，而是通过逐个节点创建决策树，在每个阶段选择最优的特征划分。对于回归树，我们选择一个划分特征
+    *f* 和划分点 *s*，使得它创建两个划分 *P*[1] 和 *P*[2]，其最小化如下：
+- en: '![](img/B22389_08_033.png)'
+  id: totrans-187
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_033.png)'
+- en: Here, *c*[1] and *c*[2] are the averages of all *y*, where the corresponding
+    *x* falls in between *P*[1] and *P*[2].
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*c*[1] 和 *c*[2] 是所有 *y* 的平均值，其中对应的 *x* 落在 *P*[1] 和 *P*[2] 之间。
+- en: Therefore, by using this criterion, we can keep splitting the regions further
+    and further. With each level we split, we increase the **depth** of the tree by
+    one. At some point, we will start overfitting the dataset. But if we don’t do
+    enough splits, we might be underfitting the data as well. One strategy is to stop
+    creating further splits when we reach a predetermined depth. In the scikit-learn
+    implementation of `DecisionTreeRegressor`, this corresponds to the `max_depth`
+    parameter. This is a hyperparameter that needs to be estimated using a validation
+    dataset. There are other strategies to stop the splits, such as setting a minimum
+    number of samples required to split (`min_samples_split`), or a minimum decrease
+    in cost to carry out a split (`min_impurity_decrease`). For a complete list of
+    parameters in `DecisionTreeRegressor`, please refer to the documentation at [https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html).
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，通过使用这个标准，我们可以不断地将区域进一步划分。每划分一次，我们就增加一次树的**深度**。在某个时刻，我们会开始过拟合数据集。但是如果我们没有做足够的划分，可能也会导致欠拟合数据。一个策略是当我们达到预定的深度时停止进一步的划分。在
+    `DecisionTreeRegressor` 的 scikit-learn 实现中，这对应于 `max_depth` 参数。这个超参数需要通过验证数据集进行估算。还有其他策略可以停止划分，比如设置划分所需的最小样本数（`min_samples_split`），或者进行划分所需的最小成本下降（`min_impurity_decrease`）。有关
+    `DecisionTreeRegressor` 中参数的完整列表，请参阅文档 [https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html)。
+- en: 'Now, let’s see how we can use a decision tree and evaluate the fit on a sample
+    household from our validation dataset:'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用决策树并在验证数据集中的一个家庭样本上评估拟合情况：
+- en: '[PRE6]'
+  id: totrans-191
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Let’s take a look at the single-step forecast from `DecisionTreeRegressor`.
+    It’s not doing as well as the linear or regularized linear regression models we
+    have run so far:'
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下 `DecisionTreeRegressor` 的单步预测。它的表现不如我们迄今为止运行的线性回归或正则化线性回归模型：
+- en: '![Figure 8.12 – Decision tree forecast ](img/B22389_08_12.png)'
+  id: totrans-193
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.12 – 决策树预测](img/B22389_08_12.png)'
+- en: 'Figure 8.12: Decision tree forecast'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.12：决策树预测
+- en: 'For the linear models, some coefficients helped us understand how much each
+    feature was important to the prediction function. In decision trees, we don’t
+    have any coefficients, but the feature importance is still estimated using the
+    mean decrease in the loss function, which is attributed to each feature in the
+    tree construction process. This can be accessed in scikit-learn models by using
+    the `feature_importance_` attribute of the trained model. Let’s take a look at
+    this feature importance:'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于线性模型，一些系数帮助我们理解每个特征在预测函数中的重要性。而在决策树中，我们没有系数，但特征的重要性依然是通过损失函数的平均下降进行估算的，这一变化归因于树构建过程中的每个特征。在
+    scikit-learn 模型中，我们可以通过训练模型的 `feature_importance_` 属性来访问这个特征重要性。让我们来看看这个特征重要性：
+- en: '![Figure 8.13 – Feature importance of a decision tree (top 15) ](img/B22389_08_13.png)'
+  id: totrans-196
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.13 – 决策树的特征重要性（前 15）](img/B22389_08_13.png)'
+- en: 'Figure 8.13: Feature importance of a decision tree (top 15)'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.13：决策树的特征重要性（前 15）
+- en: '**Best practice:**'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践：**'
+- en: Although the default feature importance is a quick and easy way to check how
+    the different features are used, due diligence should be applied before using
+    them for any other purposes, such as feature selection or making business decisions.
+    This way of assessing feature importance gives misleadingly high values for some
+    continuous features and high cardinality categorical features. It is recommended
+    to use permutation importance (`sklearn.inspection.permutation_importance`) for
+    an easy but better assessment of feature importance. The *Further reading* section
+    contains some resources regarding the interpretability of models, which can be
+    a good start to understanding what influences the models.
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管默认的特征重要性是快速且简便的方式来检查不同特征的使用情况，但在将其用于其他目的（如特征选择或业务决策）之前，应谨慎处理。这种评估特征重要性的方法会给一些连续特征和高基数类别特征误导性地赋予过高的值。建议使用置换重要性（`sklearn.inspection.permutation_importance`）来进行更好的特征重要性评估，这是一种简单但更好的评估方法。*进一步阅读*部分包含了一些关于模型可解释性的资源，这些资源可以作为理解模型影响因素的良好起点。
+- en: Here, we can see that the important features such as the lag and seasonal rolling
+    features are coming up at the top.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们可以看到重要的特征，如滞后特征和季节性滚动特征，排在了最上面。
+- en: We talked about overfitting and underfitting in *Chapter 5*, *Time Series Forecasting
+    as Regression*. These are also referred to as high bias (underfitting) and high
+    variance (overfitting) in machine learning parlance (the *Further reading* section
+    contains links if you wish to read up more about bias and variance and the trade-off
+    between them).
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第5章*，*时间序列预测作为回归*中讨论了过拟合和欠拟合。这些也在机器学习术语中被称为高偏差（欠拟合）和高方差（过拟合）（*进一步阅读*部分包含了链接，如果你想了解更多关于偏差、方差及它们之间的权衡问题，可以参考这些资源）。
+- en: A decision tree is an algorithm that is highly prone to overfitting or high
+    variance because, unlike the linear function, if given enough expressiveness,
+    it can memorize the training dataset by partitioning the feature space. Another
+    key disadvantage is a decision tree’s inability to extrapolate. Let’s consider
+    a feature, *f*, that linearly increases our target variable, *y*. The training
+    data we have has *f*[max] as the maximum value for *f* and *y*[max] as the maximum
+    value for *y*. Since the decision tree partitions the feature space and assigns
+    a constant value for that partition, even if we provide *f* > *f*[max], we will
+    still only get a prediction of ![](img/B22389_08_034.png).
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 决策树是一种非常容易发生过拟合或高方差的算法，因为与线性函数不同，决策树在具有足够表现力的情况下，能够通过划分特征空间来记住训练数据集的特征。另一个关键缺点是决策树无法外推。假设我们有一个特征*f*，它线性地增加我们的目标变量*y*。我们拥有的训练数据中，*f*[max]是*f*的最大值，*y*[max]是*y*的最大值。由于决策树划分了特征空间，并为每个区域分配了一个常数值，即使我们提供了*f*
+    > *f*[max]，它依然会仅仅给出一个预测值为![](img/B22389_08_034.png)的结果。
+- en: Now, let’s look at a model that uses decision trees, but in an ensemble, and
+    doesn’t overfit as much.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们来看一个使用决策树模型，但在集成方法中使用的模型，并且不容易发生过拟合。
+- en: Random forest
+  id: totrans-204
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 随机森林
+- en: Random Forest is an ensemble learning method that builds multiple decision trees
+    during training and merges their results for improved accuracy and robustness.
+    It excels in both classification and regression tasks by reducing overfitting
+    and enhancing predictive performance through bagging and feature randomness.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机森林是一种集成学习方法，在训练过程中构建多个决策树，并将它们的结果结合在一起，以提高准确性和鲁棒性。它在分类和回归任务中都表现出色，通过袋装法和特征随机性减少了过拟合，并提高了预测性能。
+- en: '**Ensemble learning** is a process in which we use multiple models, or experts,
+    and combine them in a way to solve the problem at hand. It taps into the *wisdom
+    of the crowd* approach, which suggests that the decision-making of a group of
+    people is typically better than any individual in that group. In the machine learning
+    context, these individual models are called **base learners**. A single model
+    may not perform well because it’s overfitting the dataset, but when we combine
+    multiple such models, they can form a strong learner.'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**集成学习**是一种使用多个模型或专家，并通过某种方式将它们结合来解决手头问题的过程。它借用了*集体智慧*的方法，这一方法认为一群人的决策通常比其中任何一个人做出的决策更为准确。在机器学习中，这些单独的模型被称为**基本学习器**。单一模型可能因为过拟合数据集而表现不佳，但当我们将多个这样的模型结合起来时，它们可以形成一个强大的学习器。'
+- en: '**Bagging** is a form of ensemble learning where we use bootstrap sampling
+    (sampling repeatedly with replacement from a population) to draw different subsets
+    of the dataset, train weak learners on each of these subsets, and combine them
+    by averaging or voting (for regression and classification, respectively). Bagging
+    works best for high-variance, low-bias weak learners and the decision tree is
+    a prime successful candidate with bagging. Theoretically, bagging maintains the
+    same level of bias on the weak learners but reduces the variance, resulting in
+    a better model. But if the weak learners are correlated with each other, the benefits
+    of bagging will be limited.'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**袋装法**（Bagging）是一种集成学习方法，在这种方法中，我们使用自助采样（从总体中反复有放回地抽取样本）来绘制数据集的不同子集，在每个子集上训练弱学习器，然后通过平均或投票的方式将它们结合在一起（分别用于回归和分类）。袋装法最适合于高方差、低偏差的弱学习器，而决策树就是一个非常适合与袋装法配合使用的成功候选者。从理论上讲，袋装法保持弱学习器的偏差水平不变，但减少了方差，从而提高了模型的表现。但如果弱学习器之间存在相关性，袋装法的效果将会受到限制。'
+- en: In 2001, Leo Brieman proposed **Random Forest**, which substantially modifies
+    standard bagging by building a large collection of decorrelated trees. He proposed
+    to alter the tree-building procedure slightly to make sure all the trees that
+    are grown on bootstrapped datasets are not correlated with each other.
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 2001年，Leo Brieman提出了**随机森林**，它在标准的袋装法基础上作出了重要修改，通过构建大量去相关的决策树来改进。为了确保在自助采样数据集上生成的所有树不相互关联，他提出略微修改树的构建过程。
+- en: '**Reference check:**'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考文献检查：**'
+- en: The original research paper for Random Forest is cited in the *References* section
+    as reference *1*.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机森林的原始研究论文在 *参考文献* 部分被引用为参考文献 *1*。
+- en: 'In the Random Forest algorithm, we decide how many trees to build. Let’s call
+    that *M* trees. Now, for each tree, the following steps are repeated:'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在随机森林算法中，我们决定构建多少棵树。我们称之为 *M* 棵树。现在，对于每棵树，重复以下步骤：
+- en: Draw a bootstrap sample from the training dataset.
+  id: totrans-212
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从训练数据集中抽取一个自助采样样本。
+- en: Select *f* features at random from all the features.
+  id: totrans-213
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从所有特征中随机选择 *f* 个特征。
+- en: Pick the best split just using *f* features and split the node into two child
+    nodes.
+  id: totrans-214
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 仅使用 *f* 个特征选择最佳分裂，并将节点分裂成两个子节点。
+- en: Repeat *steps 2* and *3* until we hit any of the defined stopping criteria.
+  id: totrans-215
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 重复 *步骤 2* 和 *步骤 3*，直到达到任何定义的停止标准。
+- en: 'This set of *M* trees is the Random Forest. The key difference here from regular
+    trees is the random sampling of features at each split, which increases randomness
+    and reduces the correlation in the outputs of different trees. While predicting,
+    we use each of these *M* trees to get a prediction. For regression problems, we
+    average them, while for classification problems, we take the majority vote. The
+    final prediction function that we learn from the Random Forest for regression
+    is as follows:'
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这组 *M* 棵树就是随机森林。与常规树的关键区别在于每次分裂时特征的随机抽样，这增加了随机性并减少了不同树输出之间的相关性。在预测时，我们使用每棵 *M*
+    树来获得一个预测结果。对于回归问题，我们取它们的平均值，而对于分类问题，我们取多数投票。我们从随机森林中学习到的回归预测函数如下：
+- en: '![](img/B22389_08_035.png)'
+  id: totrans-217
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_035.png)'
+- en: Here, *T*[t](*x*) is the output of the *t*^(th) tree in the Random Forest.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*T*[t](*x*) 是随机森林中 *t*^(th) 棵树的输出。
+- en: All the hyperparameters that we have to control the complexity of the decision
+    tree are applicable here as well (`RandomForestRegressor` from scikit-learn).
+    In addition to those, we have two other important parameters – the number of trees
+    to build in the ensemble (`n_estimators`) and the number of features randomly
+    chosen for each split (`max_features`).
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要控制决策树复杂度的所有超参数在这里同样适用（来自 scikit-learn 的 `RandomForestRegressor`）。除了这些之外，我们还有两个其他重要的参数——集成中要构建的树的数量（`n_estimators`）和每次分裂时随机选择的特征数量（`max_features`）。
+- en: 'Now, let’s see how we can use Random Forest and evaluate the fit on a sample
+    household from our validation dataset:'
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用随机森林并在验证数据集中的一个样本家庭上评估拟合效果：
+- en: '[PRE7]'
+  id: totrans-221
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Let’s take a look at this single-step forecast from `RandomForestRegressor`.
+    It’s better than the decision tree, but it’s not as good as the linear models.
+    However, we should keep in mind that we have not tuned the model and may be able
+    to get better results by setting the right hyperparameters.
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看 `RandomForestRegressor` 的这一步预测。它比决策树更好，但不如线性模型。然而，我们应该记住，我们还没有调优模型，可能通过设置正确的超参数能够获得更好的结果。
+- en: 'Now, let’s take a look at the forecast that was generated using Random Forest:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看使用随机森林生成的预测：
+- en: '![Figure 8.14 – Random Forest forecast ](img/B22389_08_14.png)'
+  id: totrans-224
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.14 – 随机森林预测](img/B22389_08_14.png)'
+- en: 'Figure 8.14: Random Forest forecast'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.14：随机森林预测
+- en: 'Just like the feature importance in decision trees, Random Forests also have
+    a very similar mechanism for estimating the feature importance. Since we have
+    a lot of trees in the Random Forest, we accumulate the decrease in split criterion
+    across all the trees in the forest and arrive at a single feature of importance
+    for the Random Forest. This can be accessed in scikit-learn models by using the
+    `feature_importance_` attribute of the trained model. Let’s take a look at the
+    feature importance:'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像决策树中的特征重要性一样，随机森林也有一个非常类似的机制来估计特征重要性。由于我们在随机森林中有很多棵树，我们会累积所有树中的分裂标准的减少，并得出一个单一的特征重要性。我们可以通过使用训练模型的
+    `feature_importance_` 属性来访问这一点。让我们来看一下特征重要性：
+- en: '![Figure 8.15 – Feature importance of a decision tree (top 15) ](img/B22389_08_15.png)'
+  id: totrans-227
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.15 – 决策树的特征重要性（前 15 名）](img/B22389_08_15.png)'
+- en: 'Figure 8.15: Feature importance of a decision tree (top 15)'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.15：决策树的特征重要性（前 15 名）
+- en: Here, we can see that the feature importance is very similar to decision trees.
+    The same caveat about this kind of feature importance applies here as well. This
+    is just a quick and dirty way of looking at what the model is using internally.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们可以看到特征重要性与决策树非常相似。关于这种特征重要性的警告同样适用于这里。这只是一种粗略的方式来看模型在内部使用了哪些特征。
+- en: Typically, Random Forest achieves good performance on many datasets with very
+    little tuning, so Random Forests are a very popular option in machine learning.
+    The fact that it is difficult to overfit with a Random Forest also increases their
+    appeal. But since Random Forest uses decision trees as the weak learners, the
+    inability of decision trees to extrapolate is passed down to Random Forest as
+    well.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，随机森林在许多数据集上表现良好，几乎不需要调整，因此随机森林在机器学习中非常流行。由于随机森林不容易过拟合，这也增加了它的吸引力。但由于随机森林使用决策树作为弱学习器，决策树无法外推的问题也会传递给随机森林。
+- en: The scikit-learn implementation of Random Forest can get a bit slow for a large
+    number of trees and data sizes. The `XGBRFRegressor` from the `XGBoost` library
+    offers an alternative implementation of a Random Forest that can be faster, especially
+    on larger datasets, due to `XGBoost`'s optimized algorithms and parallelization
+    capabilities. Moreover, `XGBRFRegressor` uses similar hyperparameters to those
+    in the scikit-learn Random Forest, making it relatively straightforward to switch
+    between implementations while tuning the model. In most cases, this is a drop-in
+    replacement and gives almost the same results. The minor difference is due to
+    small implementation details. We have used this variant in the notebooks as well.
+    This variant is preferred going forward because of obvious runtime considerations.
+    It also handles missing values natively and saves us from an additional preprocessing
+    step. More details about the implementation and how to use it can be found at
+    [https://xgboost.readthedocs.io/en/latest/tutorials/rf.html](https://xgboost.readthedocs.io/en/latest/tutorials/rf.html).
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`scikit-learn`中实现的随机森林在树的数量和数据量较大时可能会变得较慢。`XGBoost`库中的`XGBRFRegressor`提供了一个随机森林的替代实现，特别是在较大的数据集上，由于`XGBoost`优化的算法和并行化能力，它可能会更快。此外，`XGBRFRegressor`使用的超参数与`scikit-learn`的随机森林类似，使得在调整模型时切换实现方式相对简单。在大多数情况下，这是一个直接替代，几乎能得到相同的结果。细微的差异来源于一些小的实现细节。我们在笔记本中也使用了这个变体。由于显而易见的运行时考虑，未来我们更倾向于使用这种变体。它还原生支持缺失值处理，避免了额外的预处理步骤。有关实现的更多细节以及如何使用它，可以参见[https://xgboost.readthedocs.io/en/latest/tutorials/rf.html](https://xgboost.readthedocs.io/en/latest/tutorials/rf.html)。'
+- en: Now, let’s look at one last family of functions that is one of the most powerful
+    learning methods and has been proven exceedingly well in a wide variety of datasets–gradient
+    boosting.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看一下一种最后的函数族，它是最强大的学习方法之一，并且在各种数据集上得到了极好的验证——梯度提升。
+- en: Gradient boosting decision trees
+  id: totrans-233
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 梯度提升决策树
+- en: Boosting, like bagging, is another ensemble method that uses a few weak learners
+    to produce a powerful committee of models. The key difference between bagging
+    and boosting is in the way the weak learners are combined. Instead of building
+    different models in parallel on bootstrapped datasets, as bagging does, boosting
+    uses the weak learners in a sequential manner, with each weak learner applied
+    to repeatedly modified versions of the data.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提升法，像袋装法一样，是另一种集成方法，使用一些弱学习器来生成强大的模型组合。袋装法和提升法的关键区别在于弱学习器的组合方式。与袋装法在自助采样数据集上并行构建不同的模型不同，提升法按顺序使用弱学习器，每次弱学习器都会应用于反复修改过的数据版本。
+- en: 'To understand the additive function formulation, let’s consider this function:'
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了理解加法函数的公式，让我们考虑这个函数：
+- en: '![](img/B22389_08_036.png)'
+  id: totrans-236
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_036.png)'
+- en: 'We can break this function into *f*[1](*x*)= 25, *f*[2](*x*)= *x*², *f*[3](*x*)=
+    cos(*x*) and rewrite *F*(*x*) as follows:'
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将这个函数拆分成*f*[1](*x*)= 25，*f*[2](*x*)= *x*²，*f*[3](*x*)= cos(*x*)，并将*F*(*x*)重新写成如下形式：
+- en: '*F*(*x*) = *f*[1](*x*) + *f*[2](*x*) +*f*[3](*x*)'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*F*(*x*) = *f*[1](*x*) + *f*[2](*x*) + *f*[3](*x*)'
+- en: This is the kind of additive ensemble function we are learning in boosting.
+    Although, in theory, we can use any weak learner, decision trees are the most
+    popular choice. So, let’s use decision trees to explore how gradient boosting
+    works.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们在提升法中学习的加法集成函数。尽管从理论上讲，我们可以使用任何弱学习器，但决策树是最常见的选择。因此，我们使用决策树来探讨梯度提升是如何工作的。
+- en: 'Earlier, when we were discussing decision trees, we saw that a decision tree
+    that has *M* partitions, *P*[1], *P*[2], …, *P*[M], is as follows:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 早些时候，当我们讨论决策树时，我们看到一个具有*M*个分区的决策树，*P*[1]，*P*[2]，…，*P*[M]，其形式如下：
+- en: '![](img/B22389_08_037.png)'
+  id: totrans-241
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_037.png)'
+- en: 'Here, *x* is the input, *C*[m] is the constant response for the region, *P*[m],
+    and *I* is a function that is 1 if ![](img/B22389_08_038.png); otherwise, it is
+    0\. A boosted decision tree model is a sum of such trees:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*x* 是输入，*C*[m] 是该区域的常数响应，*P*[m]，*I* 是一个函数，如果 ![](img/B22389_08_038.png)，则为
+    1；否则为 0。一个增强决策树模型是这些树的总和：
+- en: '![](img/B22389_08_039.png)'
+  id: totrans-243
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_039.png)'
+- en: Since finding the optimal partitions, *P*, and the constant value, *c*, for
+    all the trees in the ensemble is a very difficult optimization problem, we usually
+    adopt a suboptimal, stagewise solution where we optimize each step as we build
+    the ensemble. In gradient boosting, we use the gradient of the loss to direct
+    our optimization, hence the name.
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于为所有树在集成中找到最佳分区 *P* 和常数值 *c* 是一个非常困难的优化问题，我们通常采用一种次优的阶段性解决方案，在构建集成时逐步优化每一步。在梯度提升中，我们使用损失函数的梯度来指导优化过程，因此得名“梯度提升”。
+- en: 'Let the loss function we are using in the training be ![](img/B22389_08_040.png).
+    Since we are looking at a stagewise additive functional form, we can replace ![](img/B22389_08_041.png)
+    with ![](img/B22389_08_042.png), where ![](img/B22389_08_043.png) is the prediction
+    of the sum of all trees until *k-1* and *T*[k](*x*) is the prediction of the tree
+    at stage *k*. Let’s look at what the gradient boosting learning procedure for
+    training data *D* with *N* samples is:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在训练中使用的损失函数为 ![](img/B22389_08_040.png)。由于我们观察的是一种逐步加法的功能形式，我们可以将 ![](img/B22389_08_041.png)
+    替换为 ![](img/B22389_08_042.png)，其中 ![](img/B22389_08_043.png) 是前 *k-1* 棵树的预测总和，*T*[k](*x*)
+    是第 *k* 阶段树的预测。我们来看一下用于训练数据 *D*（有 *N* 个样本）的梯度提升学习过程：
+- en: 'Initialize the model with a constant value by minimizing the loss function:'
+  id: totrans-246
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过最小化损失函数来初始化模型，使用常数值：
+- en: '![](img/B22389_08_044.png)'
+  id: totrans-247
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_08_044.png)'
+- en: '*b*[0] is the prediction of the model that minimizes the loss function at the
+    0th iteration. At this iteration, we do not have any weak learners yet and this
+    optimization is independent of any feature.'
+  id: totrans-248
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*b*[0] 是在第 0 次迭代中最小化损失函数的模型预测。在这个迭代中，我们还没有任何弱学习者，这个优化与任何特征无关。'
+- en: For squared error loss, this works out to be the average of all training samples,
+    while for the absolute error loss, it’s the median.
+  id: totrans-249
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于平方误差损失，这相当于所有训练样本的平均值，而对于绝对误差损失，它是中位数。
+- en: 'Now that we have the initial solution, we can start the tree-building process.
+    For *k=1 to M*, we must do the following:'
+  id: totrans-250
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们有了初步解，可以开始树构建过程。对于 *k=1 到 M*，我们必须执行以下操作：
+- en: 'Compute ![](img/B22389_08_045.png) for all the training samples:'
+  id: totrans-251
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对所有训练样本计算 ![](img/B22389_08_045.png)：
+- en: '*r*[k] is the derivative of the loss function with respect to *F*(*x*) from
+    the last iteration. It’s also called pseudo-residuals.'
+  id: totrans-252
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*r*[k] 是损失函数关于 *F*(*x*) 相对于上一轮迭代的导数。它也叫做伪残差。'
+- en: For squared error loss, this is just the residual, (![](img/B22389_08_046.png)).
+  id: totrans-253
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 对于平方误差损失，这只是残差（![](img/B22389_08_046.png)）。
+- en: Build a regular regression tree to the *r*[k] values with *M*[k] partitions
+    or leaf nodes, *P*[mk].
+  id: totrans-254
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 建立一个常规回归树，针对 *r*[k] 值，使用 *M*[k] 个分区或叶节点，*P*[mk]。
+- en: Compute ![](img/B22389_08_047.png)
+  id: totrans-255
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算 ![](img/B22389_08_047.png)
+- en: '![](img/B22389_08_048.png) is the scaling factor of the leaf or partition values
+    for the current stage.'
+  id: totrans-256
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_08_048.png) 是当前阶段叶节点或分区值的缩放因子。'
+- en: '![](img/B22389_08_049.png) is the function that was learned by the decision
+    tree from the current stage.'
+  id: totrans-257
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_08_049.png) 是当前阶段决策树学习到的函数。'
+- en: Update ![](img/B22389_08_050.png)
+  id: totrans-258
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 更新 ![](img/B22389_08_050.png)
+- en: '![](img/B22389_04_044.png) is the shrinkage parameter or learning rate.'
+  id: totrans-259
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_04_044.png) 是收缩参数或学习率。'
+- en: This process of “boosting” the errors of the previous weak model gives the algorithm
+    its name—gradient boosting, where the gradient here means the residual on the
+    previous weak model.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种“增强”前一个弱模型误差的过程赋予了算法它的名字——梯度提升，其中梯度指的是前一个弱模型的残差。
+- en: Boosting, typically, is a high-variance algorithm. This means that the chance
+    of overfitting the training dataset is quite high and that enough measures need
+    to be taken to make sure it doesn’t happen. There are many ways regularization
+    and capacity constraining have been implemented in gradient-boosted trees. As
+    always, all the key parameters that decision trees have to reduce capacity to
+    fit the data are valid here because the weak learner is a decision tree. In addition
+    to that, there are two other key parameters – the number of trees, *M* (`n_estimators`
+    in scikit-learn), and the learning rate, ![](img/B22389_04_044.png) (`learning_rate`
+    in scikit-learn).
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提升（Boosting）通常是一种高方差算法。这意味着过拟合训练数据集的风险相当高，因此需要采取足够的措施来确保不会发生过拟合。在梯度提升树中，已经实现了多种正则化和容量约束方法。与往常一样，决策树为了减少容量以适应数据的所有关键参数在这里依然有效，因为弱学习器是决策树。除此之外，还有两个其他的关键参数——树的数量，*M*（在
+    scikit-learn 中为 `n_estimators`），以及学习率，![](img/B22389_04_044.png)（在 scikit-learn
+    中为 `learning_rate`）。
+- en: When we apply a learning rate in the additive formulation, we are essentially
+    shrinking each weak learner, thus reducing the effect of any one weak learner
+    on the overall function. This was originally referred to as shrinkage, but now,
+    in all the popular implementations of gradient-boosted trees, it is referred to
+    as the learning rate. The number of trees and the learning rate are highly interdependent.
+    For the same problem, we will need a greater number of trees if we reduce the
+    learning rate. It has been empirically shown that a lower learning rate improves
+    the generalization error. Therefore, a very effective and convenient way is to
+    set the learning rate to a very low value (<0.1), set a very high value for the
+    number of trees (>5,000), and train the gradient-boosted tree with early stopping.
+    Early stopping is when we use a validation dataset to monitor the out-of-sample
+    performance while training the model. We stop adding more trees to the ensemble
+    when the out-of-sample error stops reducing.
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们在加法形式中应用学习率时，本质上是在缩小每个弱学习器的影响力，从而减少任何一个弱学习器对整体函数的影响。这最初被称为收缩（shrinkage），但现在，在所有流行的梯度提升树实现中，它被称为学习率。树的数量和学习率是高度互相依赖的。对于相同的问题，如果我们减少学习率，就需要更多的树。经验表明，较低的学习率可以改善泛化误差。因此，一种非常有效且便捷的方法是将学习率设置为非常低的值（<0.1），将树的数量设置为非常高的值（>5,000），并通过早停法训练梯度提升树。早停法是指在训练模型时，我们使用验证数据集来监控模型的外部样本表现。当外部样本误差不再减少时，我们停止向集成中添加更多的树。
+- en: Another key technique a lot of the implementations adopt is subsampling. Subsampling
+    can be done on rows and columns. Row subsampling is similar to bootstrapping,
+    where each candidate in the ensemble is trained on a subsample of the dataset.
+    Column subsampling is similar to random feature selection in Random Forest. Both
+    of these techniques introduce a regularization effect to the ensemble and help
+    reduce generalization errors. Some implementations of gradient-boosted trees,
+    such as `XGBoost` and `LightGBM`, implement L1 and L2 regularization directly
+    in the objective function as well.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 许多实现采用的另一个关键技术是子采样（subsampling）。子采样可以在行和列上进行。行子采样类似于自助采样（bootstrapping），即每个候选模型在数据集的子样本上训练。列子采样类似于随机森林中的随机特征选择。两种技术都为集成引入了正则化效果，有助于减少泛化误差。像
+    `XGBoost` 和 `LightGBM` 等一些梯度提升树的实现直接在目标函数中实现了 L1 和 L2 正则化。
+- en: 'There are many implementations of regression gradient-boosted trees. A few
+    popular implementations are as follows:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多回归梯度提升树的实现。以下是一些流行的实现：
+- en: '`GradientBoostingRegressor` and `HistGradientBoostingRegressor` in scikit-learn'
+  id: totrans-265
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: scikit-learn 中的 `GradientBoostingRegressor` 和 `HistGradientBoostingRegressor`
+- en: XGBoost by T Chen
+  id: totrans-266
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 由 T Chen 开发的 XGBoost
+- en: LightGBM from Microsoft
+  id: totrans-267
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 来自 Microsoft 的 LightGBM
+- en: CatBoost from Yandex
+  id: totrans-268
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 来自 Yandex 的 CatBoost
+- en: Each of these implementations offers changes that range from subtle to very
+    fundamental regarding the standard gradient boosting algorithm. We have included
+    a few resources in the *Further reading* section so that you can read up on these
+    differences and get acquainted with the different parameters they support.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些实现中的每一种都在标准的梯度提升算法上做出了从细微到非常根本的改动。我们在*进一步阅读*部分包含了一些资源，您可以通过这些资源了解这些差异，并熟悉它们支持的不同参数。
+- en: For our exercise, we are going to use LightGBM from Microsoft Research because
+    it is one of the fastest and best-performing implementations. LightGBM and CatBoost
+    also support categorical features out of the box and handle missing values natively.
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本次练习中，我们将使用微软研究院的 LightGBM，因为它是最快且表现最佳的实现之一。LightGBM 和 CatBoost 还原生支持类别特征并处理缺失值。
+- en: '**Reference check:**'
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考检查：**'
+- en: The original research papers for XGBoost, LightGBM, and CatBoost are cited in
+    the *References* section as *2*, *3*, and *4*, respectively.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: XGBoost、LightGBM 和 CatBoost 的原始研究论文在*参考文献*部分分别被引用为*2*、*3*和*4*。
+- en: 'Now, let’s see how we can use LightGBM and evaluate the fit on a sample household
+    from our validation dataset:'
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用 LightGBM 并在验证数据集中的一个家庭样本上评估拟合效果：
+- en: '[PRE8]'
+  id: totrans-274
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Let’s take a look at the single-step forecast from `LGBMRegressor`. It’s already
+    significantly better than all the other models we have tried so far:'
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看从 `LGBMRegressor` 获得的单步预测。它已经明显优于我们迄今为止尝试的所有其他模型：
+- en: '![Figure 8.16 – LightGBM forecast ](img/B22389_08_16.png)'
+  id: totrans-276
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.16 – LightGBM 预测](img/B22389_08_16.png)'
+- en: 'Figure 8.16: LightGBM forecast'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.16：LightGBM 预测
+- en: 'Just like the feature importance in decision trees, gradient-boosting implementations
+    also have a very similar mechanism for estimating the feature importance. The
+    feature importance for the ensemble is given by the average of split criteria
+    reduction attributed to each feature in all the trees. This can be accessed in
+    the scikit-learn API as the `feature_importance_` attribute of the trained model.
+    Let’s take a look at the feature importance:'
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与决策树中的特征重要性类似，梯度提升法（Gradient Boosting）也有一个非常相似的机制来估计特征重要性。集成模型的特征重要性由所有树中每个特征的划分标准减少量的平均值给出。这可以通过训练模型的`feature_importance_`属性在
+    scikit-learn API 中访问。让我们来看一下特征重要性：
+- en: '![Figure 8.17 – Feature importance of LightGBM (top 15) ](img/B22389_08_17.png)'
+  id: totrans-279
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.17 – LightGBM 特征重要性（前 15 名）](img/B22389_08_17.png)'
+- en: 'Figure 8.17: Feature importance of LightGBM (top 15)'
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.17：LightGBM 特征重要性（前 15 名）
+- en: There are multiple ways of getting feature importance from the model, and each
+    implementation has slightly different ways of calculating it. This is controlled
+    by parameters. The most common ways of extracting it (sticking to LightGBM terminology)
+    are `split` and `gain`. If we choose `split`, the feature importance is the number
+    of times a feature is used to split nodes in the trees. On the other hand, `gain`
+    is the total reduction in the split criterion. This can be attributed to any feature.
+    *Figure 8.17* shows `split`, which is the default value in LightGBM. We can see
+    that the order of the feature importance is very much similar to decision trees,
+    or Random Forests, with almost the same features taking the top three spots.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有多种方式可以从模型中获取特征重要性，每种实现的计算方式略有不同。这些方式是由参数控制的。最常见的提取方式（使用 LightGBM 术语）是 `split`
+    和 `gain`。如果我们选择 `split`，特征重要性就是特征用于划分树中节点的次数。另一方面，`gain` 是划分标准的总减少量，可以归因于任何特征。*图
+    8.17* 显示了 `split`，这是 LightGBM 中的默认值。我们可以看到，特征重要性的顺序与决策树或随机森林非常相似，几乎相同的特征占据了前三名。
+- en: '**Gradient boosted decision trees** (**GBDTs**) typically give us very good
+    performance on tabular data and time series as regression is no exception. This
+    very strong model has usually been part of almost all winning entries in Kaggle
+    competitions on time series forecasting in the recent past. While it is one of
+    the best machine learning model families, it still has a few disadvantages:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**梯度提升决策树**（**GBDTs**）通常在表格数据和时间序列上表现非常好，回归任务也不例外。这个非常强大的模型通常是近年来几乎所有 Kaggle
+    时间序列预测竞赛获胜作品的一部分。虽然它是最好的机器学习模型家族之一，但它仍然有一些缺点：'
+- en: GBDTs are high-variance algorithms and hence prone to overfitting. This is why
+    all kinds of regularizations are applied in different ways in most of the successful
+    implementations of GBDTs.
+  id: totrans-283
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GBDT 是高方差算法，因此容易过拟合。这就是为什么在大多数成功实现的 GBDT 中以不同的方式应用了各种正则化技术。
+- en: 'GBDTs usually take longer to train (although many modern implementations have
+    made this faster) and are not easily parallelizable as a Random Forest. In Random
+    Forest, we can train all the trees in parallel because they are independent of
+    each other. But in GBDTs, the sequential nature of the algorithm restricts parallelization.
+    All the successful implementations have clever ways of enabling parallelization
+    when creating a decision tree. LightGBM has many parallelization strategies, such
+    as feature parallel, data parallel, and voting parallel. Details regarding these
+    can be found at [https://lightgbm.readthedocs.io/en/latest/Features.html#optimization-in-distributed-learning](https://lightgbm.readthedocs.io/en/latest/Features.html#optimization-in-distributed-learning)
+    and are worth understanding. The documentation of the library also contains a
+    helpful guide for choosing between these parallelization strategies in a table:'
+  id: totrans-284
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: GBDT 通常需要更长的训练时间（尽管许多现代实现已经加速了这一过程），并且不像随机森林那样容易进行并行化。在随机森林中，我们可以并行训练所有的树，因为它们彼此独立。但在
+    GBDT 中，算法的顺序性限制了并行化。所有成功的实现都有一些巧妙的方式来在创建决策树时启用并行化。LightGBM 具有多种并行化策略，例如特征并行、数据并行和投票并行。有关这些策略的详细信息可以在[https://lightgbm.readthedocs.io/en/latest/Features.html#optimization-in-distributed-learning](https://lightgbm.readthedocs.io/en/latest/Features.html#optimization-in-distributed-learning)找到，值得理解。该库的文档还包含一个有用的指南，帮助选择这些并行化策略之间的优先级，表格中有详细说明：
+- en: '![Table 8.1 – Parallelization strategies in LightGBM ](img/B22389_08_18.png)'
+  id: totrans-285
+  prefs: []
+  type: TYPE_IMG
+  zh: '![表 8.1 – LightGBM 中的并行化策略](img/B22389_08_18.png)'
+- en: 'Figure 8.18: Parallelization strategies in LightGBM'
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.18：LightGBM 中的并行化策略
+- en: Extrapolation is a problem for GBDTs, just like it is a problem for all tree-based
+    models. There is some very weak potential for extrapolation in GBDTs, but nothing
+    that solves the problem. Therefore, if your time series has some strong trends,
+    tree-based methods will, most likely, fail to capture the trend. Either training
+    the model on detrended data or switching to another model class would be the way
+    forward. An easy way to do detrending would be to use `AutoStationaryTransformer`,
+    which we discussed in *Chapter 6*, *Feature Engineering for Time Series Forecasting*.
+  id: totrans-287
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 外推是 GBDT 的一个问题，就像所有基于树的模型一样。GBDT 在外推上有一些非常微弱的潜力，但并没有解决这个问题的方法。因此，如果你的时间序列具有一些强趋势，基于树的方法很可能无法捕捉到这个趋势。解决方法是使用去趋势的数据来训练模型，或者转向另一种模型类别。一种简单的去趋势方法是使用
+    `AutoStationaryTransformer`，我们在*第六章*《时间序列预测的特征工程》中讨论过。
+- en: 'To summarize, let’s look at the metrics and runtime that were taken by these
+    machine learning models. If you have run the notebook along with this chapter,
+    then you will find the following summary table there as well:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结一下，让我们看看这些机器学习模型所采用的度量标准和运行时间。如果你在本章中运行了笔记本，那么你会在其中找到以下总结表格：
+- en: '![Figure 8.18 – Summary of the metrics and runtimes for a sample household
+    ](img/B22389_08_19.png)'
+  id: totrans-289
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.18 – 示例家庭的度量标准和运行时间总结](img/B22389_08_19.png)'
+- en: 'Figure 8.18: Summary of the metrics and runtimes for a sample household'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.18：示例家庭的度量标准和运行时间总结
+- en: Right off the bat, we can see that all of the machine learning models we tried
+    have performed better than the baselines in all metrics except the forecast bias.
+    The three linear regression models perform well with almost equal performance
+    on MAE, MASE, and MSE, with a slight increase in runtimes for regularized models.
+    The decision tree has underperformed, but this is usually expected. Decision trees
+    need to be tuned a little better to reduce overfitting. Random Forest (both the
+    scikit-learn and `XGBoost` implementations) has improved the decision tree’s performance,
+    which is what we would expect. One key thing to note here is that the `XGBoost`
+    implementation of Random Forest is almost six times faster than the scikit-learn
+    one. Finally, LightGWM has the best performance across all metrics and a faster
+    runtime.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一开始，我们就能看到所有尝试过的机器学习模型在所有度量标准上都优于基线，除了预测偏差。三种线性回归模型在 MAE、MASE 和 MSE 上表现相当，且正则化模型的运行时间略有增加。决策树的表现不尽如人意，但这通常是可以预期的。决策树需要稍微调整一下，以减少过拟合。随机森林（包括
+    scikit-learn 和`XGBoost` 实现）提高了决策树的表现，这是我们所期望的。这里需要注意的一个关键点是，`XGBoost` 实现的随机森林比
+    scikit-learn 实现的快了将近六倍。最后，LightGBM 在所有度量标准上表现最佳，且运行时间更短。
+- en: Now, this was just one household out of all the selected ones. To see how well
+    these models are doing, we need to evaluate them on all selected households.
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，这只是所有选定家庭中的一个。为了查看这些模型的表现，我们需要在所有选定的家庭上进行评估。
+- en: Training and predicting for multiple households
+  id: totrans-293
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 为多个家庭进行训练和预测
+- en: 'We have picked a few models (`LassoCV`, `XGBRFRegressor`, and `LGBMRegressor`)
+    that are doing better in terms of metrics, as well as runtime, to run on all the
+    selected households in our validation dataset. The process is straightforward:
+    loop over all the unique combinations, inner loop over the different models to
+    run, and then train, predict, and evaluate. The code is available in the `01-Forecasting_with_ML.ipynb`
+    notebook in `Chapter08`, under the *Running an ML Forecast For All Consumers*
+    heading. You can run the code and take a break because this is going to take a
+    little less than an hour. The notebook also calculates the metrics and contains
+    a summary table that will be ready for you when you’re back.'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们选择了一些模型（`LassoCV`、`XGBRFRegressor` 和 `LGBMRegressor`），这些模型在指标和运行时间方面表现更好，来处理我们验证数据集中的所有家庭。这个过程非常简单：循环遍历所有独特的组合，内部循环遍历不同的模型进行运行，然后进行训练、预测和评估。代码可以在`Chapter08`中的`01-Forecasting_with_ML.ipynb`笔记本里找到，位于*对所有消费者进行机器学习预测*标题下。你可以运行代码然后休息一下，因为这个过程大约需要不到一小时。笔记本还会计算指标，并包含一个总结表格，当你回来时它已经准备好。
+- en: 'Let’s look at the summary now:'
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们来看一下总结：
+- en: '![Figure 8.19 – Aggregate metrics on all the households in the validation dataset
+    ](img/B22389_08_20.png)'
+  id: totrans-296
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.19 – 验证数据集上所有家庭的聚合指标](img/B22389_08_20.png)'
+- en: 'Figure 8.19: Aggregate metrics on all the households in the validation dataset'
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.19：验证数据集上所有家庭的聚合指标
+- en: Here, we can see that even at the aggregated level, the different models we
+    used perform as expected. The notebook also saves the predictions for the validation
+    set on disk.
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们可以看到，即使在聚合级别，我们使用的不同模型也按预期表现。笔记本还将验证集的预测结果保存到磁盘。
+- en: '**Notebook alert:**'
+  id: totrans-299
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**笔记本提醒：**'
+- en: We also need to run another notebook, called `01a-Forecasting_with_ML_for_Test_Dataset.ipynb`,
+    in `Chapter08`. This notebook follows the same process, generates the forecast,
+    and calculates the metrics on the test dataset.
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还需要运行另一个名为`01a-Forecasting_with_ML_for_Test_Dataset.ipynb`的笔记本，位于`Chapter08`中。这个笔记本遵循相同的流程，生成预测，并计算测试数据集上的指标。
+- en: 'The aggregate metrics for the test dataset are as follows (from the notebook):'
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 测试数据集的聚合指标如下（来自笔记本）：
+- en: '![Figure 8.20 – Aggregate metrics on all the households in the test dataset
+    ](img/B22389_08_21.png)'
+  id: totrans-302
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.20 – 测试数据集上所有家庭的聚合指标](img/B22389_08_21.png)'
+- en: 'Figure 8.20: Aggregate metrics on all the households in the test dataset'
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.20：测试数据集上所有家庭的聚合指标
+- en: In *Chapter 6*, *Feature Engineering for Time Series Forecasting*, we used `AutoStationaryTransformer`
+    (not the Transformer model, which we will learn about in *Chapter 14*) on all
+    the households and saved the transformed dataset.
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第6章*，*时间序列预测的特征工程*中，我们在所有家庭上使用了`AutoStationaryTransformer`（而不是转换器模型，我们将在*第14章*中学习）并保存了转化后的数据集。
+- en: Using AutoStationaryTransformer
+  id: totrans-305
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 AutoStationaryTransformer
+- en: 'The process is really similar to what we did earlier in this chapter, but with
+    small changes. We read in the transformed targets and joined them to our regular
+    dataset in such a way that the original target is named `energy_consumption` and
+    the transformed target is named `energy_consumption_auto_stat`:'
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个过程与我们在本章早些时候做的非常相似，唯一的区别是有一些小的变化。我们读取了转化后的目标数据，并将其与常规数据集连接，原始目标命名为`energy_consumption`，而转化后的目标命名为`energy_consumption_auto_stat`：
+- en: '[PRE9]'
+  id: totrans-307
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: And while defining `FeatureConfig`, we used `energy_consumption_auto_stat` as
+    `target` and `energy_consumption` as `original_target`.
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在定义`FeatureConfig`时，我们使用`energy_consumption_auto_stat`作为`target`，`energy_consumption`作为`original_target`。
+- en: '**Notebook alert:**'
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**笔记本提醒：**'
+- en: The `02-Forecasting_with_ML_and_Target_Transformation.ipynb` and `02a-Forecasting_with_ML_and_Target_Transformation_for_Test_Dataset.ipynb`
+    notebooks use these transformed targets to generate the forecasts for the validation
+    and test datasets, respectively.
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`02-Forecasting_with_ML_and_Target_Transformation.ipynb`和`02a-Forecasting_with_ML_and_Target_Transformation_for_Test_Dataset.ipynb`笔记本使用这些转化后的目标生成验证和测试数据集的预测。'
+- en: 'Let’s look at the summary metrics that were generated by these notebooks on
+    the transformed data:'
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看这些笔记本在转化数据上生成的总结指标：
+- en: '![Figure 8.21 – Aggregate metrics on all the households with transformed targets
+    in the validation dataset ](img/B22389_08_22.png)'
+  id: totrans-312
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.21 – 验证数据集中所有家庭的目标转化后的汇总指标](img/B22389_08_22.png)'
+- en: 'Figure 8.21: Aggregate metrics on all the households with transformed targets
+    in the validation dataset'
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.21：验证数据集中所有家庭的目标转化后的汇总指标
+- en: The target transformed models are not performing as well as the original ones.
+    This might be because the dataset doesn’t have any strong trends.
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目标转化后的模型表现不如原始模型。这可能是因为数据集没有强烈的趋势。
+- en: Congratulations on making it through a very heavy and packed chapter full of
+    theory as well as practice. We hope this has enhanced your understanding of machine
+    learning and ability to apply these modern techniques to time series data.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 恭喜你顺利完成了这一章，它包含了大量的理论和实践内容。我们希望这能增强你对机器学习的理解，并提升你将这些现代技术应用于时间序列数据的能力。
+- en: Summary
+  id: totrans-316
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: This was a very practical and hands-on chapter in which we developed some standard
+    code to train and evaluate multiple machine learning models. Then, we reviewed
+    a few key machine learning models like ridge regression, lasso regression, decision
+    trees, Random Forest, and gradient-boosted trees and how they work behind the
+    hood. To complete and reinforce what we learned, we applied the machine learning
+    models we learned about to the London Smart Meters dataset and saw how well they
+    did. This chapter sets you up to tackle the coming chapters, where we will use
+    the standardized code and these models to go deeper into forecasting with machine
+    learning.
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这一章非常实用，具有操作性，我们开发了一些标准代码来训练和评估多个机器学习模型。接着，我们回顾了几个关键的机器学习模型，如岭回归、套索回归、决策树、随机森林和梯度提升树，并探讨了它们背后的工作原理。为了巩固和强化所学知识，我们将所学的机器学习模型应用于伦敦智能电表数据集，并观察它们的表现。本章为接下来的章节做好了准备，届时我们将利用标准化代码和这些模型深入探索使用机器学习进行预测。
+- en: In the next chapter, we will start combining different forecasts into a single
+    forecast and explore concepts such as combinatorial optimization and stacking
+    to achieve state-of-the-art results.
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章，我们将开始将不同的预测结果合并为一个单一的预测，并探讨组合优化和堆叠等概念，以实现最先进的结果。
+- en: References
+  id: totrans-319
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 参考文献
+- en: 'The following references were provided in this chapter:'
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章提供了以下参考文献：
+- en: 'Breiman, L. Random Forests, Machine Learning 45, 5–32 (2001): [https://doi.org/10.1023/A:1010933404324](https://doi.org/10.1023/A:1010933404324).'
+  id: totrans-321
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Breiman, L. 随机森林，机器学习 45，5–32（2001）：[https://doi.org/10.1023/A:1010933404324](https://doi.org/10.1023/A:1010933404324)。
+- en: 'Chen, Tianqi and Guestrin, Carlos. (2016). *XGBoost: A Scalable Tree Boosting
+    System*. Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+    Discovery and Data Mining (KDD ‘16). Association for Computing Machinery, New
+    York, NY, USA, 785–794: [https://doi.org/10.1145/2939672.2939785](https://doi.org/10.1145/2939672.2939785).'
+  id: totrans-322
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 'Chen, Tianqi 和 Guestrin, Carlos. (2016). *XGBoost: A Scalable Tree Boosting
+    System*. 2016年ACM SIGKDD国际知识发现与数据挖掘会议论文集 (KDD ‘16)。计算机协会，纽约，NY，美国，785–794: [https://doi.org/10.1145/2939672.2939785](https://doi.org/10.1145/2939672.2939785)。'
+- en: 'Ke, Guolin et.al. (2017), *LightGBM: A Highly Efficient Gradient Boosting Decision
+    Tree*. Advances in Neural Information Processing Systems, pages 3149-3157: [https://dl.acm.org/doi/pdf/10.5555/3294996.3295074](https://dl.acm.org/doi/pdf/10.5555/3294996.3295074).'
+  id: totrans-323
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 'Ke, Guolin 等（2017），*LightGBM: 高效的梯度提升决策树*。神经信息处理系统进展，3149-3157页：[https://dl.acm.org/doi/pdf/10.5555/3294996.3295074](https://dl.acm.org/doi/pdf/10.5555/3294996.3295074)。'
+- en: 'Prokhorenkova, Liudmila et al. (2018), *CatBoost: unbiased boosting with categorical
+    features*. Proceedings of the 32nd International Conference on Neural Information
+    Processing Systems (NIPS’18): [https://dl.acm.org/doi/abs/10.5555/3327757.3327770](https://dl.acm.org/doi/abs/10.5555/3327757.3327770).'
+  id: totrans-324
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 'Prokhorenkova, Liudmila 等（2018），*CatBoost: 带有类别特征的无偏增强*。2018年神经信息处理系统国际会议论文集（NIPS’18）：[https://dl.acm.org/doi/abs/10.5555/3327757.3327770](https://dl.acm.org/doi/abs/10.5555/3327757.3327770)。'
+- en: Further reading
+  id: totrans-325
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进一步阅读
+- en: 'To learn more about the topics that were covered in this chapter, take a look
+    at the following resources:'
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 若想深入了解本章所涉及的主题，请查看以下资源：
+- en: '*The difference between L1 and L2 regularization*, by Terrence Parr: [https://explained.ai/regularization/L1vsL2.html](https://explained.ai/regularization/L1vsL2.html)'
+  id: totrans-327
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*L1 和 L2 正则化的区别*，作者：Terrence Parr：[https://explained.ai/regularization/L1vsL2.html](https://explained.ai/regularization/L1vsL2.html)'
+- en: '*L1 Norms versus L2 Norms*, by Aleksey Bilogur: [https://www.kaggle.com/residentmario/l1-norms-versus-l2-norms](https://www.kaggle.com/residentmario/l1-norms-versus-l2-norms)'
+  id: totrans-328
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*L1 范数与 L2 范数*，作者：Aleksey Bilogur：[https://www.kaggle.com/residentmario/l1-norms-versus-l2-norms](https://www.kaggle.com/residentmario/l1-norms-versus-l2-norms)'
+- en: '*Interpretability – Cracking Open the Black Box*, by Manu Joseph: [https://deep-and-shallow.com/2019/11/13/interpretability-cracking-open-the-black-box-part-ii/](https://deep-and-shallow.com/2019/11/13/interpretability-cracking-open-the-black-box-part-ii/)'
+  id: totrans-329
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*可解释性 – 打开黑箱*，作者：Manu Joseph：[https://deep-and-shallow.com/2019/11/13/interpretability-cracking-open-the-black-box-part-ii/](https://deep-and-shallow.com/2019/11/13/interpretability-cracking-open-the-black-box-part-ii/)'
+- en: '*The Gradient Boosters – Part III: XGBoost*, by Manu Joseph: [https://deep-and-shallow.com/2020/02/12/the-gradient-boosters-iii-xgboost/](https://deep-and-shallow.com/2020/02/12/the-gradient-boosters-iii-xgboost/)'
+  id: totrans-330
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*梯度提升算法 – 第三部分：XGBoost*，作者：Manu Joseph：[https://deep-and-shallow.com/2020/02/12/the-gradient-boosters-iii-xgboost/](https://deep-and-shallow.com/2020/02/12/the-gradient-boosters-iii-xgboost/)'
+- en: '*The Gradient Boosters – Part IV: LightGBM*, by Manu Joseph: [https://deep-and-shallow.com/2020/02/21/the-gradient-boosters-iii-lightgbm/](https://deep-and-shallow.com/2020/02/21/the-gradient-boosters-iii-lightgbm/)'
+  id: totrans-331
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*梯度提升算法 – 第四部分：LightGBM*，作者：Manu Joseph：[https://deep-and-shallow.com/2020/02/21/the-gradient-boosters-iii-lightgbm/](https://deep-and-shallow.com/2020/02/21/the-gradient-boosters-iii-lightgbm/)'
+- en: '*The Gradient Boosters – Part V: CatBoost*, by Manu Joseph: [https://deep-and-shallow.com/2020/02/29/the-gradient-boosters-v-catboost/](https://deep-and-shallow.com/2020/02/29/the-gradient-boosters-v-catboost/)'
+  id: totrans-332
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*梯度提升算法 – 第五部分：CatBoost*，作者：Manu Joseph：[https://deep-and-shallow.com/2020/02/29/the-gradient-boosters-v-catboost/](https://deep-and-shallow.com/2020/02/29/the-gradient-boosters-v-catboost/)'
+- en: '*The Gradient Boosters – Part II: Regularized Greedy Forest*, by Manu Joseph:
+    [https://deep-and-shallow.com/2020/02/09/the-gradient-boosters-ii-regularized-greedy-forest/](https://deep-and-shallow.com/2020/02/09/the-gradient-boosters-ii-regularized-greedy-forest/)'
+  id: totrans-333
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*梯度提升算法 – 第二部分：正则化贪婪森林*，作者：Manu Joseph：[https://deep-and-shallow.com/2020/02/09/the-gradient-boosters-ii-regularized-greedy-forest/](https://deep-and-shallow.com/2020/02/09/the-gradient-boosters-ii-regularized-greedy-forest/)'
+- en: '*LightGBM Distributed Learning Guide*: [https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html](https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html)'
+  id: totrans-334
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*LightGBM 分布式学习指南*：[https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html](https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html)'
+- en: Join our community on Discord
+  id: totrans-335
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加入我们社区的 Discord
+- en: 'Join our community’s Discord space for discussions with authors and other readers:'
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加入我们社区的 Discord 空间，与作者和其他读者进行讨论：
+- en: '[https://packt.link/mts](https://packt.link/mts)'
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://packt.link/mts](https://packt.link/mts)'
+- en: '![](img/QR_Code15080603222089750.png)'
+  id: totrans-338
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/QR_Code15080603222089750.png)'

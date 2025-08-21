@@ -1,0 +1,845 @@
+- en: Apache Spark Streaming
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Apache Spark流处理
+- en: 'The Apache Streaming module is a stream processing-based module within Apache
+    Spark. It uses the Spark cluster, to offer the ability to scale to a high degree.
+    Being based on Spark, it is also highly fault tolerant, having the ability to
+    rerun failed tasks by checkpointing the data stream that is being processed. The
+    following topics will be covered in this chapter after an introductory section,
+    which will provide a practical overview of how Apache Spark processes stream-based
+    data:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache流处理模块是Apache Spark中的一个基于流处理的模块。它使用Spark集群，提供高度扩展的能力。基于Spark，它也具有高度容错性，能够通过检查点正在处理的数据流来重新运行失败的任务。在本章的介绍部分之后，将涵盖以下主题，该部分将提供Apache
+    Spark如何处理基于流的数据的实际概述：
+- en: Error recovery and checkpointing
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 错误恢复与检查点
+- en: TCP-based stream processing
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: TCP基础的流处理
+- en: File streams
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 文件流
+- en: Kafka stream source
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Kafka流源
+- en: For each topic, we will provide a worked example in Scala and show how the stream-based
+    architecture can be set up and tested.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于每个主题，我们将提供一个在Scala中实现的工作示例，并展示如何设置和测试基于流的架构。
+- en: Overview
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 概览
+- en: 'The following diagram shows potential data sources for Apache Streaming, such
+    as Kafka, Flume, and HDFS:'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表展示了Apache流处理的潜在数据源，如Kafka、Flume和HDFS：
+- en: '![](img/4c32c387-9352-43a0-9566-9d7d8bcd34f8.png)'
+  id: totrans-9
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/4c32c387-9352-43a0-9566-9d7d8bcd34f8.png)'
+- en: These feed into the Spark Streaming module and are processed as Discrete Streams.
+    The diagram also shows that other Spark module functionality, such as machine
+    learning, can be used to process stream-based data.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些输入被送入Spark流处理模块，并作为离散流进行处理。该图还显示了其他Spark模块功能，如机器学习，也可以用于处理基于流的数。
+- en: 'The fully processed data can then be an output for HDFS, databases, or dashboards.
+    This diagram is based on the one at the Spark streaming website, but we wanted
+    to extend it to express the Spark module functionality:'
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完全处理后的数据可以作为输出到HDFS、数据库或仪表板。此图基于Spark流处理网站上的图，但我们希望扩展它以表达Spark模块功能：
+- en: '![](img/1691aceb-6ff7-4e59-a23e-498ba8631f74.png)'
+  id: totrans-12
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/1691aceb-6ff7-4e59-a23e-498ba8631f74.png)'
+- en: Checkpointing
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检查点
+- en: On batch processing, we are used to having fault tolerance. This means, in case
+    a node crashed, the job doesn't lose its state and the lost tasks are rescheduled
+    on other workers. Intermediate results are written to persistent storage (which
+    of course has to be fault tolerant as well which is the case for HDFS, GPFS or
+    Cloud Object Storage). Now we want to achieve the same guarantees in streaming
+    as well since it might be crucial that the data stream we are processing is not
+    lost.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在批处理中，我们习惯于具备容错性。这意味着，如果某个节点崩溃，作业不会丢失其状态，丢失的任务会在其他工作节点上重新调度。中间结果被写入持久存储（当然，这种存储也必须具备容错性，如HDFS、GPFS或云对象存储）。现在我们希望在流处理中也实现同样的保证，因为确保我们正在处理的数据流不丢失可能至关重要。
+- en: 'It is possible to set up an HDFS-based checkpoint directory to store Apache
+    Spark-based streaming information. In this Scala example, data will be stored
+    in HDFS under `/data/spark/checkpoint`. The following HDFS filesystem `ls` command
+    shows that before starting, the directory does not exist:'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以设置一个基于HDFS的检查点目录来存储基于Apache Spark的流处理信息。在这个Scala示例中，数据将存储在HDFS下的`/data/spark/checkpoint`。以下HDFS文件系统`ls`命令显示，在开始之前，该目录不存在：
+- en: '[PRE0]'
+  id: totrans-16
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'For replicating the following example, Twitter API credentials are used in
+    order to connect to the Twitter API and obtain a stream of tweets. The following
+    link explains how such credentials are created within the Twitter UI: [https://dev.twitter.com/oauth/overview/application-owner-access-tokens](https://dev.twitter.com/oauth/overview/application-owner-access-tokens).'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了复制以下示例，我们使用Twitter API凭证来连接到Twitter API并获取推文流。以下链接解释了如何在Twitter UI中创建此类凭证：[https://dev.twitter.com/oauth/overview/application-owner-access-tokens](https://dev.twitter.com/oauth/overview/application-owner-access-tokens)。
+- en: 'The following Scala code sample starts by importing Spark Streaming Context
+    and Twitter-based functionality. It then defines an application object named `stream1`:'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下Scala代码示例首先导入Spark流处理上下文和基于Twitter的功能。然后定义了一个名为`stream1`的应用程序对象：
+- en: '[PRE1]'
+  id: totrans-19
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Next, a method is defined called `createContext`, which will be used to create
+    both the Spark and Streaming contexts. It will also checkpoint the stream to the
+    HDFS-based directory using the streaming context checkpoint method, which takes
+    a directory path as a parameter. The directory path the value `(cpDir)` that was
+    passed to the `createContext` method:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，定义了一个名为 `createContext` 的方法，该方法将用于创建 Spark 和 Streaming 上下文。它还将使用流上下文检查点方法将流检查点到基于
+    HDFS 的目录，该方法接受目录路径作为参数。目录路径是传递给 `createContext` 方法的值 `(cpDir)`：
+- en: '[PRE2]'
+  id: totrans-21
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Now, the main method is defined as is the HDFS directory, as well as Twitter
+    access authority and parameters. The Spark Streaming context `ssc` is either retrieved
+    or created using the HDFS checkpoint directory via the `StreamingContext` method--`checkpoint`.
+    If the directory doesn''t exist, then the previous method called `createContext`
+    is called, which will create the context and `checkpoint`. Obviously, we have
+    truncated our own Twitter `auth.keys` in this example for security reasons:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，定义了主方法以及 HDFS 目录、Twitter 访问权限和参数。Spark Streaming 上下文 `ssc` 通过 `StreamingContext`
+    方法的 `checkpoint` 使用 HDFS 检查点目录检索或创建。如果目录不存在，则调用之前的方法 `createContext`，该方法将创建上下文和
+    `checkpoint`。显然，出于安全原因，我们在这个例子中截断了自己的 Twitter `auth.keys`：
+- en: '[PRE3]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Having run this code, which has no actual processing, the HDFS `checkpoint`
+    directory can be checked again. This time, it is apparent that the `checkpoint`
+    directory has been created and the data has been stored:'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行此代码后，由于没有实际处理，可以再次检查 HDFS `checkpoint` 目录。这次，很明显 `checkpoint` 目录已被创建，数据已被存储：
+- en: '[PRE4]'
+  id: totrans-25
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'This example, taken from the Apache Spark website, shows you how checkpoint
+    storage can be set up and used. How often is checkpointing carried out? The metadata
+    is stored during each stream batch. The actual data is stored within a period,
+    which is the maximum of the batch interval, or ten seconds. This might not be
+    ideal for you, so you can reset the value using the following method:'
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本例取自 Apache Spark 官网，展示了如何设置和使用检查点存储。检查点执行的频率是多少？元数据在每个流批次期间存储。实际数据存储在一个周期内，该周期是批次间隔或十秒的最大值。这可能不适合您，因此您可以使用以下方法重置该值：
+- en: '[PRE5]'
+  id: totrans-27
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Here, `newRequiredInterval` is the new checkpoint interval value that you require;
+    generally, you should aim for a value that is five to ten times your batch interval.
+    Checkpointing saves both the stream batch and metadata (data about the data).
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，`newRequiredInterval` 是您需要的新检查点间隔值；通常，您应该瞄准一个值，该值是您的批次间隔的五到十倍。检查点保存了流批次和元数据（关于数据的数据）。
+- en: If the application fails, then, when it restarts, the checkpointed data is used
+    when processing is started. The batch data that was being processed at the time
+    of failure is reprocessed along with the batched data since the failure. Remember
+    to monitor the HDFS disk space being used for the checkpointing.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果应用程序失败，那么当它重新启动时，在处理开始时使用检查点数据。在失败时正在处理的数据批次与自失败以来的批处理数据一起重新处理。请记住监控用于检查点的
+    HDFS 磁盘空间。
+- en: In the next section, we will examine the streaming sources and provide some
+    examples of each type.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将检查流源并提供每种类型的示例。
+- en: Streaming sources
+  id: totrans-31
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 流源
+- en: We will not be able to cover all the stream types with practical examples in
+    this section, but where this chapter is too small to include code, we will at
+    least provide a description. In this chapter, we will cover the TCP and file streams
+    and the Flume, Kafka, and Twitter streams. Apache Spark tends only to support
+    this limited set out of the box, but this is not a problem since 3rd party developers
+    provide connectors to other sources as well. We will start with a practical TCP-based
+    example. This chapter examines stream processing architecture.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们无法涵盖所有流类型的实际示例，但当本章太小而无法包含代码时，我们将至少提供描述。在本章中，我们将介绍 TCP 和文件流以及 Flume、Kafka
+    和 Twitter 流。Apache Spark 通常只支持这个有限的集合开箱即用，但这不是问题，因为第三方开发者也提供了连接到其他源的连接器。我们将从一个基于
+    TCP 的实际示例开始。本章检查流处理架构。
+- en: For instance, what happens in cases where the stream data delivery rate exceeds
+    the potential data processing rate? Systems such as Kafka provide the possibility
+    of solving this ...
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，在流数据交付速率超过潜在数据处理速率的情况下会发生什么？像 Kafka 这样的系统提供了可能解决这个问题的可能性...
+- en: TCP stream
+  id: totrans-34
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: TCP 流
+- en: There is a possibility of using the Spark Streaming Context method called `socketTextStream`
+    to stream data via TCP/IP, by specifying a hostname and port number. The Scala-based
+    code example in this section will receive data on port `10777` that was supplied
+    using the `netcat` Linux command.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有可能使用Spark Streaming Context的`socketTextStream`方法通过TCP/IP流式传输数据，只需指定主机名和端口号。本节中的基于Scala的代码示例将在端口`10777`接收数据，这些数据是通过`netcat`Linux命令提供的。
+- en: 'The `netcat` command is a Linux/Unix command which allows you to send and receive
+    data to or from local or remote IP destinations using TCP or UDP. This way every
+    shell script can play the role of a full network client or server. The following
+    is a good tutorial on how to use `netcat`: [http://www.binarytides.com/netcat-tutorial-for-beginners/](http://www.binarytides.com/netcat-tutorial-for-beginners/).'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`netcat`命令是一个Linux/Unix命令，它允许你使用TCP或UDP向本地或远程IP目的地发送和接收数据。这样，每个shell脚本都可以充当完整的网络客户端或服务器。以下是一个关于如何使用`netcat`的良好教程：[http://www.binarytides.com/netcat-tutorial-for-beginners/](http://www.binarytides.com/netcat-tutorial-for-beginners/)。'
+- en: 'The code sample starts by importing Spark, the context, and the streaming classes.
+    The object class named `stream2` is defined as it is the main method with arguments:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码示例首先导入了Spark、上下文以及流处理类。定义了一个名为`stream2`的对象类，它是带有参数的主方法。
+- en: '[PRE6]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'The number of arguments passed to the class is checked to ensure that it is
+    the hostname and port number. A Spark configuration object is created with an
+    application name defined. The Spark and streaming contexts are then created. Then,
+    a streaming batch time of `10` seconds is set:'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 检查传递给类的参数数量，以确保它是主机名和端口号。创建了一个带有定义的应用程序名称的Spark配置对象。然后创建了Spark和流处理上下文。接着，设置了`10`秒的流处理批次时间：
+- en: '[PRE7]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'A DStream called `rawDstream` is created by calling the `socketTextStream`
+    method of the streaming context using the `hostname` and port name parameters:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用`hostname`和端口名参数调用流处理上下文的`socketTextStream`方法，创建了一个名为`rawDstream`的DStream：
+- en: '[PRE8]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'A top-ten word count is created from the raw stream data by splitting words
+    with spacing. Then, a (key, value) pair is created as (word,1), which is reduced
+    by the key value, this being the word. So now, there is a list of words and their
+    associated counts. The key and value are swapped so the list becomes (count and
+    word). Then, a sort is done on the key, which is now the count. Finally, the top
+    10 items in the RDD within the DStream are taken and printed out:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过用空格分割单词，从原始流数据中创建了一个前十单词计数。然后，创建了一个(key, value)对，即(word,1)，它按键值，即单词进行缩减。现在，有一个单词列表及其关联的计数。键和值被交换，使得列表变为(计数和单词)。然后，对键（现在是计数）进行排序。最后，从DStream中的RDD中取出前10项并打印出来：
+- en: '[PRE9]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'The code closes with the Spark Streaming `start` and `awaitTermination` methods
+    being called to start the stream processing and await process termination:'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码以调用Spark Streaming的`start`和`awaitTermination`方法结束，以启动流处理并等待进程终止：
+- en: '[PRE10]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'The data for this application is provided, as we stated previously, by the
+    Linux Netcat (`nc`) command. The Linux `cat` command dumps the contents of a log
+    file, which is piped to `nc`. The `lk` options force Netcat to listen for connections
+    and keep on listening if the connection is lost. This example shows that the port
+    being used is `10777`:'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们之前所述，此应用程序的数据由Linux Netcat (`nc`)命令提供。Linux `cat`命令转储日志文件的内容，该内容被管道传输到`nc`。`lk`选项强制Netcat监听连接，并在连接丢失时保持监听。此示例显示正在使用的端口是`10777`：
+- en: '[PRE11]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'The output from this TCP-based stream processing is shown here. The actual
+    output is not as important as the method demonstrated. However, the data shows,
+    as expected, a list of 10 log file words in descending count order. Note that
+    the top word is empty because the stream was not filtered for empty words:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里展示了基于TCP的流处理的输出。实际输出不如所展示的方法重要。然而，数据显示，正如预期的那样，是一份按降序计数的10个日志文件单词列表。请注意，顶部单词为空，因为流未被过滤以排除空单词：
+- en: '[PRE12]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: This is interesting if you want to stream data using Apache Spark Streaming
+    based on TCP/IP from a host and port. However, what about more exotic methods?
+    What if you wish to stream data from a messaging system or via memory-based channels?
+    What if you want to use some of the big data tools available today such as Flume
+    and Kafka? The next sections will examine these options, but, first, we will demonstrate
+    how streams can be based on files.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想基于TCP/IP从主机和端口使用Apache Spark Streaming进行数据流处理，这会很有趣。但是，更奇特的方法呢？如果你想从消息系统或通过基于内存的通道流式传输数据怎么办？如果你想使用当今可用的一些大数据工具，如Flume和Kafka，该怎么办？接下来的部分将探讨这些选项，但首先，我们将展示如何基于文件构建流。
+- en: File streams
+  id: totrans-52
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 文件流
+- en: 'We have modified the Scala-based code example in the last section to monitor
+    an HDFS-based directory by calling the Spark Streaming Context method called `textFileStream`.
+    We will not display all of the code, given this small change. The application
+    class is now called `stream3`, which takes a single parameter--the HDFS directory.
+    The directory path could be on another storage system as well (all the code samples
+    will be available with this book):'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已修改上一节中的基于Scala的代码示例，通过调用Spark Streaming上下文的`textFileStream`方法来监控基于HDFS的目录。鉴于这一小改动，我们将不展示所有代码。应用程序类现在称为`stream3`，它接受一个参数——HDFS目录。目录路径也可以位于另一个存储系统上（所有代码示例都将随本书提供）：
+- en: '[PRE13]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: The stream processing is the same as before. The stream is split into words
+    and the top-ten word list is printed. The only difference this time is that the
+    data must be put in the HDFS directory while the application is running. This
+    is achieved ...
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 流处理与之前相同。流被分割成单词，并打印出前十个单词列表。这次唯一的区别是，数据必须在应用程序运行时放入HDFS目录。这是通过...实现的
+- en: Flume
+  id: totrans-56
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Flume
+- en: '**Flume** is an Apache open source project and product, which is designed to
+    move large amounts of data at a big data scale. It is highly scalable, distributed,
+    and reliable, working on the basis of data source, data sink, and data channels,
+    as shown in the following diagram taken from [http://flume.apache.org/](http://flume.apache.org/):'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Flume** 是一个Apache开源项目及产品，旨在以大数据规模移动大量数据。它具有高度可扩展性、分布式和可靠性，基于数据源、数据接收器和数据通道运作，如下图所示，取自[http://flume.apache.org/](http://flume.apache.org/)：'
+- en: '![](img/3dc8cd75-e72b-41ac-9c65-67f383d60539.png)'
+  id: totrans-58
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/3dc8cd75-e72b-41ac-9c65-67f383d60539.png)'
+- en: Flume uses agents to process data streams. As can be seen in the previous figure,
+    an agent has a data source, data processing channel, and data sink. A clearer
+    way to describe this flow is via the figure we just saw. The channel acts as a
+    queue for the sourced data and the sink passes the data to the next link in the
+    chain.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Flume使用代理处理数据流。如前图所示，一个代理具有数据源、数据处理通道和数据接收器。更清晰地描述此流程的方法是通过我们刚才看到的图。通道充当源数据的队列，接收器将数据传递到链中的下一个环节。
+- en: 'Flume agents can form Flume architectures; the output of one agent''s sink
+    can be the input to a second agent. Apache Spark allows two approaches to use
+    Apache Flume. The first is an Avro push-based in-memory approach, whereas the
+    second one, still based on Avro, is a pull-based system using a custom Spark sink
+    library. We are using Flume version 1.5 for this example:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Flume代理可以构成Flume架构；一个代理的接收器输出可以作为第二个代理的输入。Apache Spark支持两种使用Apache Flume的方法。第一种是基于Avro的内存推送方法，而第二种方法，同样基于Avro，是使用自定义Spark接收器库的拉取系统。本例中我们使用Flume版本1.5：
+- en: '[PRE14]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'The Flume-based Spark example that we will initially implement here is the
+    Flume-based push approach, where Spark acts as a receiver and Flume pushes the
+    data to Spark. The following figure represents the structure that we will implement
+    on a single node:'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在此初步实现的基于Flume的Spark示例是基于Flume的推送方法，其中Spark充当接收器，Flume将数据推送到Spark。下图表示我们将在单个节点上实现的结构：
+- en: '![](img/1a77c7f0-9d03-4ca9-9a72-db41aa75affb.png)'
+  id: totrans-63
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/1a77c7f0-9d03-4ca9-9a72-db41aa75affb.png)'
+- en: The message data will be sent to port `10777` on a host called `hc2r1m1` using
+    the Linux `netcat` (`nc`) command. This will act as a source (`source1`) for the
+    Flume agent (`agent1`), which will have an in-memory channel called `channel1`.
+    The sink used by `agent1` will be Apache Avro-based, again on a host called `hc2r1m1`,
+    but this time, the port number will be `11777.` The Apache Spark Flume application
+    `stream4` (which we will describe shortly) will listen for Flume stream data on
+    this port.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消息数据将被发送到名为`hc2r1m1`的主机的`10777`端口，使用Linux的`netcat`（`nc`）命令。这将作为Flume代理（`agent1`）的一个源（`source1`），该代理将有一个名为`channel1`的内存通道。`agent1`使用的接收器将是基于Apache
+    Avro的，同样在名为`hc2r1m1`的主机上，但这次端口号将是`11777`。Apache Spark Flume应用程序`stream4`（我们稍后将描述）将监听此端口上的Flume流数据。
+- en: 'We start the streaming process by executing the `nc` command against the `10777`
+    port. Now, when we type text in this window, it will be used as a Flume source
+    and the data will be sent to the Spark application:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通过向`10777`端口执行`nc`命令来启动流处理。现在，当我们在该窗口中输入文本时，它将作为Flume源，数据将被发送到Spark应用程序：
+- en: '[PRE15]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: In order to run the Flume agent, `agent1`, we have created a Flume configuration
+    file called `agent1.flume.cfg`, which describes the agent's source, channel, and
+    sink. The contents of the file are as follows. The first section defines the `agent1`
+    source, channel, and sink names.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了运行Flume代理`agent1`，我们创建了一个名为`agent1.flume.cfg`的Flume配置文件，该文件描述了代理的源、通道和接收器。文件内容如下。第一部分定义了`agent1`的源、通道和接收器名称。
+- en: '[PRE16]'
+  id: totrans-68
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'The next section defines `source1` to be netcat-based, running on the host
+    called `hc2r1m1` and the `10777` port:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下一部分定义`source1`为基于netcat，运行在名为`hc2r1m1`的主机上和`10777`端口：
+- en: '[PRE17]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'The `agent1` channel, `channel1`, is defined as a memory-based channel with
+    a maximum event capacity of `1000` events:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`agent1`通道`channel1`被定义为具有最大事件容量`1000`事件的内存通道：'
+- en: '[PRE18]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Finally, the `agent1` sink, `sink1`, is defined as an Apache Avro sink on the
+    host called `hc2r1m1` and the `11777` port:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，`agent1`接收器`sink1`被定义为在名为`hc2r1m1`的主机上和`11777`端口的Apache Avro接收器：
+- en: '[PRE19]'
+  id: totrans-74
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'We have created a Bash script called `flume.bash` to run the Flume agent, `agent1`.
+    It looks as follows:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们创建了一个名为`flume.bash`的Bash脚本来运行Flume代理`agent1`。它如下所示：
+- en: '[PRE20]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'The script calls the Flume executable `flume-ng`, passing the `agent1` configuration
+    file. The call specifies the agent named `agent1`. It also specifies the Flume
+    configuration directory to be `/etc/flume-ng/conf/`, the default value. Initially,
+    we will use a `netcat` Flume source with a Scala-based example to show how data
+    can be sent to an Apache Spark application. Then, we will show how an RSS-based
+    data feed can be processed in a similar way. So initially, the Scala code that
+    will receive the `netcat` data looks like this. The application class name is
+    defined. The necessary classes for Spark and Flume are imported. Finally, the
+    main method is defined:'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该脚本调用Flume可执行文件`flume-ng`，传递`agent1`配置文件。调用指定了名为`agent1`的代理。它还指定了Flume配置目录为`/etc/flume-ng/conf/`，这是默认值。最初，我们将使用一个基于Scala的示例，该示例使用`netcat`
+    Flume源来展示如何将数据发送到Apache Spark应用程序。然后，我们将展示如何以类似方式处理基于RSS的数据源。因此，最初接收`netcat`数据的Scala代码看起来是这样的。应用程序类名被定义。导入Spark和Flume所需的类。最后，定义了主方法：
+- en: '[PRE21]'
+  id: totrans-78
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'The Spark and Streaming contexts are created. Then, the Flume-based data stream
+    is created using the stream context host and port number. The Flume-based class,
+    `FlumeUtils`, has been used to do this by calling its `createStream` method:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark和Streaming上下文被创建。然后，使用流上下文主机和端口号创建基于Flume的数据流。为此，使用了基于Flume的类`FlumeUtils`，通过调用其`createStream`方法来实现：
+- en: '[PRE22]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Finally, a stream event count is printed and (for debugging purposes while
+    we test the stream) the stream content is dumped. After this, the stream context
+    is started and configured to run until terminated via the application:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最终，会打印出流事件计数，并且在测试流时（出于调试目的）会转储流内容。之后，流上下文被启动并配置为运行，直到通过应用程序终止：
+- en: '[PRE23]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Having compiled it, we will run this application using `spark-submit`. In some
+    of the other chapters of this book, we will use a Bash-based script called `run_stream.bash`
+    to execute the job. The script looks as follows:'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 编译完成后，我们将使用`spark-submit`运行此应用程序。在本书的其他一些章节中，我们将使用一个名为`run_stream.bash`的基于Bash的脚本来执行任务。该脚本如下所示：
+- en: '[PRE24]'
+  id: totrans-84
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'So, this script sets some Spark-based variables and a JAR library path for
+    this job. It takes the Spark class to run as its first parameter. It passes all
+    the other variables as parameters to the Spark application class job. So, the
+    execution of the application looks as follows:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，此脚本设置了一些基于Spark的变量和一个JAR库路径用于此作业。它将Spark类作为第一个参数运行。它将所有其他变量作为参数传递给Spark应用程序类作业。因此，应用程序的执行如下所示：
+- en: '[PRE25]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'This means that the Spark application is ready and is running as a Flume sink
+    on port `11777`. The Flume input is ready, running as a `netcat` task on port
+    `10777`. Now, the Flume agent, `agent1`, can be started using the Flume script
+    called `flume.bash` to send the `netcat` source-based data to the Apache Spark
+    Flume-based sink:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着Spark应用程序已准备好，并在端口`11777`上作为Flume接收器运行。Flume输入已准备好，作为端口`10777`上的`netcat`任务运行。现在，Flume代理`agent1`可以使用名为`flume.bash`的Flume脚本启动，以将基于`netcat`源的数据发送到Apache
+    Spark基于Flume的接收器：
+- en: '[PRE26]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Now, when the text is passed to the `netcat` session, it should flow through
+    Flume and be processed as a stream by Spark. Let''s try it:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，当文本传递给`netcat`会话时，它应该通过Flume流动，并由Spark作为流处理。让我们试试：
+- en: '[PRE27]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'Three simple pieces of text have been added to the `netcat` session and acknowledged
+    with an `OK` so that they can be passed to Flume. The debug output in the Flume
+    session shows that the events (one per line ) have been received and processed:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 已向`netcat`会话添加了三个简单的文本片段，并使用`OK`进行了确认，以便它们可以传递给Flume。Flume会话中的调试输出显示已收到并处理了事件（每行一个）：
+- en: '[PRE28]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Finally, in the Spark `stream4` application session, three events have been
+    received and processed; in this case, they have been dumped to the session to
+    prove the point that the data arrived. Of course, this is not what you would normally
+    do, but we wanted to prove data transit through this configuration:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在Spark `stream4`应用程序会话中，已收到并处理了三个事件；在这种情况下，它们已被转储到会话中，以证明数据已到达。当然，这不是您通常会做的，但我们想证明数据通过此配置传输：
+- en: '[PRE29]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'This is interesting, but it is not really a production-worthy example of Spark
+    Flume data processing. So, in order to demonstrate a potentially real data processing
+    approach, we will change the Flume configuration file source details so that it
+    uses a Perl script, which is executable as follows:'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这很有趣，但它并不是真正值得生产的Spark Flume数据处理示例。因此，为了演示一种可能的实际数据处理方法，我们将更改Flume配置文件源详细信息，使其使用一个Perl脚本，该脚本可执行如下：
+- en: '[PRE30]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'The Perl script, which has been referenced previously, `rss.perl`, just acts
+    as a source of Reuters science news. It receives the news as XML and converts
+    it into JSON format. It also cleans the data of unwanted noise. First, it imports
+    packages such as LWP and `XML::XPath` to enable XML processing. Then, it specifies
+    a science-based Reuters news data source and creates a new LWP agent to process
+    the data, similar to the following:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 先前引用的Perl脚本`rss.perl`仅作为路透社科学新闻的来源。它接收XML格式的消息并将其转换为JSON格式。它还清理了数据中的不必要噪音。首先，它导入LWP和`XML::XPath`等包以启用XML处理。然后，它指定基于科学的Reuters新闻数据源，并创建一个新的LWP代理来处理数据，如下所示：
+- en: '[PRE31]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'If the request is successful, then the XML data returned is defined as the
+    decoded content of the request. Title information is extracted from the XML via
+    an XPath call using the path called `/rss/channel/item/title`:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果请求成功，则返回的XML数据定义为请求的解码内容。通过使用路径`/rss/channel/item/title`的XPath调用从XML中提取标题信息：
+- en: '[PRE32]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'For each node in the extracted title data `XML` string, data is extracted.
+    It is cleaned of unwanted `XML` tags and added to a Perl-based array called titles:'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于提取的标题数据`XML`字符串中的每个节点，都会提取数据。它清除了不需要的`XML`标签，并添加到名为titles的基于Perl的数组中：
+- en: '[PRE33]'
+  id: totrans-102
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'The same process is carried out for description-based data in the request response
+    XML. The XPath value used this time is `/rss/channel/item/description/`. There
+    are many more tags to be cleaned from the description data, so there are many
+    more Perl searches and line replacements that act on this data (`s///g`):'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于请求响应XML中的基于描述的数据，执行相同的处理。这次使用的XPath值是`/rss/channel/item/description/`。描述数据中有许多更多的标签需要清理，因此有许多更多的Perl搜索和行替换作用于该数据（`s///g`）：
+- en: '[PRE34]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'Finally, the XML-based title and description data is output in the RSS JSON
+    format using a `print` command. The script then sleeps for 30 seconds and requests
+    more RSS news information to process:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，基于XML的标题和描述数据使用`print`命令以RSS JSON格式输出。然后脚本休眠30秒，并请求更多RSS新闻信息进行处理：
+- en: '[PRE35]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'We have created a second Scala-based stream processing code example called
+    `stream5`. It is similar to the `stream4` example, but it now processes the `rss`
+    item data from the stream. Next, `case class` is defined to process the category,
+    title, and summary from the XML RSS information. An HTML location is defined to
+    store the resulting data that comes from the Flume channel:'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们创建了第二个基于 Scala 的流处理代码示例，名为 `stream5`。它类似于 `stream4` 示例，但现在它处理来自流中的 `rss` 项数据。接下来，定义
+    `case class` 以处理来自 XML RSS 信息的类别、标题和摘要。定义了一个 HTML 位置来存储从 Flume 通道传来的结果数据。
+- en: '[PRE36]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'The RSS stream data from the Flume-based event is converted to a string. It
+    is then formatted using the case class called `RSSItem`. If there is event data,
+    it is then written to an HDFS directory using the previous `hdfsdir` path:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来自基于 Flume 事件的 RSS 流数据被转换为字符串，然后使用名为 `RSSItem` 的 case 类进行格式化。如果有事件数据，则使用之前的
+    `hdfsdir` 路径将其写入 HDFS 目录。
+- en: '[PRE37]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Running this code sample, it is possible to see that the Perl RSS script is
+    producing data, because the Flume script output indicates that 80 events have
+    been accepted and received:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行此代码示例，可以观察到 Perl RSS 脚本正在生成数据，因为 Flume 脚本的输出表明已接受并接收了 80 个事件。
+- en: '[PRE38]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The events have been stored on HDFS under the expected directory, as the Hadoop
+    filesystem `ls` command shows here:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事件已存储在 HDFS 下的预期目录中，正如 Hadoop 文件系统 `ls` 命令所示：
+- en: '[PRE39]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'Also, using the Hadoop filesystem `cat` command, it is possible to prove that
+    the files on HDFS contain `rss` feed news-based data, as shown here:'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，使用 Hadoop 文件系统 `cat` 命令，可以证明 HDFS 上的文件包含基于 `rss` 订阅源的新闻数据，如下所示：
+- en: '[PRE40]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: This Spark stream-based example has used Apache Flume to transmit data from
+    an `rss` source, through Flume, to HDFS via a Spark consumer. This is a good example,
+    but what if you want to publish data to a group of consumers? In the next section,
+    we will examine Apache Kafka--a publish/subscribe messaging system--and determine
+    how it can be used with Spark.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此基于 Spark 流的示例使用了 Apache Flume 将数据从 `rss` 源传输，经过 Flume，通过 Spark 消费者到达 HDFS。这是一个很好的示例，但如果你想向一组消费者发布数据呢？在下一节中，我们将探讨
+    Apache Kafka——一个发布/订阅消息系统——并确定如何将其与 Spark 结合使用。
+- en: Kafka
+  id: totrans-118
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Kafka
+- en: Apache Kafka ([http://kafka.apache.org/](http://kafka.apache.org/)) is a top-level
+    open source project in Apache. It is a big data publish/subscribe messaging system
+    that is fast and highly scalable. It uses message brokers for data management
+    and ZooKeeper for configuration so that data can be organized into consumer groups
+    and topics.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Kafka ([http://kafka.apache.org/](http://kafka.apache.org/)) 是 Apache
+    基金会下的一个顶级开源项目。它是一个快速且高度可扩展的大数据发布/订阅消息系统，利用消息代理进行数据管理，并通过 ZooKeeper 进行配置，以便数据可以组织成消费者组和主题。
+- en: Data in Kafka is split into partitions. In this example, we will demonstrate
+    a receiverless Spark-based Kafka consumer so that we don't need to worry about
+    configuring Spark data partitions when compared to our Kafka data. In order to
+    demonstrate Kafka-based message production and consumption, we will use the Perl
+    RSS script from the last section as a data source. The data passing into Kafka
+    and to Spark will be Reuters RSS news ...
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Kafka 中的数据被分割成多个分区。在本例中，我们将展示一个基于 Spark 的无接收器 Kafka 消费者，这样我们就不需要在比较 Kafka 数据时担心配置
+    Spark 数据分区。为了演示基于 Kafka 的消息生产和消费，我们将使用上一节中的 Perl RSS 脚本作为数据源。传递到 Kafka 并到 Spark
+    的数据将是路透社 RSS 新闻...
+- en: Summary
+  id: totrans-121
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: We could have provided streaming examples for other systems as well, but there
+    was no room in this chapter. Twitter streaming has been examined by example in
+    the *Checkpointing* section. This chapter has provided practical examples of data
+    recovery via checkpointing in Spark Streaming. It has also touched on the performance
+    limitations of checkpointing and shown that the checkpointing interval should
+    be set at five to ten times the Spark stream batch interval.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们本可以为其他系统提供流式示例，但本章没有空间。Twitter 流式传输已在 *检查点* 部分通过示例进行了探讨。本章提供了通过 Spark Streaming
+    中的检查点进行数据恢复的实用示例。它还触及了检查点的性能限制，并表明检查点间隔应设置为 Spark 流批处理间隔的五到十倍。
+- en: 'Checkpointing provides a stream-based recovery mechanism in the case of Spark
+    application failure. This chapter has provided some stream-based worked examples
+    for TCP, File, Flume, and Kafka-based Spark stream coding. All the examples here
+    are based on Scala and compiled with `sbt`. In case you are more familiar with
+    **Maven** the following tutorial explains how to set up a Maven based Scala project:
+    [http://www.scala-lang.org/old/node/345](http://www.scala-lang.org/old/node/345).'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 检查点提供了一种基于流的恢复机制，用于在Spark应用程序失败时进行恢复。本章提供了一些基于TCP、文件、Flume和Kafka的Spark流编码的流式工作示例。这里所有的示例都是基于Scala并用`sbt`编译的。如果你更熟悉**Maven**，以下教程将解释如何设置基于Maven的Scala项目：[http://www.scala-lang.org/old/node/345](http://www.scala-lang.org/old/node/345)。

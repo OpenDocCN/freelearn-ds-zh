@@ -1,0 +1,2326 @@
+- en: '10'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '10'
+- en: Addressing Data Issues When Combining DataFrames
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 解决合并 DataFrame 时的数据问题
+- en: At some point during most data cleaning projects, the analyst will have to combine
+    data from different data tables. This involves either appending data with the
+    same structure to existing data rows or doing a merge to retrieve columns from
+    a different data table. The former is sometimes referred to as combining data
+    vertically, or concatenating, while the latter is referred to as combining data
+    horizontally, or merging.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在大多数数据清洗项目的某个阶段，分析师必须将来自不同数据表的数据进行合并。这包括将具有相同结构的数据追加到现有的数据行中，或执行合并以从另一张数据表中提取列。前者有时称为垂直合并数据，或连接数据，而后者则称为水平合并数据，或合并数据。
+- en: Merges can be categorized by the amount of duplication of merge-by column values.
+    With one-to-one merges, merge-by column values appear once on each data table.
+    One-to-many merges have unduplicated merge-by column values on one side of the
+    merge and duplicated merge-by column values on the other side. Many-to-many merges
+    have duplicated merge-by column values on both sides. Merging is further complicated
+    by the fact that there is often no perfect correspondence between merge-by values
+    on the data tables; each data table may have values in the merge-by column that
+    are not present in the other data table.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 合并可以根据合并依据列值的重复量进行分类。在一对一合并中，合并依据列的值在每张数据表中各出现一次。在一对多合并中，合并依据列的值在一方没有重复，而在另一方则存在重复。在多对多合并中，合并依据列的值在两方中都有重复。合并过程进一步复杂化，因为数据表中的合并依据值通常没有完全匹配的关系；每个数据表的合并依据列可能包含在另一张数据表中没有的值。
+- en: New data issues can be introduced when data is combined. When data is appended,
+    it may have different logical values than the original data, even when the columns
+    have the same names and data types. For merges, whenever merge-by values are missing
+    on one side of a merge, the other columns from that side will also have missing
+    values. For one-to-one or one-to-many merges, there may be unexpected duplicates
+    in merge-by values, resulting in values for other columns being duplicated unintentionally.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在合并数据时，可能会引入新的数据问题。当数据被追加时，即使列的名称和数据类型相同，也可能与原始数据具有不同的逻辑值。对于合并操作，每当合并依据的某一方缺少值时，该方的其他列也将缺少值。对于一对一或一对多的合并，合并依据值可能会出现意外的重复，导致其他列的值被不小心重复。
+- en: 'In this chapter, we will combine DataFrames vertically and horizontally and
+    consider strategies for dealing with the data problems that often arise. Specifically,
+    in this chapter, the recipes will cover the following topics:'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将介绍如何垂直和水平合并 DataFrame，并考虑如何处理合并时常见的数据问题。具体来说，本章的内容将涵盖以下主题：
+- en: Combining DataFrames vertically
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 垂直合并 DataFrame
+- en: Doing one-to-one merges
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一对一合并
+- en: Doing one-to-one merges by multiple columns
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通过多列进行一对一合并
+- en: Doing one-to-many merges
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一对多合并
+- en: Doing many-to-many merges
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多对多合并
+- en: Developing a merge routine
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 开发合并例程
+- en: Technical requirements
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: You will need pandas, NumPy, and Matplotlib to complete the recipes in this
+    chapter. I used pandas 2.1.4, but the code will run on pandas 1.5.3 or later.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了完成本章中的所有内容，您需要使用 pandas、NumPy 和 Matplotlib。我使用的是 pandas 2.1.4，但代码也可以在 pandas
+    1.5.3 或更高版本上运行。
+- en: The code in this chapter can be downloaded from the book’s GitHub repository,
+    [https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition).
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码可以从本书的 GitHub 仓库下载，[https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition)。
+- en: Combining DataFrames vertically
+  id: totrans-15
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 垂直合并 DataFrame
+- en: There are times when we need to append rows from one data table to another.
+    This will almost always be rows from data tables that have nearly the same columns
+    and data types. For example, we might get a new CSV file containing hospital patient
+    outcomes each month and need to add that to our existing data. Alternatively,
+    we might end up working at a school district central office and receive data from
+    many different schools. We might want to combine this data before conducting analyses.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在某些情况下，我们需要将一张数据表中的行追加到另一张数据表中。这通常是将几乎相同列和数据类型的表格数据进行合并。例如，我们每个月可能会获得一份包含医院病人结果的新的
+    CSV 文件，并需要将其添加到现有的数据中。或者，我们可能会在某个学区的办公室工作，接收来自不同学校的数据。在这种情况下，我们可能会想要在进行分析之前先将这些数据合并。
+- en: Even when the data structure across months and across schools (in these examples)
+    is theoretically the same, it may not be in practice. Business practices can change
+    from one period to another. This can be intentional or happen inadvertently due
+    to staff turnover or some external factor. One institution or department might
+    implement practices somewhat differently than another, and some data values might
+    be different for some institutions or missing altogether.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使跨月份和跨学校（在这些示例中）的数据结构在理论上是相同的，实际情况中可能并非如此。商业实践可能会从一个时期到另一个时期发生变化。这可能是有意为之，也可能是由于人员流动或其他外部因素而无意发生的。一个机构或部门的实践可能与另一个有所不同，并且某些数据值可能在某些机构中有所不同，甚至完全缺失。
+- en: We are likely to come across a change in what seems like similar data when we
+    let our guards down, typically when we start to assume that the new data will
+    look like the old data. I try to remember this whenever I combine data vertically.
+    I will be referring to combining data vertically as concatenating or appending
+    for the rest of this chapter.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们放松警惕时，通常会遇到看似相似的数据变化，通常是在我们开始假设新数据将与旧数据相似时。我每次合并数据时都会提醒自己这一点。在本章的其余部分，我将使用“纵向合并”或“附加”来指代将数据纵向合并。
+- en: In this recipe, we’ll use the pandas `concat` function to append rows from a
+    pandas DataFrame to another DataFrame. We will also do a few common checks on
+    the `concat` operation to confirm that the resulting DataFrame is what we expected.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们将使用pandas的`concat`函数将一组pandas DataFrame的行附加到另一个DataFrame中。我们还将对`concat`操作进行一些常见检查，以确认最终的DataFrame是否符合我们的预期。
+- en: Getting ready
+  id: totrans-20
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with land temperature data from several countries in this recipe.
+    This data includes the monthly average temperature, latitude, longitude, and elevation
+    at many weather stations in each country during 2023\. The data for each country
+    is contained in a CSV file.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们将使用来自多个国家的陆地温度数据。这些数据包括2023年期间每个国家多个气象站的月平均温度、纬度、经度和海拔。每个国家的数据都保存在一个CSV文件中。
+- en: '**Data note**'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据备注**'
+- en: The land temperature DataFrame has the average temperature reading (in °C) in
+    2023 from over 12,000 stations across the world, though a majority of the stations
+    are in the United States. The raw data was retrieved from the Global Historical
+    Climatology Network integrated database. It is made available for public use by
+    the United States National Oceanic and Atmospheric Administration at [https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly).
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 陆地温度DataFrame包含2023年来自全球12,000多个气象站的平均温度（以°C为单位），尽管大多数气象站位于美国。原始数据是从全球历史气候学网络集成数据库获取的。美国国家海洋和大气管理局在[https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly)上提供公开使用。
+- en: How to do it…
+  id: totrans-24
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做……
+- en: 'In this recipe, we will combine similarly structured DataFrames vertically,
+    check the values in the concatenated data, and fix missing values. Let’s get started:'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们将纵向合并结构相似的DataFrame，检查合并后数据的值，并修复缺失值。让我们开始吧：
+- en: 'Import `pandas` and `numpy`, as well as the `os` module:'
+  id: totrans-26
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`和`numpy`，以及`os`模块：
+- en: '[PRE0]'
+  id: totrans-27
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Load the data from Cameroon and Oman and check the number of rows and columns:'
+  id: totrans-28
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从喀麦隆和阿曼加载数据并检查行数和列数：
+- en: '[PRE1]'
+  id: totrans-29
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: '[PRE2]'
+  id: totrans-30
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '[PRE3]'
+  id: totrans-31
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '[PRE4]'
+  id: totrans-32
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Compare the columns in the Cameroon and Oman DataFrames. Glancing at the columns,
+    we can see that the Cameroon DataFrame has the `latabs` column and the Oman DataFrame
+    does not. We can confirm this, and that there are no other columns in one DataFrame
+    but not the other, using `symetric_difference`. It shows that `latabs` is the
+    only column in just one DataFrame:'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 比较喀麦隆和阿曼DataFrame中的列。通过查看列，我们可以看到喀麦隆的DataFrame中有`latabs`列，而阿曼的DataFrame中没有。我们可以使用`symetric_difference`来确认这一点，并确保没有其他列只出现在一个DataFrame中而不在另一个中。它显示`latabs`是唯一只在一个DataFrame中出现的列：
+- en: '[PRE5]'
+  id: totrans-34
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '[PRE6]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: '[PRE7]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: '[PRE8]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[PRE9]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[PRE10]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'We can still concatenate the two DataFrames. The only problem is that we now
+    have one column, `latabs`, that has non-missing values for all rows for Cameroon
+    and all missing values for Oman. We address this problem in the last step of this
+    recipe:'
+  id: totrans-40
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们仍然可以合并这两个DataFrame。唯一的问题是，现在我们有一个名为`latabs`的列，该列在喀麦隆的所有行中都有非缺失值，而在阿曼的所有行中都是缺失值。我们将在本食谱的最后一步解决这个问题：
+- en: '[PRE11]'
+  id: totrans-41
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '[PRE12]'
+  id: totrans-42
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: '[PRE13]'
+  id: totrans-43
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: '[PRE14]'
+  id: totrans-44
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: '[PRE15]'
+  id: totrans-45
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: '[PRE16]'
+  id: totrans-46
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Create a function to do the concatenation that incorporates some of the data
+    checks we have done. The function takes a list of filenames, loops through the
+    list, reads the CSV file associated with each filename into a DataFrame, and then
+    concatenates the DataFrame. We get the expected counts. We did not check the column
+    names. We will do that in the next step.
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个函数来进行合并，并结合我们已做的数据检查。该函数接受一个文件名列表，遍历列表，读取与每个文件名相关联的CSV文件到一个DataFrame中，然后合并该DataFrame。我们可以得到预期的计数。我们没有检查列名，接下来我们将在下一步进行。
+- en: '[PRE17]'
+  id: totrans-48
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: '[PRE18]'
+  id: totrans-49
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: '[PRE19]'
+  id: totrans-50
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: '[PRE20]'
+  id: totrans-51
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: If we have many files to concatenate, it might be burdensome to create a list
+    of the filenames. We can get Python’s `os` module to help us with that by loading
+    all files with a CSV file extension in a folder. Let’s do that next, and also
+    add some code to check columns. We will build on the code from the previous step.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们有很多文件需要合并，创建一个文件名列表可能会很麻烦。我们可以通过加载文件夹中所有具有CSV文件扩展名的文件，利用Python的`os`模块来帮助我们。接下来我们来做这件事，同时还要加入一些代码来检查列。我们将基于前一步的代码进行构建。
+- en: Concatenate all the country data files in a folder.
+  id: totrans-53
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 合并文件夹中所有国家的数据文件。
+- en: 'Loop through all the filenames in the folder that contains the CSV files for
+    each country. Use the `endswith` method to check that the filenames have a CSV
+    file extension. Use `read_csv` to create a new DataFrame and print out the number
+    of rows. Use `concat` to append the rows of the new DataFrame to the rows that
+    have already been appended. Finally, display any columns that are missing in the
+    most recent DataFrame, or that are in the most recent DataFrame but not the previous
+    ones:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 遍历包含每个国家CSV文件的文件夹中的所有文件名。使用`endswith`方法检查文件名是否具有CSV文件扩展名。使用`read_csv`创建一个新的DataFrame并打印行数。使用`concat`将新DataFrame的行附加到已附加的行上。最后，显示最近的DataFrame中缺失的列，或者是最近的DataFrame中有而之前的DataFrame中没有的列：
+- en: '[PRE21]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Use the function we just created to read all of the country CSV files in a
+    subfolder, show the number of rows, and check column names. We see again that
+    the `ltoman` DataFrame is missing the `latabs` column:'
+  id: totrans-56
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用我们刚刚创建的函数来读取子文件夹中所有的国家CSV文件，显示行数并检查列名。我们再次看到`ltoman` DataFrame缺少`latabs`列：
+- en: '[PRE22]'
+  id: totrans-57
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: '[PRE23]'
+  id: totrans-58
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Show some of the combined data:'
+  id: totrans-59
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示一些合并后的数据：
+- en: '[PRE24]'
+  id: totrans-60
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: '[PRE25]'
+  id: totrans-61
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: Check the values in the concatenated data.
+  id: totrans-62
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查合并数据中的值。
+- en: 'Notice that the values for `latabs` for Oman are all missing. This is because
+    `latabs` is missing in the DataFrame for Oman (`latabs` is the absolute value
+    of the latitude for each station):'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意到阿曼的`latabs`值全部缺失。这是因为阿曼的DataFrame中缺少`latabs`列（`latabs`是每个站点纬度的绝对值）：
+- en: '[PRE26]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: '[PRE27]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: '[PRE28]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: '[PRE29]'
+  id: totrans-67
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: Fix the missing values.
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 修复缺失的值。
+- en: 'Set the value of `latabs` to the value of `latitude` for Oman. (All of the
+    `latitude` values for stations in Oman are above the equator and positive. In
+    the Global Historical Climatology Network integrated database, latitude values
+    above the equator are positive, while all the latitude values below the equator
+    are negative). Do this as follows:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将阿曼的`latabs`值设置为`latitude`值。（阿曼的所有`latitude`值都位于赤道以北且为正数。在全球历史气候学网络集成数据库中，赤道以北的纬度值为正，而赤道以南的纬度值为负）。具体操作如下：
+- en: '[PRE30]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: '[PRE31]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: With that, we have combined the data for the seven CSV files we found in the
+    selected folder. We have also confirmed that we have appended the correct number
+    of rows, identified columns that are missing in some files, and fixed missing
+    values.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到此为止，我们已经将选定文件夹中找到的七个CSV文件的数据合并了。我们还确认了已附加正确数量的行，找出了某些文件中缺失的列，并修复了缺失的值。
+- en: How it works...
+  id: totrans-73
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: We passed a list of pandas DataFrames to the pandas `concat` function in *step
+    3*. The rows from the second DataFrame were appended to the bottom of the first
+    DataFrame. If we had listed a third DataFrame, those rows would have been appended
+    to the combined rows of the first two DataFrames. Before concatenating, we used
+    the `shape` attribute to check the number of rows in *step 2* and checked the
+    column names. After concatenation in *step 3*, we confirmed that the resulting
+    DataFrame contained the number of expected rows for each country.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第3步*中将一个pandas DataFrame的列表传递给了pandas的`concat`函数。第二个DataFrame的行被附加到了第一个DataFrame的底部。如果我们列出了第三个DataFrame，那么这些行就会附加到前两个DataFrame合并后的行上。在合并之前，我们在*第2步*使用了`shape`属性来检查行数，并检查了列名。在*第3步*合并后，我们确认了结果DataFrame包含了每个国家的预期行数。
+- en: We sometimes have to concatenate more than two or three files. *Steps 4* through
+    *6* walked us through handling many files by defining a function to repeat the
+    code. In *step 4*, we passed a list of filenames to that function.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们有时需要连接两个或三个以上的文件。*第4步*到*第6步*指导我们通过定义一个函数来重复代码，从而处理多个文件。在*第4步*中，我们将文件名列表传递给了这个函数。
+- en: In *steps 5* and *6*, we looked for all the CSV files in a specified folder,
+    loaded each file that was found into memory, and then appended the rows of each
+    file to a DataFrame. We printed the number of rows for each data file we loaded
+    so that we could check those numbers against the totals in the concatenated data
+    later. We also identified any DataFrames with different columns compared to the
+    others. We used `value_counts` in *step 8* to confirm that there were the right
+    number of rows for each country.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第5步*和*第6步*中，我们查找了指定文件夹中的所有 CSV 文件，将找到的每个文件加载到内存中，然后将每个文件的行追加到一个 DataFrame
+    中。我们打印了每个加载的数据文件的行数，以便稍后将这些数字与拼接数据中的总数进行比较。我们还标识了任何与其他文件列不同的 DataFrame。在*第8步*中，我们使用
+    `value_counts` 确认了每个国家的行数是否正确。
+- en: The pandas `groupby` method can be used to check column values from each of
+    the original DataFrames. We group by country since that identifies the rows from
+    each of the original DataFrames—all the rows for each DataFrame have the same
+    value for country. (It is helpful to always have a column that identifies the
+    original DataFrames in the concatenated DataFrame, even if that information is
+    not needed for subsequent analysis.) In *step 8*, this helped us notice that there
+    were no values for the `latabs` column for Oman. We replaced the missing values
+    for `latabs` for Oman in *step 9*.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pandas 的 `groupby` 方法可以用来检查每个原始 DataFrame 中的列值。我们按国家分组，因为它能标识每个原始 DataFrame
+    的行——每个 DataFrame 中的所有行对于国家都有相同的值。（即使该信息不用于后续分析，始终在拼接后的 DataFrame 中保留标识原始 DataFrame
+    的列也是很有帮助的。）在*第8步*中，这帮助我们注意到阿曼的 `latabs` 列没有值。在*第9步*中，我们替换了阿曼 `latabs` 列的缺失值。
+- en: There’s more...
+  id: totrans-78
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容...
+- en: Depending on the size of the DataFrames you are appending, and the available
+    memory of your workstation, combining DataFrames may tax your machine’s resources,
+    or even cause the code to end prematurely once RAM usage exceeds a certain amount
+    of your resources. It is always a good idea to make sure that your data files
+    store data as efficiently as possible. For example, downcasting numeric values
+    and making character data categorical when appropriate are good practices.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据你正在附加的 DataFrame 的大小和工作站的可用内存，合并 DataFrame 可能会消耗机器的资源，甚至在内存使用超过一定的资源量时导致代码提前终止。确保数据文件尽可能高效地存储数据始终是一个好主意。例如，将数字值进行降位处理，或者在适当时将字符数据转换为分类数据，都是良好的做法。
+- en: See also
+  id: totrans-80
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: We went over the powerful pandas `groupby` method in some detail in *Chapter
+    9*, *Fixing Messy Data When Aggregating.*
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第9章*《修复聚合时的脏数据》中详细讨论了强大的 pandas `groupby` 方法。
+- en: We examined NumPy’s `where` function in *Chapter 6*, *Cleaning and Exploring
+    Data with Series Operations*.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第6章*《使用 Series 操作清理和探索数据》中讨论了 NumPy 的 `where` 函数。
+- en: Doing one-to-one merges
+  id: totrans-83
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进行一对一合并
+- en: 'The remainder of this chapter will explore combining data horizontally; that
+    is, merging columns from a data table with columns from another data table. Borrowing
+    from SQL development, we typically talk about such operations as join operations:
+    left joins, right joins, inner joins, and outer joins. This recipe examines one-to-one
+    merges, where the merge-by values are unduplicated in both files. Subsequent recipes
+    will demonstrate one-to-many merges, where the merge-by values are duplicated
+    on the *right* data table, and many-to-many merges, where merge-by values are
+    duplicated on both the *left and right* data tables.'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的其余部分将探讨横向合并数据；即，将一个数据表的列与另一个数据表的列合并。借用 SQL 开发中的术语，我们通常将这种操作称为连接操作：左连接、右连接、内连接和外连接。本节将研究一对一合并，其中合并依据的值在两个文件中都没有重复。后续的章节将展示一对多合并，其中合并依据的值在*右*数据表中有重复，以及多对多合并，其中合并依据的值在*左和右*数据表中都有重复。
+- en: We often speak of the left and right sides of a merge, a convention that we
+    will follow throughout this chapter. But this is of no real consequence, other
+    than for clarity of exposition. We can accomplish exactly the same thing with
+    a merge if A were the left data table and B were the right data table, as we could
+    if the reverse were true.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们常常说合并的左侧和右侧，在本章中我们将遵循这一约定。但这并没有实际的意义，除了为了更清晰的阐述。如果 A 是左侧数据表，B 是右侧数据表，我们可以通过合并完成完全相同的操作，反之亦然。
+- en: I am using the expressions merge-by column and merge-by value in this chapter,
+    rather than key column or index column. This avoids possible confusion with pandas
+    index alignment. An index may be used as the merge-by column, but other columns
+    may also be used. I also want to avoid relying on relational database concepts
+    such as primary or foreign keys in this discussion. It is helpful to be aware
+    of which data columns function as primary or foreign keys when we’re extracting
+    data from relational systems, and we should take this into account when setting
+    indexes in pandas. But the merging we do for most data cleaning projects often
+    goes beyond these keys.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我使用了“合并列”和“合并值”这些表达方式，而不是“关键列”或“索引列”。这样可以避免与 pandas 索引对齐产生可能的混淆。索引可以作为合并列使用，但也可以使用其他列。我还希望避免在讨论中依赖于关系数据库中的概念，如主键或外键。当我们从关系型系统中提取数据时，了解哪些数据列作为主键或外键是有帮助的，且我们在设置
+    pandas 索引时应考虑这一点。但是，对于大多数数据清洗项目中的合并，往往超出了这些键的范畴。
+- en: 'In the straightforward case of a one-to-one merge, each row in the left data
+    table is matched with one (and only one) row on the right data table, according
+    to the merge-by value. What happens when a merge-by value appears on one, but
+    not the other, data table is determined by the type of join that’s specified.
+    The following diagram illustrates the four different types of joins:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在简单的 1 对 1 合并情况下，左侧数据表中的每一行都会根据合并值与右侧数据表中的一行（且仅一行）匹配。当合并值出现在一张数据表中，但另一张数据表中没有时，合并结果的处理方式取决于指定的连接类型。下图展示了四种不同的连接类型：
+- en: '![](img/B18596_10_01.png)'
+  id: totrans-88
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18596_10_01.png)'
+- en: 'Figure 10.1: A diagram illustrating the four different types of joins'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 10.1：展示四种不同类型连接的图示
+- en: When two data tables are merged with an inner join, rows are retained when the
+    merge-by values appear in both the left and right data tables. This is the intersection
+    of the left and right data tables, represented by **B** in the preceding diagram.
+    Outer joins return all rows; that is, rows where the merge-by values appear in
+    both data tables, rows where those values appear in the left data table but not
+    the right, and rows where those values appear in the right but not the left—**B**,
+    **A**, and **C**, respectively. This is known as the union. Left joins return
+    rows where the merge-by values are present on the left data table, regardless
+    of whether they are present on the right data table. This is **A** and **B**.
+    Right joins return rows where the merge-by values are present on the right data
+    table, regardless of whether they are present on the left data table.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当两个数据表通过内连接合并时，只有当合并值同时出现在左侧和右侧数据表中时，相关行才会保留。这是左侧和右侧数据表的交集，如前图中的**B**所示。外连接会返回所有行；也就是说，返回在两个数据表中都出现合并值的行、在左侧数据表中出现但在右侧数据表中未出现的行，以及在右侧数据表中出现但在左侧数据表中未出现的行——分别是**B**、**A**和**C**。这被称为并集。左连接返回合并值在左侧数据表中出现的行，无论它们是否出现在右侧数据表中。这是**A**和**B**。右连接返回合并值在右侧数据表中出现的行，无论它们是否出现在左侧数据表中。
+- en: Missing values may result from outer joins, left joins, or right joins. This
+    is because the returned merged data table will have missing values for columns
+    when the merge-by value is not found. For example, when performing a left join,
+    there may be merge-by values from the left dataset that do not appear on the right
+    dataset. In this case, the columns from the right dataset will all be missing.
+    (I say *may* here because it is possible to do an outer, left, or right join that
+    returns the same results as an inner join because the same merge-by values appear
+    on both sides. Sometimes, a left join is done so that we’re certain that all the
+    rows on the left dataset, and only those rows, are returned.)
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 缺失值可能由外连接、左连接或右连接产生。这是因为返回的合并数据表会在合并条件未找到的列中出现缺失值。例如，在执行左连接时，左侧数据集可能包含一些在右侧数据集中没有出现的合并条件值。在这种情况下，右侧数据集的所有列都会缺失。（这里我说*可能*是因为可以执行外连接、左连接或右连接，得到与内连接相同的结果，因为相同的合并条件值出现在两边。有时，我们做左连接是为了确保返回的所有行都来自左侧数据集，并且仅返回这些行。）
+- en: We will look at all four types of joins in this recipe.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本教程中，我们将查看四种连接类型。
+- en: Getting ready
+  id: totrans-93
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with two files from the **National Longitudinal Surveys** (**NLS**).
+    Both files contain one row per person. One contains employment, educational attainment,
+    and income data, while the other file contains data on the income and educational
+    attainment of the respondents’ parents.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将处理来自**全国纵向调查**（**NLS**）的两个文件。这两个文件每个包含一行数据。一个包含就业、教育程度和收入数据，另一个文件包含受访者父母的收入和教育程度数据。
+- en: '**Data note**'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: The **National Longitudinal Surveys** (**NLS**), administered by the United
+    States Bureau of Labor Statistics, are longitudinal surveys of individuals who
+    were in high school in 1997 when the surveys started. Participants were surveyed
+    each year through 2023\. The surveys are available for public use at [nlsinfo.org](https://nlsinfo.org).
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**全国纵向调查**（**NLS**），由美国劳工统计局管理，是对1997年开始进行调查时在高中就读的个人进行的纵向调查。参与者每年都会接受调查，直到2023年。调查结果可以在[nlsinfo.org](https://nlsinfo.org)上公开获取。'
+- en: How to do it...
+  id: totrans-97
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'In this recipe, we will perform left, right, inner, and outer joins on two
+    DataFrames that have one row for each merge-by value. Let’s get started:'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本教程中，我们将对两个数据框执行左连接、右连接、内连接和外连接，每个合并条件值有一行数据。让我们开始吧：
+- en: 'Import `pandas` and load the two NLS DataFrames:'
+  id: totrans-99
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`并加载两个NLS数据框：
+- en: '[PRE32]'
+  id: totrans-100
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Look at some of the NLS data:'
+  id: totrans-101
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看一些NLS数据：
+- en: '[PRE33]'
+  id: totrans-102
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: '[PRE34]'
+  id: totrans-103
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: '[PRE35]'
+  id: totrans-104
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: '[PRE36]'
+  id: totrans-105
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: '[PRE37]'
+  id: totrans-106
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: '[PRE38]'
+  id: totrans-107
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: '[PRE39]'
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: '[PRE40]'
+  id: totrans-109
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: Check that the number of unique values for `originalid` is equal to the number
+    of rows.
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查`originalid`的唯一值数量是否等于行数。
+- en: 'We will use `originalid` for our merge-by column later:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将稍后使用`originalid`作为我们的合并列：
+- en: '[PRE41]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: '[PRE42]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: '[PRE43]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: '[PRE44]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: Create some mismatched IDs.
+  id: totrans-116
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一些不匹配的ID。
+- en: 'Unfortunately, the NLS data is a little too clean for our purposes. Due to
+    this, we will mess up a couple of values for `originalid`:'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，NLS数据对于我们的目的来说有点过于干净。因此，我们将会故意修改一些`originalid`的值：
+- en: '[PRE45]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: '[PRE46]'
+  id: totrans-119
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: '[PRE47]'
+  id: totrans-120
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: '[PRE48]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Use `join` to perform a left join.
+  id: totrans-122
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`join`执行左连接。
+- en: '`nls97` is the left DataFrame and `nls97add` is the right DataFrame when we
+    use `join` in this way. Show the values for the mismatched IDs. Notice that the
+    values for the columns from the right DataFrame are all missing when there is
+    no matching ID on that DataFrame (the `orignalid` values 10001 and 10002 appear
+    on the left DataFrame but not on the right DataFrame):'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`nls97`是左数据框，`nls97add`是右数据框，当我们以这种方式使用`join`时。显示不匹配ID的值。注意，在右数据框没有匹配ID时，来自右数据框的列值都会缺失（`originalid`值10001和10002出现在左数据框中，但右数据框中没有这些ID）：'
+- en: '[PRE49]'
+  id: totrans-124
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: '[PRE50]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: Perform a left join with `merge`.
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`merge`执行左连接。
+- en: 'The first DataFrame is the left DataFrame, while the second DataFrame is the
+    right DataFrame. Use the `on` parameter to indicate the merge-by column. Set the
+    value of the `how` parameter to `left` to do a left join. We get the same results
+    that we get when using `join`:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个数据框是左数据框，第二个数据框是右数据框。使用`on`参数指定合并的列。将`how`参数的值设置为`left`以执行左连接。我们得到的结果与使用`join`时相同：
+- en: '[PRE51]'
+  id: totrans-128
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: '[PRE52]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: Perform a right join.
+  id: totrans-130
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行右连接。
+- en: 'With a right join, the values from the left DataFrame are missing when there
+    is no matching ID on the left DataFrame:'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用右连接时，当左数据框中没有匹配ID时，左数据框的值会缺失：
+- en: '[PRE53]'
+  id: totrans-132
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: '[PRE54]'
+  id: totrans-133
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: Perform an inner join.
+  id: totrans-134
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行内连接。
+- en: 'None of the mismatched IDs (that have values over `9999`) appear after the
+    inner join. This is because they do not appear on both DataFrames:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在内连接后，所有不匹配的ID（值大于`9999`）都不会出现。这是因为它们在两个数据框中都没有出现：
+- en: '[PRE55]'
+  id: totrans-136
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: '[PRE56]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: Perform an outer join.
+  id: totrans-138
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行外连接。
+- en: 'This retains all the rows, so rows with merge-by values in the left DataFrame
+    but not in the right are retained (`originalid` values `10001` and `10002`), and
+    rows with merge-by values in the right DataFrame but not in the left are also
+    retained (`originalid` values `20001` and `20002`):'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这会保留所有的行，因此左侧 DataFrame 中有合并列值但右侧没有的行将被保留（`originalid` 值为 `10001` 和 `10002`），而右侧
+    DataFrame 中有合并列值但左侧没有的行也会被保留（`originalid` 值为 `20001` 和 `20002`）：
+- en: '[PRE57]'
+  id: totrans-140
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: '[PRE58]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: Create a function to check for ID mismatches.
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个函数来检查 ID 不匹配。
+- en: 'The function takes a left and right DataFrame, as well as a merge-by column.
+    It performs an outer join because we want to see which merge-by values are present
+    in either DataFrame, or both of them:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该函数接受一个左侧和一个右侧的 DataFrame，以及一个合并列。它执行外连接，因为我们想查看在任一 DataFrame 中，或者两者中都存在的合并列值：
+- en: '[PRE59]'
+  id: totrans-144
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: '[PRE60]'
+  id: totrans-145
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: With that, we have demonstrated how to perform the four types of joins with
+    a one-to-one merge.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到此为止，我们展示了如何在一对一合并中执行四种类型的连接。
+- en: How it works...
+  id: totrans-147
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: One-to-one merges are fairly straightforward. The merge-by column values only
+    appear once on the left and right DataFrames. However, some merge-by column values
+    may appear on only one DataFrame. This is what makes the type of join important.
+    If all merge-by column values appeared on both DataFrames, then a left join, right
+    join, inner join, or outer join would return the same result. We took a look at
+    the two DataFrames in the first few steps.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一对一的合并相对简单。合并列值在左侧和右侧的 DataFrame 中仅出现一次。然而，某些合并列值可能只出现在其中一个 DataFrame 中。这使得连接的类型变得重要。如果所有的合并列值都出现在两个
+    DataFrame 中，那么左连接、右连接、内连接或外连接将返回相同的结果。我们在前几步中查看了这两个 DataFrame。
+- en: In *step 3*, we confirmed that the number of unique values for the merge-by
+    column (`originalid`) is equal to the number of rows in both DataFrames. This
+    tells us that we will be doing a one-to-one merge.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第 3 步*中，我们确认了按 `originalid` 列合并时，唯一值的数量等于两个 DataFrame 中的行数。这告诉我们将进行一对一的合并。
+- en: If the merge-by column is the index, then the easiest way to perform a left
+    join is to use the `join` DataFrame method. We did this in *step 5*. We passed
+    the right DataFrame to the `join` method of the left DataFrame. The same result
+    was returned when we performed a left join using the pandas `merge` function in
+    *step 6*. We used the `how` parameter to specify a left join and indicated the
+    merge-by column using `on`.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果合并列是索引，则执行左连接的最简单方法是使用 `join` DataFrame 方法。我们在*第 5 步*中做了这个操作。我们将右侧 DataFrame
+    传递给左侧 DataFrame 的 `join` 方法。当我们在*第 6 步*中使用 pandas 的 `merge` 函数执行左连接时，返回了相同的结果。我们使用
+    `how` 参数指定左连接，并通过 `on` 来指示合并列。
+- en: In *steps 7* to *9*, we performed the right, inner, and outer joins, respectively.
+    This is specified by the `how` value, which is the only part of the code that
+    is different across these steps.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第 7 步*到*第 9 步*中，我们分别执行了右连接、内连接和外连接。这是通过 `how` 参数指定的，这是这些步骤中唯一不同的部分。
+- en: The simple `checkmerge` function we created in *step 10* counted the number
+    of rows with merge-by column values on one DataFrame but not the other, and the
+    number of values on both. Passing copies of the two DataFrames to this function
+    tells us that two rows are in the left DataFrame and not in the right, two rows
+    are in the right DataFrame but not the left, and 8,982 rows are in both.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第 10 步*中创建的简单 `checkmerge` 函数统计了在一个 DataFrame 中存在但在另一个 DataFrame 中不存在的合并列值的行数，以及两个
+    DataFrame 中都存在的值的数量。将这两个 DataFrame 的副本传递给此函数告诉我们，左侧 DataFrame 中有两行不在右侧，右侧 DataFrame
+    中有两行不在左侧，且有 8,982 行在两者中都存在。
+- en: There’s more...
+  id: totrans-153
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: You should run a function similar to the `checkmerge` function we created in
+    *step 10* before you do any non-trivial merge—which, in my opinion, is pretty
+    much all merges.
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在进行任何非平凡的合并之前，你应该运行一个类似于我们在*第 10 步*中创建的 `checkmerge` 函数——在我看来，几乎所有的合并都算是非平凡合并。
+- en: 'The `merge` function is more flexible than the examples I have used in this
+    recipe suggest. For example, in *step 6*, we did not have to specify the left
+    DataFrame as the first parameter. I could have indicated the left and right DataFrames
+    explicitly, like so:'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`merge` 函数比我在本例中使用的示例更灵活。例如，在*第 6 步*中，我们不需要将左侧的 DataFrame 作为第一个参数。我本可以像这样显式地指定左侧和右侧的
+    DataFrame：'
+- en: '[PRE61]'
+  id: totrans-156
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'We can also specify different merge-by columns for the left and right DataFrames
+    by using `left_on` and `right_on` instead of `on`:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还可以通过使用 `left_on` 和 `right_on` 来指定左侧和右侧 DataFrame 的不同合并列，而不是使用 `on`：
+- en: '[PRE62]'
+  id: totrans-158
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: The flexibility of the `merge` function makes it a great tool any time we need
+    to combine data horizontally.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`merge`函数的灵活性使它成为每当我们需要水平合并数据时的一个极好的工具。'
+- en: Doing one-to-one merges by multiple columns
+  id: totrans-160
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用多个列进行一对一合并
+- en: The same logic we used to perform one-to-one merges with one merge-by column
+    applies to merges we perform with multiple merge-by columns. Inner, outer, left,
+    and right joins work the same way when you have two or more merge-by columns.
+    We will demonstrate this in this recipe.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们用来执行一对一合并的逻辑同样适用于多个合并列的合并。无论是两个还是更多的合并列，内连接、外连接、左连接和右连接的工作方式都是一样的。我们将在本食谱中演示这一点。
+- en: Getting ready
+  id: totrans-162
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the NLS data in this recipe, specifically weeks worked and
+    college enrollment from 2017 through 2021\. Both the weeks worked and college
+    enrollment files contain one row per person, per year.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在本食谱中使用NLS数据，特别是2017年至2021年的工作周和大学注册数据。工作周和大学注册文件每个文件每年包含一行数据。
+- en: How to do it...
+  id: totrans-164
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'We will do a one-to-one merge with two DataFrames using multiple merge-by columns
+    on each DataFrame. Let’s get started:'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用多个合并列对两个数据框进行一对一合并。让我们开始：
+- en: 'Import `pandas` and load the NLS weeks worked and college enrollment data:'
+  id: totrans-166
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`并加载NLS工作周和大学注册数据：
+- en: '[PRE63]'
+  id: totrans-167
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'Look at some of the NLS weeks worked data:'
+  id: totrans-168
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 看一下部分NLS工作周数据：
+- en: '[PRE64]'
+  id: totrans-169
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: '[PRE65]'
+  id: totrans-170
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: '[PRE66]'
+  id: totrans-171
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: '[PRE67]'
+  id: totrans-172
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: '[PRE68]'
+  id: totrans-173
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: '[PRE69]'
+  id: totrans-174
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: 'Look at some of the NLS college enrollment data:'
+  id: totrans-175
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 看一下部分NLS大学注册数据：
+- en: '[PRE70]'
+  id: totrans-176
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: '[PRE71]'
+  id: totrans-177
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: '[PRE72]'
+  id: totrans-178
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: '[PRE73]'
+  id: totrans-179
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: '[PRE74]'
+  id: totrans-180
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: '[PRE75]'
+  id: totrans-181
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: Check for unique values in the merge-by columns.
+  id: totrans-182
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查合并列中的唯一值。
+- en: 'We get the same number of merge-by column value combinations (`44,920`) as
+    the number of rows in both DataFrames:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们获得的按列值组合的合并数量（`44,920`）与两个数据框中的行数相同：
+- en: '[PRE76]'
+  id: totrans-184
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: '[PRE77]'
+  id: totrans-185
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: '[PRE78]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: '[PRE79]'
+  id: totrans-187
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'Check for mismatches in the merge-by columns. All `originalid` and `year` combinations
+    appear on both files:'
+  id: totrans-188
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查合并列中的不匹配情况。所有`originalid`和`year`的组合在两个文件中都有出现：
+- en: '[PRE80]'
+  id: totrans-189
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: '[PRE81]'
+  id: totrans-190
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: 'Perform a merge with multiple merge-by columns:'
+  id: totrans-191
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用多个合并列执行合并：
+- en: '[PRE82]'
+  id: totrans-192
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: '[PRE83]'
+  id: totrans-193
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE83]'
+- en: '[PRE84]'
+  id: totrans-194
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE84]'
+- en: '[PRE85]'
+  id: totrans-195
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE85]'
+- en: These steps demonstrate that the syntax for running merges changes very little
+    when there are multiple merge-by columns.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些步骤表明，当有多个合并列时，运行合并的语法几乎没有变化。
+- en: How it works...
+  id: totrans-197
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理...
+- en: Every person in the NLS data has five rows for both the weeks worked and college
+    enrollment DataFrames, with one for each year between 2017 and 2021\. Both files
+    contain 44,920 rows with 8,984 unique individuals (indicated by `originalid`).
+    This all makes sense (8,984*5=44,920).
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: NLS数据中的每个人在工作周和大学注册数据框中都有五行数据，每年从2017年到2021年都有一行。两个文件都包含44,920行数据，涉及8,984个独特的个体（由`originalid`表示）。这一切都是有道理的（8,984*5=44,920）。
+- en: '*Step 4* confirmed that the combination of columns we will be using for the
+    merge-by columns will not be duplicated, even if individuals are duplicated. Each
+    person has only one row for each year. This means that the merging of the weeks
+    worked and college enrollment data will be a one-to-one merge. In *step 5*, we
+    checked to see whether there were any individual and year combinations that were
+    in one DataFrame but not the other. There were none.'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第4步* 确认了我们将用于合并的列组合即使在个人数据重复的情况下也不会重复。每个人每年只有一行数据。这意味着工作周和大学注册数据的合并将是一次一对一的合并。在*第5步*中，我们检查了是否有在一个数据框中存在但另一个数据框中不存在的个人和年份组合。没有发现。'
+- en: Finally, we were ready to do the merge in *step 6*. We set the `on` parameter
+    to a list with two column names (`['originalid','year']`) to tell the merge function
+    to use both columns in the merge. We specified an inner join, even though we would
+    get the same results with any join. This is because the same merge-by values are
+    present in both files.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在*第6步*中，我们准备好了进行合并。我们将`on`参数设置为一个包含两个列名的列表（`['originalid','year']`），以告诉合并函数使用这两列进行合并。我们指定了内连接，尽管使用任何连接都会得到相同的结果。这是因为相同的合并列值在两个文件中都存在。
+- en: There’s more...
+  id: totrans-201
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: All the logic and potential issues in merging data that we discussed in the
+    previous recipe apply, regardless of whether we are merging with one merge-by
+    column or several. Inner, outer, right, and left joins work the same way. We can
+    still calculate the number of rows that will be returned before doing the merge.
+    We should also check for the number of unique merge-by values and for matches
+    between the DataFrames.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在前一个食谱中讨论的所有合并数据的逻辑和潜在问题都适用，无论我们是用一个合并列还是多个合并列。内连接、外连接、右连接和左连接的工作方式相同。我们仍然可以在执行合并之前计算出返回的行数。我们还应该检查合并列的唯一值数量以及两个数据框之间的匹配情况。
+- en: If you have worked with recipes in earlier chapters that used the NLS weeks
+    worked and college enrollment data, you probably noticed that it is structured
+    differently here. In previous recipes, there was one row per person, with multiple
+    columns for weeks worked and college enrollment, representing weeks worked and
+    college enrollment for multiple years. For example, `weeksworked21` is the number
+    of weeks worked in 2021\. The structure of the weeks worked and college enrollment
+    DataFrames we used in this recipe is considered *tidier* than the NLS DataFrame
+    we used in earlier recipes. We’ll learn how to tidy data in *Chapter 11*, *Tidying
+    and Reshaping Data*.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你在之前的章节中使用过涉及NLS工作周和大学入学数据的示例，你可能注意到这里的结构不同。在之前的示例中，每个人有一行数据，包含多个关于工作周数和大学入学的列，表示多年的工作周数和大学入学情况。例如，`weeksworked21`表示2021年工作的周数。我们在本示例中使用的工作周数和大学入学数据框架结构比我们在早期示例中使用的NLS数据框架更为*整洁*。我们将在*第11章*《整理和重塑数据》中学习如何整理数据。
+- en: Doing one-to-many merges
+  id: totrans-204
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 执行一对多合并
+- en: In one-to-many merges, there are unduplicated values for the merge-by column
+    or columns on the left data table and duplicated values for those columns on the
+    right data table. For these merges, we usually do either an inner join or a left
+    join. Which of those two join types we use matters when merge-by values are missing
+    on the right data table. When performing a left join, all the rows that would
+    be returned from an inner join will be returned, plus one row for each merge-by
+    value present on the left dataset, but not the right. For those additional rows,
+    values for all the columns on the right dataset will be missing in the resulting
+    merged data. This relatively straightforward fact ends up mattering a fair bit
+    and should be thought through carefully before you code a one-to-many merge.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在一对多合并中，左侧数据表的合并列（或列组合）具有不重复的值，而右侧数据表中的这些列则具有重复的值。对于这种合并，我们通常会使用内连接或左连接。当合并列的值在右侧数据表中缺失时，选择使用哪种连接方式是非常重要的。在进行左连接时，所有从内连接中返回的行都会返回，此外，对于左侧数据集中存在但右侧数据集缺失的每个合并列值，还会多返回一行。对于这些额外的行，右侧数据表中所有列的值将在结果合并数据中缺失。这个相对简单的事实实际上非常重要，在编写一对多合并代码之前，应该仔细考虑。
+- en: This is where I start to get nervous, and where I think it makes sense to be
+    a little nervous. When I do workshops on data cleaning, I pause before starting
+    this topic and say, *“Do not start a one-to-many merge until you are able to bring
+    a friend with you.”*
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我开始感到紧张的地方，我认为在这里感到紧张是有道理的。在进行数据清洗工作坊时，我会在开始这个话题之前停顿一下，告诉大家，*“在你能带上朋友之前，不要开始一对多合并。”*
+- en: I am joking, of course… mostly. The point I am trying to make is that something
+    should happen to get us to pause before doing a non-trivial merge, and one-to-many
+    merges are never trivial. Too much about the structure of our data can change.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，我是在开玩笑……大部分时间是这样。我想表达的重点是，在进行非平凡的合并之前，应该有所停顿，而一对多的合并从来都不简单。我们的数据结构可能发生很多变化。
+- en: Specifically, there are several things we want to know about the two DataFrames
+    we will be merging before starting. First, we should know what columns make sense
+    as merge-by columns on each DataFrame. One-to-many merges are often used to recapture
+    relationships from an enterprise database system and need to be consistent with
+    the primary keys and foreign keys used. (The primary key on the left data table
+    is often linked to the foreign key on the right data table in a relational database.)
+    Second, we should know what kind of join we will be using and why.
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 具体来说，在开始之前，我们需要了解将要合并的两个数据框架的一些信息。首先，我们应该知道每个数据框架上哪些列可以作为合并列。一对多合并通常用于从企业数据库系统中重新捕捉关系，并且需要与使用的主键和外键一致。（在关系型数据库中，左侧数据表上的主键通常与右侧数据表上的外键关联。）其次，我们应该知道将使用哪种连接方式以及原因。
+- en: Third, we should know how many rows are on both data tables. Fourth, we should
+    have a good idea of how many rows will be retained based on the type of join,
+    the number of rows in each dataset, and preliminary checks on how many of the
+    merge-by values will match. If all the merge-by values are present on both datasets
+    or if we are doing an inner join, then the number of rows will be equal to the
+    number of rows of the right dataset of a one-to-many merge. But it is often not
+    as straightforward as that. We frequently perform left joins with one-to-many
+    merges. With a left join, the number of retained rows will be equal to the number
+    of rows in the right dataset with a matching merge-by value, plus the number of
+    rows in the left dataset with non-matching merge-by values.
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第三，我们应该知道两个数据表各有多少行。第四，我们应该大致了解根据连接类型、每个数据集的行数以及对合并值的初步检查，将保留多少行。如果所有的合并值在两个数据集中都有，或者如果我们正在做内连接，那么行数将等于右侧数据集的行数，适用于一对多合并。但通常情况并不像这样简单。我们经常进行左连接的一对多合并。在左连接的情况下，保留的行数将等于右数据集中具有匹配合并值的行数，加上左数据集中没有匹配合并值的行数。
+- en: This should be clearer once we’ve worked through the examples in this recipe.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们通过本教程中的示例进行操作，这应该会更加清晰。
+- en: Getting ready
+  id: totrans-211
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will be working with data based on weather stations from the Global Historical
+    Climatology Network integrated database for this recipe. One of the DataFrames
+    contains one row for each country. The other contains one row for each weather
+    station. There are typically many weather stations for each country.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本教程将使用来自全球历史气候网络（Global Historical Climatology Network）集成数据库的气象站数据。一个数据框包含每个国家的一行数据，另一个包含每个气象站的一行数据。每个国家通常有多个气象站。
+- en: How to do it…
+  id: totrans-213
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现…
+- en: 'In this recipe, we will do a one-to-many merge of data for countries, which
+    contains one row per country, with weather station data, which contains multiple
+    stations for each country. Let’s get started:'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本教程中，我们将进行一对多的合并，将每个国家一行的数据与气象站数据合并，气象站数据包含每个国家的多个站点。让我们开始吧：
+- en: 'Import `pandas` and load the weather station and country data:'
+  id: totrans-215
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`并加载气象站和国家数据：
+- en: '[PRE86]'
+  id: totrans-216
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE86]'
+- en: Set the index for the weather station (`locations`) and country data.
+  id: totrans-217
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为气象站（`locations`）和国家数据设置索引。
+- en: 'Confirm that the merge-by values for the `countries` DataFrame are unique:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 确认`countries`数据框中的合并列值是唯一的：
+- en: '[PRE87]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE87]'
+- en: '[PRE88]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE88]'
+- en: '[PRE89]'
+  id: totrans-221
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE89]'
+- en: '[PRE90]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE90]'
+- en: '[PRE91]'
+  id: totrans-223
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE91]'
+- en: '[PRE92]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE92]'
+- en: 'Perform a left join of countries and locations using `join`:'
+  id: totrans-225
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用`join`对国家和地点进行左连接：
+- en: '[PRE93]'
+  id: totrans-226
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE93]'
+- en: '[PRE94]'
+  id: totrans-227
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE94]'
+- en: The join seemed to work fine. But let’s try using merge instead.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 连接似乎正常工作。但我们试着改用merge方法。
+- en: Check for merge-by column mismatches before doing the merge.
+  id: totrans-229
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在进行合并之前，检查合并列是否匹配。
+- en: 'First, reload the DataFrames since we have made some changes. The `checkmerge`
+    function shows that there are `27,472` rows with merge-by values (from `countryid`)
+    in both DataFrames and 2 in `countries` (the left DataFrame) but not in `locations`.
+    This indicates that an inner join would return `27,472` rows and a left join would
+    return `27,474` rows. The last statement in the function identifies the `countryid`
+    values that appear in one DataFrame but not the other:'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，重新加载数据框，因为我们做了一些更改。`checkmerge`函数显示，在两个数据框中有`countryid`合并值的行数为`27,472`，在`countries`（左侧数据框）中存在但在`locations`中不存在的行数为2。这意味着内连接将返回`27,472`行，左连接将返回`27,474`行。该函数的最后语句标识出在一个数据框中有但在另一个数据框中没有的`countryid`值：
+- en: '[PRE95]'
+  id: totrans-231
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE95]'
+- en: '[PRE96]'
+  id: totrans-232
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE96]'
+- en: Show the rows in one file but not the other.
+  id: totrans-233
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示一个文件中有而另一个文件中没有的行。
+- en: 'The last statement in the previous step displays the two values of `countryid`
+    in `countries` but not in `locations`, and the one in `locations` but not in `countries`:'
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上一步的最后语句显示了在`countries`中有但在`locations`中没有的两个`countryid`值，以及在`locations`中有但在`countries`中没有的一个值：
+- en: '[PRE97]'
+  id: totrans-235
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE97]'
+- en: '[PRE98]'
+  id: totrans-236
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE98]'
+- en: '[PRE99]'
+  id: totrans-237
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE99]'
+- en: '[PRE100]'
+  id: totrans-238
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE100]'
+- en: Merge the `locations` and `countries` DataFrames.
+  id: totrans-239
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 合并`locations`和`countries`数据框。
+- en: 'Perform a left join. Also, count the number of missing values for each column,
+    where merge-by values are present in the countries data but not in the weather
+    station data:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 执行左连接。同时，统计在国家数据中存在但在气象站数据中缺失的每一列的缺失值数量：
+- en: '[PRE101]'
+  id: totrans-241
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE101]'
+- en: '[PRE102]'
+  id: totrans-242
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE102]'
+- en: '[PRE103]'
+  id: totrans-243
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE103]'
+- en: '[PRE104]'
+  id: totrans-244
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE104]'
+- en: '[PRE105]'
+  id: totrans-245
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE105]'
+- en: '[PRE106]'
+  id: totrans-246
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE106]'
+- en: The one-to-many merge returns the expected number of rows and new missing values.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一对多合并返回预期的行数以及新的缺失值。
+- en: How it works...
+  id: totrans-248
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的…
+- en: In *step 3*, we used the `join` DataFrame method to perform a left join of the
+    `countries` and `locations` DataFrames. This is the easiest way to do a merge.
+    Since the `join` method uses the index of the DataFrames for the merge, we need
+    to set the index first. We then passed the right DataFrame to the `join` method
+    of the left DataFrame.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第3步*中，我们使用了`join` DataFrame方法，执行了`countries`和`locations` DataFrame的左连接。这是执行连接的最简单方法。由于`join`方法使用DataFrame的索引进行连接，我们需要首先设置索引。然后，我们将右侧DataFrame传递给左侧DataFrame的`join`方法。
+- en: Although `join` is a little more flexible than this example suggests (you can
+    specify the type of join, for example), I prefer the more verbose pandas `merge`
+    function for all but the simplest of merges. I can be confident when using the
+    `merge` function that all the options I need are available to me. Before we used
+    the `merge` function, we did some checks in *step 4*. This told us how many rows
+    to expect in the merged DataFrame if we were to do an inner or left join; there
+    would be 27,472 or 27,474 rows, respectively.
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管`join`比这个例子中所示的稍微灵活（例如，你可以指定连接类型），但对于所有但最简单的连接，我更喜欢使用较为冗长的pandas `merge`函数。我可以确信，使用`merge`函数时，所有我需要的选项都可以使用。在我们使用`merge`函数之前，我们在*第4步*中做了一些检查。这告诉我们如果执行内连接或左连接，合并后的DataFrame预期行数分别为27,472或27,474。
+- en: We also displayed the rows with merge-by values in one DataFrame but not the
+    other. If we are going to do a left join, we need to decide what to do with the
+    missing values that will result from the right DataFrame. In this case, there
+    were two merge-by values that were not found on the right DataFrame, giving us
+    missing values for those columns.
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还展示了一个DataFrame中有merge-by值的行，而另一个没有。如果我们要做左连接，我们需要决定如何处理右侧DataFrame中缺失的值。在这个例子中，有两个merge-by值在右侧DataFrame中未找到，导致这些列出现了缺失值。
+- en: There’s more…
+  id: totrans-252
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: 'You may have noticed that in our call to `checkmerge`, we passed copies of
+    the `countries` and `locations` DataFrames:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能已经注意到，在我们调用`checkmerge`时，我们传递了`countries`和`locations` DataFrame的副本：
+- en: '[PRE107]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE107]'
+- en: We use `copy` here because we do not want the `checkmerge` function to make
+    any changes to our original DataFrames.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里使用`copy`，因为我们不希望`checkmerge`函数对原始DataFrame做任何修改。
+- en: See also
+  id: totrans-256
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: We discussed join types in detail in the *Doing one-to-one merges* recipe in
+    this chapter.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在本章的*进行一对一连接*部分详细讨论了连接类型。
+- en: Doing many-to-many merges
+  id: totrans-258
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进行多对多连接
+- en: Many-to-many merges have duplicate merge-by values in both the left and right
+    DataFrames. We should only rarely need to do a many-to-many merge. Even when data
+    comes to us in that form, it is often because we are missing the central file
+    in multiple one-to-many relationships. For example, there are donor, donor contributions,
+    and donor contact information data tables, and the last two files contain multiple
+    rows per donor. However, in this case, we do not have access to the donor file,
+    which has a one-to-many relationship with both the contributions and contact information
+    files. This happens more frequently than you may think. People sometimes give
+    us data with little awareness of the underlying structure. When I do a many-to-many
+    merge, it is typically because I am missing some key information rather than because
+    that was how the database was designed.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多对多连接会在左侧和右侧DataFrame中都产生重复的merge-by值。我们应该只在少数情况下才需要进行多对多的连接。即使数据以这种形式出现，通常也是因为我们缺少在多个一对多关系中的核心文件。例如，有捐赠者、捐赠者贡献和捐赠者联系信息的数据表，后两个文件每个捐赠者有多行。但是，在这个案例中，我们无法访问捐赠者文件，它与捐赠和联系信息文件有一对多关系。这种情况比你想象的更常见。人们有时会给我们提供数据，而不了解数据的底层结构。当我做多对多连接时，通常是因为我缺少一些关键信息，而不是因为数据库就是这么设计的。
+- en: Many-to-many merges return the Cartesian product of the merge-by column values.
+    So, if a donor ID appears twice on the donor contact information file and five
+    times on the donor contributions file, then the merge will return 10 rows. This
+    is often quite problematic analytically. In this example, a many-to-many merge
+    will duplicate the donor contributions, once for each address.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多对多连接返回merge-by列值的笛卡尔积。因此，如果一个捐赠者ID在捐赠者联系信息文件中出现两次，在捐赠者贡献文件中出现五次，那么连接将返回10行数据。这在分析时通常会引发一些问题。在这个例子中，多对多连接将重复捐赠者的贡献，每个地址一次。
+- en: Often, when faced with a potential many-to-many merge situation, the solution
+    is not to do it. Instead, we can recover the implied one-to-many relationships.
+    With the donor example, we could remove all the rows except for the most recent
+    contact information, thus ensuring that there is one row per donor. We could then
+    do a one-to-many merge with the donor contributions file. But we are not always
+    able to avoid doing a many-to-many merge. Sometimes, we must produce an analytical
+    or flat file that keeps all of the data, without regard for duplication. This
+    recipe demonstrates how to do those merges when that is required.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当面对潜在的多对多合并情况时，解决方案往往不是进行合并。相反，我们可以恢复隐含的单对多关系。以捐赠者为例，我们可以删除所有行，保留最新的联系信息，从而确保每个捐赠者只有一行数据。然后我们可以与捐赠者贡献文件进行单对多合并。但我们并不总能避免进行多对多合并。有时，我们必须生成一个分析文件或平面文件，保持所有数据，不考虑重复。这份指南展示了在需要时如何进行这些合并。
+- en: Getting ready
+  id: totrans-262
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'We will work with data based on the Cleveland Museum of Art’s collections.
+    We will use two CSV files: one containing each media citation for each item in
+    the collection and another containing the creator(s) of each item.'
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用克利夫兰艺术博物馆（Cleveland Museum of Art）的数据。我们将使用两个CSV文件：一个包含集合中每个项目的媒体引用，另一个包含每个项目的创作者。
+- en: '**Data note**'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: 'The Cleveland Museum of Art provides an API for public access to this data:
+    [https://openaccess-api.clevelandart.org/](https://openaccess-api.clevelandart.org/).
+    Much more than the citations and creators data is available in the API. The data
+    in this recipe was downloaded in April 2024.'
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 克利夫兰艺术博物馆提供了一个公共API，用于访问这些数据：[https://openaccess-api.clevelandart.org/](https://openaccess-api.clevelandart.org/)。通过该API可以获取比引用和创作者数据更多的数据。本指南中的数据是2024年4月下载的。
+- en: How to do it...
+  id: totrans-266
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'Follow these steps to complete this recipe:'
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 按照以下步骤完成这份指南：
+- en: 'Load `pandas` and the **Cleveland Museum of Art** (**CMA**) collections data:'
+  id: totrans-268
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载`pandas`并加载**克利夫兰艺术博物馆**（**CMA**）的收藏数据：
+- en: '[PRE108]'
+  id: totrans-269
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE108]'
+- en: 'Look at the `citations` data. The `itemid` is the identifier for a collection
+    item. The first 10 citations are all for collection item `94979`:'
+  id: totrans-270
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 看看`citations`数据。`itemid`是集合项的标识符。前10个引用都是针对集合项`94979`的：
+- en: '[PRE109]'
+  id: totrans-271
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE109]'
+- en: '[PRE110]'
+  id: totrans-272
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE110]'
+- en: '[PRE111]'
+  id: totrans-273
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE111]'
+- en: '[PRE112]'
+  id: totrans-274
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE112]'
+- en: '[PRE113]'
+  id: totrans-275
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE113]'
+- en: '[PRE114]'
+  id: totrans-276
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE114]'
+- en: 'Look at the `creators` data. The `creatorid` is the identifier of the creator:'
+  id: totrans-277
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 看看`creators`数据。`creatorid`是创作者的标识符：
+- en: '[PRE115]'
+  id: totrans-278
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE115]'
+- en: '[PRE116]'
+  id: totrans-279
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE116]'
+- en: '[PRE117]'
+  id: totrans-280
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE117]'
+- en: '[PRE118]'
+  id: totrans-281
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE118]'
+- en: '[PRE119]'
+  id: totrans-282
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE119]'
+- en: '[PRE120]'
+  id: totrans-283
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE120]'
+- en: '[PRE121]'
+  id: totrans-284
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE121]'
+- en: '[PRE122]'
+  id: totrans-285
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE122]'
+- en: Show duplicates of merge-by values in the `citations` data.
+  id: totrans-286
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示`citations`数据中重复的合并值。
+- en: 'There are 182 media citations for collection item 148758:'
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 集合项148758有182条媒体引用：
+- en: '[PRE123]'
+  id: totrans-288
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE123]'
+- en: '[PRE124]'
+  id: totrans-289
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE124]'
+- en: 'Show duplicates of the merge-by values in the `creators` data:'
+  id: totrans-290
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示`creators`数据中重复的合并值：
+- en: '[PRE125]'
+  id: totrans-291
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE125]'
+- en: '[PRE126]'
+  id: totrans-292
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE126]'
+- en: Check the merge.
+  id: totrans-293
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查合并结果。
+- en: 'Use the `checkmerge` function we used in the *Doing one-to-many merges* recipe:'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用我们在*进行单对多合并*中使用的`checkmerge`函数：
+- en: '[PRE127]'
+  id: totrans-295
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE127]'
+- en: '[PRE128]'
+  id: totrans-296
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE128]'
+- en: 'Show a merge-by value duplicated in both DataFrames:'
+  id: totrans-297
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示在两个数据框中都重复的合并值：
+- en: '[PRE129]'
+  id: totrans-298
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE129]'
+- en: '[PRE130]'
+  id: totrans-299
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE130]'
+- en: '[PRE131]'
+  id: totrans-300
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE131]'
+- en: '[PRE132]'
+  id: totrans-301
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE132]'
+- en: 'Do a many-to-many merge:'
+  id: totrans-302
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 进行多对多合并：
+- en: '[PRE133]'
+  id: totrans-303
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE133]'
+- en: '[PRE134]'
+  id: totrans-304
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE134]'
+- en: Now that I have taken you through the messiness of a many-to-many merge, I’ll
+    say a little more about how it works.
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，既然我已经带你了解了多对多合并的复杂性，我将再多说一点它是如何工作的。
+- en: How it works...
+  id: totrans-306
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: '*Step 2* told us that there were 16,053 citations for 974 unique items. There
+    is a unique ID, `itemid`, for each item in the museum’s collection. On average,
+    each item has 16 media citations (16,053/974). *Step 3* told us that there are
+    694 creators over 618 items that have a creator, so there is only one creator
+    for the overwhelming majority of pieces. But the fact that there are duplicated
+    `itemid`s (our merge-by value) on both the `citations` and `creators` DataFrames
+    means that our merge will be a many-to-many merge.'
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤2*告诉我们有16,053条引用，涉及974个独特项目。每个项目都有一个唯一的ID，`itemid`，表示博物馆中的每个项目。平均而言，每个项目有16条媒体引用（16,053/974）。*步骤3*告诉我们，博物馆有694位创作者，涉及618个有创作者的项目，因此绝大多数作品只有一个创作者。但`citations`和`creators`数据框中都存在重复的`itemid`（我们用于合并的值），这意味着我们的合并将是多对多合并。'
+- en: '*Step 4* gave us a sense of which `itemid`s are duplicated on the `citations`
+    DataFrame. Some items in the museum’s collection have more than 100 citations.
+    It is worth taking a closer look at the citations for those items to see whether
+    they make sense. *Step 5* showed us that even when there is more than one creator,
+    there are rarely more than three. In *step 6*, we saw that most `itemid`s appear
+    in both the `citations` file and the `creators` file, but a fair number have `citations`
+    rows but no `creators` rows. We will lose those 4,277 rows if we do an inner join
+    or a right join, but not if we do a left join or an outer join. (This assumes
+    that the `citations` DataFrame is the left DataFrame and the `creators` DataFrame
+    is the right one.)'
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤 4*让我们了解了哪些`itemid`在`citations` DataFrame中重复。博物馆中的一些项目有超过100个引用。值得仔细查看这些项目的引用，以判断它们是否合理。*步骤
+    5*显示，即使有多个创作者，通常也不会超过三个。在*步骤 6*中，我们看到大多数`itemid`出现在`citations`文件和`creators`文件中，但也有相当一部分有`citations`行但没有`creators`行。如果我们进行内连接或右连接，我们将丢失那4,277行数据，但进行左连接或外连接则不会丢失。（假设`citations`
+    DataFrame是左侧DataFrame，`creators` DataFrame是右侧DataFrame。）'
+- en: We looked at an `itemid` value that is duplicated in both DataFrames in *step
+    7*. There are 14 rows for this collection item in the `citations` DataFrame and
+    2 in the `creators` DataFrame. This will result in 28 rows (2 * 14) with that
+    `itemid` in the merged DataFrame. The `citations` data will be repeated for each
+    row in `creators`.
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们查看了*步骤 7*中在两个DataFrame中重复的`itemid`值。该集合项在`citations` DataFrame中有14行，在`creators`
+    DataFrame中有2行。这将导致在合并的DataFrame中生成28行（2 * 14）。`citations`数据将会为`creators`中的每一行重复。
+- en: This was confirmed when we looked at the results of the merge in *step 8*. We
+    performed an outer join with `itemid` as the merge-by column. When we displayed
+    the rows in the merged file for the same ID we used in *step 7*, we got the 28
+    rows we were expecting (I removed the last 14 rows of output to save space).
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们查看在*步骤 8*中合并的结果时，这一点得到了确认。我们使用`itemid`作为合并列进行了外连接。当我们展示合并文件中相同ID的行时，使用的是在*步骤
+    7*中使用的ID，我们得到了预期的28行（为了节省空间，我删除了最后14行输出）。
+- en: There’s more...
+  id: totrans-311
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: It is good to understand what to expect when we do a many-to-many merge because
+    there are times when it cannot be avoided. But even in this case, we can tell
+    that the many-to-many relationship is really just two one-to-many relationships
+    with the data file missing from the one side. There is likely a data table that
+    contains one row per collection item that has a one-to-many relationship with
+    both the `citations` data and the `creators` data. When we do not have access
+    to a file like that, it is probably best to try to reproduce a file with that
+    structure. With this data, we could have created a file containing `itemid` and
+    maybe `title`, and then done one-to-many merges with the `citations` and `creators`
+    data.
+  id: totrans-312
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理解何时进行多对多合并非常重要，因为有时这是无法避免的。但即便在这种情况下，我们可以知道，多对多关系其实只是两个一对多关系，只是数据文件在其中一侧缺失。很可能会有一个数据表，其中每一行代表一个集合项，并且与`citations`数据和`creators`数据都有一对多关系。当我们无法访问类似的文件时，最好尝试重新生成一个具有该结构的文件。利用这些数据，我们可以创建一个包含`itemid`，也许还包括`title`的文件，然后分别与`citations`和`creators`数据进行一对多合并。
+- en: However, there are occasions when we must produce a flat file for subsequent
+    analysis. We might need to do that when we, or a colleague who is getting the
+    cleaned data from us, are using software that cannot handle relational data well.
+    For example, someone in another department might do a lot of data visualization
+    work with Excel. As long as that person knows which analyses require them to remove
+    duplicated rows, a file with a structure like the one we produced in *step 8*
+    might work fine.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，有时我们必须生成一个平面文件以供后续分析。当我们，或者从我们这里获取清洗数据的同事，使用无法很好处理关系数据的软件时，可能需要这么做。例如，其他部门的某个人可能会使用Excel做很多数据可视化工作。只要那个人知道哪些分析需要去除重复的行，那么像我们在*步骤
+    8*中生成的结构可能会很好用。
+- en: Developing a merge routine
+  id: totrans-314
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 开发合并程序
+- en: I find it helpful to think of merging data as the parking lot of the data cleaning
+    process. Merging data and parking may seem routine, but they are where a disproportionate
+    number of accidents occur. One approach to getting in and out of parking lots
+    without an incident occurring is to use a similar strategy each time you go to
+    a particular lot. It could be that you always go to a relatively low-traffic area
+    and you get to that area the same way most of the time.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我发现将数据合并看作数据清理过程中的停车场很有帮助。数据合并和停车似乎是例行公事，但它们是意外发生的高发地带。避免在停车场发生事故的一种方法是，每次进入某个特定停车场时，都使用类似的策略。也许你总是去一个相对交通较少的区域，并且大部分时间你都是通过相同的方式到达那里。
+- en: I think a similar approach can be applied to getting in and out of merges with
+    our data relatively unscathed. If we choose a general approach that works for
+    us 80 to 90 percent of the time, we can focus on what is most important—the data,
+    rather than the techniques for manipulating that data.
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我认为类似的方法可以应用于在数据合并时相对不受损害地进出。如果我们选择一种对我们有效的通用方法，能在80%到90%的情况下起作用，我们可以专注于最重要的内容——数据，而不是操控数据的技术。
+- en: In this recipe, I will demonstrate the general approach that works for me, but
+    the particular techniques I will use are not very important. I think it is just
+    helpful to have an approach that you understand well and that you become comfortable
+    using.
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个方法中，我将展示对我有效的一般方法，但我使用的具体技术并不重要。我认为拥有一种你了解并且能够熟练使用的方法是很有帮助的。
+- en: Getting ready
+  id: totrans-318
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will return to the objectives we focused on in the *Doing one-to-many merges*
+    recipe of this chapter. We want to do a left join of the `countries` data with
+    the `locations` data from the Global Historical Climatology Network integrated
+    database.
+  id: totrans-319
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将回到本章的*进行一对多合并*方法中所关注的目标。我们想要对`countries`数据和全球历史气候网络集成数据库中的`locations`数据进行左连接。
+- en: How to do it…
+  id: totrans-320
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现……
+- en: 'In this recipe, we will do a left join of the `countries` and `locations` data
+    after checking for merge-by value mismatches. Let’s get started:'
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个方法中，我们将在检查合并依据值的不匹配后，对`countries`和`locations`数据进行左连接。让我们开始吧：
+- en: 'Import `pandas` and load the weather station and country data:'
+  id: totrans-322
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`并加载气象站和国家数据：
+- en: '[PRE135]'
+  id: totrans-323
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE135]'
+- en: 'Check the merge-by column matches:'
+  id: totrans-324
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查合并依据的列是否匹配：
+- en: '[PRE136]'
+  id: totrans-325
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE136]'
+- en: '[PRE137]'
+  id: totrans-326
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE137]'
+- en: 'Merge the country and location data:'
+  id: totrans-327
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 合并国家和位置数据：
+- en: '[PRE138]'
+  id: totrans-328
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE138]'
+- en: '[PRE139]'
+  id: totrans-329
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE139]'
+- en: '[PRE140]'
+  id: totrans-330
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE140]'
+- en: '[PRE141]'
+  id: totrans-331
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE141]'
+- en: 'Here, we got the expected number of rows from a left join: `27,472` rows with
+    merge-by values in both DataFrames and two rows with merge-by values in the left
+    DataFrame, but not the right.'
+  id: totrans-332
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们从左连接中得到了预期的行数：`27,472`行数据在两个DataFrame中都有合并依据值，另外有两行数据在左侧DataFrame中有合并依据值，但右侧没有。
+- en: How it works...
+  id: totrans-333
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: For the overwhelming majority of merges I do, something like the logic used
+    in *steps 2* and *3* works well. We added a fourth argument to the `checkmerge`
+    function we used in the previous recipe. This allows us to specify different merge-by
+    columns for the left and right DataFrames. We do not need to recreate this function
+    every time we do a merge. We can just include it in a module that we import. (We’ll
+    go over adding helper functions to modules in the final chapter of this book.)
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我进行的大多数合并，类似于*步骤2*和*步骤3*中使用的逻辑效果很好。我们在前一个方法中使用的`checkmerge`函数中添加了一个第四个参数。这使我们能够为左右两个DataFrame指定不同的合并依据列。每次进行合并时我们不需要重新创建这个函数。我们只需要将它包含在一个模块中并导入即可。（在本书的最后一章，我们将讨论如何将辅助函数添加到模块中。）
+- en: Calling the `checkmerge` function before running a merge gives us enough information
+    so that we know what to expect when running the merge with different join types.
+    We will know how many rows will be returned from an inner, outer, left, or right
+    join. We will also know where new missing values will be generated before we run
+    the actual merge. Of course, this is a fairly expensive operation, requiring us
+    to run a merge twice each time—one diagnostic outer join followed by whatever
+    join we subsequently choose. But I would argue that it is usually worth it, if
+    for no other reason than that it helps us to stop and think about what we are
+    doing.
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在进行合并之前调用`checkmerge`函数，能给我们足够的信息，让我们知道在使用不同的连接类型进行合并时会得到什么结果。我们将知道通过内连接、外连接、左连接或右连接返回多少行数据。我们还会知道在实际合并之前，哪些地方会生成新的缺失值。当然，这个操作相当耗费资源，因为每次我们都需要运行两次合并——一次诊断性的外连接，接着再进行我们选择的任何连接类型。但我认为这通常是值得的，至少可以帮助我们停下来思考我们在做什么。
+- en: Finally, we performed the merge in *step 3*. This is my preferred syntax. I
+    always use the left DataFrame for the first argument and the right DataFrame for
+    the second argument, though `merge` allows us to specify the left and right DataFrames
+    in different ways. I also set values for `left_on` and `right_on`, even if the
+    merge-by column is the same and I could use `on` instead (as we did in the previous
+    recipe). This is so I will not have to change the syntax in cases where the merge-by
+    column is different, and I like that it makes the merge-by column explicit for
+    both DataFrames.
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们在*步骤 3*中进行了合并。这是我偏好的语法。我总是将左侧的 DataFrame 用作第一个参数，右侧的 DataFrame 用作第二个参数，尽管`merge`允许我们以不同的方式指定左右
+    DataFrame。我还为`left_on`和`right_on`设置了值，即使合并列相同，我也可以使用`on`（就像我们在前面的例子中所做的那样）。这样做是为了避免在合并列不同的情况下需要更改语法，我也喜欢它能让两个
+    DataFrame 的合并列变得显式。
+- en: A somewhat more controversial routine is that I default to a left join, setting
+    the `how` parameter to left initially. I make that my starting assumption and
+    then ask myself if there is any reason to do a different join. The rows in the
+    left DataFrame often represent my unit of analysis (students, patients, customers,
+    and so on) and I am adding supplemental data from the right DataFrame (GPA, blood
+    pressure, zip code, and so on). It may be problematic to remove rows from the
+    unit of analysis because the merge-by value is not present on the right DataFrame,
+    as would happen if I did an inner join instead. For example, in the *Doing one-to-one
+    merges* recipe of this chapter, it probably would not have made sense to remove
+    rows from the main NLS data because they did not appear on the supplemental data
+    we have for parents.
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个稍微有争议的做法是，我默认使用左连接，将`how`参数初始设置为左连接。我将其作为起始假设，然后问自己是否有理由使用其他连接类型。左侧 DataFrame
+    中的行通常代表我的分析单元（如学生、病人、客户等），而我正在从右侧 DataFrame 中添加补充数据（如 GPA、血压、邮政编码等）。如果合并列在右侧 DataFrame
+    中不存在（例如执行内连接时），删除分析单元中的行可能会导致问题。例如，在本章的*一对一合并*食谱中，如果删除主 NLS 数据中没有出现在我们为父母提供的补充数据中的行，可能就没有意义。
+- en: See also
+  id: totrans-338
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: We will create modules with useful data cleaning functions in *Chapter 12*,
+    *Automate Data Cleaning with User-Defined Functions, Classes and Pipelines*.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在*第 12 章，自动化数据清理与用户自定义函数、类和管道*中创建包含有用数据清理功能的模块。
+- en: We have discussed the types of joins in the *Doing one-to-one merges* recipe
+    in this chapter.
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在本章的*一对一合并*食谱中讨论了连接的类型。
+- en: Summary
+  id: totrans-341
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: We carefully examined combining data vertically, also known as concatenating,
+    and combining data horizontally, also known as merging, in this chapter. We went
+    over key data issues when concatenating data, including different columns across
+    files. We also considered key issues with merging data, such as missing merge-by
+    column values and the unexpected duplication of data. We looked at how those issues
+    change with the type of join used. In the next chapter, we will learn about tidying
+    and reshaping messy data.
+  id: totrans-342
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在本章仔细研究了纵向合并数据（也称为拼接）和横向合并数据（也称为合并）。我们讨论了拼接数据时的关键数据问题，包括文件之间的不同列。我们还考虑了合并数据时的关键问题，如合并列的缺失值和数据的意外重复。我们还探讨了不同连接类型对这些问题的影响。在下一章中，我们将学习如何整理和重塑混乱的数据。
+- en: Leave a review!
+  id: totrans-343
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 留下评论！
+- en: Enjoying this book? Help readers like you by leaving an Amazon review. Scan
+    the QR code below to get a free eBook of your choice.
+  id: totrans-344
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 享受本书吗？通过在亚马逊上留下评论，帮助像您一样的读者。扫描下面的二维码获取您选择的免费电子书。
+- en: '![](img/Review_copy.png)'
+  id: totrans-345
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Review_copy.png)'

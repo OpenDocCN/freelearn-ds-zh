@@ -1,0 +1,1171 @@
+- en: Recommendation Engine that Scales with Spark
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Spark 实现可扩展的推荐引擎
+- en: 'In this chapter, we will cover:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖：
+- en: Setting up the required data for a scalable recommendation engine in Spark 2.0
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 为 Spark 2.0 中的可扩展推荐引擎准备所需数据
+- en: Exploring the movies data details for the recommendation system in Spark 2.0
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 探索 Spark 2.0 中推荐系统的电影数据细节
+- en: Exploring the rating data details for the recommendation system in Spark 2.0
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 探索 Spark 2.0 中推荐系统的评分数据细节
+- en: Building a scalable recommendation engine using collaborative filtering in Spark
+    2.0
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 构建可扩展的推荐引擎：使用 Spark 2.0 中的协同过滤
+- en: Introduction
+  id: totrans-6
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 引言
+- en: In the previous chapters, we used short recipes and extremely simplified code
+    to demonstrate basic building blocks and concepts governing the Spark machine
+    library. In this chapter, we present a more developed application that addresses
+    specific machine learning library domains using Spark's API and facilities. The
+    number of recipes is less in this chapter; however, we get into a more ML application
+    setting.
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前几章中，我们使用简短的方法和极其简化的代码来演示 Spark 机器学习库的基本构建块和概念。在本章中，我们展示了一个更成熟的应用，它使用 Spark
+    的 API 和功能来解决特定的机器学习库领域。本章中的方法较少；然而，我们进入了一个更 ML 应用设置。
+- en: In this chapter, we explore the recommendation system and its implementation
+    using a matrix factorization technique that draws on latent factor models called
+    **alternating least square** (**ALS**). In a nutshell, when we try to factorize
+    a large matrix of user-item ratings into two lower ranked, skinnier matrices,
+    we often face a non-linear or non-convex optimization problem that is very difficult
+    to solve. It happens that we are very good at solving convex optimization problems
+    by fixing one leg and partially solving the other and then going back and forth
+    (hence alternating); we can solve this factorization (hence discovering a set
+    of latent factors) much better using known optimization techniques in parallel.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将探讨推荐系统及其使用称为**交替最小二乘**（**ALS**）的潜在因子模型矩阵分解技术的实现。简而言之，当我们尝试将用户-物品评分的大矩阵分解为两个低秩、更瘦的矩阵时，我们通常会面临一个非常难以解决的非线性或非凸优化问题。我们非常擅长通过固定一个变量并部分解决另一个变量，然后来回切换（因此交替）来解决凸优化问题；我们可以使用已知的优化技术在并行中更好地解决这种分解（从而发现一组潜在因素）。
+- en: We use a popular dataset (movie lens dataset) to implement the recommendation
+    engine, but unlike in other chapters, we use two recipes to explore the data and
+    also show how you can introduce graphical elements such as the JFreeChart popular
+    library to your Spark machine learning toolkit.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们使用一个流行的数据集（电影数据集）来实现推荐引擎，但与其他章节不同，我们使用两个方法来探索数据，并展示如何引入图形元素，如流行的 JFreeChart
+    库到您的 Spark 机器学习工具包。
+- en: 'The following figure shows the flow of the concepts and recipes in this chapter
+    to demonstrate an ALS recommendation application:'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下图展示了本章中概念和方法的流程，以演示一个 ALS 推荐应用：
+- en: '![](img/a13a1488-e583-429f-98da-3325557d7c56.png)'
+  id: totrans-11
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/a13a1488-e583-429f-98da-3325557d7c56.png)'
+- en: Recommendation engines have been around for a long time and were used in early
+    e-commerce systems of the 1990s, using techniques ranging from hardcoded product
+    association to content-based recommendations driven by profiling. The modern systems
+    use **collaboration filtering** (**CF**) to address the shortcomings of the early
+    systems and also to address the scale and latency (for example, 100 ms max and
+    less) that is necessary to compete in modern commerce systems (for example, Amazon,
+    Netflix, eBay, News, and so on).
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 推荐引擎已经存在很长时间，并在 20 世纪 90 年代早期的电子商务系统中使用，从硬编码的产品关联到基于用户画像的内容推荐。现代系统使用**协同过滤**（**CF**）来解决早期系统的不足，并解决在现代商业系统（如亚马逊、Netflix、eBay、新闻等）中竞争所需的规模和延迟（例如，最大
+    100 毫秒及以下）。
+- en: The modern systems use CF based on historical interactions and records (page
+    view, purchases, rating, and so on). These systems address two major issues, mainly
+    scalability and sparseness (that is, we do not have all the ratings for all movies
+    or songs). Most systems use a variation of Alternating Least Square with Weighted
+    Lambda Regularization that can be parallelized on most major platforms (for example,
+    Spark). Having said that, a practical system implemented for commercial purposes
+    uses many augmentations to deal with bias (that is, not all movies and users are
+    equal) and temporal issues (that is, users' choice will change and the inventory
+    of items will change) that are present in today's ecosystem. Having worked on
+    a smart and leading edge e-commerce system, building a competitive recommender
+    is not a purist approach, but a practical one that uses multiple techniques, arriving
+    at the affinity matrix/heat map as the context utilizing all three techniques
+    (collaborative filtering, content-based filtering, and similarity) at the minimum.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现代系统采用基于历史互动和记录（页面浏览、购买、评分等）的CF。这些系统解决了两个主要问题，即规模化和稀疏性（即我们没有所有电影或歌曲的所有评分）。大多数系统采用基于交替最小二乘法与加权Lambda正则化的变体，这些可以在大多数主要平台上并行化（例如，Spark）。尽管如此，为商业目的实施的实用系统会采用多种增强措施来处理偏差（即并非所有电影和用户都是平等的）和时间问题（即用户的选择会变化，物品库存也会变化），这些问题在当今生态系统中普遍存在。在开发智能且领先的电子商务系统时，构建一个有竞争力的推荐器并非纯粹主义方法，而是一种实用方法，它采用多种技术，至少利用所有三种技术（协同过滤、基于内容的过滤和相似性）来构建亲和矩阵/热图。
+- en: The reader is encouraged to look up white papers and material that refer to
+    the problem of cold start in recommendation systems.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 鼓励读者查阅有关推荐系统冷启动问题的白皮书和资料。
+- en: To set the context, the following figure provides a high-level taxonomy of methods
+    that are available to build recommendation systems. We briefly cover some of the
+    pros and cons of each system but concentrate on matrix factorization (latent factor
+    model) that is available in Spark.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了设定背景，下图提供了一个构建推荐系统可用方法的高级分类。我们简要讨论了每种系统的优缺点，但重点是Spark中可用的矩阵分解（潜在因子模型）。
+- en: While both **single value decomposition** (**SVD**) and **alternative least
+    squares** (**ALS**) are available, we concentrate on ALS implementation with MovieLens
+    data due to the shortcomings of SVD in handling missing data among other things.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管**单值分解**（**SVD**）和**交替最小二乘法**（**ALS**）都可用，但由于SVD在处理缺失数据等方面的不足，我们专注于使用MovieLens数据的ALS实现。
+- en: '![](img/3e39b0ee-5c28-4270-9f09-fabd855c6286.png)'
+  id: totrans-17
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/3e39b0ee-5c28-4270-9f09-fabd855c6286.png)'
+- en: The recommendation engine techniques in use are explained in the following section.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下部分将解释当前使用的推荐引擎技术。
+- en: Content filtering
+  id: totrans-19
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 内容过滤
+- en: Content filtering is one of the original techniques for recommendation engines.
+    It relies on user profiles to make recommendations. This approach relies mostly
+    on pre-existing profiles for users (type, demographics, income, geo-location,
+    ZIP code) and inventory (characteristics of a product, movie, or a song) to infer
+    attribution which then can be filtered and acted upon. The main issue is that
+    the pre-existing knowledge is often incomplete and expensive to source. This technique
+    is more than a decade old and is still being practiced.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 内容过滤是推荐引擎的原始技术之一，它依赖用户档案来提供推荐。这种方法主要依赖于用户（类型、人口统计、收入、地理位置、邮政编码）和库存（产品、电影或歌曲的特性）的预先设定档案来推断属性，然后可以进行过滤和处理。主要问题在于，预先获取的知识往往不完整且成本高昂。这项技术已有十多年历史，至今仍在使用。
+- en: Collaborative filtering
+  id: totrans-21
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 协同过滤
+- en: Collaborative filtering is the workhorse of modern recommendation systems and
+    relies on user interaction in the ecosystem rather than profiles to make recommendations.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 协同过滤是现代推荐系统的核心，它依赖于生态系统中的用户互动而非档案来提供推荐。
+- en: This technique relies on past user behavior and product ratings and does not
+    assume any pre-existing knowledge. In short, users rate the inventory items and
+    the assumption is that customer taste will remain relatively constant over time,
+    which can be exploited to provide recommendations. Having said that, an intelligent
+    system will augment and reorder recommendations with any available context (for
+    example, the user is a female who has logged in from China).
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该技术依赖于用户过去的行为和产品评分，并不假设任何预先存在的知识。简而言之，用户对库存项目进行评分，并假设客户口味在一段时间内将保持相对稳定，这可以用来提供推荐。话虽如此，一个智能系统将根据任何可用上下文（例如，用户是来自中国的女性）来增强和重新排序推荐。
+- en: The main issue with this class of techniques is cold start, but its advantages
+    of being domain free, with more accuracy and easy scalability, has made it a winner
+    in the age of big data.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这类技术的主要问题是冷启动，但其不受领域限制、更高的准确性和易于扩展的优势，使其在大数据时代成为赢家。
+- en: Neighborhood method
+  id: totrans-25
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 邻域方法
+- en: This technique is mostly implemented as **weighted local neighborhood**. In
+    its core, it is a similarity technique and relies heavily on assumptions about
+    items and users. While it is easy to understand and implement the technique, the
+    algorithm suffers from a lack of scalability and accuracy.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这项技术主要以**加权局部邻域**的形式实现。其核心是一种相似性技术，严重依赖于对物品和用户的假设。尽管该技术易于理解和实施，但算法在可扩展性和准确性方面存在缺陷。
+- en: Latent factor models techniques
+  id: totrans-27
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 潜在因子模型技术
+- en: This technique attempts to explain users' ratings of inventory items (for example,
+    products on Amazon) by inferring a secondary set of latent factors which are inferred
+    from ratings. The power comes from the fact that you do not need to know the factors
+    ahead of time (similar to PCA techniques), but they are simply inferred from the
+    ratings themselves. We derive the latent factors using matrix factorization techniques
+    which are popular due to the extreme scalability, accuracy of predictions, and
+    flexibility (they allow for bias and the temporal nature of the user and inventory).
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该技术试图通过推断一组次级潜在因素来解释用户对库存项目（例如，亚马逊上的产品）的评分，这些潜在因素是从评分中推断出来的。其优势在于，你无需事先了解这些因素（类似于PCA技术），而是直接从评分本身推断出来。我们采用矩阵分解技术来推导这些潜在因素，这些技术因其极高的可扩展性、预测准确性和灵活性（允许偏差和用户及库存的时间特性）而广受欢迎。
+- en: '**Singular Value Decomposition (SVD)**: SVD has been available in Spark from
+    the early days, but we recommend not to use it as a core technique due to the
+    problem of its ability to deal with sparseness of data in real life (for example,
+    a user will not usually rate everything), overfitting, and order (do we really
+    need to produce the bottom 1,000 recommendations?).'
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**奇异值分解**（**SVD**）：SVD自Spark早期就已可用，但我们建议不要将其作为核心技术，因为其在处理现实数据稀疏性（例如，用户通常不会对所有内容进行评分）、过拟合和排序（我们真的需要生成最底部的1000条推荐吗？）方面存在问题。'
+- en: '**Stochastic Gradient Decent** (**SGD**): SGD is easy to implement and has
+    faster running times due to its approach of looking at one movie and one user/item
+    vector at a time (pick a movie and update the profile a little bit for that user
+    versus a batch approach). We can implement this using the matrix facility and
+    SGD in Spark as needed.'
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**随机梯度下降**（**SGD**）：SGD易于实现，且由于其逐个电影和逐个用户/物品向量的处理方式（选择一部电影并针对该用户微调其配置文件，而非批量处理），运行速度更快。我们可以根据需要使用Spark中的矩阵设施和SGD来实现这一点。'
+- en: '**Alternating Least Square** (**ALS**): Please see ALS before you take on this
+    journey. Available in Spark, ALS can take advantage of parallelization from the
+    start. Spark implements full matrix factorization under the hood, contrary to
+    the common belief that Spark uses half factorization. We encourage the reader
+    to refer to the source code to verify this for themselves. Spark provides API
+    for both **explicit** (rating available) and **implicit** (an indirect inference
+    needed--for example, the length of time a track is played rather than a rating).
+    We discuss the bias and temporal issues in the recipe itself, by introducing mathematics
+    and intuition to make our point.'
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**交替最小二乘法**（**ALS**）：在开始这段旅程之前，请先了解ALS。Spark中的ALS从一开始就能利用并行化。与普遍认为Spark使用半因子分解相反，Spark实际上在内部实现了完整的矩阵分解。我们鼓励读者参考源代码自行验证。Spark提供了针对**显式**（有评分）和**隐式**（需要间接推断，例如，播放曲目的时长而非评分）的API。我们在食谱中通过引入数学和直觉来讨论偏差和时间问题，以阐明我们的观点。'
+- en: Setting up the required data for a scalable recommendation engine in Spark 2.0
+  id: totrans-32
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 为Spark 2.0中的可扩展推荐引擎设置所需数据
+- en: In this recipe, we examine downloading the MovieLens public dataset and take
+    a first exploratory view of the data. We will use the explicit data based on customer
+    ratings from the MovieLens dataset. The MovieLens dataset contains 1,000,000 ratings
+    of 4,000 movies from 6,000 users.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们探讨下载MovieLens公共数据集并初步探索数据。我们将使用基于MovieLens数据集中客户评级的显式数据。MovieLens数据集包含来自6,000名用户的4,000部电影的1,000,000个评分。
+- en: 'You will need one of the following command line tools to retrieve the specified
+    data: `curl` (recommended for Mac) or `wget` (recommended for Windows or Linux).'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要以下命令行工具之一来检索指定数据：`curl`（Mac推荐）或`wget`（Windows或Linux推荐）。
+- en: How to do it...
+  id: totrans-35
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'You can start with downloading the dataset using either of the following commands:'
+  id: totrans-36
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 你可以通过以下任一命令开始下载数据集：
+- en: '[PRE0]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'You can also use the following command:'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你也可以使用以下命令：
+- en: '[PRE1]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Now you need to decompress the ZIP:'
+  id: totrans-40
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在你需要解压ZIP文件：
+- en: '[PRE2]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: The command will create a directory named `ml-1m` with data files decompressed
+    inside.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该命令将创建一个名为`ml-1m`的目录，其中包含解压后的数据文件。
+- en: 'Change into the directory `m1-1m`:'
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 切换到`m1-1m`目录：
+- en: '[PRE3]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Now we begin our first steps of data exploration by verifying how the data
+    in `movies.dat` is formatted:'
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们通过验证`movies.dat`中的数据格式开始数据探索的第一步：
+- en: '[PRE4]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Now we take a look at the ratings data to know how it is formatted:'
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们来看看评分数据的格式：
+- en: '[PRE5]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: How it works...
+  id: totrans-49
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 工作原理...
+- en: The MovieLens dataset is an excellent alternative to the original Netflix KDD
+    cup dataset. This dataset comes in multiple sets ranging from small (100 K set)
+    to large (1 M and 20 M set). For those users interested in tweaking the source
+    code to add their own augmentation (for example, the change regularization technique),
+    the range of the dataset makes it easy to study the scaling effect and look at
+    the performance curve versus Spark utilization per executive, as the data scales
+    from 100 K to 20 M.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MovieLens数据集是原始Netflix KDD杯数据集的绝佳替代品。此数据集有多个版本，从小型（100 K数据集）到大型（1 M和20 M数据集）。对于那些希望调整源代码以添加自己的增强功能（例如，更改正则化技术）的用户，数据集的范围使其易于研究缩放效果并查看执行者每秒Spark利用率与数据从100
+    K到20 M的性能曲线。
+- en: The URL to download is [http://grouplens.org/datasets/movielens/](http://grouplens.org/datasets/movielens/).
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下载URL为[http://grouplens.org/datasets/movielens/](http://grouplens.org/datasets/movielens/)。
+- en: There's more...
+  id: totrans-52
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: Take a closer look at where we downloaded the data from because more datasets
+    are available for use at [http://files.grouplens.org/datasets/](http://files.grouplens.org/datasets/).
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 仔细查看我们下载数据的位置，因为更多数据集可在[http://files.grouplens.org/datasets/](http://files.grouplens.org/datasets/)上使用。
+- en: The following figure depicts the size and extent of the data. For this chapter,
+    we use the small set so it can easily run on a small laptop with limited resources.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下图展示了数据的规模和范围。本章我们使用小数据集，以便在资源有限的小型笔记本电脑上轻松运行。
+- en: '![](img/9eaadad9-dbaa-453e-be03-8a44989566d5.png)'
+  id: totrans-55
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/9eaadad9-dbaa-453e-be03-8a44989566d5.png)'
+- en: 'Source: MovieLens'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来源：MovieLens
+- en: See also
+  id: totrans-57
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另请参阅
+- en: Please read through the README file contained within the directory that you
+    unzipped the data to. The README file contains information about data file formats
+    and data descriptions.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请阅读解压数据后所在目录中的README文件。README文件包含有关数据文件格式和数据描述的信息。
+- en: There is also a MovieLens genome tag set that can be used for reference.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还有一个MovieLens基因组标签集可供参考。
+- en: Computed tag-movie 11 million
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 计算的标签-电影1100万
+- en: Relevance scores from a pool of 1,100 tags
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从1,100个标签池中得出的相关性评分
+- en: Applied to 10,000 movies
+  id: totrans-62
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用于10,000部电影
+- en: For those interested in exploring the original Netflix dataset, please see the
+    [http://academictorrents.com/details/9b13183dc4d60676b773c9e2cd6de5e5542cee9a](http://academictorrents.com/details/9b13183dc4d60676b773c9e2cd6de5e5542cee9a) URL.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于那些有兴趣探索原始Netflix数据集的人，请参阅[http://academictorrents.com/details/9b13183dc4d60676b773c9e2cd6de5e5542cee9a](http://academictorrents.com/details/9b13183dc4d60676b773c9e2cd6de5e5542cee9a)的URL。
+- en: Exploring the movies data details for the recommendation system in Spark 2.0
+  id: totrans-64
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在Spark 2.0中为推荐系统探索电影数据详情
+- en: In this recipe, we will begin to explore the movie data file by parsing data
+    into a Scala `case` class and generating a simple metric. The key here is to acquire
+    an understanding of our data, so in the later stages, if nebulous results arise,
+    we will have some insight to make an informed conclusion about the correctness
+    of our results.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本教程中，我们将开始通过将数据解析到Scala `case`类中并生成一个简单指标来探索电影数据文件。关键在于获取对数据的了解，以便在后续阶段，如果出现模糊的结果，我们将有一些见解来做出关于我们结果正确性的明智结论。
+- en: This is the first of the two recipes which explore the movie dataset. Data exploration
+    is an important first step in statistical analysis and machine learning.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是探索电影数据集的两个教程中的第一个。数据探索是统计分析和机器学习的重要第一步。
+- en: One of the best ways to understand the data quickly is to generate a data visualization
+    of it, and we will use JFreeChart to do that. It is very important to make sure
+    you feel comfortable with the data and understand firsthand what is in each file,
+    and the story it tries to tell.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 快速理解数据的最佳方法之一是生成其数据可视化，我们将使用JFreeChart来实现这一点。确保您对数据感到舒适并直接了解每个文件中的内容以及它试图讲述的故事非常重要。
+- en: We must always explore, understand, and visualize the data before we do anything
+    else. Most performances and misses with ML and others systems can be traced to
+    a lack of understanding of how the data is laid out and how it changes over time.
+    If we look at the chart given in step 14 in this recipe, one immediately realizes
+    that the distribution of movies over the years is not uniform, but skewed with
+    high kurtosis. While we are not going to explore this property for optimization
+    and sampling in this book, it makes an important point about the nature of the
+    movie data.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们做任何其他事情之前，我们必须始终探索、理解和可视化数据。大多数ML和其他系统的性能和失误都可以追溯到对数据布局及其随时间变化的社会缺乏了解。如果我们在本教程的第14步中查看给出的图表，我们立即意识到电影在年份上的分布不均匀，而是具有高偏度的。虽然我们不会在这本书中探讨这个属性以进行优化和采样，但它强调了电影数据性质的重要观点。
+- en: How to do it...
+  id: totrans-69
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何实现它...
+- en: Start a new project in IntelliJ or in an IDE of your choice. Make sure the necessary
+    JAR files are included.
+  id: totrans-70
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在IntelliJ或您选择的IDE中启动一个新项目。确保包含必要的JAR文件。
+- en: JFreeChart JAR can be downloaded from the [https://sourceforge.net/projects/jfreechart/files/](https://sourceforge.net/projects/jfreechart/files/) site.
+  id: totrans-71
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: JFreeChart JAR可以从[https://sourceforge.net/projects/jfreechart/files/](https://sourceforge.net/projects/jfreechart/files/)网站下载。
+- en: Please make sure that the JFreeChart library and its dependencies (JCommon)
+    are on the classpath for the chapter.
+  id: totrans-72
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 请确保JFreeChart库及其依赖项（JCommon）位于本章的类路径上。
+- en: 'We define the package information for the Scala program:'
+  id: totrans-73
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们为Scala程序定义包信息：
+- en: '[PRE6]'
+  id: totrans-74
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Import the necessary packages:'
+  id: totrans-75
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入必要的包：
+- en: '[PRE7]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: How it works...
+  id: totrans-77
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: When the program started to execute, we initialized a SparkContext in our driver
+    program to start the task of processing the data. This implies that the data must
+    fit in the driver's memory (user's station), which is not a server requirement
+    in this case. Alternative methods of divide and conquer must be devised to deal
+    with extreme datasets (partial retrieval and the assembly at destination).
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当程序开始执行时，我们在驱动程序中初始化了一个SparkContext，以启动处理数据任务。这意味着数据必须适合驱动程序的内存（用户的工作站），在这种情况下这不是服务器的要求。必须设计其他分治方法来处理极端数据集（部分检索和目的地组装）。
+- en: We continued by loading and parsing the data file into a dataset with the data
+    type of the movies. The movie dataset was then grouped by year, yielding a map
+    of movies keyed by year, with buckets of associated movies attached.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们继续通过将数据文件加载并解析到具有电影数据类型的数据集中。然后，电影数据集按年份分组，产生一个按年份键入的电影地图，并附有相关电影的存储桶。
+- en: '![](img/1a737f15-9212-4f61-a824-8063fff13309.png)'
+  id: totrans-80
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/1a737f15-9212-4f61-a824-8063fff13309.png)'
+- en: Next, we extracted the year with the count of the number of movies associated
+    with the specific year to generate our histogram. We then collected the data,
+    causing the entire resulting data collection to materialize on the driver, and
+    passed it to JFreeChart to build the data visualization.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们提取特定年份及其相关电影数量的计数，以生成我们的直方图。然后，我们收集数据，导致整个结果数据集合在驱动程序上具体化，并将其传递给JFreeChart以构建数据可视化。
+- en: There's more...
+  id: totrans-82
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: You need to be cognizant of our use of Spark SQL because of its flexibility.
+    More information is available at [http://spark.apache.org/docs/latest/sql-programming-guide.html#running-sql-queries-programmatically](http://spark.apache.org/docs/latest/sql-programming-guide.html#running-sql-queries-programmatically).
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于Spark SQL的灵活性，你需要了解我们对它的使用。更多信息可访问[http://spark.apache.org/docs/latest/sql-programming-guide.html#running-sql-queries-programmatically](http://spark.apache.org/docs/latest/sql-programming-guide.html#running-sql-queries-programmatically)。
+- en: See also
+  id: totrans-84
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另请参阅
+- en: For more on using JFreechart, refer to the JFreeChart API documentation at [http://www.jfree.org/jfreechart/api.html](http://www.jfree.org/jfreechart/api.html).
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多关于使用JFreeChart的信息，请参考JFreeChart API文档[http://www.jfree.org/jfreechart/api.html](http://www.jfree.org/jfreechart/api.html)。
+- en: You can find a good tutorial on JFreeChart at the [http://www.tutorialspoint.com/jfreechart/](http://www.tutorialspoint.com/jfreechart/) link.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在[http://www.tutorialspoint.com/jfreechart/](http://www.tutorialspoint.com/jfreechart/)链接找到关于JFreeChart的优质教程。
+- en: The link for the JFreeChart itself is [http://www.jfree.org/index.html](http://www.jfree.org/index.html).
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFreeChart本身的链接是[http://www.jfree.org/index.html](http://www.jfree.org/index.html)。
+- en: Exploring the ratings data details for the recommendation system in Spark 2.0
+  id: totrans-88
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 探索Spark 2.0中推荐系统的评分数据细节
+- en: In this recipe, we explore the data from the user/rating perspective to understand
+    the nature and property of our data file. We will start to explore the ratings
+    data file by parsing data into a Scala case class and generating visualization
+    for insight. The ratings data will be used a little later to generate features
+    for our recommendation engine. Again, we stress that the first step in any data
+    science/machine learning exercise should be the visualization and exploration
+    of the data.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们从用户/评分的角度探索数据，以了解我们数据文件的性质和属性。我们将开始通过将数据解析为Scala case class并生成可视化来探索评分数据文件以获取洞察。评分数据稍后将用于为我们的推荐引擎生成特征。我们再次强调，任何数据科学/机器学习实践的第一步都应该是数据的可视化和探索。
+- en: Once again, the best way of understanding data quickly is to generate a data
+    visualization of it, and we will use a JFreeChart scatterplot to do this. A quick
+    look at the chart of ...
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再次强调，快速理解数据的最佳方式是生成其数据可视化，我们将使用JFreeChart散点图来实现这一点。快速查看图表...
+- en: How to do it...
+  id: totrans-91
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: Start a new project in IntelliJ or in an IDE of your choice. Make sure the necessary
+    JAR files are included.
+  id: totrans-92
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在IntelliJ或你选择的IDE中启动一个新项目。确保包含必要的JAR文件。
+- en: 'We define the package information for the Scala program:'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们为Scala程序定义包信息：
+- en: '[PRE8]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Import the necessary packages:'
+  id: totrans-95
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入必要的包：
+- en: '[PRE9]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'We now define a Scala `case class` to model the ratings data:'
+  id: totrans-97
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们现在定义一个Scala `case class`来模拟评分数据：
+- en: '[PRE10]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'Let''s define a function to display a JFreeChart within a window:'
+  id: totrans-99
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们定义一个在窗口中显示JFreeChart的函数：
+- en: '[PRE11]'
+  id: totrans-100
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'In this step, we define a function for parsing a single line of data from the
+    `ratings.dat` file into the rating `case class`:'
+  id: totrans-101
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在这一步中，我们定义了一个函数，用于将`ratings.dat`文件中的一行数据解析为评分`case class`：
+- en: '[PRE12]'
+  id: totrans-102
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'We are ready to begin building our `main` function, so let''s start with the
+    location of our `ratings.dat` file:'
+  id: totrans-103
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们准备好开始构建我们的`main`函数，所以让我们从`ratings.dat`文件的位置开始：
+- en: '[PRE13]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Create Spark''s configuration, SparkSession. In this example, we show for the
+    first time how to set the Spark executor memory (for example, 2 gig) on a small
+    laptop. You must increase this allocation if you want to use the large dataset
+    (the 144 MB set):'
+  id: totrans-105
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建Spark的配置，SparkSession。在本例中，我们首次展示了如何在小笔记本上设置Spark executor内存（例如，2GB）。如果你想使用大型数据集（144MB的数据集），你必须增加这个分配：
+- en: '[PRE14]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'The interleaving of log messages leads to hard to-read output; therefore, set
+    the logging level to `ERROR`:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 日志消息的交错导致输出难以阅读；因此，将日志级别设置为`ERROR`：
+- en: '[PRE15]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Create a dataset of all the ratings from the data file:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从数据文件创建所有评分的数据集：
+- en: '[PRE16]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Now we convert the ratings dataset into a memory table view, where we can execute
+    the Spark SQL query:'
+  id: totrans-111
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们将评分数据集转换为内存表视图，我们可以在其中执行Spark SQL查询：
+- en: '[PRE17]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'We now produce a list of all user ratings grouped by user, with their totals:'
+  id: totrans-113
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们现在生成一个按用户分组的所有用户评分的列表，以及他们的总数：
+- en: '[PRE18]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'From the console output:'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从控制台输出：
+- en: '![](img/df32964e-28ee-4bd9-9231-99a9f81160da.png)'
+  id: totrans-116
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/df32964e-28ee-4bd9-9231-99a9f81160da.png)'
+- en: Display a scatterplot chart with ratings per user. We choose a scatterplot to
+    demonstrate a different way to look at the data from the previous recipe. We encourage
+    readers to explore standardization techniques (for example, remove mean) or a
+    volatility varying regime (for example, GARCH) to explore the autoregressive conditional
+    heteroscedasticity property of this dataset (which is beyond the scope of this
+    book). The reader is advised to consult any advanced time series book to develop
+    an understanding of time varying volatility of the time series and how to correct
+    this before usage.
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 展示每个用户的评分散点图。我们选择散点图以展示与前一节不同的数据查看方式。鼓励读者探索标准化技术（例如移除均值）或波动性变化机制（例如GARCH），以探索此数据集的自回归条件异方差特性（这超出了本书的范围）。建议读者查阅任何高级时间序列书籍，以理解时间序列的时间变化。
+- en: '[PRE19]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Display the chart:'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示图表：
+- en: '[PRE20]'
+  id: totrans-120
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: '![](img/3ac4fbe1-8d5c-4181-af8f-3896f8636836.png)'
+  id: totrans-121
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/3ac4fbe1-8d5c-4181-af8f-3896f8636836.png)'
+- en: 'We close the program by stopping the Spark session:'
+  id: totrans-122
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们通过停止Spark会话来关闭程序：
+- en: '[PRE21]'
+  id: totrans-123
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: How it works...
+  id: totrans-124
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 其工作原理...
+- en: We began by loading and parsing the data file into a dataset with the data type
+    ratings, and finally converted it to a DataFrame. The DataFrame was then used
+    to execute a Spark SQL query that grouped all the ratings by user with their totals.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先将数据文件加载并解析为具有评分数据类型的数据集，最终将其转换为DataFrame。然后，使用DataFrame执行Spark SQL查询，该查询按用户及其总数对所有评分进行分组。
+- en: A full understanding of the API and its concepts (lazy instantiation, staging,
+    pipelining, and caching) is critical for every Spark developer.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 全面理解API及其概念（延迟实例化、阶段划分、流水线和缓存）对每位Spark开发者至关重要。
+- en: '![](img/c455240d-f3f0-46c5-ae6f-0de99fb6a987.png)'
+  id: totrans-127
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/c455240d-f3f0-46c5-ae6f-0de99fb6a987.png)'
+- en: Finally, we passed the result set of data to the JFreeChart scatterplot component
+    to display our chart.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将数据集的结果传递给JFreeChart散点图组件以显示我们的图表。
+- en: There's more...
+  id: totrans-129
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: A Spark DataFrame is a distributed collection of data organized into named columns.
+    All DataFrame operations are also automatically parallelized and distributed on
+    clusters. Also, DataFrames are lazily evaluated like RDDs.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark DataFrame是一个分布式数据集合，按命名列组织。所有DataFrame操作也会自动在集群上并行化和分布。此外，DataFrames像RDD一样是惰性评估的。
+- en: See also
+  id: totrans-131
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 参见
+- en: Documentation on DataFrames can be found at [http://spark.apache.org/docs/latest/sql-programming-guide.html](http://spark.apache.org/docs/latest/sql-programming-guide.html).
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DataFrame的文档可在[http://spark.apache.org/docs/latest/sql-programming-guide.html](http://spark.apache.org/docs/latest/sql-programming-guide.html)找到。
+- en: A good tutorial on JFreeChart can be found at the [http://www.tutorialspoint.com/jfreechart/](http://www.tutorialspoint.com/jfreechart/) linking.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于JFreeChart的优秀教程可在[http://www.tutorialspoint.com/jfreechart/](http://www.tutorialspoint.com/jfreechart/)链接中找到。
+- en: JFreeChart can be downloaded from the [http://www.jfree.org/index.html](http://www.jfree.org/index.html) URL.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: JFreeChart可从[http://www.jfree.org/index.html](http://www.jfree.org/index.html)网址下载。
+- en: Building a scalable recommendation engine using collaborative filtering in Spark
+    2.0
+  id: totrans-135
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用Spark 2.0中的协同过滤构建可扩展的推荐引擎
+- en: In this recipe, we will be demonstrating a recommendation system that utilizes
+    a technique known as collaborative filtering. At the core, collaborative filtering
+    analyzes the relationship between users themselves and the dependencies between
+    the inventory (for example, movies, books, news articles, or songs) to identify
+    user-to-item relationships based on a set of secondary factors called **latent
+    factors** (for example, female/male, happy/sad, active/passive). The key here
+    is that you do not need to know the latent factors in advance.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节中，我们将演示一个利用协同过滤技术的推荐系统。协同过滤的核心在于分析用户之间的关系以及库存（例如电影、书籍、新闻文章或歌曲）之间的依赖性，基于一组称为**潜在因素**的次要因素（例如女性/男性、快乐/悲伤、活跃/被动）来识别用户与物品之间的关系。关键在于，您无需预先了解这些潜在因素。
+- en: The recommendation will be produced via the ALS algorithm which is a collaborative
+    filtering technique. At a high level, collaborative filtering entails making predictions
+    of what a user may be interested in based on collecting previously known preferences,
+    combined with the preferences of many other users. We will be using the ratings
+    data from the MovieLens dataset and will convert it into input features for the
+    recommendation algorithm.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 推荐将通过ALS算法生成，这是一种协同过滤技术。从高层次上看，协同过滤涉及基于收集的先前已知偏好以及许多其他用户的偏好，对用户可能感兴趣的内容进行预测。我们将使用MovieLens数据集中的评分数据，并将其转换为推荐算法的输入特征。
+- en: How to do it...
+  id: totrans-138
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: Start a new project in IntelliJ or in an IDE of your choice. Make sure the necessary
+    JAR files are included.
+  id: totrans-139
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在IntelliJ或您选择的IDE中启动一个新项目。确保包含必要的JAR文件。
+- en: 'We define the package information for the Scala program:'
+  id: totrans-140
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们为Scala程序定义包信息：
+- en: '[PRE22]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Import the necessary packages:'
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入必要的包：
+- en: '[PRE23]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'We now define two Scala case classes, to model movie and ratings data:'
+  id: totrans-144
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们现在定义两个Scala case类，以模拟电影和评分数据：
+- en: '[PRE24]'
+  id: totrans-145
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: In this step, we define functions for parsing a single line of data from the
+    `ratings.dat` file into the ratings `case class`, and for parsing ...
+  id: totrans-146
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在此步骤中，我们定义函数，用于将`ratings.dat`文件中的一行数据解析为评分`case class`，以及用于解析...
+- en: How it works...
+  id: totrans-147
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: Due to the complex nature of the program, we provide a conceptual explanation
+    and then proceed to explain the details of the program.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于程序的复杂性，我们首先提供概念性解释，然后逐步详细说明程序内容。
+- en: 'The following figure depicts a conceptual view of ALS and how it factorizes
+    the user/movie/rating matrix, which is a high-ranking order matrix to a lower
+    order tall and skinny matrix, and a vector of latent factors: f(users) and f(movies).'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下图描绘了ALS的概念视图及其如何将用户/电影/评分矩阵分解为低阶的瘦长矩阵和潜在因子向量：f(用户)和f(电影)。
+- en: '![](img/12112437-3df5-4c38-ba64-5a826ee53b88.png)'
+  id: totrans-150
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/12112437-3df5-4c38-ba64-5a826ee53b88.png)'
+- en: 'Another way to think about it is that these factors can be used to place the
+    movie in an *n* dimensional space that will be matched to a given recommendation
+    for a given user. It is always desirable to view machine learning as a search
+    query in a dimensional variable space. The point to remember is that the latent
+    factor (learned geometry space) is not pre-defined and can be as low as 10 to
+    100 or 1,000 depending on what is being searched or factorized. Our recommendation,
+    then, can be viewed as placing a probability mass within the n-dimensional space.
+    The following figure provides an extremely simplified view of a possible two-factor
+    model (two-dimensional) to demonstrate the point:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种思考方式是，这些因子可用于将电影置于*n*维空间中，该空间将与给定用户的推荐相匹配。始终希望将机器学习视为在维度变量空间中的搜索查询。需要记住的是，潜在因子（学习的几何空间）并非预先定义，其数量可以从10到100或1000不等，具体取决于所搜索或分解的内容。因此，我们的推荐可以看作是在n维空间内放置概率质量。下图提供了一个可能的双因子模型（二维）的极其简化的视图，以阐明这一点：
+- en: '![](img/0c3e88ca-279e-4c95-aae2-1cf13b93737f.png)'
+  id: totrans-152
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/0c3e88ca-279e-4c95-aae2-1cf13b93737f.png)'
+- en: 'While the implementation of ALS can vary a bit from system to system, at its
+    core it is an iterative full-factorization method (in Spark) with weighed regularization.
+    Spark''s documentation and tutorials provide an insight into the actual math and
+    the nature of the algorithm. It depicts the algorithm as follows:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管ALS的实现可能因系统而异，但其核心是一种迭代的全因子分解方法（在Spark中），带有加权正则化。Spark的文档和教程提供了对该算法实际数学和性质的洞察。它将算法描述如下：
+- en: '![](img/7d907fdc-4cc5-4bfd-84d2-ef996cff20b1.png)'
+  id: totrans-154
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/7d907fdc-4cc5-4bfd-84d2-ef996cff20b1.png)'
+- en: The best way to understand this formula/algorithm is to think of it as an iterating
+    apparatus which is trying to discover the latent factors by alternating between
+    inputs (that is, fix one of the inputs and then approximate/optimize the other--and
+    then back and forth), while trying to minimize the least square error (MSE) with
+    respect to a regularization penalty of weighted lambda. A more detailed explanation
+    is provided in the next section.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理解这个公式/算法的最佳方式是将其视为一个迭代装置，试图通过交替输入（即，固定一个输入，然后近似/优化另一个——如此往复）来发现潜在因子，同时试图最小化与加权lambda正则化惩罚相关的最小二乘误差（MSE）。下一节将提供更详细的解释。
+- en: 'The program flow is as follows:'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 程序流程如下：
+- en: The example started, by loading the ratings and movie data from the MovieLens
+    dataset. The loaded data was then transformed into Scala case classes for further
+    processing. The next step was to partition the ratings data into a training set
+    and test set. The training set data was used to train the machine learning algorithm.
+    Training is the process in machine learning used to build a model so it can provide
+    the appropriate results needed. The test data will be used to validate the results
+    in the final step.
+  id: totrans-157
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 示例首先从MovieLens数据集中加载评分和电影数据。加载的数据随后被转换为Scala case类以便进一步处理。接下来，将评分数据划分为训练集和测试集。训练集数据用于训练机器学习算法。训练是机器学习中用于构建模型以便提供所需结果的过程。测试数据将用于最终步骤中验证结果。
+- en: The fictitious users, or user ID zero, step configured a single user not included
+    in the original dataset to help lend insight to the results by creating a dataset
+    on the fly with random information, and finally appending it to the training set.
+    The ALS algorithm was invoked by passing the training set data to it, comprised
+    of the user ID, movie ID, and rating, subsequently yielding a matrix factorization
+    model from Spark. The prediction generation was performed for the user ID zero
+    and test dataset.
+  id: totrans-158
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 虚构用户，即用户ID零，通过配置一个未包含在原始数据集中的单一用户，帮助通过即时创建包含随机信息的数据显示结果，并最终将其附加到训练集中。通过将包含用户ID、电影ID和评分的训练集数据传递给ALS算法来调用它，随后从Spark中产生一个矩阵分解模型。为测试数据集和用户ID零生成预测。
+- en: The final results were displayed by combining rating information with the movie
+    data so the results could be understood and displayed in the original rating next
+    to the estimated rating. The final step was to compute the root mean squared error
+    of the generated rating, with the existing rating contained within the test dataset.
+    The RMSE will tell us how accurate the train model is.
+  id: totrans-159
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 最终结果通过结合评分信息与电影数据展示，以便结果能被理解并在原始评分旁显示估计评分。最后一步是计算生成评分的均方根误差，该评分包含在测试数据集中。RMSE将告诉我们训练模型的准确性。
+- en: There's more...
+  id: totrans-160
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: People often struggle with ALS even though at its core it is a simple linear
+    algebra operation with an added regularization penalty. What makes ALS powerful
+    is its ability to be parallelized and to deal with scale (for example, Spotify).
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管ALS本质上是一个带有正则化惩罚的简单线性代数运算，但人们常常难以掌握。ALS的强大之处在于其能够并行化处理以及应对规模（例如Spotify）。
+- en: 'ALS in layman''s language involves the following:'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ALS用通俗语言来说涉及以下内容：
+- en: With ALS, you basically want to factorize a large matrix of ratings X (100 million
+    plus users is not a stretch at all) and user product ratings into two matrices
+    of A and B, with lower ranks (see any introductory linear algebra book). The problem
+    is that it often becomes a very hard non-linear optimization problem to solve.
+    To remedy with ALS, you introduce a simple solution (**A** for **Alternating**)
+    in which you fix one of the matrices and partially ...
+  id: totrans-163
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用ALS，你基本上想要将一个大型评分矩阵X（拥有超过1亿用户并非夸张）和用户产品评分分解为两个低秩矩阵A和B（参见任何入门线性代数书籍）。问题在于，这通常成为一个非常难以解决的非线性优化问题。为了解决这个问题，ALS引入了一个简单方案（**交替**），其中你固定一个矩阵并部分...
+- en: See also
+  id: totrans-164
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: 'Spark 2.0 ML documentation to explore the ALS API:'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark 2.0 ML文档以探索ALS API：
+- en: '[https://spark.apache.org/docs/latest/mllib-collaborative-filtering.html](https://spark.apache.org/docs/latest/mllib-collaborative-filtering.html)'
+  id: totrans-166
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/mllib-collaborative-filtering.html](https://spark.apache.org/docs/latest/mllib-collaborative-filtering.html)'
+- en: '[https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALS](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALS)'
+  id: totrans-167
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALS](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALS)'
+- en: '[https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALSModel](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALSModel)'
+  id: totrans-168
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALSModel](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.ml.recommendation.ALSModel)'
+- en: Spark 2.0 MLlib documentation is available at [https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.mllib.recommendation.ALS](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.mllib.recommendation.ALS).
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark 2.0 MLlib文档可于[https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.mllib.recommendation.ALS](https://spark.apache.org/docs/latest/api/scala/index.html#org.apache.spark.mllib.recommendation.ALS)获取。
+- en: 'ALS parameters and their default constructs an ALS instance with default parameters
+    as follows:'
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ALS参数及其默认构造，以默认参数创建ALS实例如下：
+- en: '[PRE25]'
+  id: totrans-171
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: Dealing with implicit input for training
+  id: totrans-172
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 处理训练中的隐式输入
+- en: There are times when the actual observations (ratings) are not available and
+    one must deal with implied feedback parameters. This can be as simple as which
+    audio track was listened to during an engagement to how long a movie was watched,
+    or the context (indexed in advance) or what caused a switch (a Netflix movie abandoned
+    in the beginning, middle, or near a specific scene). The example provided in the
+    third recipe deals with explicit feedback via the use of `ALS.train()`.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时实际观察（评分）数据不可得，此时需处理隐含反馈参数。这可能简单到记录用户在互动期间听取了哪个音轨，或是观看了多久的电影，亦或是上下文（预先索引）以及导致切换的原因（如Netflix电影在开头、中间或特定场景附近被放弃观看）。第三个示例中通过使用`ALS.train()`处理了显式反馈。
+- en: The Spark ML library provides an alternative method, `ALS.trainImplicit()`,
+    with four hyper parameters to control the algorithm and address the implicit data.
+    If you are interested in testing this (it is very similar to the explicit ...
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 针对隐式数据，Spark ML库提供了另一种方法`ALS.trainImplicit()`，该方法有四个超参数来控制算法。若你对测试此方法感兴趣（它与显式反馈非常相似...

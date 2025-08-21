@@ -1,0 +1,1589 @@
+- en: '7'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '7'
+- en: Managing Authentication and Security in FastAPI
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在FastAPI中管理身份验证和安全性
+- en: Most of the time, you don’t want everyone on the internet to have access to
+    your API, without any restrictions on the data they can create or read. That’s
+    why you’ll need to at least protect your application with a private token or have
+    a proper authentication system to manage the rights given to each user. In this
+    chapter, we’ll see how FastAPI provides security dependencies to help us retrieve
+    credentials by following different standards that are directly integrated into
+    the automatic documentation. We’ll also build a basic user registration and authentication
+    system to secure our API endpoints.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数时候，你不希望互联网上的每个人都能访问你的API，而不对他们能创建或读取的数据设置任何限制。这就是为什么你至少需要用私有令牌保护你的应用程序，或者拥有一个合适的身份验证系统来管理授予每个用户的权限。在本章中，我们将看到FastAPI如何提供安全依赖，帮助我们通过遵循不同的标准来检索凭证，这些标准直接集成到自动文档中。我们还将构建一个基本的用户注册和身份验证系统来保护我们的API端点。
+- en: Finally, we’ll cover the security challenges you must tackle when you want to
+    call your API from a web application in a browser – in particular, the risks of
+    CORS and CSRF attacks.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将讨论当你想从浏览器中的Web应用程序调用API时需要解决的安全挑战——特别是CORS和CSRF攻击的风险。
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将讨论以下主要内容：
+- en: Security dependencies in FastAPI
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: FastAPI中的安全依赖
+- en: Retrieving a user and generating an access token
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 获取用户并生成访问令牌
+- en: Securing API endpoints for authenticated users
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 为经过身份验证的用户保护API端点
+- en: Securing endpoints with access tokens
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用访问令牌保护端点
+- en: Configuring CORS and protecting against CSRF attacks
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 配置CORS并防止CSRF攻击
+- en: Technical requirements
+  id: totrans-10
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: For this chapter, you’ll require a Python virtual environment, just as we set
+    up in [*Chapter 1*](B19528_01.xhtml#_idTextAnchor024), *Python Development* *Environment
+    Setup*.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于本章内容，你将需要一个Python虚拟环境，正如我们在[*第1章*](B19528_01.xhtml#_idTextAnchor024)中设置的那样，*Python开发*
+    *环境设置*。
+- en: You’ll find all the code examples of this chapter in the dedicated GitHub repository
+    at [https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07).
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在专门的GitHub仓库中找到本章的所有代码示例，地址是[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07)。
+- en: Security dependencies in FastAPI
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: FastAPI中的安全依赖
+- en: 'To protect REST APIs, and HTTP endpoints more generally, lots of standards
+    have been proposed. Here is a non-exhaustive list of the most common ones:'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了保护REST API，以及更广泛的HTTP端点，已经提出了许多标准。以下是最常见的一些标准的非详尽列表：
+- en: '`Authorization`. The value consists of the `Basic` keyword, followed by the
+    user credentials encoded in `Base64`. This is a very simple scheme to implement
+    but not very secure since the password appears in every request.'
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Authorization`。该值由`Basic`关键字组成，后跟以`Base64`编码的用户凭证。这是一种非常简单的方案，但并不太安全，因为密码会出现在每个请求中。'
+- en: '**Cookies**: Cookies are a useful way to store static data on the client side,
+    usually on web browsers, that is sent in each request to the server. Typically,
+    a cookie contains a session token that can be verified by the server and linked
+    to a specific user.'
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**Cookies**：Cookies是一个在客户端（通常是在Web浏览器上）存储静态数据的有用方式，这些数据会在每次请求时发送到服务器。通常，一个cookie包含一个会话令牌，服务器可以验证并将其与特定用户关联。'
+- en: '`Authorization` header: Probably the most used header in a REST API context,
+    this simply consists of sending a token in an HTTP `Authorization` header. The
+    token is often prefixed by a method keyword, such as `Bearer`. On the server side,
+    this token can be verified and linked to a specific user.'
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Authorization`头：在REST API上下文中，可能是最常用的头部，它仅仅是通过HTTP `Authorization`头发送一个令牌。该令牌通常以方法关键字（如`Bearer`）为前缀。在服务器端，可以验证这个令牌并将其与特定用户关联。'
+- en: Each standard has its pros and cons and is suitable for a specific use case.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个标准都有其优缺点，并适用于特定的使用场景。
+- en: 'As you already know, FastAPI is mainly about dependency injection and callables
+    that are automatically detected and called at runtime. Authentication methods
+    are no exception: FastAPI provides most of them out of the box as security dependencies.'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所知，FastAPI主要是关于依赖注入和可调用项，它们会在运行时被自动检测并调用。身份验证方法也不例外：FastAPI默认提供了大部分的安全依赖。
+- en: 'First, let’s learn how to retrieve an access token in an arbitrary header.
+    For this, we can use the `ApiKeyHeader` dependency, as shown in the following
+    example:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们学习如何从任意头部检索访问令牌。为此，我们可以使用`ApiKeyHeader`依赖项，如下例所示：
+- en: chapter07_api_key_header.py
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter07_api_key_header.py
+- en: '[PRE0]'
+  id: totrans-22
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py)'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py)'
+- en: In this simple example, we hardcoded a token, `API_TOKEN`, and checked whether
+    the token passed in the header was equal to this token, before authorizing the
+    endpoint to be called. To do this, we used the `APIKeyHeader` security dependency,
+    which is designed to retrieve a value from a header. It’s a class dependency that
+    can be instantiated with arguments. In particular, it accepts the `name` argument,
+    which holds the name of the header it’ll look for.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个简单的示例中，我们硬编码了一个令牌`API_TOKEN`，并检查头部传递的令牌是否等于这个令牌，之后才授权调用端点。为了做到这一点，我们使用了`APIKeyHeader`安全依赖项，它专门用于从头部检索值。它是一个类依赖项，可以通过参数实例化。特别地，它接受`name`参数，该参数保存它将要查找的头部名称。
+- en: Then, in our endpoint, we injected this dependency to get the token’s value.
+    If it’s equal to our token constant, we proceed with the endpoint logic. Otherwise,
+    we raise a `403` error.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在我们的端点中，我们注入了这个依赖项来获取令牌的值。如果它等于我们的令牌常量，我们就继续执行端点逻辑。否则，我们抛出`403`错误。
+- en: 'Our example from the *Path, router, and global dependencies* section of [*Chapter
+    5*](B19528_05.xhtml#_idTextAnchor285), *Dependency Injection in FastAPI*, is not
+    very different from this one. We are simply retrieving a value from an arbitrary
+    header and making an equality check. So, why bother with a dedicated dependency?
+    There are two reasons:'
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在[《第5章》](B19528_05.xhtml#_idTextAnchor285)中的*路径、路由器和全局依赖项*部分的示例，*FastAPI中的依赖注入*，与这个示例并没有太大不同。我们只是从一个任意的头部中检索值并进行等式检查。那么，为什么要使用专门的依赖项呢？有两个原因：
+- en: First, the logic to check whether the header exists and retrieve its value is
+    included in `APIKeyHeader`. When you reach the endpoint, you are sure that a token
+    value was retrieved; otherwise, a `403` error will be thrown.
+  id: totrans-27
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 首先，检查头部是否存在并检索其值的逻辑包含在`APIKeyHeader`中。当你到达端点时，可以确定已检索到令牌值；否则，将抛出`403`错误。
+- en: 'The second, and probably most important, thing is that it’s detected by the
+    OpenAPI schema and included in its interactive documentation. This means that
+    endpoints using this dependency will display a lock icon, showing that it’s a
+    protected endpoint. Furthermore, you’ll have access to an interface to input your
+    token, as shown in the following screenshot. The token will then be automatically
+    included in the requests you are making from the documentation:'
+  id: totrans-28
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 第二个，可能也是最重要的，事情是它被 OpenAPI 架构检测到，并包含在其交互式文档中。这意味着使用此依赖项的端点将显示一个锁定图标，表示这是一个受保护的端点。此外，你将能够访问一个界面来输入你的令牌，如下图所示。令牌将自动包含在你从文档发出的请求中：
+- en: '![Figure 7.1 – Token authorization in interactive documentation](img/Figure_7.1_B19528.jpg)'
+  id: totrans-29
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.1 – 在交互式文档中的令牌授权](img/Figure_7.1_B19528.jpg)'
+- en: Figure 7.1 – Token authorization in interactive documentation
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.1 – 在交互式文档中的令牌授权
+- en: 'Of course, you can wrap the logic that checks the token value in its own dependency
+    to reuse it across your endpoints, as shown in the following example:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，你可以将检查令牌值的逻辑封装在自己的依赖项中，以便在各个端点之间重用，如下例所示：
+- en: chapter07_api_key_header_dependency.py
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: chapter07_api_key_header_dependency.py
+- en: '[PRE1]'
+  id: totrans-33
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py)'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/chapter07_api_key_header.py)'
+- en: These kinds of dependencies are very good candidates to be used as routers or
+    global dependencies to protect whole sets of routes, as we saw in [*Chapter 5*](B19528_05.xhtml#_idTextAnchor285),
+    *Dependency Injection* *in FastAPI*.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种依赖关系非常适合用作路由器或全局依赖项，以保护一组路由，正如我们在[*第5章*](B19528_05.xhtml#_idTextAnchor285)《FastAPI中的依赖注入》中看到的那样。
+- en: This is a very basic example of adding authorization to your API. In this example,
+    we don’t have any user management; we are only checking that a token corresponds
+    to a constant value. While it could be useful for private microservices that are
+    not intended to be called by end users, this approach should not be considered
+    very secure.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是为你的API添加授权的一个非常基本的示例。在这个示例中，我们没有用户管理；我们只是检查令牌是否与一个常量值对应。虽然它对于不打算由最终用户调用的私有微服务来说可能有用，但这种方法不应被认为非常安全。
+- en: First, make sure your API is always served using HTTPS to ensure your token
+    is not exposed in the headers. Then, if it’s a private microservice, you should
+    also consider not exposing it publicly on the internet and making sure only trusted
+    servers can call it. Since you don’t need users to make requests to this service,
+    it’s much safer than a simple token key that could be stolen.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，确保你的API始终通过HTTPS提供服务，以确保令牌不会在头部暴露。然后，如果这是一个私有微服务，你还应该考虑不要公开暴露它到互联网上，并确保只有受信任的服务器才能调用它。由于你不需要用户向这个服务发起请求，因此它比一个简单的令牌密钥要安全得多，因为后者可能会被盗取。
+- en: 'Of course, most of the time, you’ll want to authenticate real users with their
+    own individual access tokens with which they can access their own data. You have
+    probably already used a service that implements this very typical pattern:'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，大多数情况下，你会希望通过用户自己的个人访问令牌来验证真实用户，从而让他们访问自己的数据。你可能已经使用过实现这种典型模式的服务：
+- en: First, you must register an account on this service, usually by providing your
+    email address and a password.
+  id: totrans-39
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 首先，你必须在该服务上注册一个账户，通常是通过提供你的电子邮件地址和密码。
+- en: Next, you can log in to the service using the same email address and password.
+    The service checks whether the email address exists and that the password is valid.
+  id: totrans-40
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 接下来，你可以使用相同的电子邮件地址和密码登录该服务。该服务会检查电子邮件地址是否存在以及密码是否有效。
+- en: In exchange, the service provides you with a session token that can be used
+    on subsequent requests to authenticate yourself. This way, you don’t have to provide
+    your email address and password on each request, which would be annoying and dangerous.
+    Usually, such session tokens have a limited lifetime, which means you’ll have
+    to log in again after some time. This mitigates any security risks if the session
+    token is stolen.
+  id: totrans-41
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 作为交换，服务会为你提供一个会话令牌，可以在后续请求中使用它来验证身份。这样，你就不需要在每次请求时都提供电子邮件地址和密码，这样既麻烦又危险。通常，这种会话令牌有一个有限的生命周期，这意味着一段时间后你需要重新登录。这可以减少会话令牌被盗时的安全风险。
+- en: In the next section, you’ll learn how to implement such a system.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一部分，你将学习如何实现这样的系统。
+- en: Storing a user and their password securely in a database
+  id: totrans-43
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将用户及其密码安全地存储在数据库中
+- en: Storing a user entity in a database is no different from storing any other entity,
+    and you can implement this in the same way as in [*Chapter 6*](B19528_06.xhtml#_idTextAnchor346),
+    *Databases and Asynchronous ORMs*. The only thing you must be extremely cautious
+    about is password storage. You must not store the password as plain text in your
+    database. Why? If, unfortunately, a malicious person manages to get into your
+    database, they’ll be able to get the passwords of all your users. Since many people
+    use the same password multiple times, the security of their accounts on other
+    applications and websites would be seriously compromised.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将用户实体存储在数据库中与存储任何其他实体并没有区别，你可以像在[*第6章*](B19528_06.xhtml#_idTextAnchor346)《数据库和异步ORM》中一样实现它。你必须特别小心的唯一事项就是密码存储。你绝不能将密码以明文形式存储在数据库中。为什么？如果不幸地，某个恶意的人成功进入了你的数据库，他们将能够获取所有用户的密码。由于许多人会在多个地方使用相同的密码，他们在其他应用程序和网站上的账户安全将受到严重威胁。
+- en: To avoid a disaster like this, we can apply **cryptographic hash functions**
+    to the password. The goal of those functions is to transform the password string
+    into a hash value. This is designed to make it near impossible to retrieve the
+    original data from the hash. Hence, even if your database is compromised, the
+    passwords are still safe.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了避免这种灾难，我们可以对密码应用**加密哈希函数**。这些函数的目标是将密码字符串转换为哈希值。设计这个的目的是让从哈希值中恢复原始数据几乎不可能。因此，即使你的数据库被入侵，密码依然安全。
+- en: When users try to log in, we simply compute the hash of the password they input
+    and compare it with the hash we have in our database. If they match, this means
+    it’s the right password.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当用户尝试登录时，我们只需计算他们输入的密码的哈希值，并将其与我们数据库中的哈希值进行比较。如果匹配，则意味着密码正确。
+- en: Now, let’s learn how to implement such a system with FastAPI and SQLAlchemy
+    ORM.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们学习如何使用 FastAPI 和 SQLAlchemy ORM 来实现这样的系统。
+- en: Creating models
+  id: totrans-48
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建模型
+- en: 'We start by creating the SQLAlchemy ORM model for a user, as shown in the following
+    example:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从为用户创建 SQLAlchemy ORM 模型开始，如下所示：
+- en: models.py
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: models.py
+- en: '[PRE2]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py)'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py)'
+- en: To keep this example simple, we’re only considering the ID, email address, and
+    password in our model. Note that we added a unique constraint to the `email` column
+    to ensure we can’t have duplicate emails in our database.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了简化这个示例，我们在模型中仅考虑了 ID、电子邮件地址和密码。请注意，我们对 `email` 列添加了唯一约束，以确保数据库中不会有重复的电子邮件。
+- en: 'Next, we can implement the corresponding Pydantic schemas:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们可以实现相应的 Pydantic 模式：
+- en: schemas.py
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: schemas.py
+- en: '[PRE3]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/schemas.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/schemas.py)'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/schemas.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/schemas.py)'
+- en: 'As you can see, there is a major difference between `UserCreate` and `User`:
+    the former accepts the plain text password we’ll hash during registration, while
+    the second will only keep the hashed password in the database. We also take care
+    to not include `hashed_password` in `UserRead`, so the hash doesn’t appear in
+    API responses. Even though hashed data should be indecipherable, it’s generally
+    not advised to leak it.'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，`UserCreate` 和 `User` 之间有一个主要区别：前者接受我们在注册时会进行哈希处理的明文密码，而后者仅会在数据库中保留哈希后的密码。我们还会确保在
+    `UserRead` 中不包含 `hashed_password`，因此哈希值不会出现在 API 响应中。尽管哈希数据应当是不可解读的，但一般不建议泄露这些数据。
+- en: Hashing passwords
+  id: totrans-59
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 哈希密码
+- en: 'Before we look at the registration endpoint, let’s implement some important
+    utility functions for hashing passwords. Fortunately, libraries exist that provide
+    the most secure and efficient algorithms for this task. Here, we’ll use `passlib`.
+    You can install it along with `argon2_cffi`, which is one of the safest hash functions
+    at the time of writing:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们查看注册端点之前，让我们先实现一些用于哈希密码的重要工具函数。幸运的是，已有一些库提供了最安全、最高效的算法来完成这项任务。在这里，我们将使用 `passlib`。你可以安装它以及
+    `argon2_cffi`，这是写作时最安全的哈希函数之一：
+- en: '[PRE4]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Now, we’ll just instantiate the `passlib` classes and wrap some of their functions
+    to make our lives easier:'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们只需要实例化 `passlib` 类，并封装它们的一些函数，以简化我们的工作：
+- en: password.py
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: password.py
+- en: '[PRE5]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/password.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/password.py)'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/password.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/password.py)'
+- en: '`CryptContext` is a very useful class since it allows us to work with different
+    hash algorithms. If, one day, a better algorithm than `argon2` emerges, we can
+    just add it to our allowed schemas. New passwords will be hashed using the new
+    algorithm, but existing passwords will still be recognized (and optionally upgraded
+    to the new algorithm).'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`CryptContext` 是一个非常有用的类，因为它允许我们使用不同的哈希算法。如果有一天，出现比 `argon2` 更好的算法，我们只需将其添加到我们的允许的模式中。新密码将使用新算法进行哈希，但现有密码仍然可以识别（并可选择升级为新算法）。'
+- en: Implementing registration routes
+  id: totrans-67
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实现注册路由
+- en: Now, we have all the elements to create a proper registration route. Once again,
+    it’ll be very similar to what we saw earlier. The only thing we must remember
+    is to hash the password before inserting it into our database.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们具备了创建合适注册路由的所有要素。再次强调，它将与我们之前看到的非常相似。唯一需要记住的是，在将密码插入到数据库之前，我们必须先对其进行哈希处理。
+- en: 'Let’s look at the implementation:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看一下实现：
+- en: app.py
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE6]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+- en: As you can see, we are calling `get_password_hash` on the input password before
+    inserting the user into the database. Note that we are catching a possible `exc.IntegrityError`
+    exception, which means we’re trying to insert an email that already exists.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，我们在将用户插入数据库之前，对输入的密码调用了`get_password_hash`。请注意，我们捕获了可能出现的`exc.IntegrityError`异常，这意味着我们正在尝试插入一个已存在的电子邮件。
+- en: Also, notice that we took care to set `response_model` to `UserRead`. By doing
+    this, we’re ensuring that `hashed_password` is not part of the output.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，请注意我们设置了`response_model`为`UserRead`。通过这样做，我们确保`hashed_password`不会出现在输出中。
+- en: Great! We now have a proper user model and users can create a new account with
+    our API. The next step is to allow them to log in and give them an access token.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 太棒了！我们现在有了一个合适的用户模型，用户可以通过我们的 API 创建新账户。下一步是允许用户登录并为其提供访问令牌。
+- en: Retrieving a user and generating an access token
+  id: totrans-76
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 获取用户并生成访问令牌
+- en: 'After successful registration, the next step is being able to log in: the user
+    will send their credentials and receive an authentication token to access the
+    API. In this section, we’ll implement the endpoint that allows this. Basically,
+    we’ll get the credentials from the request payload, retrieve the user with the
+    given email, and verify their password. If the user exists and their password
+    is valid, we’ll generate an access token and return it in the response.'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在成功注册后，下一步是能够登录：用户将发送其凭证并接收一个身份验证令牌，以访问 API。在这一部分，我们将实现允许此操作的端点。基本上，我们将从请求有效载荷中获取凭证，使用给定的电子邮件检索用户并验证其密码。如果用户存在且密码有效，我们将生成一个访问令牌并将其返回在响应中。
+- en: Implementing a database access token
+  id: totrans-78
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实现数据库访问令牌
+- en: 'First, let’s think about the nature of this access token. It should be a data
+    string that uniquely identifies a user that is impossible to forge by a malicious
+    third party. In this example, we will take a simple but reliable approach: we’ll
+    generate a random string and store it in a dedicated table in our database, with
+    a foreign key referring to the user.'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们思考一下这个访问令牌的性质。它应该是一个数据字符串，能够唯一标识一个用户，并且无法被恶意第三方伪造。在这个示例中，我们将采用一种简单但可靠的方法：我们将生成一个随机字符串，并将其存储在数据库中的专用表中，同时设置外键引用到用户。
+- en: This way, when an authenticated request arrives, we simply have to check whether
+    it exists in the database and look for the corresponding user. The advantage of
+    this approach is that tokens are centralized and can easily be invalidated if
+    they are compromised; we only need to delete them from the database.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样，当一个经过身份验证的请求到达时，我们只需检查令牌是否存在于数据库中，并寻找相应的用户。这个方法的优势是令牌是集中管理的，如果它们被泄露，可以轻松作废；我们只需要从数据库中删除它们。
+- en: 'The first step is to implement the SQLAlchemy ORM model for this new entity:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一步是为这个新实体实现 SQLAlchemy ORM 模型：
+- en: models.py
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: models.py
+- en: '[PRE7]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py)'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/models.py)'
+- en: 'We define three columns:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们定义了三个列：
+- en: '`access_token`: This is the string that will be passed in the requests to authenticate
+    them. Notice that we defined the `generate_token` function as the default factory;
+    it’s a simple function defined previously that generates a random secure passphrase.
+    Under the hood, it relies on the standard `secrets` module.'
+  id: totrans-86
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`access_token`：这是将在请求中传递以进行身份验证的字符串。请注意，我们将`generate_token`函数定义为默认工厂；它是一个简单的先前定义的函数，用于生成随机安全密码。在底层，它依赖于标准的`secrets`模块。'
+- en: '`user_id`: A foreign key referring to the `users` table that identifies the
+    user corresponding to this token.'
+  id: totrans-87
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`user_id`：指向`users`表的外键，用于标识与此令牌对应的用户。'
+- en: '`expiration_date`: The date and time when the access token will expire and
+    won’t be valid anymore. It’s always a good idea to give access tokens an expiry
+    date to mitigate the risk if they are stolen. Here, the `get_expiration_date`
+    factory sets a default validity of 24 hours.'
+  id: totrans-88
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`expiration_date`：访问令牌将到期并且不再有效的日期和时间。为访问令牌设置到期日期总是一个好主意，以减轻其被盗的风险。在这里，`get_expiration_date`工厂设置了默认的有效期为24小时。'
+- en: We also don’t forget to define the relationship so we can directly access the
+    user entity from an access token object. Notice we set an eager loading strategy
+    by default, so we always retrieve the user when querying for an access token.
+    If you need the rationale behind this, check the *Adding relationships* section
+    of [*Chapter 6*](B19528_06.xhtml#_idTextAnchor346)*, Databases and* *Asynchronous
+    ORMs*.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还不要忘记定义关系，这样我们可以直接从访问令牌对象访问用户实体。请注意，我们默认设置了一种急加载策略，因此在查询访问令牌时始终检索用户。如果需要其背后的原理，请参阅[*第6章*](B19528_06.xhtml#_idTextAnchor346)*，数据库和异步ORM*中的*添加关系*部分。
+- en: We won’t need Pydantic schemas here, as access tokens will be created and serialized
+    through specific methods.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里我们不需要Pydantic模式，因为访问令牌将通过特定方法创建和序列化。
+- en: Implementing a login endpoint
+  id: totrans-91
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实现登录端点
+- en: 'Now, let’s think about the login endpoint. Its goal is to take credentials
+    in the request payload, retrieve the corresponding user, check the password, and
+    generate a new access token. Its implementation is quite straightforward, apart
+    from one thing: the model that’s used to handle the request. You’ll see why thanks
+    to the following example:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们考虑登录端点。其目标是接收请求有效载荷中的凭据，检索相应的用户，检查密码并生成新的访问令牌。除了一个事项外，它的实现非常直接：用于处理请求的模型。通过下面的示例你将明白为什么：
+- en: app.py
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE8]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+- en: As you can see, we retrieve the request data thanks to the `OAuth2PasswordRequestForm`
+    module, which is provided by FastAPI in its security module. It expects several
+    fields, especially `username` and `password`, in a form encoding rather than JSON.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如您所见，我们通过FastAPI的安全模块中提供的`OAuth2PasswordRequestForm`模块检索请求数据。它期望在表单编码中有几个字段，特别是`username`和`password`，而不是JSON。
+- en: 'Why do we use this class? The main benefit of using this class is that it’s
+    completely integrated into the OpenAPI schema. This means that the interactive
+    documentation will be able to automatically detect it and present a proper authentication
+    form behind the **Authorize** button, as shown in the following screenshot:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为什么我们要使用这个类？使用这个类的主要好处是它完全集成到OpenAPI模式中。这意味着交互式文档能够自动检测到它，并在**授权**按钮后显示适当的身份验证表单，如下面的截图所示：
+- en: '![Figure 7.2 – OAuth2 authorization in interactive documentation](img/Figure_7.2_B19528.jpg)'
+  id: totrans-98
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图7.2 – 交互式文档中的OAuth2授权](img/Figure_7.2_B19528.jpg)'
+- en: Figure 7.2 – OAuth2 authorization in interactive documentation
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图7.2 – 交互式文档中的OAuth2授权
+- en: 'But that’s not all: it will be able to automatically retrieve the returned
+    access token and set the proper authorization header in subsequent requests. The
+    authentication process is handled transparently by the interactive documentation.'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但这还不是全部：它还能自动获取返回的访问令牌，并在后续请求中设置正确的授权头。身份验证过程由交互式文档透明处理。
+- en: This class follows the OAuth2 protocol, which means you also have fields for
+    the client ID and secret. We won’t learn how to implement the complete OAuth2
+    protocol here, but note that FastAPI provides all the tools needed to do so properly.
+    For our project, we’ll just stick with a username and a password. Notice that,
+    following the protocol, the field is named *username*, regardless of whether we
+    are using an email address to identify the user. This isn’t a big deal; we just
+    have to remember it while retrieving it.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个类遵循 OAuth2 协议，这意味着你还需要包含客户端 ID 和密钥字段。我们不会在这里学习如何实现完整的 OAuth2 协议，但请注意，FastAPI
+    提供了所有正确实现它所需的工具。对于我们的项目，我们将只使用用户名和密码。请注意，根据协议，字段被命名为*用户名*，无论我们是使用电子邮件地址来识别用户与否。这不是大问题，我们只需在获取它时记住这一点。
+- en: 'The rest of the path operation function is quite simple: first, we try to retrieve
+    a user from this email and password. If no corresponding user is found, we raise
+    a `401` error. Otherwise, we generate a new access token before returning it.
+    Notice that the response structure also includes the `token_type` property. This
+    allows the interactive documentation to automatically set the authorization headers.'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 剩下的路径操作函数相当简单：首先，我们尝试根据电子邮件和密码获取用户。如果没有找到相应的用户，我们将抛出`401`错误。否则，我们会在返回之前生成一个新的访问令牌。请注意，响应结构中还包括`token_type`属性。这使得交互式文档能够自动设置授权头。
+- en: 'In the following example, we’ll look at the implementation of the `authenticate`
+    and `create_access_token` functions. We won’t go into too much detail here as
+    they are quite simple:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下面的示例中，我们将查看`authenticate`和`create_access_token`函数的实现。我们不会深入细节，因为它们非常简单：
+- en: authentication.py
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: authentication.py
+- en: '[PRE9]'
+  id: totrans-105
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/authentication.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/authentication.py)'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/authentication.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/authentication.py)'
+- en: Notice that we defined a function called `verify_password` to check the validity
+    of the password. Once again, it uses `passlib` under the hood, which takes care
+    of comparing the hashes of the passwords.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们定义了一个名为`verify_password`的函数来检查密码的有效性。再一次，它在后台使用`passlib`，该库负责比较密码的哈希值。
+- en: Password hash upgrade
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 密码哈希升级
+- en: 'To keep this example simple, we implemented a simple password comparison. Usually,
+    it’s good practice to implement a mechanism to upgrade the password hash at this
+    stage. Imagine that a new and more robust hash algorithm has been introduced.
+    We can take this opportunity to hash the password with this new algorithm and
+    store it in a database. `passlib` includes a function for verifying and upgrading
+    the hash in one operation. You can learn more about this in the following documentation:
+    [https://passlib.readthedocs.io/en/stable/narr/context-tutorial.html#integrating-hash-migration](https://passlib.readthedocs.io/en/stable/narr/context-tutorial.html#integrating-hash-migration).'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了简化示例，我们实现了一个简单的密码比较。通常，最好在这个阶段实现一个机制来升级密码哈希。假设引入了一个新的、更强大的哈希算法。我们可以借此机会使用这个新算法对密码进行哈希处理并将其存储在数据库中。`passlib`包含一个函数，可以在一次操作中验证和升级哈希。你可以通过以下文档了解更多内容：[https://passlib.readthedocs.io/en/stable/narr/context-tutorial.html#integrating-hash-migration](https://passlib.readthedocs.io/en/stable/narr/context-tutorial.html#integrating-hash-migration)。
+- en: We’ve almost achieved our goal! Users can now log in and get a new access token.
+    All we need to do now is implement a dependency to retrieve the `Authorization`
+    header and verify this token!
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们几乎达成了目标！用户现在可以登录并获取新的访问令牌。接下来，我们只需要实现一个依赖项来检索`Authorization`头并验证这个令牌！
+- en: Securing endpoints with access tokens
+  id: totrans-111
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用访问令牌保护端点
+- en: Previously, we learned how to implement a simple dependency to protect an endpoint
+    with a header. Here, we’ll also retrieve a token from a request header, but then,
+    we’ll have to check the database to see whether it’s valid. If it is, we’ll return
+    the corresponding user.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前，我们学习了如何实现一个简单的依赖项来保护带有头部的端点。在这里，我们也会从请求头中获取令牌，但接下来，我们需要检查数据库，看看它是否有效。如果有效，我们将返回相应的用户。
+- en: 'Let’s see what our dependency looks like:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看我们的依赖项是什么样子的：
+- en: app.py
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE10]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+- en: The first thing to notice is that we used the `OAuth2PasswordBearer` dependency
+    from FastAPI. It goes hand in hand with `OAuth2PasswordRequestForm`, which we
+    saw in the previous section. It not only checks for the access token in the `Authorization`
+    header, but it also informs the OpenAPI schema that the endpoint to get a fresh
+    token is `/token`. This is the purpose of the `tokenUrl` argument. This is how
+    the automatic documentation can automatically call the access token endpoint in
+    the login form we saw earlier.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先需要注意的是，我们使用了来自 FastAPI 的 `OAuth2PasswordBearer` 依赖项。它与我们在前一节中看到的 `OAuth2PasswordRequestForm`
+    配合使用。它不仅检查 `Authorization` 头中的访问令牌，还告知 OpenAPI 架构获取新令牌的端点是 `/token`。这就是 `tokenUrl`
+    参数的目的。通过这一点，自动化文档可以自动调用我们之前看到的登录表单中的访问令牌端点。
+- en: 'Then we performed a database query with SQLAlchemy. We applied two clauses:
+    one to match the token we got and another to ensure that the expiration date is
+    in the future. If no corresponding record is found in the database, we raise a
+    `401` error. Otherwise, we return the user related to the access token.'
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们使用 SQLAlchemy 执行了数据库查询。我们应用了两个条件：一个用于匹配我们获得的令牌，另一个确保过期时间是在未来。如果在数据库中找不到相应的记录，我们会抛出一个
+    `401` 错误。否则，我们会返回与访问令牌相关的用户。
+- en: 'And that’s it! Our whole authentication system is complete. Now, we can protect
+    our endpoints simply by injecting this dependency. We even have access to the
+    user data so that we can tailor the response according to the current user. You
+    can see this in the following example:'
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就这样！我们的整个身份验证系统完成了。现在，我们可以通过简单地注入这个依赖项来保护我们的端点。我们甚至可以访问用户数据，从而根据当前用户量身定制响应。你可以在以下示例中看到这一点：
+- en: app.py
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE11]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/authentication/app.py)'
+- en: With that, you’ve learned how to implement a whole registration and authentication
+    system from scratch. We voluntarily kept it simple to focus on the most important
+    points, but it’s a good base on which you can expand.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 至此，你已经学会了如何从头开始实现完整的注册和身份验证系统。我们故意保持其简单，以便专注于最重要的点，但这为你扩展提供了一个良好的基础。
+- en: 'The patterns we showed here are good candidates for a REST API, which is called
+    externally by other client programs. However, you may wish to call your API from
+    a very common piece of software: the browser. In this case, there are some additional
+    security considerations to be taken care of.'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里展示的模式是适合 REST API 的良好范例，这些 API 是由其他客户端程序外部调用的。然而，你可能希望通过一个非常常见的软件来调用你的
+    API：浏览器。在这种情况下，有一些额外的安全考虑需要处理。
+- en: Configuring CORS and protecting against CSRF attacks
+  id: totrans-125
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 配置 CORS 并防止 CSRF 攻击
+- en: Nowadays, numerous pieces of software are designed to be used in a browser through
+    an interface built with HTML, CSS, and JavaScript. Traditionally, web servers
+    were responsible for handling browser requests and returning an HTML response
+    to be shown to the user. This is a common use case for frameworks such as Django.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如今，许多软件都被设计为通过使用 HTML、CSS 和 JavaScript 构建的界面在浏览器中使用。传统上，Web 服务器负责处理浏览器请求并返回
+    HTML 响应，以供用户查看。这是 Django 等框架的常见用例。
+- en: For a few years now, there has been a shift underway in that pattern. With the
+    emergence of JavaScript frameworks such as Angular, React, and Vue, we tend to
+    have a clear separation between the frontend, a highly interactive user interface
+    powered by JavaScript, and the backend. Thus, those backends are now only responsible
+    for data storage and retrieving and executing business logic. This is a task that
+    REST APIs are very good at! From the JavaScript code, the user interface can then
+    just spawn requests to your API and handle the result to present it.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 近年来，随着JavaScript框架如Angular、React和Vue的出现，这一模式正在发生变化。我们现在往往会看到前端和后端的明确分离，前端是一个由JavaScript驱动的高度互动的用户界面，后端则负责数据存储、检索以及执行业务逻辑。这是REST
+    API擅长的任务！从JavaScript代码中，用户界面可以向你的API发送请求并处理结果进行展示。
+- en: 'However, we must still handle authentication: we want our user to be able to
+    log in to the frontend application and make authenticated requests to the API.
+    While an `Authorization` header, as we’ve seen so far, could work, there is a
+    better way to handle authentication when working in browsers: **cookies**!'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们仍然需要处理身份验证：我们希望用户能够登录前端应用，并向API发送经过身份验证的请求。虽然如我们到目前为止看到的`Authorization`头可以工作，但在浏览器中处理身份验证有一个更好的方法：**Cookies**！
+- en: Cookies are designed to store user information in browser memory and are sent
+    automatically in every request made to your server. They have been supported for
+    years, and browsers integrate lots of mechanisms to make them safe and reliable.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Cookies（浏览器Cookie）旨在将用户信息存储在浏览器内存中，并在每次请求发送到你的服务器时自动发送。多年来它们得到了支持，浏览器也集成了很多机制来确保它们的安全和可靠。
+- en: However, this comes with some security challenges. Websites are very common
+    targets for hackers and lots of attacks have emerged over the years.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，这也带来了一些安全挑战。网站是黑客的常见攻击目标，多年来已经出现了很多攻击方式。
+- en: One of the most typical is **Cross-Site Request Forgery** (**CSRF**). In this
+    scenario, an attacker on another website tries to trick a user who is currently
+    authenticated with your application to perform a request on your server. Since
+    browsers tend to send cookies with every request, your server wouldn’t be able
+    to tell that the request was actually forged. Since it’s the users themselves
+    who unintentionally launched the malicious request, these kinds of attacks don’t
+    aim to steal data but to execute operations that change the state of the application,
+    such as changing an email address or making a money transfer.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最典型的攻击方式之一是**跨站请求伪造**（**CSRF**）。在这种情况下，攻击者会在另一个网站上尝试欺骗当前已在你的应用程序中认证的用户，向你的服务器发起请求。由于浏览器通常会在每次请求时发送Cookie，你的服务器无法识别出请求实际上是伪造的。由于这些恶意请求是用户自己无意中发起的，因此这类攻击并不旨在窃取数据，而是执行改变应用状态的操作，比如更改电子邮件地址或进行转账。
+- en: Obviously, we should be prepared for these kinds of risks and have measures
+    in place to mitigate them.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 显然，我们应该为这些风险做好准备，并采取措施来减轻它们。
+- en: Understanding CORS and configuring it in FastAPI
+  id: totrans-133
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 理解CORS并在FastAPI中进行配置
+- en: When you have a clearly separated frontend application and a REST API backend,
+    they are not typically served from the same subdomain. For example, the frontend
+    may be available from [www.myapplication.com](http://www.myapplication.com), while
+    the REST API is available from `api.myapplication.com`. As we mentioned in the
+    introduction, we would like to make requests to this API from our frontend application
+    in JavaScript.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你有一个明确分离的前端应用和REST API后端时，它们通常不会来自同一个子域。例如，前端可能来自[www.myapplication.com](http://www.myapplication.com)，而REST
+    API来自`api.myapplication.com`。正如我们在介绍中提到的，我们希望从前端应用程序通过JavaScript向该API发起请求。
+- en: However, browsers don’t allow **cross-origin** **resource sharing (CORS)** **HTTP
+    requests**, meaning domain A can’t make requests to domain B. This follows what
+    is called a **same-origin policy**. This is a good thing in general as it’s the
+    first barrier to preventing CSRF attacks.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，浏览器不允许**跨域****资源共享（CORS）**的**HTTP请求**，即域A无法向域B发起请求。这遵循了所谓的**同源策略**。一般来说，这是一个好事，因为它是防止CSRF攻击的第一道屏障。
+- en: To experience this behavior, we’ll run a simple example. In our example repository,
+    the `chapter07/cors` folder contains a FastAPI app called `app_without_cors.py`
+    and a simple HTML file called `index.html` that contains some JavaScript for performing
+    HTTP requests.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了体验这种行为，我们将运行一个简单的例子。在我们的示例仓库中，`chapter07/cors` 文件夹包含一个名为 `app_without_cors.py`
+    的 FastAPI 应用程序和一个简单的 HTML 文件 `index.html`，该文件包含一些用于执行 HTTP 请求的 JavaScript。
+- en: 'First, let’s run the FastAPI application using the usual `uvicorn` command:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们使用通常的 `uvicorn` 命令运行 FastAPI 应用程序：
+- en: '[PRE12]'
+  id: totrans-138
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'This will launch the FastAPI application on port `8000` by default. On another
+    terminal, we’ll serve the HTML file using the built-in Python HTTP server. It’s
+    a simple server, but it’s ideal for quickly serving static files. We can launch
+    it on port `9000` thanks to the following command:'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将默认启动 FastAPI 应用程序，端口为 `8000`。在另一个终端中，我们将使用内置的 Python HTTP 服务器提供 HTML 文件。它是一个简单的服务器，但非常适合快速提供静态文件。我们可以通过以下命令在端口
+    `9000` 启动它：
+- en: '[PRE13]'
+  id: totrans-140
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: Starting several terminals
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 启动多个终端
+- en: 'On Linux and macOS, you should be able to simply start a new Terminal by creating
+    a new window or tab. On Windows and WSL, you can also have several tabs if you’re
+    using the Windows Terminal application: [https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701).'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Linux 和 macOS 上，你可以通过创建一个新的窗口或标签页来启动一个新的终端。在 Windows 和 WSL 上，如果你使用 Windows
+    终端应用程序，也可以有多个标签页：[https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701)。
+- en: Otherwise, you can simply click on the Ubuntu shortcut in your **Start** menu
+    to start another terminal.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 否则，你可以简单地点击 **开始** 菜单中的 Ubuntu 快捷方式来启动另一个终端。
+- en: We now have two running servers – one on `localhost:8000` and one on `localhost:9000`.
+    Strictly speaking, since they are on different ports, they are of different origins;
+    so, it’s a good setup to try out cross-origin HTTP requests.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有两个正在运行的服务器——一个在 `localhost:8000`，另一个在 `localhost:9000`。严格来说，由于它们在不同的端口上，它们属于不同的源；因此，这是一个很好的设置，可以尝试跨源
+    HTTP 请求。
+- en: 'In your browser, go to `http://localhost:9000`. You’ll see the simple application
+    implemented in `index.html`, as shown in the following screenshot:'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在你的浏览器中，访问 `http://localhost:9000`。你会看到在 `index.html` 中实现的简单应用程序，如下图所示：
+- en: '![Figure 7.3 – Simple application to try CORS policies](img/Figure_7.3_B19528.jpg)'
+  id: totrans-146
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.3 – 尝试 CORS 策略的简单应用](img/Figure_7.3_B19528.jpg)'
+- en: Figure 7.3 – Simple application to try CORS policies
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.3 – 尝试 CORS 策略的简单应用
+- en: 'There are two buttons that initiate GET and POST requests to our FastAPI application
+    on port `8000`. If you click on either of those, you’ll get a message in the error
+    area stating **Failed to fetch**. If you look at the browser console in the development
+    tools section, you’ll see that the request failed because there isn’t a CORS policy,
+    as shown in the following screenshot. That’s what we wanted – by default, browsers
+    block cross-origin HTTP requests:'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有两个按钮，可以向我们的 FastAPI 应用程序发起 GET 和 POST 请求，端口为 `8000`。如果点击其中任意一个按钮，你会在错误区域看到一条消息，显示
+    **获取失败**。如果你查看开发者工具中的浏览器控制台，你会发现请求失败的原因是没有 CORS 策略，正如下图所示。这正是我们想要的——默认情况下，浏览器会阻止跨源
+    HTTP 请求：
+- en: '![Figure 7.4 – CORS error in browser console](img/Figure_7.4_B19528.jpg)'
+  id: totrans-149
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.4 – 浏览器控制台中的 CORS 错误](img/Figure_7.4_B19528.jpg)'
+- en: Figure 7.4 – CORS error in browser console
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.4 – 浏览器控制台中的 CORS 错误
+- en: 'However, if you look at the terminal running the FastAPI application, you’ll
+    see an output similar to the following:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，如果你查看正在运行 FastAPI 应用程序的终端，你会看到类似下面的输出：
+- en: '![Figure 7.5 – Uvicorn output when performing simple requests](img/Figure_7.5_B19528.jpg)'
+  id: totrans-152
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.5 – 执行简单请求时的 Uvicorn 输出](img/Figure_7.5_B19528.jpg)'
+- en: Figure 7.5 – Uvicorn output when performing simple requests
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.5 – 执行简单请求时的 Uvicorn 输出
+- en: 'Clearly, both the `GET` and `POST` requests have been received and processed:
+    we even returned a `200` status. So, what does this mean? In this case, the browser
+    does send the request to the server. The lack of a CORS policy only forbids it
+    to read the response; the request is still executed.'
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 显然，`GET` 和 `POST` 请求已经接收并处理：我们甚至返回了 `200` 状态。那么，这意味着什么呢？在这种情况下，浏览器确实会将请求发送到服务器。缺乏
+    CORS 策略只会禁止它读取响应；请求仍然会执行。
+- en: 'This is the case for requests that the browser considers `GET`, `POST`, or
+    `HEAD` methods that don’t set custom headers or unusual content types. You can
+    learn more about simple requests and their conditions by going to the following
+    MDN page about CORS: [https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests).'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是浏览器认为是 `GET`、`POST` 或 `HEAD` 方法的请求，它们不设置自定义头部或不使用不常见的内容类型的情况。你可以通过访问以下 MDN
+    页面了解更多关于简单请求及其条件的信息：[https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests)。
+- en: This means that, for simple requests, the same-origin policy is not enough to
+    protect us against CSRF attacks.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着，对于简单请求来说，相同来源策略不足以保护我们免受 CSRF 攻击。
+- en: 'You may have noticed that our simple web application has a toggle for `GET`
+    and `POST` requests again. On your FastAPI terminal, you should have an output
+    similar to the following:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能已经注意到，我们的简单 Web 应用再次提供了 `GET` 和 `POST` 请求的切换功能。在你的 FastAPI 终端中，应该会看到类似于以下的输出：
+- en: '![Figure 7.6 – Uvicorn output when receiving preflight requests](img/Figure_7.6_B19528.jpg)'
+  id: totrans-158
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.6 – Uvicorn 在接收到预检请求时的输出](img/Figure_7.6_B19528.jpg)'
+- en: Figure 7.6 – Uvicorn output when receiving preflight requests
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.6 – Uvicorn 在接收到预检请求时的输出
+- en: As you can see, our server received two strange requests with the `OPTIONS`
+    method. This is what we call `Content-Type` header with a value of `application/json`,
+    which is against the conditions of simple requests.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，我们的服务器接收到了两个奇怪的 `OPTIONS` 请求。这是我们所说的具有 `application/json` 值的 `Content-Type`
+    头部，这违反了简单请求的条件。
+- en: By performing this preflight request, the browser expects the server to provide
+    information about what it is and isn’t allowed to do in terms of cross-origin
+    HTTP requests. Since we’ve not implemented anything here, our server can’t provide
+    a response to this preflight request. Hence, the browser stops there and doesn’t
+    proceed with the actual request.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过执行这个预检请求，浏览器期望服务器提供有关它可以和不可以执行的跨源 HTTP 请求的信息。由于我们这里没有实现任何内容，我们的服务器无法对这个预检请求作出响应。因此，浏览器在这里停止，并且不会继续执行实际请求。
+- en: 'And that’s basically CORS: the server answers preflight queries with a set
+    of HTTP headers that provide information to the browser about whether it’s allowed
+    to make the request or not. In that sense, CORS doesn’t make your application
+    more secure, it’s quite the contrary: it allows the relaxation of some rules so
+    that a frontend application can make requests to a backend residing on another
+    domain. That’s why it’s crucial to configure CORS properly, so it doesn’t expose
+    you to dangerous attacks.'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这基本上就是 CORS：服务器用一组 HTTP 头部响应预检请求，提供关于浏览器是否可以发起请求的信息。从这个意义上说，CORS 并不会让你的应用更安全，恰恰相反：它放宽了一些规则，使得前端应用可以向另一个域上的后端发起请求。因此，正确配置
+    CORS 至关重要，以免暴露于危险的攻击之下。
+- en: 'Fortunately, it’s fairly easy to do this with FastAPI. All we need to do is
+    import and add the `CORSMiddleware` class provided by Starlette. You can see what
+    this looks like in the following example:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，使用 FastAPI 这非常简单。我们需要做的就是导入并添加由 Starlette 提供的 `CORSMiddleware` 类。你可以在以下示例中看到它的实现：
+- en: app_with_cors.py
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app_with_cors.py
+- en: '[PRE14]'
+  id: totrans-165
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/cors/app_with_cors.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/cors/app_with_cors.py)'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/cors/app_with_cors.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/cors/app_with_cors.py)'
+- en: A middleware is a special class that adds global logic to an `add_middleware`
+    method for wiring such middleware into your application.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 中间件是一种特殊的类，它将全局逻辑添加到 `add_middleware` 方法中，将这种中间件集成到你的应用中。
+- en: Here, `CORSMiddleware` will catch preflight requests sent by the browser and
+    return the appropriate response with the CORS headers corresponding to your configuration.
+    You can see that there are options to finely tune the CORS policy to your needs.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，`CORSMiddleware` 会捕获浏览器发送的预检请求，并返回带有与你配置相对应的 CORS 头部的适当响应。你可以看到，有选项可以精细调整
+    CORS 策略以满足你的需求。
+- en: The most important one is probably `allow_origins`, which is the list of origins
+    allowed to make requests to your API. Since our HTML application is served from
+    `http://localhost:9000`, this is what we put here in this argument. If the browser
+    tries to make requests from any other origin, it will stop as it’s not authorized
+    to do so by CORS headers.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最重要的可能是 `allow_origins`，它是允许向你的 API 发起请求的源列表。由于我们的 HTML 应用是从 `http://localhost:9000`
+    提供的，因此我们在此参数中填写该地址。如果浏览器尝试从任何其他源发出请求，它将被阻止，因为 CORS 头部不允许。
+- en: The other interesting argument is `allow_credentials`. By default, browsers
+    don’t send cookies for cross-origin HTTP requests. If we wish to make authenticated
+    requests to our API, we need to allow this via this option.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个有趣的参数是 `allow_credentials`。默认情况下，浏览器不会为跨域 HTTP 请求发送 cookies。如果我们希望向 API 发出认证请求，需要通过此选项来允许此操作。
+- en: 'We can also finely tune the allowed methods and headers that are sent in the
+    request. You can find a complete list of arguments for this middleware in the
+    official Starlette documentation: [https://www.starlette.io/middleware/#corsmiddleware](https://www.starlette.io/middleware/#corsmiddleware).'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还可以精细调节请求中允许的 HTTP 方法和头部。你可以在官方 Starlette 文档中找到此中间件的完整参数列表：[https://www.starlette.io/middleware/#corsmiddleware](https://www.starlette.io/middleware/#corsmiddleware)。
+- en: Let’s quickly talk about the `max_age` parameter. This parameter allows you
+    to control the cache duration of the CORS responses. Having to perform a preflight
+    request before the actual one is an expensive operation. To improve performance,
+    browsers can cache the response so that they don’t have to do this every time.
+    Here, we are disabling caching with a value of `-1` to make sure you see the behavior
+    of the browser in this example. In your projects, you can remove this argument
+    so that you have a proper cache value.
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们简要讨论一下 `max_age` 参数。此参数允许你控制 CORS 响应的缓存时长。在实际请求之前执行预检请求是一个昂贵的操作。为了提高性能，浏览器可以缓存响应，以避免每次都执行此操作。在此，我们将缓存禁用，设置值为
+    `-1`，以确保你在这个示例中看到浏览器的行为。在你的项目中，可以删除此参数，以便设置适当的缓存值。
+- en: 'Now, let’s see how our web application behaves with this CORS-enabled application.
+    Stop the previous FastAPI app and run this one using the usual command:'
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看启用了 CORS 的应用程序如何在我们的 Web 应用中表现。停止之前的 FastAPI 应用，并使用常规命令运行此应用：
+- en: '[PRE15]'
+  id: totrans-174
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Now, if you try to perform the requests from the HTML application, you should
+    see a working response in each case, both with and without a JSON content type.
+    If you look at the FastAPI terminal, you should see an output similar to the following:'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，如果你尝试从 HTML 应用执行请求，你应该会在每种情况下看到有效的响应，无论是否使用 JSON 内容类型。如果你查看 FastAPI 的终端，你应该会看到类似于以下内容的输出：
+- en: '![Figure 7.7 – Uvicorn output with CORS headers](img/Figure_7.7_B19528.jpg)'
+  id: totrans-176
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.7 – 启用 CORS 头的 Uvicorn 输出](img/Figure_7.7_B19528.jpg)'
+- en: Figure 7.7 – Uvicorn output with CORS headers
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.7 – 启用 CORS 头的 Uvicorn 输出
+- en: 'The two first requests are the “simple requests,” which don’t need a preflight
+    request according to the browser rules. Then, we can see the requests that were
+    performed with the JSON content type enabled. Before the `GET` and `POST` requests,
+    an `OPTIONS` request was performed: the preflight request!'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前两个请求是“简单请求”，根据浏览器规则，这些请求无需预检请求。接着，我们可以看到启用了 JSON 内容类型的请求。在 `GET` 和 `POST` 请求之前，执行了一个
+    `OPTIONS` 请求：即预检请求！
+- en: Thanks to this configuration, you can now make cross-origin HTTP requests between
+    your frontend application and your backend living on another origin. Once again,
+    it’s not something that’ll improve the security of your application, but it allows
+    you to make this specific scenario work while keeping it secure from the rest
+    of the web.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多亏了这个配置，你现在可以在前端应用和位于另一个源的后端之间进行跨域 HTTP 请求。再次强调，这并不能提升应用的安全性，但它允许你在确保应用其余部分安全的同时，使这个特定场景得以正常运行。
+- en: 'Even if those policies can be a first layer of defense against CSRF, this doesn’t
+    mitigate the risk completely. Indeed, the “simple requests” are still an issue:
+    `POST` requests are allowed and, even if the response cannot be read, it’s actually
+    executed on the server.'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即便这些策略可以作为抵御 CSRF 的第一道防线，但并不能完全消除风险。事实上，“简单请求”仍然是一个问题：`POST` 请求是允许的，尽管响应不能被读取，但实际上它是在服务器上执行的。
+- en: 'Now, let’s learn how to implement a pattern so that we’re completely safe from
+    such attacks: the **double-submit cookie**.'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们学习如何实现一种模式，以确保我们完全避免此类攻击：**双重提交 Cookie**。
+- en: Implementing double-submit cookies to prevent CSRF attacks
+  id: totrans-182
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实现双重提交 Cookie 以防止 CSRF 攻击
+- en: As we mentioned previously, when relying on cookies to store user credentials,
+    we are exposed to CSRF attacks since browsers will automatically send the cookies
+    to your server. This is especially true for what the browser considers “simple
+    requests,” which don’t enforce the CORS policy before the request is executed.
+    There are also other attack vectors involving traditional HTML form submissions
+    or even the `src` attribute of the image tag.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，当依赖 Cookies 存储用户凭据时，我们容易遭受 CSRF 攻击，因为浏览器会自动将 Cookie 发送到你的服务器。这对于浏览器认为的“简单请求”尤其如此，因为在请求执行之前不会强制执行
+    CORS 策略。还有其他攻击向量，例如传统的 HTML 表单提交，甚至是图片标签的 `src` 属性。
+- en: For all these reasons, we need to have another layer of security to mitigate
+    this risk. Once again, this is only necessary if you plan to use your API from
+    a browser application and use cookies for authentication.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于这些原因，我们需要额外的安全层来缓解这种风险。再次强调，这仅在你计划通过浏览器应用使用 API 并使用 Cookies 进行身份验证时才是必要的。
+- en: To help you understand this, we’ve built a new example application that uses
+    a cookie to store the user access token. It’s very similar to the one we saw at
+    the beginning of this chapter; we only modified it so that it looks for the access
+    token in a cookie rather than in a header.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了帮助你理解这一点，我们构建了一个新的示例应用程序，使用 Cookie 存储用户访问令牌。它与我们在本章开头看到的应用非常相似；我们只是修改了它，使其从
+    Cookie 中获取访问令牌，而不是从请求头中获取。
+- en: 'To make this example work, you’ll have to install the `starlette-csrf` library.
+    We’ll explain what it does a bit later in this section. For now, just run the
+    following command:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了使这个示例生效，你需要安装 `starlette-csrf` 库。我们稍后会解释它的作用。现在，只需运行以下命令：
+- en: '[PRE16]'
+  id: totrans-187
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'In the following example, you can see the login endpoint that sets a cookie
+    with the access token value:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在以下示例中，你可以看到设置了包含访问令牌值的 Cookie 的登录端点：
+- en: app.py
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE17]'
+  id: totrans-190
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+- en: Notice that we used the `Secure` and `HttpOnly` flags for the resulting cookie.
+    This ensures that it’s sent only over HTTPS and that its value can’t be read from
+    JavaScript, respectively. While this is not enough to prevent every kind of attack,
+    it’s crucial for such sensitive information.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们为生成的 Cookie 使用了 `Secure` 和 `HttpOnly` 标志。这确保了该 Cookie 仅通过 HTTPS 发送，并且其值不能通过
+    JavaScript 读取。虽然这不足以防止所有类型的攻击，但对于这种敏感信息来说至关重要。
+- en: Besides that, we also set the `SameSite` flag to `lax`. It’s a quite recent
+    flag that allows us to control how the cookie is sent in a cross-origin context.
+    `lax` is the default value in most browsers and allows the cookie to be sent to
+    subdomains of the cookie domain but prevents it for other sites. In a sense, it’s
+    designed to be the standard, built-in protection against CSRF. However, other
+    CSRF mitigation techniques, such as the one we’ll implement here, are still needed
+    currently. Indeed, older browsers that are not compatible with the `SameSite`
+    flag are still vulnerable.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除此之外，我们还将 `SameSite` 标志设置为 `lax`。这是一个相对较新的标志，允许我们控制 Cookie 在跨源上下文中如何发送。`lax`
+    是大多数浏览器中的默认值，它允许将 Cookie 发送到 Cookie 域的子域名，但不允许发送到其他站点。从某种意义上讲，它是为防范 CSRF 攻击设计的标准内置保护。然而，目前仍然需要其他
+    CSRF 缓解技术，比如我们将在此实现的技术。实际上，仍有一些旧版浏览器不兼容 `SameSite` 标志，依然存在漏洞。
+- en: 'Now, when checking for the authenticated user, we’ll just have to retrieve
+    the token from the cookie that was sent in the request. Once again, FastAPI provides
+    a security dependency to help with this, called `APIKeyCookie`. You can see it
+    in the following example:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，当检查已认证用户时，我们只需从请求中发送的 Cookie 中提取令牌。再次强调，FastAPI 提供了一个安全依赖项，帮助实现这一功能，名为 `APIKeyCookie`。你可以在以下示例中看到它：
+- en: app.py
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE18]'
+  id: totrans-196
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+- en: 'And that’s basically it! The rest of the code remains the same. Now, let’s
+    implement an endpoint that allows us to update the email address of the authenticated
+    user. You can see this in the following example:'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基本上就是这样！其余的代码保持不变。现在，让我们实现一个端点，允许我们更新经过身份验证的用户的电子邮件地址。您可以在以下示例中看到：
+- en: app.py
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE19]'
+  id: totrans-200
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+- en: The implementation is not very surprising and follows what we’ve seen so far.
+    However, it exposes us to a CSRF threat. As you can see, it uses the `POST` method.
+    If we make a request in the browser to this endpoint without any special header,
+    it will consider it as a simple request and execute it. Therefore, an attacker
+    could change the email of a currently authenticated user, which is a major threat.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个实现并不令人惊讶，遵循了我们到目前为止所见的方式。然而，它使我们暴露于CSRF威胁中。如您所见，它使用了`POST`方法。如果我们在浏览器中向该端点发出没有任何特殊头部的请求，它会将其视为普通请求并执行。因此，攻击者可能会更改当前已验证用户的电子邮件地址，这是一个重大威胁。
+- en: 'This is exactly why we need CSRF protection here. In the context of a REST
+    API, the most straightforward technique is the double-submit cookie pattern. Here
+    is how it works:'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这正是我们在这里需要CSRF保护的原因。在REST API的上下文中，最直接的技术是双重提交cookie模式。其工作原理如下：
+- en: The user makes a first request with a method that’s considered safe. Typically,
+    this is a `GET` request.
+  id: totrans-204
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 用户首先发出一个被认为是安全的方法的请求，通常是一个`GET`请求。
+- en: In response, it receives a cookie containing a secret random value – that is,
+    the CSRF token.
+  id: totrans-205
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在响应中，它接收一个包含随机秘密值的cookie——即CSRF令牌。
+- en: When making an unsafe request, such as `POST`, the user will read the CSRF token
+    in the cookies and put the exact same value in a header. Since the browser also
+    sends the cookies it has in memory, the request will contain the token both in
+    the cookie and the header. That’s why it’s called **double submit**.
+  id: totrans-206
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当发出不安全请求时，例如`POST`，用户会从cookie中读取CSRF令牌，并将相同的值放入请求头中。由于浏览器还会发送内存中存储的cookie，请求将同时在cookie和请求头中包含该令牌。这就是为什么称之为**双重提交**。
+- en: Before processing the request, the server will compare the CSRF token provided
+    in the header with the one present in the cookie. If they match, it will proceed
+    to process the request. Otherwise, it’ll throw an error.
+  id: totrans-207
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在处理请求之前，服务器将比较请求头中提供的CSRF令牌与cookie中存在的令牌。如果匹配，它将继续处理请求。否则，它将抛出一个错误。
+- en: 'This is safe for two reasons:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是安全的，原因有二：
+- en: An attacker targeting a third-party website can’t read the cookies for a domain
+    they don’t own. Thus, they have no way of retrieving the CSRF token value.
+  id: totrans-209
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 针对第三方网站的攻击者无法读取他们没有所有权的域名的cookie。因此，他们无法检索到CSRF令牌的值。
+- en: Adding a custom header is against the conditions of “simple requests.” Hence,
+    the browser will have to make a preflight request before sending the request,
+    enforcing the CORS policy.
+  id: totrans-210
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 添加自定义头部违反了“简单请求”的条件。因此，浏览器在发送请求之前必须进行预检请求，从而强制执行CORS策略。
+- en: 'This is a widely used pattern that works well to prevent such risks. This is
+    why we installed `starlette-csrf` at the beginning of this section: it provides
+    a piece of middleware for implementing it.'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个广泛使用的模式，在防止此类风险方面效果良好。这也是为什么我们在本节开始时安装了`starlette-csrf`：它提供了一个中间件来实现这一点。
+- en: 'We can use it just like any other middleware, as shown in the following example:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以像使用其他中间件一样使用它，以下示例演示了这一点：
+- en: app.py
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE20]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter07/csrf/app.py)'
+- en: We set several important arguments here. First, we have the secret, which should
+    be a strong passphrase that’s used to sign the CSRF token. Then, we have `sensitive_cookies`,
+    which is a set of cookie names that should trigger the CSRF protection. If no
+    cookie is present or if the provided ones are not critical, we can bypass the
+    CSRF check. It’s also useful if you have other authentication methods available
+    that don’t rely on cookies, such as Authorization headers, which are not vulnerable
+    to CSRF. Finally, setting a cookie domain will allow you to retrieve the cookie
+    containing the CSRF token, even if you are on a different subdomain; this is necessary
+    in a cross-origin situation.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里设置了几个重要的参数。首先，我们有一个密钥，它应该是一个强密码，用于签名CSRF令牌。然后，我们有`sensitive_cookies`，这是一个包含应该触发CSRF保护的cookie名称的集合。如果没有cookie，或者提供的cookie不是关键性的，我们可以绕过CSRF检查。如果你有其他的认证方法（如不依赖于cookie的授权头），这也很有用，因为这些方法不容易受到CSRF攻击。最后，设置cookie域名将允许你在不同的子域上获取包含CSRF令牌的cookie；这在跨源情况下是必要的。
+- en: That’s all you need to have the necessary protection ready. To ease the process
+    of getting a fresh CSRF token, we implemented a minimal GET endpoint called `/csrf`.
+    Its sole purpose is to provide us with a simple way to set the CSRF token cookie.
+    We can call it directly when we load our frontend application.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是你需要准备的必要保护。为了简化获取新CSRF令牌的过程，我们实现了一个最小的GET端点，叫做`/csrf`。它的唯一目的是提供一个简单的方式来设置CSRF令牌的cookie。我们可以在加载前端应用时直接调用它。
+- en: 'Now, let’s try it out in our situation. As we did in the previous section,
+    we’ll run the FastAPI application and the simple HTML application on two different
+    ports. To do this, just run the following commands:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们在我们的环境中试试。正如我们在上一节中所做的那样，我们将会在两个不同的端口上运行FastAPI应用程序和简单的HTML应用程序。为此，只需运行以下命令：
+- en: '[PRE21]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'This will run the FastAPI application on port `8000`. Now, run the following
+    command:'
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将会在`8000`端口上运行FastAPI应用程序。现在，运行以下命令：
+- en: '[PRE22]'
+  id: totrans-221
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'The frontend application is now live on `http://localhost:9000`. Open it in
+    your browser. You should see an interface similar to the following:'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前端应用程序现在可以在`http://localhost:9000`访问。打开它在浏览器中，你应该看到一个类似于以下界面的界面：
+- en: '![Figure 7.8 – Simple application to try a CSRF-protected API](img/Figure_7.8_B19528.jpg)'
+  id: totrans-223
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图7.8 – 尝试CSRF保护API的简单应用](img/Figure_7.8_B19528.jpg)'
+- en: Figure 7.8 – Simple application to try a CSRF-protected API
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图7.8 – 尝试CSRF保护API的简单应用
+- en: 'Here, we’ve added forms to interact with our API endpoints: register, log in
+    get authenticated user, and update the endpoints. If you try them out, they should
+    work without any issue. If you have a look at the requests that were sent in the
+    `x-csrftoken`.'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们添加了表单来与API端点交互：注册、登录获取认证用户，以及更新端点。如果你尝试这些，它们应该没有问题。如果你查看发送的请求，可以看到`x-csrftoken`中包含了CSRF令牌。
+- en: At the top, there is a toggle to prevent the application from sending the CSRF
+    token in the header. If you disable it, you’ll see that all `POST` operations
+    will result in an error.
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在顶部，有一个开关可以防止应用程序在头部发送CSRF令牌。如果你禁用它，你会看到所有的`POST`操作都会导致错误。
+- en: 'Great! We are now safe from CSRF attacks! Most of the work here is done by
+    the middleware, but it’s interesting to understand how it works under the hood
+    and how it protects your application. Bear in mind, however, that it comes with
+    a drawback: it will break the interactive documentation. Indeed, it’s not designed
+    to retrieve the CSRF token from the cookie and put it in the headers in each request.
+    Unless you plan on authenticating in another way (through a token in a header,
+    for example), you won’t be able to directly call your endpoints in the documentation.'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 太好了！我们现在已经防止了CSRF攻击！这里的大部分工作是由中间件完成的，但理解它是如何在后台工作的，以及它如何保护你的应用程序，是很有意思的。然而，请记住，它有一个缺点：它会破坏交互式文档。实际上，它并没有设计成从cookie中检索CSRF令牌并将其放入每个请求的头部。除非你计划以其他方式进行认证（例如通过头部中的令牌），否则你将无法在文档中直接调用你的端点。
+- en: Summary
+  id: totrans-228
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: 'That’s all for this chapter, which covered authentication and security in FastAPI.
+    We saw that implementing a basic authentication system is quite easy thanks to
+    the tools provided by FastAPI. We’ve shown you one way to do this, but there are
+    plenty of other good patterns out there to tackle this challenge. However, when
+    working on this matter, always keep security in mind and be sure that you don’t
+    expose your application and your users’ data to dangerous threats. In particular,
+    you’ve seen that CSRF attacks have to be taken care of when designing a REST API
+    that will be used in a browser application. A good source to understand all the
+    security risks involved in a web application is the OWASP Cheat Sheet Series:
+    [https://cheatsheetseries.owasp.org](https://cheatsheetseries.owasp.org).'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章内容就到这里，主要介绍了 FastAPI 中的认证和安全性。我们看到，借助 FastAPI 提供的工具，实现一个基本的认证系统是相当简单的。我们展示了一种实现方法，但还有许多其他不错的模式可以用来解决这个问题。然而，在处理这些问题时，始终要牢记安全性，并确保不会将应用程序和用户数据暴露于危险的威胁之中。特别地，我们已经看到，在设计将在浏览器应用中使用的
+    REST API 时，必须考虑防止 CSRF 攻击。理解 Web 应用程序中所有安全风险的一个好资源是 OWASP Cheat Sheet 系列：[https://cheatsheetseries.owasp.org](https://cheatsheetseries.owasp.org)。
+- en: 'With that, we’ve covered most of the important subjects concerning FastAPI
+    application development. In the next chapter, we’ll learn how to work with a recent
+    technology that’s integrated with FastAPI and that allows real-time, two-way communication
+    between the client and the server: WebSockets.'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 至此，我们已经涵盖了关于 FastAPI 应用开发的大部分重要主题。在下一章中，我们将学习如何使用与 FastAPI 集成的最新技术——WebSockets，它允许客户端和服务器之间进行实时、双向通信。

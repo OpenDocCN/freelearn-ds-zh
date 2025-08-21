@@ -1,0 +1,2338 @@
+- en: '*Chapter 9*: Distributed Hyperparameter Tuning with Pachyderm'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '*第9章*：使用 Pachyderm 进行分布式超参数调优'
+- en: In [*Chapter 8*](B17085_08_Final_SB_Epub.xhtml#_idTextAnchor184), *Creating
+    an End-to-End Machine Learning Workflow*, we implemented an **End-to-End** (**E2E**)
+    **Machine Learning** (**ML**) workflow based on a **Named-Entity Recognition**
+    (**NER**) pipeline example. This was a multi-step pipeline that included many
+    computational stages, including data cleaning, **Part-Of-Speech** (**POS**) tagging,
+    model training, and running the new model against various data. Our goal was to
+    find the main characters in the story, which we successfully achieved.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[*第8章*](B17085_08_Final_SB_Epub.xhtml#_idTextAnchor184)中，*创建端到端机器学习工作流*，我们基于**命名实体识别**（**NER**）管道示例实现了一个**端到端**（**E2E**）**机器学习**（**ML**）工作流。这是一个多步骤的管道，包含许多计算阶段，包括数据清理、**词性**（**POS**）标注、模型训练，以及将新模型应用于不同数据。我们的目标是找出故事中的主要角色，这一点我们成功地实现了。
+- en: In this chapter, we will explore various strategies that can be implemented
+    to select optimal parameters for an ML problem. This technique is called **hyperparameter
+    tuning** or optimization. In the second part of this chapter, we will implement
+    a hyperparameter tuning pipeline based on a house price prediction example.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将探讨可以实施的各种策略，以选择适用于机器学习问题的最佳参数。这个技术叫做**超参数调优**或优化。在本章的第二部分，我们将基于房价预测示例实现一个超参数调优管道。
+- en: 'This chapter includes the following topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章包括以下主题：
+- en: Reviewing hyperparameter tuning techniques and strategies
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 审查超参数调优技术和策略
+- en: Creating a hyperparameter tuning pipeline in Pachyderm
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 创建一个超参数调优管道在 Pachyderm 中
+- en: Technical requirements
+  id: totrans-6
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: This chapter requires you to have specific components installed and configured.
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章要求您安装并配置特定组件。
+- en: 'For a local macOS installation, you should have the following:'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于本地 macOS 安装，您应具备以下条件：
+- en: macOS Mojave, Catalina, Big Sur, or later
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: macOS Mojave、Catalina、Big Sur 或更高版本
+- en: Docker Desktop for Mac 10.14
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Docker Desktop for Mac 10.14
+- en: '`minikube` v1.9.0 or later'
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`minikube` v1.9.0 或更高版本'
+- en: '`pachctl` 2.0.0 or later'
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`pachctl` 2.0.0 或更高版本'
+- en: Pachyderm 2.0.0 or later
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Pachyderm 2.0.0 或更高版本
+- en: 'For a local Windows installation, you should have the following:'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于本地 Windows 安装，您应具备以下条件：
+- en: Windows Pro 64-bit v10 or later
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Windows Pro 64 位 v10 或更高版本
+- en: '**Windows Subsystem for Linux** (**WSL**) 2 or later'
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**Windows 子系统 for Linux**（**WSL**）2 或更高版本'
+- en: Microsoft PowerShell v6.2.1 or later
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Microsoft PowerShell v6.2.1 或更高版本
+- en: Hyper-V
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Hyper-V
+- en: '`minikube` v1.9.0 or later'
+  id: totrans-19
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`minikube` v1.9.0 或更高版本'
+- en: '`kubectl` v1.18 or later'
+  id: totrans-20
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`kubectl` v1.18 或更高版本'
+- en: '`pachctl` 2.0.0 or later'
+  id: totrans-21
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`pachctl` 2.0.0 或更高版本'
+- en: Pachyderm 2.0.0 or later
+  id: totrans-22
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Pachyderm 2.0.0 或更高版本
+- en: 'For an **Amazon Elastic Kubernetes Service** (**Amazon EKS**) installation,
+    you should have the following:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于**Amazon 弹性 Kubernetes 服务**（**Amazon EKS**）安装，您应具备以下条件：
+- en: '`kubectl` v.18 or later'
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`kubectl` v.18 或更高版本'
+- en: '`eksctl`'
+  id: totrans-25
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`eksctl`'
+- en: '`aws-iam-authenticator`'
+  id: totrans-26
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`aws-iam-authenticator`'
+- en: '`pachctl` 2.0.0 or later'
+  id: totrans-27
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`pachctl` 2.0.0 或更高版本'
+- en: Pachyderm 2.0.0 or later
+  id: totrans-28
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Pachyderm 2.0.0 或更高版本
+- en: 'For a Microsoft Azure cloud installation, you should have the following:'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于 Microsoft Azure 云安装，您应该具备以下条件：
+- en: '`kubectl` v.18 or later'
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`kubectl` v.18 或更高版本'
+- en: The **Azure Command-Line Interface** (**Azure CLI**)
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**Azure 命令行接口**（**Azure CLI**）'
+- en: '`pachctl` 2.0.0 or later'
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`pachctl` 2.0.0 或更高版本'
+- en: Pachyderm 2.0.0 or later
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Pachyderm 2.0.0 或更高版本
+- en: '`jq` 1.5 or later'
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`jq` 1.5 或更高版本'
+- en: 'For a **Google Kubernetes Engine** (**GKE**) cloud installation, you should
+    have the following:'
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于**Google Kubernetes 引擎**（**GKE**）云安装，您应具备以下条件：
+- en: Google Cloud **Software Development Kit** (**SDK**) v124.0.0\. or later
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Google Cloud **软件开发工具包**（**SDK**）v124.0.0 或更高版本
+- en: '`kubectl` v.18 or later'
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`kubectl` v.18 或更高版本'
+- en: '`pachctl` 2.0.0 or later'
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`pachctl` 2.0.0 或更高版本'
+- en: Pachyderm 2.0.0 or later
+  id: totrans-39
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Pachyderm 2.0.0 或更高版本
+- en: To be able to run the pipelines in this chapter, you do not need any special
+    hardware. If you are running your Pachyderm cluster locally, any modern laptop
+    should support all operations in this section. If you are running Pachyderm in
+    a cloud platform, you will need to have a **Persistent Volume** (**PV**). See
+    [*Chapter 5*](B17085_05_Final_SB_Epub.xhtml#_idTextAnchor123), *Installing Pachyderm
+    on a Cloud Platform*, for more details.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要运行本章中的管道，您不需要任何特殊硬件。如果您是在本地运行 Pachyderm 集群，任何现代笔记本电脑都应该支持本节中的所有操作。如果您在云平台上运行
+    Pachyderm，您将需要有一个**持久卷**（**PV**）。有关更多细节，请参见[*第5章*](B17085_05_Final_SB_Epub.xhtml#_idTextAnchor123)，*在云平台上安装
+    Pachyderm*。
+- en: All scripts and data described in this chapter are available at [https://github.com/PacktPublishing/Reproducible-Data-Science-with-Pachyderm/tree/main/Chapter09-Distributed-Hyperparameter-Tuning-with-Pachyderm](https://github.com/PacktPublishing/Reproducible-Data-Science-with-Pachyderm/tree/main/Chapter09-Distributed-Hyperparameter-Tuning-with-Pachyderm).
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中描述的所有脚本和数据都可以在[https://github.com/PacktPublishing/Reproducible-Data-Science-with-Pachyderm/tree/main/Chapter09-Distributed-Hyperparameter-Tuning-with-Pachyderm](https://github.com/PacktPublishing/Reproducible-Data-Science-with-Pachyderm/tree/main/Chapter09-Distributed-Hyperparameter-Tuning-with-Pachyderm)找到。
+- en: Now that we have reviewed the technical requirements for this chapter, let's
+    take a closer look at our pipeline.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经回顾了本章的技术要求，让我们更详细地了解一下我们的工作流。
+- en: Reviewing hyperparameter tuning techniques and strategies
+  id: totrans-43
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 回顾超参数调优技术和策略
+- en: '**Hyperparameter tuning** or **hyperparameter optimization** is a technique
+    that ML professionals use to determine the best parameters to solve a specific
+    ML problem. In different problems, you''d need to tune different types of parameters,
+    such as weights in neural networks, or the number of trees in the Random Forest
+    algorithm, or the learning rate of your model. Ultimately, selecting the best
+    parameters helps you determine which method is best to solve a problem. A data
+    scientist needs to understand the tunable parameters in the algorithm they use
+    to be able to optimize them correctly.'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**超参数调优**（**hyperparameter tuning**）或**超参数优化**（**hyperparameter optimization**）是一种机器学习专业人员用来确定最佳参数以解决特定机器学习问题的技术。在不同的问题中，你需要调节不同类型的参数，比如神经网络中的权重，随机森林算法中的树的数量，或者模型的学习率。最终，选择最佳参数有助于你确定最适合解决问题的方法。数据科学家需要理解他们所使用算法中的可调参数，以便正确地优化它们。'
+- en: There are a number of ML algorithms that help solve the hyperparameter optimization
+    problem. Let's review the most common ones.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多机器学习算法可以帮助解决超参数优化问题。让我们回顾一下最常见的几种。
+- en: Grid search
+  id: totrans-46
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 网格搜索
+- en: '**Grid search** is the simplest algorithm and is sometimes called a *brute-force*
+    approach to hyperparameter optimization. This method calculates the optimum values
+    of hyperparameters.'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**网格搜索**是最简单的算法，有时被称为*暴力搜索*方法用于超参数优化。该方法计算超参数的最佳值。'
+- en: In Grid search, you typically define such hyperparameters as learning rate,
+    dropout rate, or batch size. Then, you define a range of possible values. After
+    that, the algorithm runs and searches for all possible configurations.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在网格搜索中，你通常会定义诸如学习率、丢弃率或批次大小等超参数。然后，定义一个可能的值范围。接下来，算法运行并搜索所有可能的配置。
+- en: A disadvantage of Grid search is that it is computationally expensive and is
+    typically used on a smaller set of hyperparameters.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 网格搜索的一个缺点是它计算开销大，通常只用于较小的超参数集。
+- en: Still, Grid search is a popular hyperparameter tuning algorithm and is the easiest
+    one to understand.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管如此，网格搜索（Grid search）仍然是一种流行的超参数调优算法，也是最容易理解的。
+- en: 'The following diagram illustrates Grid search:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表展示了网格搜索：
+- en: '![Figure 9.1 – Grid search'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.1 – 网格搜索'
+- en: '](img/B17085_09_001.jpg)'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_001.jpg)'
+- en: Figure 9.1 – Grid search
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.1 – 网格搜索
+- en: Now, let's look at another hyperparameter optimization technique called **Random
+    search**.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们来看看另一种超参数优化技术——**随机搜索**。
+- en: Random search
+  id: totrans-56
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 随机搜索
+- en: '**Random search** is similar to Grid search, but instead of checking all possible
+    combinations, it selects them randomly, which often results in better performance
+    and less computational time and resources. In many cases, Random search has proven
+    to find the best combination faster than the Grid search method.'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**随机搜索**与网格搜索相似，但不同之处在于，它不是检查所有可能的组合，而是随机选择它们，这通常能带来更好的性能并减少计算时间和资源。在许多情况下，随机搜索比网格搜索方法更快地找到最佳组合。'
+- en: 'This diagram illustrates Random search:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该图展示了随机搜索：
+- en: '![Figure 9.2 – Random search'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.2 – 随机搜索'
+- en: '](img/B17085_09_002.jpg)'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_002.jpg)'
+- en: Figure 9.2 – Random search
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.2 – 随机搜索
+- en: Now that we know what Random search and Grid search methods are, let's learn
+    about a slightly more complex hyperparameter tuning method called Bayesian optimization.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们知道了随机搜索（Random search）和网格搜索（Grid search）方法，接下来我们将了解一种稍微复杂一点的超参数调优方法——贝叶斯优化。
+- en: Bayesian optimization
+  id: totrans-63
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 贝叶斯优化
+- en: Bayesian optimization is a hyperparameter tuning technique that finds the minimum
+    of a function. The main difference between Bayesian optimization and Grid search/Random
+    search is that it keeps track of previous iterations and evaluation results and
+    therefore uses probability (*P*) to predict the best combination.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 贝叶斯优化是一种超参数调整技术，用于找到一个函数的最小值。贝叶斯优化与网格搜索/随机搜索的主要区别在于它会跟踪之前的迭代和评估结果，因此使用概率（*P*）来预测最佳组合。
+- en: A model trained with Bayesian optimization provides better results with more
+    available data. Because it takes into account past results, such a model can find
+    the best results with fewer iterations. Based on previous iterations, Bayesian
+    optimization builds a posterior model that is closer to reality.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用贝叶斯优化训练的模型在数据更多的情况下能提供更好的结果。由于它考虑了过去的结果，像这样的模型可以通过较少的迭代找到最佳结果。基于之前的迭代，贝叶斯优化构建了一个更接近现实的后验模型。
+- en: 'This diagram demonstrates the concept of Bayesian optimization:'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该图示范了贝叶斯优化的概念：
+- en: '![Figure 9.3 – Bayesian optimization'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.3 – 贝叶斯优化'
+- en: '](img/B17085_09_003.jpg)'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_003.jpg)'
+- en: Figure 9.3 – Bayesian optimization
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.3 – 贝叶斯优化
+- en: We have learned about the three main hyperparameter optimization techniques.
+    There are more available, but these three seem to be the most popular and widely
+    used. Now, let's look into model evaluation metrics that we can use to determine
+    the performance of our models. Because the problem we are going to discuss later
+    in this chapter is a regression problem, we will only consider regression evaluation
+    metrics.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经了解了三种主要的超参数优化技术。虽然还有更多方法，但这三种似乎是最受欢迎和广泛使用的。现在，让我们来看看可以用于确定模型表现的模型评估指标。由于我们将在本章后面讨论的问题是回归问题，我们将只考虑回归评估指标。
+- en: Regression evaluation metrics
+  id: totrans-71
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 回归评估指标
+- en: Just picking the right algorithm is only half of our success. We need to use
+    an evaluation metric that determines the performance of our model. Evaluation
+    metrics can be applied for various parameters to determine the best parameters.
+    They can also be applied to multiple algorithms so that they can be compared and
+    presented for further analysis.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 仅选择正确的算法只是成功的一半。我们需要使用一个评估指标来确定模型的表现。评估指标可以应用于各种参数，以确定最佳参数。它们还可以应用于多个算法，以便进行比较并为进一步分析提供依据。
+- en: 'Because the house price prediction example is a regression problem, we will
+    only consider regression evaluation metrics. The most common evaluation metrics
+    include the following:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于房价预测示例是回归问题，我们将只考虑回归评估指标。最常见的评估指标包括以下几种：
+- en: '**R-squared** (**R2**)'
+  id: totrans-74
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**R平方**（**R2**）'
+- en: '**Mean Square Error** (**MSE**)'
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**均方误差**（**MSE**）'
+- en: '**Mean Absolute Error** (**MAE**)'
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**平均绝对误差**（**MAE**）'
+- en: These metrics are known statistical methods for evaluating performance.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些指标是已知的统计方法，用于评估性能。
+- en: R2
+  id: totrans-78
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: R2
+- en: R2 is an evaluation metric that is used in statistics to determine the variance
+    in a dependent variable or how close the data is to the regression line. The parameter
+    is measured as a percentage. If you get an R2 value of 100%, this means that the
+    data fits the regression model perfectly. However, other values are acceptable,
+    including 75%, 50%, and so on.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: R2是一个用于统计学中的评估指标，用于确定因变量的方差或数据与回归线的接近程度。该参数以百分比形式衡量。如果你得到100%的R2值，意味着数据完美地拟合回归模型。然而，其他值也是可以接受的，包括75%、50%等等。
+- en: 'There are many ways to express R2 in a formula, but the simplest one looks
+    like this:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多方法可以用公式表示R2，但最简单的表示方式如下：
+- en: '![](img/Formula_B17085_09_001.jpg)'
+  id: totrans-81
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_B17085_09_001.jpg)'
+- en: If you are not that familiar with math, don't worry about this too much as in
+    our code, we use the `scikit-learn` module to calculate R2.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你不太熟悉数学，不必太担心，因为在我们的代码中，我们使用`scikit-learn`模块来计算R2。
+- en: Now that you have a general understanding of R2, let's learn about another evaluation
+    metric called MSE.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在你对R2有了大致了解，让我们学习另一种评估指标——MSE。
+- en: MSE
+  id: totrans-84
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: MSE
+- en: MSE is an evaluation metric that estimates the difference between the predicted
+    values with the observed value. MSE is highly influenced by outliers, values that
+    are outside of the standard range. Therefore, you must remove outliers before
+    you evaluate your model.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MSE是一种评估指标，用于估算预测值与观察值之间的差异。MSE受到离群值的影响很大，离群值指的是超出标准范围的值。因此，在评估模型之前，你必须去除离群值。
+- en: The lower the MSE value, the closer the result is to the real value.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MSE值越低，结果越接近真实值。
+- en: For example, if you have a model that predicts salary based on years of service,
+    your model MSE might be 200, meaning that the predicted value was **US Dollars**
+    (**USD**) $200 higher than the actual value. Depending on the sample size, the
+    overall scale, and expected precision, this number might have different significance.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果你有一个根据服务年限预测薪资的模型，模型的 MSE 可能是 200，这意味着预测值比实际值**美元（USD）**高出 200 美元。根据样本大小、整体规模和期望的精度，这个数字可能具有不同的重要性。
+- en: 'The following formula is used to calculate MSE:'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下公式用于计算 MSE：
+- en: '![](img/Formula_B17085_09_002.jpg)'
+  id: totrans-89
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_B17085_09_002.jpg)'
+- en: 'The following values are used in this formula:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下值用于该公式：
+- en: '*n*: A sample size'
+  id: totrans-91
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*n*：样本大小'
+- en: '*observed*: The actual value'
+  id: totrans-92
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*observed*：实际值'
+- en: '*predicted*: The value that the model has predicted'
+  id: totrans-93
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*predicted*：模型预测的值'
+- en: As with R2, don't worry about the formula too much as we will use the `scikit-learn`
+    MSE module to calculate MSE.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与 R2 一样，不必过于担心公式，因为我们将使用 `scikit-learn` 的 MSE 模块来计算 MSE。
+- en: Now, let's learn about MAE.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们了解 MAE。
+- en: MAE
+  id: totrans-96
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: MAE
+- en: 'MAE is another evaluation metric often used with regression models. It calculates
+    an average of total errors in your model or an absolute difference between real
+    and forecasted values. If we were to express MAE in the simplest formula, it would
+    look like this:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MAE 是另一种常用于回归模型的评估指标。它计算模型中的总误差平均值，或者实际值与预测值之间的绝对差异。如果我们要用最简单的公式表示 MAE，它的形式如下：
+- en: '![](img/Formula_B17085_09_003.jpg)'
+  id: totrans-98
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_B17085_09_003.jpg)'
+- en: This metric is provided for your information only. We will not use it in our
+    calculation. However, you can try it if you'd like by using the `scikit-learn`
+    MAE module as well.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个指标仅供参考。我们在计算中不会使用它。但是，如果你愿意，也可以尝试使用 `scikit-learn` 的 MAE 模块来计算。
+- en: Apart from these metrics, there are a number of other metrics that can help
+    you evaluate your model, including **Root MSE** (**RMSE**) and **Adjusted R2**.
+    However, the ones that we mentioned previously are the most commonly used and
+    the easiest to understand.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了这些指标外，还有许多其他指标可以帮助你评估模型，包括**根均方误差**（**RMSE**）和**调整后的 R2**。然而，我们之前提到的这些是最常用的，也是最容易理解的。
+- en: Now that we have learned about the methodology, evaluation metrics, and the
+    algorithms we will use to configure hyperparameter tunning in Pachyderm, let's
+    review the actual example, the model, the code, and the pipeline specifications.
+    By the end of the next section, we will have a working hyperparameter tuning example
+    in Pachyderm.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经了解了方法论、评估指标以及我们将用来配置 Pachyderm 中超参数调优的算法，让我们回顾实际的示例、模型、代码和管道规范。在下一节结束时，我们将拥有一个在
+    Pachyderm 中工作的超参数调优示例。
+- en: Creating a hyperparameter tuning pipeline in Pachyderm
+  id: totrans-102
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 Pachyderm 中创建超参数调优管道
+- en: In this section, we will explore our hyperparameter tuning pipeline and will
+    create all the required attributes in Pachyderm to run our example.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将探讨超参数调优管道，并将在 Pachyderm 中创建所有必要的属性，以运行我们的示例。
+- en: Example overview
+  id: totrans-104
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 示例概述
+- en: The house price prediction challenge is one of the classic ML examples of hyperparameter
+    tunning optimization. It might not sound that complicated and may even be easy
+    to predict based on your empirical experience. Likely, you know the area where
+    you live pretty well and can estimate the price of houses based on square footage,
+    number of rooms, adjacent land plot, and other parameters.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 房价预测挑战是超参数调优优化的经典机器学习示例之一。它听起来可能并不复杂，甚至可以根据你的经验进行简单预测。很可能，你对自己所住的地区相当了解，可以根据房屋的平方英尺数、房间数量、相邻土地面积等参数估算房价。
+- en: 'This information can be represented in a form of a **two-dimensional** (**2D**)
+    array or a table with mentioned parameters. Here is an example of such a table:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些信息可以以**二维**（**2D**）数组或表格的形式表示，包含上述参数。以下是此类表格的示例：
+- en: '![Figure 9.4 – Sample housing data'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.4 – 示例房屋数据'
+- en: '](img/B17085_09_Table_01.jpg)'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_Table_01.jpg)'
+- en: Figure 9.4 – Sample housing data
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.4 – 示例房屋数据
+- en: Based on this information, you can predict the price of a house with similar
+    characteristics without using any ML model and just by looking at these numbers.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于这些信息，你可以仅通过观察这些数字来预测一栋具有相似特征的房子的价格，而无需使用任何机器学习模型。
+- en: But imagine that all the data you have is a **Comma-Separated Values** (**CSV**)
+    file with thousands of rows and 60+ columns. You do not know anything about the
+    area, and you haven't ever lived there. Imagine that you want to predict house
+    prices continuously based on data that changes all the time. That's where creating
+    a highly performing ML model comes in handy.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但想象一下，你所拥有的所有数据只是一个**逗号分隔值**（**CSV**）文件，里面包含成千上万行和60多个列。你对这个区域一无所知，而且你从未住在那里。想象一下，你希望根据不断变化的数据，持续预测房价。此时，创建一个高效的机器学习模型就显得非常有用。
+- en: In our example, we will use a dataset that is available for free on `train.csv`
+    version of this dataset as we will modify it to clean the data.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的示例中，我们将使用一个免费的数据集，`train.csv`版本的数据集，因为我们将对其进行修改以清理数据。
+- en: The `train.csv` dataset includes *81* columns and *1,461* rows. You can view
+    the `data_description.txt` file to review the column descriptions. The columns
+    include the various parameters that affect the price of a house. Each row represents
+    an example of a house sale with a specific sale price.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`train.csv`数据集包括*81*列和*1,461*行。你可以查看`data_description.txt`文件来回顾列的描述。列中包含了影响房价的各种参数。每一行代表一个房屋销售实例，并带有一个具体的销售价格。'
+- en: 'Here is an extract from the dataset:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是数据集中的一个摘录：
+- en: '![Figure 9.5 – Extract from the housing dataset'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.5 – 房屋数据集摘录](img/B17085_09_005.jpg)'
+- en: '](img/B17085_09_005.jpg)'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_005.jpg)'
+- en: Figure 9.5 – Extract from the housing dataset
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.5 – 房屋数据集摘录
+- en: We will attempt to create a model that we will train on our training data to
+    predict house prices and will evaluate the performance of the model by using the
+    R2 and MSE evaluation metrics that we discussed in the previous section.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将尝试创建一个模型，利用我们的训练数据对其进行训练，预测房价，并通过使用我们在前一节中讨论的R2和MSE评估指标来评估模型的性能。
+- en: 'The following diagram demonstrates our model:'
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表展示了我们的模型：
+- en: '![Figure 9.6 – Hyperparameter tuning pipeline](img/B17085_09_006.jpg)'
+  id: totrans-120
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.6 – 超参数调优管道](img/B17085_09_006.jpg)'
+- en: Figure 9.6 – Hyperparameter tuning pipeline
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.6 – 超参数调优管道
+- en: Now that we have a basic idea of our pipeline, let's review each step of our
+    pipeline workflow in more detail.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经对管道有了一个基本的了解，让我们更详细地回顾一下管道工作流的每个步骤。
+- en: Creating an exploratory analysis pipeline
+  id: totrans-123
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建探索性分析管道
+- en: 'Our first pipeline explores the data and gives us some basic information about
+    the dataset that we are using. Here is the pipeline specification of the exploratory
+    analysis pipeline:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的第一个管道探索了数据，并为我们提供了有关所用数据集的一些基本信息。以下是探索性分析管道的规范：
+- en: '[PRE0]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: This pipeline takes all data from the data repository located under `/*` and
+    runs the `data-explore.py` script against it. The pipeline uses the `hyperparameter-example:1.0`
+    Docker image.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该管道从位于`/*`下的数据仓库中获取所有数据，并运行`data-explore.py`脚本。该管道使用`hyperparameter-example:1.0`
+    Docker镜像。
+- en: 'Let''s review what''s the `data-explore.py` script does. The script imports
+    the following components:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们回顾一下`data-explore.py`脚本的作用。该脚本导入了以下组件：
+- en: '[PRE1]'
+  id: totrans-128
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: We will use `pandas` to manipulate CSV tables and represent them as `DataFrame`
+    structures. `pandas` is an open source Python library that is widely used by data
+    scientists for data operations, specifically 2D tabular data.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用`pandas`来操作CSV表格，并将其表示为`DataFrame`结构。`pandas`是一个开源的Python库，广泛应用于数据科学家进行数据操作，尤其是二维表格数据。
+- en: We will use, familiar to us from previous sections, `matplotlib` in combination
+    with the `seaborn` library to visualize the results of our computations. `seaborn`
+    is based on `matplotlib` but provides more sophisticated and visually appealing
+    graphs.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用之前章节中介绍过的`matplotlib`，结合`seaborn`库来可视化我们的计算结果。`seaborn`基于`matplotlib`，但提供了更复杂且视觉上更吸引人的图表。
+- en: 'The first part of the `data-explore.py` script reads the `housing-train.csv`
+    file as a `DataFrame` from the `data` repository and computes a correlation matrix
+    between all columns in our dataset by using the `pandas.DataFrame.corr()` method.
+    The code then creates a heatmap of the created correlation matrix and saves it
+    in the pipeline output repository. The code is illustrated in the following snippet:'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`data-explore.py`脚本的第一部分从`data`仓库中读取`housing-train.csv`文件，并通过使用`pandas.DataFrame.corr()`方法计算数据集中所有列之间的相关性矩阵。代码接着创建了一个相关性矩阵的热图，并将其保存在管道输出仓库中。相关代码如下所示：'
+- en: '[PRE2]'
+  id: totrans-132
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'The second part of the code saves the types of data objects in a column. Typically,
+    you use a different approach to analyzing and manipulating numerical and categorical
+    data, which is why getting this information might be important. The code saves
+    this information in a `data-types.csv` file and is illustrated here:'
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码的第二部分保存列中数据对象的类型。通常，分析和处理数值数据与类别数据采用不同的方法，因此获取这些信息可能很重要。代码将这些信息保存到`data-types.csv`文件中，如下所示：
+- en: '[PRE3]'
+  id: totrans-134
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'The third part of the script checks the columns for missing data, creates a
+    table with percentages of columns that have missing data, and saves the table
+    to `no-data.csv`, as illustrated in the following code snippet:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 脚本的第三部分检查缺失数据的列，创建一个包含缺失数据列百分比的表格，并将其保存为`no-data.csv`，如下代码片段所示：
+- en: '[PRE4]'
+  id: totrans-136
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Let''s create this pipeline, as follows:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们来创建这个管道，步骤如下：
+- en: 'Verify that Pachyderm is up and running by executing the following command:'
+  id: totrans-138
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令，验证Pachyderm是否正常运行：
+- en: '[PRE5]'
+  id: totrans-139
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'This command returns the following output (your version of `pachctl` and `pachd`
+    might be different):'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该命令返回以下输出（你的`pachctl`和`pachd`版本可能不同）：
+- en: '[PRE6]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Create a data repository by running the following command:'
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令创建数据仓库：
+- en: '[PRE7]'
+  id: totrans-143
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: This command does not return any output.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该命令不会返回任何输出。
+- en: 'Move the `housing-train.csv` file to the master branch of the `data` repository
+    by running the following command:'
+  id: totrans-145
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，将`housing-train.csv`文件移至`data`仓库的主分支：
+- en: '[PRE8]'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'The system response should look like this:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系统响应应如下所示：
+- en: '[PRE9]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Verify that the file was added to the repository with the `file` type by running
+    the following command:'
+  id: totrans-149
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，验证文件是否已以`file`类型添加到仓库：
+- en: '[PRE10]'
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'The system response should look like this:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系统响应应如下所示：
+- en: '[PRE11]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Create a `data-explore` pipeline by using the `data-explore.yaml` file, as
+    follows:'
+  id: totrans-153
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过使用`data-explore.yaml`文件创建`data-explore`管道，步骤如下：
+- en: '[PRE12]'
+  id: totrans-154
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: This command does not return any response.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该命令不会返回任何响应。
+- en: 'Verify that the pipeline was created by running the following command:'
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，验证管道是否已创建：
+- en: '[PRE13]'
+  id: totrans-157
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Here is the system response that you should see:'
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是你应该看到的系统响应：
+- en: '[PRE14]'
+  id: totrans-159
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Wait for the pipeline to finish running and display a `success` status for the
+    last job.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 等待管道运行完毕，并显示最后一个作业的`success`状态。
+- en: 'List the repositories, as follows:'
+  id: totrans-161
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 列出仓库，命令如下：
+- en: '[PRE15]'
+  id: totrans-162
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'You should see that the `data-explore` pipeline uploaded `3.361MiB` of data
+    to the `data-explore` repository, as indicated in the following output:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到`data-explore`管道已上传`3.361MiB`的数据到`data-explore`仓库，输出如下所示：
+- en: '[PRE16]'
+  id: totrans-164
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Let''s explore the data in the repository by running the following command:'
+  id: totrans-165
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，我们来探索仓库中的数据：
+- en: '[PRE17]'
+  id: totrans-166
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'You should see the following three files:'
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该能看到以下三个文件：
+- en: '[PRE18]'
+  id: totrans-168
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Let''s open the `/data-types.csv file`, as follows:'
+  id: totrans-169
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们来打开`/data-types.csv`文件，如下所示：
+- en: '[PRE19]'
+  id: totrans-170
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'The file includes data types for each column, as we can see in the following
+    code snippet:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 文件包含每一列的数据类型，如下代码片段所示：
+- en: '[PRE20]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Let''s look at what''s in the `no-data.csv` file by running the following command:'
+  id: totrans-173
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，我们来查看`no-data.csv`文件中的内容：
+- en: '[PRE21]'
+  id: totrans-174
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Alternatively, you could also open the file in an application on your computer.
+    For example, in macOS, you can open it in the `Numbers` application, like this:'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另外，你也可以在你的电脑上用应用程序打开该文件。例如，在macOS中，你可以在`Numbers`应用中打开它，如下所示：
+- en: '[PRE22]'
+  id: totrans-176
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'This file contains information about columns and the percentage of missing
+    data in these columns. This is very useful for data cleaning. Some columns have
+    more than 80% of missing data. These columns can be removed so that they don''t
+    interfere with our calculations. We will do that in our next pipeline. Here is
+    a list of columns with the majority of data missing:'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该文件包含有关列和这些列中缺失数据百分比的信息。这对于数据清理非常有用。一些列的缺失数据超过了80%。这些列可以被删除，以避免干扰我们的计算。我们将在下一个管道中进行处理。以下是缺失数据大部分的列列表：
+- en: '![Figure 9.7 – Columns with missing data'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图9.7 – 缺失数据的列'
+- en: '](img/B17085_09_007.jpg)'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_007.jpg)'
+- en: Figure 9.7 – Columns with missing data
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.7 – 缺失数据的列
+- en: 'Now, let''s look at the heatmap by running the following command:'
+  id: totrans-181
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，通过运行以下命令，我们来查看热图：
+- en: '[PRE23]'
+  id: totrans-182
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'You should see the following heatmap that shows us a correlation between all
+    columns in the dataset:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到以下热图，它展示了数据集中所有列之间的相关性：
+- en: '![Figure 9.8 – Heatmap of all parameters'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图9.8 – 所有参数的热图'
+- en: '](img/B17085_09_008.jpg)'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_008.jpg)'
+- en: Figure 9.8 – Heatmap of all parameters
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.8 – 所有参数的热图
+- en: This heatmap has too many parameters and is difficult to read. But even on this
+    heatmap, we can see that some parameters affect the sale price more than others.
+    For example, it looks as though the `OverallQuality` parameter affects the price
+    the most, as well as the `GrLivArea` parameter (for *great living area*). We will
+    try to narrow down our dataset to these parameters in our next pipeline step.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个热图参数太多，难以阅读。但即便在这个热图上，我们也能看到有些参数对销售价格的影响大于其他参数。例如，看起来`OverallQuality`参数对价格的影响最大，还有`GrLivArea`参数（即*大居住区*）。我们将在下一个管道步骤中尝试将数据集缩小到这些参数。
+- en: We have explored the dataset and got a basic understanding of the data. Now,
+    let's review our next pipeline, which will clean up the data based on our findings.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经探索了数据集并对数据有了基本了解。现在，让我们回顾一下下一个管道，它将根据我们的发现清理数据。
+- en: Creating a data cleaning pipeline
+  id: totrans-189
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建数据清理管道
+- en: 'Our next step is to create a pipeline that cleans our data. This pipeline will
+    clean the data according to our findings in the previous section. Here is the
+    pipeline specification:'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的下一步是创建一个清理数据的管道。这个管道将根据上一部分的发现清理数据。以下是管道的规范：
+- en: '[PRE24]'
+  id: totrans-191
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: This is a standard Pachyderm pipeline that takes the data from the `data` repository
+    and runs the `data-clean.py` script against that data. The data, in this case,
+    is our `housing-train.csv` dataset.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个标准的Pachyderm管道，它从`data`仓库中获取数据，并对这些数据运行`data-clean.py`脚本。在这种情况下，数据是我们的`housing-train.csv`数据集。
+- en: 'Let''s look at our `data-clean.py` script. The script imports the following
+    components:'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下`data-clean.py`脚本。该脚本导入了以下组件：
+- en: '[PRE25]'
+  id: totrans-194
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: These components are similar to the ones in the `data-explore` pipeline. The
+    new component that is being imported is `pandas.Series`, which we need to be able
+    to save our data to a CSV file.
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些组件与`data-explore`管道中的组件相似。唯一新增的组件是`pandas.Series`，我们需要它来将数据保存到CSV文件中。
+- en: 'The first part of our script reads the data from the `housing-train.csv` dataset
+    as a `DataFrame`. Then, we drop the columns that have more than 40% of columns
+    with missing data and save the columns that we have dropped in the `col_drop.csv`
+    file, as follows:'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们脚本的第一部分读取来自`housing-train.csv`数据集的数据，作为`DataFrame`。然后，我们删除那些有超过40%缺失数据的列，并将被删除的列保存到`col_drop.csv`文件中，如下所示：
+- en: '[PRE26]'
+  id: totrans-197
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Next, we create a new correlation matrix that only includes the parameters
+    that affect the `SalePrice` column with a coefficient of 0.5 or larger. We plot
+    a new heatmap and save it in the `heatmap2.png` file, as follows:'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们创建一个新的相关矩阵，仅包括对`SalePrice`列影响系数为0.5或更大的参数。我们绘制一个新的热图，并将其保存在`heatmap2.png`文件中，如下所示：
+- en: '[PRE27]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'Finally, we remove the columns that are not part of the new correlation matrix
+    and save them in a new dataset called `cleaned-data.csv` in the pipeline output
+    repository, as follows:'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们移除不属于新相关矩阵的列，并将它们保存在一个名为`cleaned-data.csv`的新数据集里，放在管道输出仓库中，如下所示：
+- en: '[PRE28]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Now, let''s create this data cleaning pipeline, as follows:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们创建这个数据清理管道，如下所示：
+- en: 'Verify that Pachyderm is up and running by executing the following command:'
+  id: totrans-203
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令验证Pachyderm是否正在运行：
+- en: '[PRE29]'
+  id: totrans-204
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Here is the output:'
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里是输出：
+- en: '[PRE30]'
+  id: totrans-206
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Your version of Pachyderm might be different.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你使用的Pachyderm版本可能不同。
+- en: 'Create a `data-clean` pipeline, as follows:'
+  id: totrans-208
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个`data-clean`管道，如下所示：
+- en: '[PRE31]'
+  id: totrans-209
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: No system response is returned.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 没有系统响应返回。
+- en: 'Verify that Pachyderm has successfully created the pipeline by running the
+    following command:'
+  id: totrans-211
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令，验证Pachyderm是否成功创建了管道：
+- en: '[PRE32]'
+  id: totrans-212
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Here is the system response that you should see:'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是你应该看到的系统响应：
+- en: '[PRE33]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: You need to wait for the pipeline to change its status to `success`.
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要等待管道的状态变为`success`。
+- en: 'When the pipeline has successfully finished running, list the repositories
+    by running the following command:'
+  id: totrans-216
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当管道成功运行完毕后，通过运行以下命令列出仓库：
+- en: '[PRE34]'
+  id: totrans-217
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'You should see that the `data-clean` pipeline added `780.4KiB` of data, as
+    indicated in the following output:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该能看到`data-clean`管道添加了`780.4KiB`的数据，如下所示的输出所示：
+- en: '[PRE35]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'Let''s look at the data in the repository by running the following command:'
+  id: totrans-220
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们通过运行以下命令查看仓库中的数据：
+- en: '[PRE36]'
+  id: totrans-221
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'The output should look like this:'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应该如下所示：
+- en: '[PRE37]'
+  id: totrans-223
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Let''s look at the columns that were dropped by running the following command:'
+  id: totrans-224
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们通过运行以下命令查看被删除的列：
+- en: '[PRE38]'
+  id: totrans-225
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The file includes data types for each column, as we can see here:'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该文件包括每列的数据类型，正如我们在这里看到的：
+- en: '[PRE39]'
+  id: totrans-227
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: These were the columns that had more than 40% columns empty.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些是那些有超过40%空列的列。
+- en: 'We''ve also removed all the columns that we mapped in our new correlation matrix
+    and that have a correlation coefficient of less than 0.5\. Run the following command
+    to see what our new correlation matrix looks like:'
+  id: totrans-229
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们还去除了新相关矩阵中映射的所有列，这些列的相关系数小于0.5。运行以下命令查看我们的新相关矩阵：
+- en: '[PRE40]'
+  id: totrans-230
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Here is the new heatmap:'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是新的热图：
+- en: '![Figure 9.9 – Refined heatmap'
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.9 – 精细化热图'
+- en: '](img/B17085_09_009.jpg)'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_009.jpg)'
+- en: Figure 9.9 – Refined heatmap
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.9 – 精细化热图
+- en: This heatmap makes much more sense. We can clearly see the parameters that are
+    the most prominent in determining the house sale price. Our dataset has been drastically
+    reduced to 11 columns only and was saved to a new `cleaned-data.csv` file. Now,
+    this strategy might not be ideal for every use case—you might decide to keep more
+    parameters in your dataset to ensure and check if the model would perform better
+    with more parameters. But for the purpose of this example, this should be sufficient.
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个热图更有意义了。我们可以清晰地看到在确定房屋销售价格时最显著的参数。我们的数据集已被大幅度减少，仅剩11列，并已保存到新的`cleaned-data.csv`文件中。现在，这个策略可能并不适用于所有的用例——你可能决定保留更多的参数，以确保并检查是否在更多参数下模型表现更好。但就这个示例而言，这应该足够了。
+- en: Now that we have cleaned the data, we also need to make sure that we remove
+    any outliers or parameters that are outside of the standard range. We will do
+    this in our next section.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经清理了数据，还需要确保去除任何异常值或超出标准范围的参数。我们将在下一部分进行这个操作。
+- en: Creating a pipeline that removes outliers
+  id: totrans-237
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建一个去除异常值的管道
+- en: 'Our next pipeline will evaluate outliers in our dataset and will remove them
+    so that our model performance is not affected by them. We will again use a standard
+    Pachyderm pipeline specification to achieve this goal. Here is the pipeline specification:'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的下一个管道将评估数据集中的异常值，并将其去除，以确保模型的表现不受影响。我们将再次使用标准的Pachyderm管道规范来实现这一目标。以下是管道规范：
+- en: '[PRE41]'
+  id: totrans-239
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: The pipeline specification takes the cleaned data from the `data-clean` repository
+    and applies the `outliers.py` Python script to that data. The pipeline uses the
+    same Docker image as the two previous ones.
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该管道规范从`data-clean`代码库获取清理后的数据，并将`outliers.py` Python脚本应用于这些数据。管道使用与前两个相同的Docker镜像。
+- en: The `outliers.py` script imports the same list of components as the scripts
+    in our previous pipeline steps, including `seaborn`, `matplotlib`, and `pandas`.
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`outliers.py`脚本导入了与我们前面管道步骤中的脚本相同的组件列表，包括`seaborn`、`matplotlib`和`pandas`。'
+- en: 'The script reads the data from the `cleaned-data.csv` file. Then, it creates
+    a histogram that displays outliers in the dataset and saves that histogram to
+    the `histogram.png` file. Then, we only leave 50% of the data that is within the
+    middle range and remove the rest. We create another histogram that shows this
+    new data. We drop the data from the dataset and save it in a new CSV file called
+    `removed-outliers-data.csv`. The code is illustrated in the following snippet:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 脚本从`cleaned-data.csv`文件读取数据。然后，它创建一个直方图，显示数据集中的异常值，并将该直方图保存为`histogram.png`文件。接着，我们只保留中间范围内50%的数据，并去除其余部分。我们创建另一个直方图，显示这些新数据。我们从数据集中删除数据并将其保存为一个名为`removed-outliers-data.csv`的新CSV文件。代码如下所示：
+- en: '[PRE42]'
+  id: totrans-243
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'Now, let''s create this pipeline, as follows:'
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们创建这个管道，步骤如下：
+- en: 'Verify that Pachyderm is up and running by executing the following command:'
+  id: totrans-245
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令验证Pachyderm是否正常运行：
+- en: '[PRE43]'
+  id: totrans-246
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'You should get an output similar to this:'
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该得到类似以下的输出：
+- en: '[PRE44]'
+  id: totrans-248
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: Your version might be different.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你的版本可能会有所不同。
+- en: 'Create a `data-clean` pipeline, as follows:'
+  id: totrans-250
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个`data-clean`管道，步骤如下：
+- en: '[PRE45]'
+  id: totrans-251
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: This command does not return any output.
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个命令没有返回任何输出。
+- en: 'Check that the pipeline was created by running the following command:'
+  id: totrans-253
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令检查管道是否已创建：
+- en: '[PRE46]'
+  id: totrans-254
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'Here is the system response that you should see:'
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是你应该看到的系统响应：
+- en: '[PRE47]'
+  id: totrans-256
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: The `remove-outliers` pipeline is starting. You can run the `pachctl list pipeline`
+    command several times until the pipeline succeeds.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`remove-outliers`管道正在启动。你可以多次运行`pachctl list pipeline`命令，直到管道成功。'
+- en: 'List the repositories by running the following command:'
+  id: totrans-258
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令列出代码库：
+- en: '[PRE48]'
+  id: totrans-259
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'The `remove-outliers` repository should have `413.7KiB` of data uploaded to
+    it, as indicated in the following output:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`remove-outliers`代码库应该上传了`413.7KiB`的数据，以下输出显示了这一点：'
+- en: '[PRE49]'
+  id: totrans-261
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'List the files in the repository by running the following command:'
+  id: totrans-262
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令列出代码库中的文件：
+- en: '[PRE50]'
+  id: totrans-263
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'The output should look like this:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE51]'
+  id: totrans-265
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Let''s first open the `histogram.png` file by running the following command:'
+  id: totrans-266
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们先通过运行以下命令打开 `histogram.png` 文件：
+- en: '[PRE52]'
+  id: totrans-267
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'Here is what you should see:'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是您应该看到的内容：
+- en: '![Figure 9.10 – Outliers in the dataset'
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.10 – 数据集中的异常值'
+- en: '](img/B17085_09_010.jpg)'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_010.jpg)'
+- en: Figure 9.10 – Outliers in the dataset
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.10 – 数据集中的异常值
+- en: This boxplot shows us that the majority of houses have a sale price in the range
+    of $50,000 to $350,000, with most of these being in the range of $110,000 to $220,000\.
+    A few others are way outside of this range and might be even considered a separate
+    category. Our pipeline removes outliers outside the main box.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个箱线图显示，大多数房屋的售价在 50,000 美元到 350,000 美元之间，其中大部分集中在 110,000 美元到 220,000 美元之间。还有少数房屋的售价远远超出了这个范围，可能被视为一个单独的类别。我们的流水线会移除位于主箱体之外的异常值。
+- en: 'Now, let''s look at the histogram after the outliers were removed. We can do
+    this by running the following command:'
+  id: totrans-273
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看去除异常值后的直方图。我们可以通过运行以下命令来实现：
+- en: '[PRE53]'
+  id: totrans-274
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'Here is the new histogram:'
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是新的直方图：
+- en: '![Figure 9.11 – Histogram with removed outliers'
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.11 – 去除异常值后的直方图'
+- en: '](img/B17085_09_011.jpg)'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_011.jpg)'
+- en: Figure 9.11 – Histogram with removed outliers
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.11 – 去除异常值后的直方图
+- en: We have removed some of the rows from our dataset and we now have 1,400 rows
+    instead of the 1,481 rows that we had before.
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经从数据集中移除了一些行，现在我们有了 1,400 行数据，而不是之前的 1,481 行。
+- en: Now that we have finished cleaning our data, we can next train our model.
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经完成了数据清洗，接下来可以训练我们的模型了。
+- en: Creating a training pipeline
+  id: totrans-281
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建训练流水线
+- en: 'Our next pipeline will train our model on a training part of our dataset. Here
+    is the pipeline specification:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的下一个流水线将对数据集中的训练部分进行模型训练。以下是流水线的规范：
+- en: '[PRE54]'
+  id: totrans-283
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: As you can see, this is another standard Pachyderm pipeline. It takes the data
+    from the `remove-outliers` repository and applies the `train.py` script to it.
+    It uses the same Docker image as other pipelines in this section.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，这是另一个标准的 Pachyderm 流水线。它从 `remove-outliers` 仓库中获取数据，并应用 `train.py` 脚本。它使用与本节其他流水线相同的
+    Docker 镜像。
+- en: 'Here is a list of components that the `train.py` script imports:'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下是 `train.py` 脚本导入的组件列表：
+- en: '[PRE55]'
+  id: totrans-286
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: We import `train_test_split`, `metrics`, `r2_score`, `mean_squared_error`, and
+    `make_scorer` modules from the `sklearn` library to split the data into train
+    and test data and calculate the R2 and MSE metrics for our model. We import the
+    `Ridge` regression model from `sklearn.linear_model` to train our model using
+    Ridge regression. Ridge regression is a variation of linear regression, one of
+    the algorithms that you can use for this type of regression problem. We import
+    `seaborn` and `matplotlib` to visualize our results, and `pandas` and `numpy`
+    to manipulate the data. `redirect_stdout` is used to redirect output to a file.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从 `sklearn` 库中导入 `train_test_split`、`metrics`、`r2_score`、`mean_squared_error`
+    和 `make_scorer` 模块，以将数据拆分为训练数据和测试数据，并计算模型的 R2 和 MSE 指标。我们从 `sklearn.linear_model`
+    导入 `Ridge` 回归模型，使用 Ridge 回归来训练我们的模型。Ridge 回归是线性回归的一种变体，是您可以用于这种回归问题的算法之一。我们导入
+    `seaborn` 和 `matplotlib` 来可视化结果，导入 `pandas` 和 `numpy` 来处理数据。`redirect_stdout`
+    用于将输出重定向到文件。
+- en: 'The first part of our script reads the `removed-outliers-data.csv` file from
+    the `remove-outliers` repository as a `DataFrame`. Then, we use `train_test_split`
+    to split our dataset into training and testing parts. The training part is used
+    to train the data, and the testing part is used to test the performance of our
+    model in the cross-validation stage. The code is illustrated here:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们脚本的第一部分从 `remove-outliers` 仓库读取 `removed-outliers-data.csv` 文件，并将其作为 `DataFrame`
+    处理。然后，我们使用 `train_test_split` 将数据集分为训练集和测试集。训练集用于训练数据，测试集用于在交叉验证阶段测试模型的性能。以下是代码示例：
+- en: '[PRE56]'
+  id: totrans-289
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'Next, we define our estimator, which is the Ridge regression. `alpha` is the
+    parameter that we will be tuning to achieve better performance. We initially set
+    `alpha` to `1`, make a prediction, and save our R2 and MSE scores in the `r_squared_mse.txt`
+    file, as illustrated in the following code snippet:'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们定义了我们的估算器，它是 Ridge 回归。`alpha` 是我们将调优的参数，以提高性能。我们最初将 `alpha` 设置为 `1`，进行预测，并将我们的
+    R2 和 MSE 分数保存在 `r_squared_mse.txt` 文件中，以下是代码示例：
+- en: '[PRE57]'
+  id: totrans-291
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'Lastly, we''ll plot our data and save it in the `prediction.png` file, as follows:'
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将绘制数据并将其保存在 `prediction.png` 文件中，如下所示：
+- en: '[PRE58]'
+  id: totrans-293
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'Let''s create this pipeline, as follows:'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们按照以下步骤创建这个流水线：
+- en: 'Check that your Pachyderm cluster is running by executing the following command:'
+  id: totrans-295
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令检查 Pachyderm 集群是否正在运行：
+- en: '[PRE59]'
+  id: totrans-296
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'Here is the output:'
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是输出结果：
+- en: '[PRE60]'
+  id: totrans-298
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'Create a `train` pipeline by running the following command:'
+  id: totrans-299
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令创建一个`train`管道：
+- en: '[PRE61]'
+  id: totrans-300
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: No output is returned.
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不返回任何输出。
+- en: 'List all pipelines by running the following command:'
+  id: totrans-302
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令列出所有管道：
+- en: '[PRE62]'
+  id: totrans-303
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'You should see the following output:'
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到以下输出：
+- en: '[PRE63]'
+  id: totrans-305
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: The output should list the `train` pipeline. Wait for the pipeline to finish
+    running.
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应列出`train`管道。等待管道运行完毕。
+- en: 'Let''s look at the repositories. We can do this by running the following command:'
+  id: totrans-307
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们查看一下仓库。我们可以通过运行以下命令来实现：
+- en: '[PRE64]'
+  id: totrans-308
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: 'You should see a new repository called `train` added with `186.3KiB` of data,
+    as indicated in the following output:'
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到一个名为`train`的新仓库，并且数据量为`186.3KiB`，如以下输出所示：
+- en: '[PRE65]'
+  id: totrans-310
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: 'Now, let''s look at the files that were uploaded to the repository. We can
+    do this by running the following command:'
+  id: totrans-311
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，让我们查看上传到仓库中的文件。我们可以通过运行以下命令来完成：
+- en: '[PRE66]'
+  id: totrans-312
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: 'The output should look like this:'
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应该像这样：
+- en: '[PRE67]'
+  id: totrans-314
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: There should be two files.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 应该有两个文件。
+- en: 'Open the `r_squared_mse.txt` file to check the MSE and R2 scores. You can do
+    this by running the following command:'
+  id: totrans-316
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 打开`r_squared_mse.txt`文件以检查MSE和R2分数。你可以通过运行以下命令来完成：
+- en: '[PRE68]'
+  id: totrans-317
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: 'The output should look like this:'
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应该像这样：
+- en: '[PRE69]'
+  id: totrans-319
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: Our R2 value is pretty high, meaning that the calculation should be quite precise.
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的R2值相当高，这意味着计算应该相当精确。
+- en: 'Now, let''s open the `prediction.png` file by running the following command:'
+  id: totrans-321
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，让我们通过运行以下命令打开`prediction.png`文件：
+- en: '[PRE70]'
+  id: totrans-322
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: 'This is what you should see:'
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到如下内容：
+- en: '![Figure 9.12 – Predicted versus real price'
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图9.12 – 预测价格与实际价格'
+- en: '](img/B17085_09_012.jpg)'
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_012.jpg)'
+- en: Figure 9.12 – Predicted versus real price
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.12 – 预测价格与实际价格
+- en: As you can see, the predicted price looks pretty close to the real one, with
+    a few minor exceptions.
+  id: totrans-327
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，预测价格与实际价格非常接近，只有少数几个小的例外。
+- en: In our last pipeline step, we will try to find the best value of `alpha` and
+    will perform cross-validation of our parameters with Grid search.
+  id: totrans-328
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们最后一个管道步骤中，我们将尝试找到最佳的`alpha`值，并使用网格搜索对我们的参数进行交叉验证。
+- en: Creating an evaluation pipeline
+  id: totrans-329
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建一个评估管道
+- en: 'Our evaluation pipeline specification looks like this:'
+  id: totrans-330
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的评估管道规范如下：
+- en: '[PRE71]'
+  id: totrans-331
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: Since you've seen quite a few of those, you can probably guess that it's a standard
+    Pachyderm pipeline that takes data from the `remove-outliers` repository and applies
+    the `grid-search.py` file to that data. The pipeline uses the same Docker image
+    as all other pipelines.
+  id: totrans-332
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 既然你已经见过这些内容，你可能猜到它是一个标准的Pachyderm管道，它从`remove-outliers`仓库获取数据，并将`grid-search.py`文件应用于这些数据。这个管道使用与所有其他管道相同的Docker镜像。
+- en: The `grid-search.py` file imports the components already familiar to us from
+    previous sections. In addition, it imports `GridSearchCV` from the `sklearn.model_selection`
+    library and `joblib`, which saves the model to a `pickle` file.
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`grid-search.py`文件导入了我们在前面章节中已经熟悉的组件。此外，它还导入了`sklearn.model_selection`库中的`GridSearchCV`和`joblib`，后者用于将模型保存为`pickle`文件。'
+- en: The first part of the script performs the same data manipulation as in `train.py`—it
+    opens the data file and splits it into two sets.
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 脚本的第一部分执行与`train.py`相同的数据处理——它打开数据文件并将其分割成两个数据集。
+- en: 'Next, we set the `estimator` property to have `Ridge` regression and specify
+    `scoring` values and `alpha` parameters, like this:'
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们设置`estimator`属性为`Ridge`回归，并指定`scoring`值和`alpha`参数，如下所示：
+- en: '[PRE72]'
+  id: totrans-336
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: 'The next part of our script uses `GridSearchCV` to train and determine the
+    best `alpha` parameter and saves the best score and the best `alpha` parameter
+    in the `best_score.txt` file. The model is also saved in the `my_model.pkl` file.
+    The code is illustrated in the following snippet:'
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 脚本的下一部分使用`GridSearchCV`来训练并确定最佳的`alpha`参数，并将最佳分数和最佳`alpha`参数保存在`best_score.txt`文件中。模型也保存在`my_model.pkl`文件中。代码如下所示：
+- en: '[PRE73]'
+  id: totrans-338
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: Lastly, we plot our performance graph and save it to `performance-plot.png`.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们绘制我们的性能图并将其保存为`performance-plot.png`。
+- en: 'Follow the next steps to create this pipeline:'
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 按照以下步骤创建此管道：
+- en: 'Verify that Pachyderm is running by executing the following command:'
+  id: totrans-341
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过执行以下命令验证Pachyderm是否正在运行：
+- en: '[PRE74]'
+  id: totrans-342
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: 'You should see the following output. Note that your version of `pachctl` and
+    `pachd` might vary:'
+  id: totrans-343
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到以下输出。请注意，你的`pachctl`和`pachd`版本可能有所不同：
+- en: '[PRE75]'
+  id: totrans-344
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: 'Create an `evaluate` pipeline by running the following command:'
+  id: totrans-345
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令创建一个`evaluate`管道：
+- en: '[PRE76]'
+  id: totrans-346
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: This command does not return any output.
+  id: totrans-347
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此命令不会返回任何输出。
+- en: 'View the active pipelines by running the following command:'
+  id: totrans-348
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令查看活动管道：
+- en: '[PRE77]'
+  id: totrans-349
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: 'You should see the following output:'
+  id: totrans-350
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到以下输出：
+- en: '[PRE78]'
+  id: totrans-351
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: You should see the `evaluate` pipeline running or finished with a `success`
+    status.
+  id: totrans-352
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您应该看到`evaluate`管道正在运行或已完成，并显示`成功`状态。
+- en: 'Look at the repository that the `evaluate` pipeline has created by running
+    the following command:'
+  id: totrans-353
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看通过运行以下命令创建的`evaluate`管道所生成的仓库：
+- en: '[PRE79]'
+  id: totrans-354
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'You should see a new repository called `train` with `121KiB` of data in it,
+    as indicated in the following output:'
+  id: totrans-355
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您应该看到一个名为`train`的新仓库，里面有`121KiB`的数据，具体如下所示：
+- en: '[PRE80]'
+  id: totrans-356
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: 'List the files in the `evaluate` repository by running the following command:'
+  id: totrans-357
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令列出`evaluate`仓库中的文件：
+- en: '[PRE81]'
+  id: totrans-358
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: 'The output should look like this:'
+  id: totrans-359
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE82]'
+  id: totrans-360
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: These files are our model, best MSE and R2 scores, and best `alpha` parameter,
+    and a graph that shows how the training data compares to testing data.
+  id: totrans-361
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些文件是我们的模型、最佳的MSE和R2得分、最佳的`alpha`参数，以及展示训练数据与测试数据对比的图表。
+- en: 'Let''s look at our best scores by running the following command:'
+  id: totrans-362
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们通过运行以下命令来查看我们的最佳得分：
+- en: '[PRE83]'
+  id: totrans-363
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE83]'
+- en: 'The output should look like this:'
+  id: totrans-364
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE84]'
+  id: totrans-365
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE84]'
+- en: Alpha 10 is our best `alpha` parameter. It should be used for predicting house
+    prices.
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Alpha 10是我们最佳的`alpha`参数。它应该用于预测房价。
+- en: 'The `performance-plot.png` file should show us how our training data evaluates
+    against the testing data. We can view this by running the following command:'
+  id: totrans-367
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`performance-plot.png`文件应该展示我们的训练数据与测试数据的对比。我们可以通过运行以下命令查看：'
+- en: '[PRE85]'
+  id: totrans-368
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE85]'
+- en: 'Here is the graph it outputs:'
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是它输出的图表：
+- en: '![Figure 9.13 – Performance plot'
+  id: totrans-370
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 9.13 – 性能图'
+- en: '](img/B17085_09_013.jpg)'
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B17085_09_013.jpg)'
+- en: Figure 9.13 – Performance plot
+  id: totrans-372
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.13 – 性能图
+- en: As you can see, `alpha=10` is likely the best parameter in the range that we
+    have provided. This pipeline concludes our example. The resulting model can be
+    used to predict house prices with the trained `alpha` hyperparameter.
+  id: totrans-373
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，`alpha=10`很可能是在我们提供的范围内最佳的参数。此管道结束了我们的示例。生成的模型可以用于使用训练过的`alpha`超参数预测房价。
+- en: This concludes our example. Now, let's clean up our cluster.
+  id: totrans-374
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就结束了我们的示例。现在，让我们清理集群。
+- en: Cleaning up
+  id: totrans-375
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 清理
+- en: 'After you are done experimenting, you might want to clean up your cluster so
+    that you start your next experiment with a fresh install. To clean up the environment,
+    proceed as follows:'
+  id: totrans-376
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成实验后，您可能希望清理集群，以便在下一个实验时从全新安装开始。要清理环境，请按以下步骤操作：
+- en: 'Delete all pipelines and repositories by running the following command:'
+  id: totrans-377
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令删除所有管道和仓库：
+- en: '[PRE86]'
+  id: totrans-378
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE86]'
+- en: 'Verify that no repositories and pipelines exist in your cluster by running
+    the following command:'
+  id: totrans-379
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过运行以下命令验证集群中是否存在仓库和管道：
+- en: '[PRE87]'
+  id: totrans-380
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE87]'
+- en: 'You should see the following output:'
+  id: totrans-381
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您应该看到以下输出：
+- en: '[PRE88]'
+  id: totrans-382
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE88]'
+- en: You have successfully cleaned up your cluster.
+  id: totrans-383
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您已经成功清理了集群。
+- en: Summary
+  id: totrans-384
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, we have learned how to implement an ML pipeline that performs
+    hyperparameter tuning on a house price prediction example. We've created five
+    steps of this pipeline, each outputting relevant files and information into Pachyderm
+    output repositories. In our first pipeline, we performed an exploratory analysis
+    to gather a general understanding of the dataset and built a heatmap that helped
+    us outline the correlation between various parameters in our dataset. In our second
+    pipeline, we cleaned the data of columns with missing information, as well as
+    removed parameters that have little influence on the sale price of a house. In
+    our third pipeline, we removed outliers—values that were outside of the standard
+    range. Our fourth pipeline split our dataset into two parts—one for testing and
+    the other for training. And finally, our fifth pipeline performed hyperparameter
+    tuning for the `alpha` parameter and found the best alpha for our use case. The
+    last pipeline output our model in a `.pkl` file and created a graph where we could
+    see the performance of our model against the training and testing dataset.
+  id: totrans-385
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们学习了如何实现一个机器学习管道，用于对房价预测示例进行超参数调优。我们创建了该管道的五个步骤，每个步骤都会将相关的文件和信息输出到Pachyderm的输出仓库中。在第一个管道中，我们进行了探索性分析，收集了关于数据集的总体理解，并构建了一个热图，帮助我们勾画出数据集中各种参数之间的相关性。在第二个管道中，我们清理了缺失信息的列，并移除了对房屋销售价格影响较小的参数。在第三个管道中，我们去除了异常值——那些超出标准范围的值。我们的第四个管道将数据集分为两部分——一部分用于测试，另一部分用于训练。最后，第五个管道对`alpha`参数进行了超参数调优，并找到了最适合我们用例的alpha值。最后一个管道将我们的模型输出为一个`.pkl`文件，并创建了一个图表，展示了我们的模型在训练数据和测试数据上的表现。
+- en: In the next chapter, we will learn about Pachyderm language clients. While you
+    can do pure Python, R, or Scala in Pachyderm, you could also leverage one of our
+    language clients or even build your own to take Pachyderm even further.
+  id: totrans-386
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章，我们将学习 Pachyderm 语言客户端。虽然你可以在 Pachyderm 中使用纯 Python、R 或 Scala，你还可以利用我们提供的语言客户端，甚至自己构建一个，进一步发挥
+    Pachyderm 的优势。
+- en: Further reading
+  id: totrans-387
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进一步阅读
+- en: 'Kaggle House Prices dataset: [https://www.kaggle.com/lespin/house-prices-dataset](https://www.kaggle.com/lespin/house-prices-dataset)'
+  id: totrans-388
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 'Kaggle 房价数据集: [https://www.kaggle.com/lespin/house-prices-dataset](https://www.kaggle.com/lespin/house-prices-dataset)'
+- en: '`seaborn`: [https://seaborn.pydata.org/](https://seaborn.pydata.org/)'
+  id: totrans-389
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seaborn`: [https://seaborn.pydata.org/](https://seaborn.pydata.org/)'

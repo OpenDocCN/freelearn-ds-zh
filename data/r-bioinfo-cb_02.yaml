@@ -1,0 +1,1755 @@
+- en: Finding Genetic Variants with HTS Data
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 HTS 数据查找遗传变异
+- en: '**High-Throughput Sequencing** (**HTS**) has made it possible to discover genetic
+    variants and carry out genome-wide genotyping and haplotyping in many samples
+    in a short space of time. The deluge of data that this technology has released
+    has created some unique opportunities for bioinformaticians and computer scientists,
+    and some really innovative new data storage and data analysis pipelines have been
+    created. The fundamental pipeline in variant calling starts with the quality control
+    of HTS reads and the alignment of those reads to a reference genome. These steps
+    invariably take place before analysis in R and typically result in a BAM file
+    of read alignments or a VCF file of variant positions (see the Appendix of this
+    book for a brief discussion of these file formats) that we''ll want to process
+    in our R code.'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**高通量测序**（**HTS**）使得在短时间内发现遗传变异并进行全基因组基因分型和单倍型分析成为可能。这项技术所释放的数据洪流为生物信息学家和计算机科学家提供了一些独特的机会，创造了很多创新的新数据存储和分析流程。变异调用的基本流程从
+    HTS 读取的质量控制开始，然后是将这些读取比对到参考基因组。这些步骤通常会在 R 分析之前进行，并通常会生成一个包含读取比对的 BAM 文件或包含变异位置的
+    VCF 文件（有关这些文件格式的简要讨论，请参见本书的附录），我们将在 R 代码中对其进行处理。'
+- en: As variant calling and analysis is such a fundamental technique in bioinformatics,
+    Bioconductor is well equipped with the tools we need to construct our software
+    and perform our analysis. The key questions researchers will want to ask will
+    range from *Where are the genetic variants on my genome?* to *How many are there?* to
+    *How can I classify them?* We'll look at some recipes to address these questions
+    and also look at other important general techniques that allow us to visualize
+    variants and markers on a genome and assess associations of variants with genotypes.
+    We'll also look at other definitions of the term genetic variant and see how we
+    can assess the copy number of individual loci.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于变异调用和分析是生物信息学中的基本技术，Bioconductor 配备了构建软件和进行分析所需的工具。研究人员想要问的关键问题可能从 *我的基因组上遗传变异的位置在哪里？*
+    到 *有多少个变异？* 再到 *如何对它们进行分类？* 我们将查看一些解决这些问题的方案，并且还将探讨一些重要的通用技术，这些技术使我们能够在基因组上可视化变异和标记，并评估变异与基因型的关联。我们还将了解遗传变异的其他定义，并探索如何评估单个位点的拷贝数。
+- en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下方案：
+- en: Finding SNPs and indels in sequence data using VariantTools
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 VariantTools 查找序列数据中的 SNP 和 indel
+- en: Predicting open reading frames in long reference sequences
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 预测长参考序列中的开放阅读框
+- en: Plotting features on genetic maps with karyoploteR
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 karyoploteR 在遗传图谱上绘制特征
+- en: Finding alternative transcript isoforms
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 寻找替代转录本同种型
+- en: Selecting and classifying variants with VariantAnnotation
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 VariantAnnotation 选择和分类变异
+- en: Extracting information in genomic regions of interest
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 提取感兴趣基因组区域的信息
+- en: Finding phenotype and genotype associations with GWAS
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 查找表型和基因型与 GWAS 的关联
+- en: Estimating the copy number at a locus of interest
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 估计感兴趣位点的拷贝数
+- en: Technical requirements
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'Here are the R packages you''ll need. Some will install with `install.packages()`. The
+    packages listed under `Bioconductor` need to be installed with the dedicated installer.
+    That''s described here. If you need to do anything further, installation will
+    be described in the recipes in which the packages are used:'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下是你将需要的 R 包。一些可以通过 `install.packages()` 安装。列在 `Bioconductor` 下的包需要通过专用安装器安装。相关说明请参见此处。如果你需要进行其他操作，包的安装将在使用这些包的方案中进行描述：
+- en: '`Bioconductor`: Following are the packages:'
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Bioconductor`：以下是这些包：'
+- en: '`Biostrings`'
+  id: totrans-15
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Biostrings`'
+- en: '`GenomicRanges`'
+  id: totrans-16
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`GenomicRanges`'
+- en: '`gmapR`'
+  id: totrans-17
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`gmapR`'
+- en: '`karyoploteR`'
+  id: totrans-18
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`karyoploteR`'
+- en: '`rtracklayer`'
+  id: totrans-19
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`rtracklayer`'
+- en: '`systemPipeR`'
+  id: totrans-20
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`systemPipeR`'
+- en: '`SummarizedExperiment`'
+  id: totrans-21
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`SummarizedExperiment`'
+- en: '`VariantAnnotation`'
+  id: totrans-22
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`VariantAnnotation`'
+- en: '`VariantTools`'
+  id: totrans-23
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`VariantTools`'
+- en: '`rrBLUP`'
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`rrBLUP`'
+- en: 'Bioconductor is huge and has its own installation manager. You can install
+    these packages with the following code (further information is available at [https://www.bioconductor.org/install/](https://www.bioconductor.org/install/)):'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Bioconductor 非常庞大，并且拥有自己的安装管理器。你可以通过以下代码安装这些包（更多信息请参考 [https://www.bioconductor.org/install/](https://www.bioconductor.org/install/)）：
+- en: '[PRE0]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Normally, in R, a user will load a library and use the functions directly by
+    name. This is great in interactive sessions but it can cause confusion when many
+    packages are loaded. To clarify which package and function I'm using at a given
+    moment, I will occasionally use the `packageName::functionName()` convention.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，在R中，用户会加载一个库并直接通过名称使用其中的函数。这在交互式会话中非常方便，但当加载多个包时，可能会导致混淆。为了明确当前使用的是哪个包和函数，我有时会使用`packageName::functionName()`的约定。
+- en: 'Sometimes, in the middle of a recipe, I''ll interrupt the code so you can see
+    some intermediate output or the structure of an object that''s important to understand.
+    Whenever that happens, you''ll see a code block where each line begins with double
+    hash (`##`) symbols, as shown:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时，在一个过程的中途，我会暂停代码，以便你可以看到一些中间输出或理解某个对象的结构。每当发生这种情况时，你会看到一个代码块，每行的开头都会有双井号（`##`）符号，如下所示：
+- en: '[PRE1]'
+  id: totrans-29
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: All of the code and data for the recipes in this chapter are in this book's
+    GitHub repository at [https://github.com/danmaclean/R_Bioinformatics_Cookbook](https://github.com/danmaclean/R_Bioinformatics_Cookbook).
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章所有代码和数据都可以在本书的GitHub仓库找到：[https://github.com/danmaclean/R_Bioinformatics_Cookbook](https://github.com/danmaclean/R_Bioinformatics_Cookbook)。
+- en: Finding SNPs and indels from sequence data using VariantTools
+  id: totrans-31
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用VariantTools从序列数据中找到SNP和插入缺失变异（indels）
+- en: A key bioinformatics task is to take an alignment of high-throughput sequence
+    reads, typically stored in a BAM file, and compute a list of variant positions.
+    Of course, this is ably handled by many external command-line programs and tools
+    and usually results in a VCF file of variants, but there are some really powerful
+    packages in Bioconductor that can do the whole thing, and in a fast and efficient
+    manner, by taking advantage of BiocParallel's facilities for parallel evaluation—a
+    set of tools designed to speed up work with large datasets in Bioconductor objects.
+    Using Bioconductor tools allows us to keep all of our processing steps within
+    R, and in this section, we'll go through a whole pipeline—from reads to lists
+    of genes carrying variants—using purely R code and a number of Bioconductor packages.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个关键的生物信息学任务是处理高通量序列读取的比对结果，通常存储在BAM文件中，并计算变异位置列表。当然，这个过程可以通过许多外部命令行程序和工具来完成，通常会生成一个VCF格式的变异文件，但Bioconductor中有一些非常强大的包能够完成整个流程，并且以快速高效的方式，通过利用BiocParallel的并行计算功能——这一功能旨在加速处理Bioconductor对象中的大规模数据集——实现这一目标。使用Bioconductor工具可以让我们将所有处理步骤都保持在R环境中，在这一部分中，我们将使用纯粹的R代码和一些Bioconductor包，逐步完成一个从读取数据到变异基因列表的完整流程。
+- en: Getting ready
+  id: totrans-33
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: In this section, we'll use a set of synthetic reads on the first 83 KB or so
+    of the human genome chromosome 17\. The reads were generated using the `wgsim` tool
+    in `samtools`—an external command-line program. They have 64 SNPs introduced by
+    `wgsim`, which can be seen in the sample data in `datasets/ch2/snp_positions.txt`<q>.</q>
+    You'll see, as the program progresses, that by default the parameters find many
+    more SNPs than there are—you'll need to spot the places where you can set the
+    parameters properly to finely tune the SNP-finding process.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将使用一组合成的读取数据，覆盖人类基因组17号染色体前83KB左右的区域。这些读取数据是使用`samtools`中的`wgsim`工具生成的——一个外部命令行程序。它们包含64个由`wgsim`引入的SNP，这些SNP可以在`datasets/ch2/snp_positions.txt`中的样本数据中看到。你会看到，随着程序的进展，默认参数会找到比实际更多的SNP——你需要仔细调节参数，以精细调整SNP发现过程。
+- en: How to do it...
+  id: totrans-35
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Finding SNPs and indels from sequence data using `VariantTools` can be done
+    using the following steps:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`VariantTools`从序列数据中找到SNP和插入缺失变异（indels）可以通过以下步骤完成：
+- en: 'Import the required libraries:'
+  id: totrans-37
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入所需的库：
+- en: '[PRE2]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Then, load the datasets:'
+  id: totrans-39
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，加载数据集：
+- en: '[PRE3]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Set up the genome object and the parameter objects:'
+  id: totrans-41
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置基因组对象和参数对象：
+- en: '[PRE4]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Call the variants:'
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 调用变异：
+- en: '[PRE5]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Now, we move on to annotation and load in the feature position information
+    from a `.gff` or `.bed` file:'
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们进入注释阶段并加载来自`.gff`或`.bed`文件的特征位置信息：
+- en: '[PRE6]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Now we calculate which variants overlap which genes:'
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们计算哪些变异与哪些基因重叠：
+- en: '[PRE7]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Finally, we subset the genes with the list of overlaps.
+  id: totrans-49
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们通过重叠列表来筛选基因。
+- en: '[PRE8]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: How it works...
+  id: totrans-51
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: This is a long and involved pipeline with a few complicated steps. After loading
+    the libraries, the first four lines set up the files we're going to need from
+    the dataset directory. Note we need a `.bam` file and a `fasta` file. Next, we
+    create a `GmapGenome` object using the `gmapR::GmapGenome()` function with the
+    `fasta` object—this describes the genome to the later variant-calling function. The
+    next two functions we use, `TallyVariantParams()` and `VariantCallingFilters()`,
+    are vital for the correct calling and filtering of candidate SNPs. These are the
+    functions in which you can set the parameters that define an SNP or indel. The
+    options here are deliberately very poor. As you can see from the output, there
+    are 6 SNPs called, when we created 64.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个复杂且涉及多个步骤的管道。加载库后，前四行设置了我们需要的来自数据集目录的文件。请注意，我们需要一个`.bam` 文件和一个 `fasta` 文件。接下来，我们使用
+    `gmapR::GmapGenome()` 函数与 `fasta` 对象一起创建一个 `GmapGenome` 对象——这个对象描述了基因组以供后续的变异调用函数使用。接下来的两个函数，`TallyVariantParams()`
+    和 `VariantCallingFilters()`，对于正确调用和筛选候选SNP至关重要。这些函数是你可以设置定义SNP或indel参数的地方。这里的选项故意设置得很少。正如从输出中看到的，虽然我们创建了64个SNP，但只有6个被成功调用。
+- en: Once the parameters are defined, we use the `callVariants()` function with all
+    of the information we set up to get a `vranges` object of variants.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦参数定义完毕，我们使用 `callVariants()` 函数，将我们设置的所有信息作为输入，获得一个变异的 `vranges` 对象。
+- en: 'This results in the following output:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE9]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: We can then set up the `GRanges` object of the `GFF` file of annotations (I
+    also provided a function for getting annotations from `BED` files).
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们可以设置 `GFF` 文件注释的 `GRanges` 对象（我还提供了一个从 `BED` 文件获取注释的函数）。
+- en: 'This results in the following output:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE10]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: The final step is to use the powerful overlapping and subsetting capability
+    of the `XRanges` objects. We use `GenomicRanges::findOverlaps()` to find the actual
+    overlap—the returned `overlaps` object actually contains the indices in each input
+    object of the overlapped object.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后的步骤是使用 `XRanges` 对象强大的重叠和子集功能。我们使用 `GenomicRanges::findOverlaps()` 查找实际的重叠——返回的
+    `overlaps` 对象实际上包含了每个输入对象中重叠对象的索引。
+- en: 'This results in the following output:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE11]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Hence, we can use `subjectHits(overlaps)` to directly subset the genes with
+    SNPs inside and get a very non-redundant list.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们可以使用 `subjectHits(overlaps)` 直接筛选出包含SNP的基因，并获得一个非常简洁的列表。
+- en: There's more...
+  id: totrans-63
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多内容...
+- en: 'When we''re happy with the filters and the set of variants we called, we can
+    save a VCF file of the variants using the following code:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们对筛选条件和我们调用的变异集感到满意时，可以使用以下代码保存变异的VCF文件：
+- en: '[PRE12]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: See also
+  id: totrans-66
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另见
+- en: Although our recipe makes the steps and code clear, the actual parameters and
+    values we need to change can't be described in such a straightforward manner as
+    the value will be very dataset-dependent. The `VariantTools` documentation contains
+    a good discussion of how to work out and set parameters properly: [http://bioconductor.org/packages/release/bioc/vignettes/VariantTools/inst/doc/VariantTools.pdf](http://bioconductor.org/packages/release/bioc/vignettes/VariantTools/inst/doc/VariantTools.pdf).
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然我们的方案使步骤和代码清晰易懂，但我们需要更改的实际参数和数值不能像这样直接描述，因为这些值将极大依赖于数据集。`VariantTools` 文档包含了如何正确设置参数的详细讨论：[http://bioconductor.org/packages/release/bioc/vignettes/VariantTools/inst/doc/VariantTools.pdf](http://bioconductor.org/packages/release/bioc/vignettes/VariantTools/inst/doc/VariantTools.pdf)。
+- en: Predicting open reading frames in long reference sequences
+  id: totrans-68
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在长参考序列中预测开放阅读框
+- en: A draft genome assembly of a previously unsequenced genome can be a rich source
+    of biological knowledge, but when genomics resources such as gene annotations
+    aren't available, it can be tricky to proceed. Here, we'll look at a first stage
+    pipeline for finding potential genes and genomic loci of interest absolutely *de
+    novo* and without information beyond the sequence. We'll use a very simple set
+    of rules to find open reading frames—sequences that begin with a start codon and
+    end with a stop codon. The tools for doing this are encapsulated within a single
+    function in the Bioconductor package, `systemPipeR`. We'll end up with yet another `GRanges` object
+    that we can integrate into processes downstream that allow us to cross-reference
+    other data, such as RNAseq, as we saw in the *Finding unannotated transcribed
+    regions* recipe of [Chapter 1](ff091bc9-a002-4a63-b0fe-c0b9f9baf7d1.xhtml), *Performing
+    Quantitative RNAseq*. As a final step, we'll look at how we can use a genome simulation
+    to assess which of the open reading frames are actually likely to be real and
+    not just occurring by chance.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 先前未测序基因组的草图组装可以是一个丰富的生物学知识来源，但当基因组学资源如基因注释不可用时，继续进行可能会变得棘手。在这里，我们将看看一个第一阶段的流程，用来寻找潜在的基因和基因组位点，完全是*de
+    novo*的，且没有超出序列的信息。我们将使用一组非常简单的规则来寻找开放阅读框——这些序列从起始密码子开始，并以终止密码子结束。实现这一点的工具被封装在`Bioconductor`包中的一个函数`systemPipeR`内。我们最终会得到另一个`GRanges`对象，可以将其整合到下游的处理流程中，帮助我们交叉引用其他数据，例如RNAseq，正如我们在[第1章](ff091bc9-a002-4a63-b0fe-c0b9f9baf7d1.xhtml)《执行定量RNAseq》中的*查找未注释的转录区*食谱中看到的那样。最后一步，我们将看看如何使用基因组模拟来评估哪些开放阅读框实际上可能是有效的，而不是仅仅偶然出现的。
+- en: Getting ready
+  id: totrans-70
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 做好准备
+- en: In this recipe, we need just the short DNA sequence of the `Arabidopsis` chloroplast
+    genome as input; it is in `datasets/ch2/arabidopsis_chloroplast.fa`<q>.</q> We'll
+    also need the `Bioconductor` packages `Biostrings` and `systemPipeR`.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个食谱中，我们只需要输入`Arabidopsis` 叶绿体基因组的短DNA序列；它位于`datasets/ch2/arabidopsis_chloroplast.fa`<q>.</q>我们还需要`Bioconductor`包中的`Biostrings`和`systemPipeR`。
+- en: How to do it...
+  id: totrans-72
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Predicting open reading frames in long reference sequences can be done using
+    the following steps:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在长参考序列中预测开放阅读框可以通过以下步骤完成：
+- en: 'Load the libraries and input genome:'
+  id: totrans-74
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库并输入基因组：
+- en: '[PRE13]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Predict the **ORFs** (**open reading frames**):'
+  id: totrans-76
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 预测**ORFs**（**开放阅读框**）：
+- en: '[PRE14]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'Calculate the properties of the reference genome:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算参考基因组的特性：
+- en: '[PRE15]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Create a function that finds the longest ORF in a simulated genome:'
+  id: totrans-80
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个函数，找到模拟基因组中最长的ORF：
+- en: '[PRE16]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Run the function on 10 simulated genomes:'
+  id: totrans-82
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在10个模拟基因组上运行该函数：
+- en: '[PRE17]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Get the length of the longest random ORF:'
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 获取最长随机ORF的长度：
+- en: '[PRE18]'
+  id: totrans-85
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Keep only predicted ORFs longer than the longest random ORF:'
+  id: totrans-86
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 只保留预测的长度大于最长随机ORF的ORF：
+- en: '[PRE19]'
+  id: totrans-87
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: How it works...
+  id: totrans-88
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: The first part of this recipe is where we actually predict ORFs. Initially,
+    we load in the DNA sequence as a `DNAStringSet` object using `readDNAStringSet()` from
+    `Biostrings`. The `predORF()` function from `systemPipeR` uses this object as
+    input and actually predicts open reading frames according to the options set.
+    Here, we're returning all ORFs on both strands.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个食谱的第一部分是我们实际预测ORF的地方。首先，我们使用`Biostrings`包中的`readDNAStringSet()`函数将DNA序列加载为`DNAStringSet`对象。`systemPipeR`包中的`predORF()`函数使用这个对象作为输入，并根据设置的选项实际预测开放阅读框。在这里，我们返回两个链上的所有ORF。
+- en: 'This will result in the following output:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE20]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: We receive a `GRanges` object in return, with 2,501 open reading frames described.
+    This is far too many, so we need to filter out those; in particular, we can work
+    out which are ORFs that occurred by chance from the sequence. To do this, we need
+    to do a little simulation and that's what happens in the next section of code.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们返回一个`GRanges`对象，其中描述了2,501个开放阅读框。这个数字太多了，所以我们需要过滤掉其中一些；特别是，我们可以找出哪些ORF是由序列中的偶然事件引起的。为此，我们需要做一点模拟，这也正是接下来代码部分要做的事情。
+- en: To estimate the length that random ORFs can reach, we're going to create a series
+    of random genomes of a length equal to our input sequence and with the same base
+    proportion and see what the longest ORF that can be predicted is. We do a few
+    iterations of this and we get an idea of what the longest ORF occurring by chance
+    could be. This length serves as a cut-off we can use to reject the predicted ORFs
+    in the real sequence.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了估计随机ORF的最大长度，我们将创建一系列长度与输入序列相等且具有相同碱基比例的随机基因组，并观察可以预测的最长ORF是什么。我们进行几次迭代，并大致了解由偶然事件引起的最长ORF的长度。这个长度将作为一个阈值，用于拒绝真实序列中预测的ORF。
+- en: Achieving this needs a bit of setup and a custom function. First, we define
+    the bases we will use as a simple character vector. Then, we get a character vector
+    of the original DNA sequence by splitting the `as.character` version of `dna_object`.
+    We use this information to work out the proportions of each base in the input
+    sequence by first counting the number of each base (resulting in `counts` ), then
+    dividing it by the sequence length, resulting in `probs`. In both these steps,
+    we use `lapply()` to loop over the vector `bases` and the list `counts` and apply
+    an anonymous function that uses these two variables to give lists of results.
+    `unlist()` is used on our final list to reduce it to a simple vector.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实现这一目标需要一些设置和自定义函数。首先，我们定义将作为简单字符向量使用的碱基。然后，我们通过分割`dna_object`的`as.character`版本来获取原始DNA序列的字符向量。我们利用这些信息计算输入序列中每个碱基的比例，首先计算每个碱基的数量（得到`counts`），然后将其除以序列的长度，得到`probs`。在这两个步骤中，我们使用`lapply()`遍历`bases`向量和`counts`列表，应用匿名函数来计算这些变量的结果列表。`unlist()`用于将最终列表简化为一个简单的向量。
+- en: Once we have the setup done, we can build our `get_longest_orf_in_random_genome()` simulation
+    function. This generates a random genome by sampling length characters from the
+    selection in `bases` with probabilities given in `probs`. The vector is `paste0()` into
+    a single string and then converted into a `DNAStringSet` object for the `predORF()` function.
+    This time, we ask for only the longest ORF using *n* = *1* and return the length
+    of that.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们完成设置，就可以构建我们的`get_longest_orf_in_random_genome()`模拟函数。该函数通过从`bases`中的选择中按给定的`probs`概率采样字符生成一个随机基因组。该向量通过`paste0()`合并为一个字符串，然后转换为`DNAStringSet`对象，以供`predORF()`函数使用。这一次，我们只请求最长的ORF，使用*n*
+    = *1*并返回其长度。
+- en: 'This will result in the following output:'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE21]'
+  id: totrans-97
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: Now, we can run the function, which we do 10 times using `lapply()` and the
+    `length`, `probs`, and `bases` information we calculated before. `unlist()` turns
+    the result into a simple vector and we extract the longest of the 10 runs with
+    `max()`. We can use subsetting on our original `predicted_orfs GRanges` object
+    to keep the ORFs longer than the ones generated by chance.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们可以运行这个函数，我们使用`lapply()`运行10次，并使用我们之前计算的`length`、`probs`和`bases`信息。`unlist()`将结果转换为一个简单的向量，我们使用`max()`提取10次运行中的最长一个。我们可以通过子集化原始的`predicted_orfs
+    GRanges`对象，保留那些比随机生成的ORFs更长的ORF。
+- en: There's more...
+  id: totrans-99
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: 'Once you''ve got a set of ORFs you''re happy with, you''ll likely want to save
+    them to a file. You can do that by using the `getSeq()` function in the `BSgenome` package,
+    passing it the original sequence object—`dna_object`—and the ranges in `orfs_to_keep`,
+    then give the result some names using `names()`, and you can use the `writeXStringSet()` function
+    to save them to file:'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦你获得了一组你满意的ORF，你可能希望将它们保存到文件中。你可以使用`BSgenome`包中的`getSeq()`函数，通过传递原始序列对象——`dna_object`——以及`orfs_to_keep`中的范围来完成。然后，使用`names()`为结果命名，最后，你可以使用`writeXStringSet()`函数将它们保存到文件中：
+- en: '[PRE22]'
+  id: totrans-101
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Plotting features on genetic maps with karyoploteR
+  id: totrans-102
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用karyoploteR绘制遗传图谱上的特征
+- en: One of the most rewarding and insightful things we can do is visualize data.
+    Very often, we want to see on a chromosome or genetic map where some features
+    of interest lie in relation to others. These are sometimes called chromosome plots,
+    and sometimes ideograms, and in this section, we'll see how to create one of these
+    using the `karyoploteR` package. The package takes as input the familiar `GRanges` objects
+    and creates detailed plots from configuration. We'll take a quick look at some
+    different plot styles and some configuration options for ironing out the bumps
+    in your plots when labels spill off the page or overlap each other.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们能做的最有价值且富有洞察力的事情之一就是**可视化数据**。我们常常希望在染色体或遗传图谱上看到某些感兴趣的特征与其他特征的关系。这些图有时称为染色体图，有时称为示意图，在本节中，我们将看到如何使用`karyoploteR`包创建这些图。该包将熟悉的`GRanges`对象作为输入，并根据配置生成详细的图表。我们将快速浏览几种不同的图表样式，以及一些配置选项，以解决图表中的问题，比如标签溢出或重叠。
+- en: Getting ready
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: For this recipe, you'll need `karyoploteR` installed but all of the data we'll
+    use will be generated within the recipe itself.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于这个配方，你需要安装`karyoploteR`，但我们将使用的所有数据将在配方本身中生成。
+- en: How to do it...
+  id: totrans-106
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何进行操作...
+- en: 'Plotting features on genetic maps with `karyoploteR` can be done using the
+    following steps:'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`karyoploteR`绘制遗传图谱上的特征，可以通过以下步骤完成：
+- en: 'First, we load the libraries:'
+  id: totrans-108
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们加载库：
+- en: '[PRE23]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Then, set up the genome object that will be the base for our karyotype:'
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，设置基因组对象，这将作为我们核型图的基础：
+- en: '[PRE24]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'Set up the SNP positions we will draw on as markers:'
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置我们将绘制为标记的SNP位置：
+- en: '[PRE25]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Create some labels for the markers:'
+  id: totrans-114
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为标记创建一些标签：
+- en: '[PRE26]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Set the plot margins:'
+  id: totrans-116
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置绘图边距：
+- en: '[PRE27]'
+  id: totrans-117
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'Create the base plot and add tracks:'
+  id: totrans-118
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建基础图表并添加轨道：
+- en: '[PRE28]'
+  id: totrans-119
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: How it works...
+  id: totrans-120
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: The code first loads the libraries we'll need, then we construct a `data.frame` describing
+    the genome we want to draw, with names and lengths set accordingly. The `data.frame` is
+    then converted to `genome_gr`—a `GRanges` object with the `makeGRangesFromDataFrame()` conversion
+    function. Next, we create a `data.frame` of 25 random SNPs using the `sample()` function
+    to choose a position and chromosome. Again, this is converted to `GRanges`. Now
+    we can set up our plot. First, we get the default plot parameter object from inside
+    the package using `getDefaultPlotParams()`. We can modify this object to make
+    any changes to the default settings in our plot.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码首先加载我们需要的库，然后我们构建一个`data.frame`，描述我们要绘制的基因组，并相应地设置名称和长度。然后，使用`makeGRangesFromDataFrame()`转换函数将`data.frame`转换为`genome_gr`——一个`GRanges`对象。接着，我们使用`sample()`函数生成一个包含25个随机SNP的`data.frame`，并选择一个位置和染色体。同样，这些数据也被转换为`GRanges`。现在我们可以设置我们的绘图。首先，我们通过`getDefaultPlotParams()`从包内部获取默认的绘图参数对象。我们可以修改此对象，以便对绘图的默认设置进行更改。
+- en: Note we have selected `plot.type = 1`—this is a simple plot with one data track
+    directly above each chromosome region. We'll need to change the margin height
+    of the data track to stop our marker labels pouring out over the top—this is done
+    with `plot.params$data1outmargin <- 600`. Finally, we can draw our plot; we create
+    the base plot object, `kp`, by calling `plotKaryotype()` and passing in the `genome_gr`
+    object, `plot.type`, and the parameters in the modified `plot.params` object.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，我们选择了`plot.type = 1`——这是一个简单的绘图，具有直接位于每个染色体区域上方的数据轨道。我们需要调整数据轨道的边距高度，以防止标记标签溢出到顶部——这可以通过`plot.params$data1outmargin
+    <- 600`来完成。最后，我们可以绘制我们的图表；我们通过调用`plotKaryotype()`并传入`genome_gr`对象、`plot.type`以及在修改后的`plot.params`对象中的参数来创建基本的绘图对象`kp`。
+- en: 'This will result in the following output:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '![](img/125d2fb6-50f7-4424-a449-e31639a10d96.png)'
+  id: totrans-124
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/125d2fb6-50f7-4424-a449-e31639a10d96.png)'
+- en: Our markers are drawn using the `kpPlotMarkers()` function with the new `kp`
+    plot object, the `snps_gr` data, and the SNP labels.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的标记是使用`kpPlotMarkers()`函数绘制的，传入新的`kp`绘图对象、`snps_gr`数据和SNP标签。
+- en: There's more...
+  id: totrans-126
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: 'We can add numeric data of many different types into data tracks with `karyoploteR`.
+    The following example shows how to draw some numeric data onto a plot as a simple
+    line. The first step is to prepare our data. Here, we create a `data.frame` that
+    has 100 random numbers that map into 100 windows of chromosome 4 and, as before,
+    we create a `GRanges` object. This time, we''ll have a data track above and below
+    our chromosome—one for SNP markers and the other for the new data (note that this
+    is `plot.type = 2`). We then need to set the parameters for the plo—in particular,
+    the margins, to stop labels and data overlapping; but after that, it''s the same
+    plot calls, this time adding a `kpLines()` call. The key parameter here is `y`,
+    which describes the `y` value of the data at each plotting point (note that this
+    comes as a single column from our `numeric_data` object). We now have a plot with
+    a numeric data track along chromosome 4\. The following are the steps to be performed
+    for this example:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过`karyoploteR`将多种类型的数字数据添加到数据轨道中。以下示例演示了如何将一些数字数据绘制成简单的线条。第一步是准备我们的数据。在这里，我们创建了一个包含100个随机数的`data.frame`，这些随机数映射到染色体4的100个窗口，并且像之前一样，我们创建了一个`GRanges`对象。这次，我们将在染色体的上方和下方分别添加一个数据轨道——一个用于SNP标记，另一个用于新数据（注意，这里的`plot.type
+    = 2`）。接下来，我们需要设置绘图的参数——特别是边距，以防标签和数据重叠；但是之后，绘图的调用与之前相同，这次加入了`kpLines()`的调用。这里的关键参数是`y`，它描述了数据在每个绘图点的`y`值（请注意，这来自我们的`numeric_data`对象中的单列数据）。现在我们得到了一个包含数字数据轨道的绘图，沿着染色体4进行显示。以下是此示例所需执行的步骤：
+- en: 'Create some numeric data:'
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一些数字数据：
+- en: '[PRE29]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Set up plot margins:'
+  id: totrans-130
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置绘图边距：
+- en: '[PRE30]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'Create a plot and add tracks:'
+  id: totrans-132
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个绘图并添加轨道：
+- en: '[PRE31]'
+  id: totrans-133
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'This results in the following output:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '![](img/84f62bee-dec5-4ba7-b03c-c0763a0ec302.png)'
+  id: totrans-135
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/84f62bee-dec5-4ba7-b03c-c0763a0ec302.png)'
+- en: See also
+  id: totrans-136
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 参见：
+- en: There are many more types of tracks and plot layouts available that aren't covered
+    here. Try the karyoploteR vignette for a definitive list: [http://bioconductor.org/packages/release/bioc/vignettes/karyoploteR/inst/doc/karyoploteR.html](http://bioconductor.org/packages/release/bioc/vignettes/karyoploteR/inst/doc/karyoploteR.html).
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里有许多未涵盖的轨道类型和绘图布局。请尝试查看karyoploteR手册，以获取完整列表：[http://bioconductor.org/packages/release/bioc/vignettes/karyoploteR/inst/doc/karyoploteR.html](http://bioconductor.org/packages/release/bioc/vignettes/karyoploteR/inst/doc/karyoploteR.html)。
+- en: A quirk of `karyoploteR` means that it only draws chromosomes horizontally.
+    For vertical maps, there is also the `chromPlot` package in Bioconductor.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`karyoploteR`的一个特点是它仅绘制水平的染色体图。对于垂直图，Bioconductor中还有`chromPlot`包。'
+- en: Selecting and classifying variants with VariantAnnotation
+  id: totrans-139
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用VariantAnnotation选择和分类变异
+- en: In pipelines where we've called variants, we'll often want to do subsequent
+    analysis steps that need further filtering or classification based on features
+    of the individual variants, such as the depth of coverage in the alternative allele.
+    This is best done from a VCF file, and a common protocol is to save a VCF of all
+    variants from the actual calling step and then experiment with filtering that.
+    In this section, we'll look at taking an input VCF and filtering it to retain
+    variants in which the alternative allele is the major allele in the sample.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们调用变异的管道中，我们通常希望进行后续分析步骤，这些步骤需要根据单个变异的特征（例如，备选等位基因的覆盖深度）进一步进行过滤或分类。这最好从VCF文件中进行，常见的做法是保存一个包含所有变异的VCF文件，之后再进行过滤。在这一部分中，我们将讨论如何获取输入VCF并进行过滤，以保留那些备选等位基因在样本中为主要等位基因的变异。
+- en: Getting ready
+  id: totrans-141
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We'll need a `tabix` index VCF file; I provide one in the `datasets/ch2/sample.vcf.gz`
+    file. We'll also need the Bioconductor package, `VariantAnnotation`.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要一个`tabix`索引的VCF文件；我提供了一个在`datasets/ch2/sample.vcf.gz`文件中。我们还需要Bioconductor包`VariantAnnotation`。
+- en: How to do it...
+  id: totrans-143
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Selecting and classifying variants with `VariantAnnotation` can be done using
+    the following steps:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`VariantAnnotation`选择和分类变异可以通过以下步骤完成：
+- en: 'Create a prefilter function:'
+  id: totrans-145
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个预过滤函数：
+- en: '[PRE32]'
+  id: totrans-146
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Load up the prefilter function into a `FilterRules` object:'
+  id: totrans-147
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将预过滤函数加载到`FilterRules`对象中：
+- en: '[PRE33]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'Create a filter function to keep variants where the reference allele is in
+    less than half the reads:'
+  id: totrans-149
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个过滤函数，以保留那些参考等位基因出现在少于一半读取中的变异：
+- en: '[PRE34]'
+  id: totrans-150
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'Load the filter function into a `FilterRules` object:'
+  id: totrans-151
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将过滤函数加载到一个`FilterRules`对象中：
+- en: '[PRE35]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'Load the input VCF file and apply filters:'
+  id: totrans-153
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载输入的VCF文件并应用过滤：
+- en: '[PRE36]'
+  id: totrans-154
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: How it works...
+  id: totrans-155
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: There is a surprisingly large amount of stuff going on in this very short script.
+    The general outline is that we need to define two sets of filtering rules—`prefilter`
+    and `filter`. This is achieved by defining functions that take the parsed VCF
+    record and return `TRUE` if the record passes. Prefilters are generally straightforward
+    text-based filters on an unparsed VCF record line—the raw text of the record.
+    Our first line of code defines a `is_not_microsat()` function that, when passed
+    a character string, uses the `grepl()` function to work out whether the line contains
+    the word `microsat` and returns `TRUE` if it doesn't. The prefilter function is
+    bundled into a `FilterRules` object we call `prefilters`.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个非常简短的脚本中，实际上有大量的内容。总体思路是我们需要定义两组过滤规则——`prefilter`和`filter`。这通过定义函数来实现，函数接受解析后的VCF记录并返回`TRUE`，如果该记录通过了过滤。预过滤通常是基于未解析的VCF记录行的文本过滤——即记录的原始文本。我们的第一行代码定义了一个`is_not_microsat()`函数，该函数接收一个字符串，并使用`grepl()`函数判断该行是否包含单词`microsat`，如果不包含，则返回`TRUE`。预过滤函数被打包到我们称之为`prefilters`的`FilterRules`对象中。
+- en: The filters are more complex. These take the parsed VCF records (as **VCF** class
+    objects) and operate on those. Our `major_alt()` function uses the `info()` **VCF** accessor
+    function to extract the `info` data in the VCF record. It returns a dataframe
+    in which each column is a separate part of the info section. We extract the `AF` column,
+    which returns a list with an element for each VCF. To iterate over those elements,
+    we use the `lapply()` function to apply an anonymous function that returns `TRUE`
+    if the reference allele has a proportion lower than 0.5 (that is, the alternative
+    alleles are the major alleles). We then `unlist()` the result to provide a vector.
+    The `major_alt()` function is then bundled into a `FilterRules` object we call
+    `filters`.
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 过滤器更为复杂。这些过滤器作用于解析后的VCF记录（作为**VCF**类对象）。我们的`major_alt()`函数使用`info()`**VCF**访问器函数提取VCF记录中的`info`数据。它返回一个数据框，其中每一列都是`info`部分的一个独立部分。我们提取`AF`列，它返回一个列表，其中每个VCF都有一个元素。为了遍历这些元素，我们使用`lapply()`函数应用一个匿名函数，如果参考等位基因的比例低于0.5（即替代等位基因是主要等位基因），则返回`TRUE`。然后我们使用`unlist()`将结果转换为向量。`major_alt()`函数然后被打包到一个名为`filters`的`FilterRules`对象中。
+- en: Finally, with all of this setup done, we can load the input VCF file and run
+    the filtering with `filterVCF()`. This function needs the `FilterRules` objects
+    and the output filtered VCF filename. We use `filtered.vcf` as the file to write
+    to.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，完成所有设置后，我们可以加载输入VCF文件并使用`filterVCF()`函数进行过滤。此函数需要`FilterRules`对象和输出的过滤后的VCF文件名。我们使用`filtered.vcf`作为要写入的文件。
+- en: See also
+  id: totrans-159
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: In filter functions, we can take advantage of other accessor functions to get
+    at different parts of the VCF record. There are the `geno()` and `fixed()` functions,
+    which will return data structures describing these parts of the VCF record. You
+    can use these to create filters in the same way we used `info()`.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在过滤函数中，我们可以利用其他访问器函数来获取VCF记录的不同部分。有`geno()`和`fixed()`函数，它们将返回描述这些VCF记录部分的数据结构。你可以像使用`info()`一样使用它们来创建过滤器。
+- en: Extracting information in genomic regions of interest
+  id: totrans-161
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 提取感兴趣的基因组区域信息
+- en: Very often, you'll want to look in more detail at data that falls in a particular
+    genomic region of interest, whether that be the SNPs and variants in a gene or
+    the genes in a particular locus. This extremely common task is handled very well
+    by the extremely powerful `GRanges` and `SummarizedExperiment` objects, which
+    are a little fiddly to set up but have very flexible subsetting operations that
+    make the effort well worth it. We'll look at a few ways to set up these objects
+    and a few ways we can manipulate them to get interesting information.
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 很多时候，你可能需要更详细地查看落在特定基因组区域内的数据，无论是基因中的SNP和变异，还是特定基因座中的基因。这个极其常见的任务可以通过功能强大的`GRanges`和`SummarizedExperiment`对象来很好地处理，尽管这些对象的设置可能有些繁琐，但它们具有非常灵活的子集操作，付出的努力是值得的。我们将探讨几种设置这些对象的方法以及几种操作它们以获取有趣信息的方法。
+- en: Getting ready
+  id: totrans-163
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'In this recipe, we need the `GenomicRanges`, `SummarizedExperiment`, and `rtracklayer` Bioconductor
+    packages.We''ll also need two input data files: a GFF file of features of the `Arabidopsis` chromosome
+    4 in the `datasets/ch2/arabidopsis_chr4.gff` file and a smaller text version of
+    gene-only features of the same chromosome in `datasets/ch2/arabidopsis_chr4.txt`.'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中，我们需要`GenomicRanges`、`SummarizedExperiment`和`rtracklayer` Bioconductor包。我们还需要两个输入数据文件：`Arabidopsis`染色体4的GFF文件，位于`datasets/ch2/arabidopsis_chr4.gff`文件中，以及同一染色体的基因仅特征的较小文本版本，位于`datasets/ch2/arabidopsis_chr4.txt`。
+- en: How to do it...
+  id: totrans-165
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何实现……
+- en: 'Extracting information in genomic regions of interest can be done using the
+    following steps:'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提取感兴趣的基因组区域信息可以通过以下步骤完成：
+- en: 'Load in packages and define some functions that create `GRanges` from common
+    files:'
+  id: totrans-167
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载包并定义一些从常见文件创建`GRanges`的函数：
+- en: '[PRE37]'
+  id: totrans-168
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Actually create some `GRanges` objects using those functions:'
+  id: totrans-169
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 实际上使用这些函数创建一些`GRanges`对象：
+- en: '[PRE38]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'Extract a region by filtering on attributes; in this case—the `seqnames` and
+    `metadata` columns:'
+  id: totrans-171
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过对属性进行筛选来提取区域；在此案例中——`seqnames`和`metadata`列：
+- en: '[PRE39]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'Manually create a region of interest:'
+  id: totrans-173
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 手动创建一个感兴趣的区域：
+- en: '[PRE40]'
+  id: totrans-174
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Use the region of interest to subset the larger object:'
+  id: totrans-175
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用感兴趣的区域对子集进行筛选：
+- en: '[PRE41]'
+  id: totrans-176
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: How it works...
+  id: totrans-177
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: The first step here is to create a `GRanges` object that describes the features
+    of the genome you're interested in. The three functions we create all load in
+    information from different file types, namely, `.gff`, `.bed`, and a tab-delimited
+    `.txt` file, and return the necessary `GRanges` object. In *Step 2*, we make use
+    of the GFF and text functions to create two `GRanges` objects: `gr_from_gff` and
+    `gr_from_txt`. These are then used in subsetting. First, in *Step 3*, we subset
+    on feature attributes. The code finds features of type gene on chromosome 4\.
+    Note the difference in syntax between finding genes and features in `Chr4`. The
+    base columns in the `GRanges` object—namely, `seqnames`, `width`, and `start`—all
+    have accessor functions that return vectors.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里的第一步是创建一个`GRanges`对象，该对象描述了你感兴趣的基因组特征。我们创建的三个函数分别加载来自不同文件类型的信息，即`.gff`、`.bed`和一个制表符分隔的`.txt`文件，并返回所需的`GRanges`对象。在*第2步*中，我们利用GFF和文本函数创建了两个`GRanges`对象：`gr_from_gff`和`gr_from_txt`。这些对象随后用于子集操作。首先，在*第3步*中，我们对特征属性进行了子集操作。代码在4号染色体上找到了基因类型的特征。请注意，在`Chr4`中寻找基因和特征的语法区别。`GRanges`对象中的基本列—即`seqnames`、`width`和`start`—都有访问器函数来返回向量。
+- en: Hence, we use that in the second part of the condition. All other columns—called
+    metadata in `GRanges` parlance—can be accessed with the standard `$` syntax, so
+    we use that in the first part of the condition.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们在条件的第二部分使用了它。所有其他列—在`GRanges`术语中称为元数据—可以使用标准的`$`语法访问，因此我们在条件的第一部分使用了它。
+- en: In *Step 4*, we create a specific region in a custom minimal `GRanges` object.
+    This contains only one region but more could be added just by putting more `seqnames`,
+    `start`, and `width` in the manually specified vectors. Finally, in *Step 5*,
+    we use the `findOverlaps()` function to get the indices of features in the `gr_from_gff`
+    object that overlap the manually created `region_of_interest` and use those indices
+    to subset the larger `gr_from_gff` object.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第4步*中，我们在自定义的最小`GRanges`对象中创建了一个特定的区域。这个对象只包含一个区域，但可以通过在手动指定的向量中添加更多的`seqnames`、`start`和`width`来添加更多区域。最后，在*第5步*中，我们使用`findOverlaps()`函数获取在`gr_from_gff`对象中与手动创建的`region_of_interest`重叠的特征的索引，并使用这些索引来子集较大的`gr_from_gff`对象。
+- en: 'This will result in the following output:'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE42]'
+  id: totrans-182
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: Note that we need to extract the subject hits column using the `subjectHits()` accessor.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们需要使用`subjectHits()`访问器来提取subject hits列。
+- en: There's more...
+  id: totrans-184
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: 'It''s also possible to extract subsets of dataframes or matrices in the same
+    way by taking advantage of `GRanges` that are part of other objects. In the following
+    example, we create a matrix of random data and use that to build a `SummarizedExperiment` object
+    that uses a `GRanges` object to describe its rows:'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过利用`GRanges`，也可以以相同的方式提取数据框或矩阵的子集，`GRanges`是其他对象的一部分。在以下示例中，我们创建了一个随机数据矩阵，并用它构建了一个`SummarizedExperiment`对象，该对象使用`GRanges`对象来描述其行：
+- en: '[PRE43]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'Then, we can subset in the same way as before and get back a subset of the
+    data as well as a subset of the ranges. The `assay()` function returns the actual
+    data matrix:'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们可以像之前一样进行子集操作，并返回数据的子集以及范围的子集。`assay()`函数返回实际的数据矩阵：
+- en: '[PRE44]'
+  id: totrans-188
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'This will give the resultant output:'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将给出结果输出：
+- en: '[PRE45]'
+  id: totrans-190
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: Finding phenotype and genotype associations with GWAS
+  id: totrans-191
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 通过GWAS寻找表型和基因型关联
+- en: A powerful application of being able to find many thousands of genetic variants
+    in many samples using high-throughput sequencing is **genome-wide association
+    studies** (**GWAS**) of genotype and phenotypes. GWAS is a genomic analysis set
+    of genetic variants in different individuals or genetic lines to see whether any
+    particular variant is associated with a trait. There are numerous techniques for
+    doing this, but all rely on gathering data on variants in particular samples and
+    working out each sample's genotype before cross-referencing with the phenotype
+    in some way or other. In this recipe, we'll look at the sophisticated mixed linear
+    model described by Yu *et al* in 2006 (*Nature Genetics*, 38:203-208). Describing
+    the workings of the unified mixed linear model is beyond the scope of the recipe,
+    but it is a suitable model for use in data with large sample and broad allelic
+    diversity and is usable on plant and animal data.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用高通量测序技术在许多样本中找到数千种基因变异的强大应用之一是**全基因组关联研究**（**GWAS**）——基因型和表型的关系。GWAS 是一项基因组分析，研究不同个体或遗传群体中的遗传变异，查看是否某个特定变异与某一性状相关。进行这种研究的方法有很多，但都依赖于收集特定样本中的变异数据，并在某种方式下与表型进行交叉参考。在本例中，我们将研究
+    2006 年 Yu *et al* 提出的复杂混合线性模型（*Nature Genetics*，38:203-208）。描述统一混合线性模型的工作原理超出了本例的范围，但它是一个适用于样本量大且具有广泛等位基因多样性的数据的模型，且可用于植物和动物数据。
+- en: Getting ready
+  id: totrans-193
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: In this recipe, we'll look at constructing the data structures we need to run
+    the analysis from input VCF files. We'll use the `GWAS()` function in the `rrBLUP` package.
+    Our sample data file contains three SNPs—for didactic purposes, this will aid
+    our programming task but for a GWAS study, the number is laughably small. Although
+    the code will work, the results will not be biologically meaningful.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将构建运行分析所需的数据结构，这些数据结构来自输入的 VCF 文件。我们将使用 `GWAS()` 函数，该函数位于 `rrBLUP` 包中。我们的样本数据文件包含三个
+    SNP——出于教学目的，这有助于我们的编程任务，但对于 GWAS 研究来说，数量显然过于微小。虽然代码可以运行，但结果在生物学上没有实际意义。
+- en: We'll need `rrBLUP`, which is not part of Bioconductor, so install it with `install.packages()`,
+    `VariantAnnotation`, and the `datasets/ch2/small_sample.vcf` file.
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要 `rrBLUP`，它不是 Bioconductor 的一部分，因此需要通过 `install.packages()` 安装，同时还需要 `VariantAnnotation`
+    和 `datasets/ch2/small_sample.vcf` 文件。
+- en: How to do it...
+  id: totrans-196
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何实现...
+- en: 'Finding phenotype and genotype associations with GWAS can be done using the
+    following steps:'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过 GWAS 查找表型和基因型关联可以通过以下步骤完成：
+- en: 'Load in the libraries and get the VCF file:'
+  id: totrans-198
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库并获取 VCF 文件：
+- en: '[PRE46]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'Extract the genotype, sample, and marker position information:'
+  id: totrans-200
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 提取基因型、样本和标记位置信息：
+- en: '[PRE47]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Create a custom function to convert VCF genotypes into the convention used
+    by the GWAS function:'
+  id: totrans-202
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个自定义函数，将 VCF 基因型转换为 GWAS 函数使用的约定：
+- en: '[PRE48]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'Call the function and convert the result into a numeric matrix:'
+  id: totrans-204
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 调用函数并将结果转换为数值矩阵：
+- en: '[PRE49]'
+  id: totrans-205
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'Build a dataframe describing the variant:'
+  id: totrans-206
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建描述变异的数据框：
+- en: '[PRE50]'
+  id: totrans-207
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'Build a combined variant/genotype dataframe:'
+  id: totrans-208
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建一个合并的变异/基因型数据框：
+- en: '[PRE51]'
+  id: totrans-209
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Build a `phenotype` dataframe:'
+  id: totrans-210
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建一个 `phenotype` 数据框：
+- en: '[PRE52]'
+  id: totrans-211
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'Run `GWAS`:'
+  id: totrans-212
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行 `GWAS`：
+- en: '[PRE53]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: How it works...
+  id: totrans-214
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: 'Most of the code in this recipe is setup code. After loading libraries and
+    fixing the random number generator for reproducibility with `set.seed()`, in the
+    first step, we get the VCF file of useful variants loaded in, and in the second
+    step, we extract some useful information: we get a matrix of genotypes with the
+    `geno(vcf)$GT` call, which returns a matrix in which a row is a variant, a column
+    is a sample, and the genotype is recorded at the intersection. We then use some
+    accessor functions to pull sample and marker names and the reference sequence
+    (`chrom`) and position (`pos`) for each variant. In *Step 3*, we define a translation
+    function (`convert()`) to map VCF-style heterozygous and homozygous annotations
+    to that used in `GWAS()`. Briefly, in VCF, `"0/0"` means *AA* (homozygous), which
+    is encoded as 1 in `GWAS()`, `"0/1"` and `"1/0"` is heterozygous *Aa* or 0 in
+    `GWAS()`, and `"1/1"` is homozygous `aa` or -1 in `GWAS()`.'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本例中的大部分代码都是设置代码。在加载库并使用 `set.seed()` 固定随机数生成器以确保结果可重复之后，第一步是加载有用变异的 VCF 文件，第二步是提取一些有用的信息：我们获取一个基因型矩阵，使用
+    `geno(vcf)$GT` 调用，它返回一个矩阵，其中每一行是一个变异，每一列是一个样本，基因型记录在交点处。然后，我们使用一些访问器函数提取样本和标记名称，以及每个变异的参考序列（`chrom`）和位置（`pos`）。在*步骤
+    3* 中，我们定义一个转换函数（`convert()`），将 VCF 风格的杂合和纯合标注映射到 `GWAS()` 使用的格式。简而言之，在 VCF 中，`"0/0"`
+    表示 *AA*（纯合），在 `GWAS()` 中编码为 1，`"0/1"` 和 `"1/0"` 表示杂合 *Aa* 或 0，而 `"1/1"` 表示纯合 `aa`
+    或 -1。
+- en: In *Step 4*, we apply `convert()` into the `gts` matrix. Annoyingly, the return
+    value is a character matrix and must be converted to numeric and re-wrapped in
+    a matrix, which is what the last couple of lines in *Step 4* are for.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 4*中，我们将`convert()`应用于`gts`矩阵。烦人的是，返回值是一个字符矩阵，必须转换为数值型并重新包装成矩阵，这就是*步骤 4*中最后几行的目的。
+- en: In *Step 5*, we build a dataframe describing the variant from the sample, marker,
+    and sequence information we created before, and in *Step 6*, we actually combine
+    the variant information with the genotype encodings.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 5*中，我们构建一个数据框，描述我们之前创建的样本、标记和序列信息中的变异信息，而在*步骤 6*中，我们实际上将变异信息与基因型编码结合起来。
+- en: 'This will give the following output:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE54]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: Note that the order of the columns is important. The `GWAS()` function expects
+    us to have this information in the order specified here.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，列的顺序很重要。`GWAS()`函数期望我们按照这里指定的顺序提供这些信息。
+- en: In *Step 7*, we build the phenotype information. The first column must be called
+    `line` but contain the sample names in the same order as the columns of the genotype
+    matrix. The rest of the columns can be phenotype scores and have fixed effects.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 7*中，我们构建了表型信息。第一列必须命名为`line`，并包含与基因型矩阵列相同顺序的样本名称。其余列可以是表型分数，并具有固定效应。
+- en: 'This will result in something like the following output (your actual numbers
+    may vary if you omit the `set.seed()` call at the top of the script because of
+    the randomizing procedures and small sample sizes in the example data):'
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生类似以下的输出（如果你在脚本顶部省略了`set.seed()`调用，由于随机化过程和示例数据中的小样本量，你的实际数字可能会有所不同）：
+- en: '[PRE55]'
+  id: totrans-223
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: Finally, in *Step 8*, we run the `GWAS()` function.
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在*步骤 8*中，我们运行`GWAS()`函数。
+- en: 'This will result in the following output (again, your numbers may vary):'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出（同样，你的数字可能会有所不同）：
+- en: '[PRE56]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: By default, the function tries to create a plot. There are too few points for
+    that to work, so we turn it off here with `plot = FALSE`.
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 默认情况下，函数尝试生成一个图形。由于数据点太少，无法生成图形，因此我们在此通过`plot = FALSE`关闭该功能。
+- en: Estimating the copy number at a locus of interest
+  id: totrans-228
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 估计一个感兴趣位点的拷贝数
+- en: It is often of interest to know how often a sequence occurs in a sample of interest—that
+    is, to estimate whether, in your particular sample, a locus has been duplicated
+    or its copy number has increased. The locus could be anything from a gene at Kbp
+    scale or a large section of DNA at Mbp scale. Our approach in this recipe will
+    be to use HTS read coverage after alignment to estimate a background level of
+    coverage and then inspect the coverage of our region of interest. The ratio of
+    the coverage in our region of interest to the background level will give us an
+    estimate of the copy number in the region. The recipe here is the first step.
+    The background model we use is very simple—we calculate only a global mean, but
+    we'll discuss some alternatives later. Also, this recipe does not cover ploidy—the
+    number of copies of the whole genome that are present in a cell. It is possible
+    to estimate ploidy from similar data—especially SNP major/minor allele frequency,
+    but it is a very involved pipeline. Take a look at the *See also* section for
+    recommendations on packages to use for that long analysis.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，我们会关心一个序列在样本中的出现频率——也就是估计在你的特定样本中，某个位点是否发生了重复，或其拷贝数是否增加。该位点可以是Kbp尺度上的基因，也可以是Mbp尺度上的较大DNA片段。我们在这个食谱中的方法是，在比对后的HTS读取覆盖度基础上估算背景覆盖度，然后检查我们感兴趣区域的覆盖度。我们感兴趣区域的覆盖度与背景水平的比率将为我们提供该区域的拷贝数估计。这个食谱是第一步。我们使用的背景模型非常简单——仅计算一个全局均值，但稍后我们将讨论一些替代方法。此外，这个食谱不涉及倍性——即细胞中整个基因组的拷贝数。通过类似的数据（尤其是SNP的主要/次要等位基因频率）可以估算倍性，但这是一个非常复杂的流程。请查看*另请参阅*部分，了解关于用于该长期分析的包的建议。
+- en: Getting ready
+  id: totrans-230
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: For this recipe, we need the `csaw` Bioconductor package and the sample `hg17` human
+    genome `.bam` file of HTS read alignments in `datasets/ch2/hg17_snps.bam`*.*
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于这个食谱，我们需要`csaw` Bioconductor包和样本`hg17`人类基因组`.bam`文件，文件位于`datasets/ch2/hg17_snps.bam`。
+- en: How to do it...
+  id: totrans-232
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何实现...
+- en: 'Estimating the copy number of a locus of interest can be done using the following
+    steps:'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 估计一个感兴趣位点的拷贝数可以通过以下步骤完成：
+- en: 'Load the library and get counts in windows across the genome:'
+  id: totrans-234
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库并获取基因组窗口中的计数：
+- en: '[PRE57]'
+  id: totrans-235
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'Extract the data from `SummarizedExperiment`:'
+  id: totrans-236
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从`SummarizedExperiment`中提取数据：
+- en: '[PRE58]'
+  id: totrans-237
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'Work out a low count threshold and set windows with lower counts to `NA`:'
+  id: totrans-238
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算一个低计数阈值，并将计数较低的窗口设置为`NA`：
+- en: '[PRE59]'
+  id: totrans-239
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'Double the counts of a set of windows in the middle—these will act as our high
+    copy number region:'
+  id: totrans-240
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在中间的一组窗口中翻倍计数——这些将作为我们的高拷贝数区域：
+- en: '[PRE60]'
+  id: totrans-241
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'Calculate the mean coverage and the ratio in each window to that mean coverage,
+    and inspect the ratio vector with a plot:'
+  id: totrans-242
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算每个窗口的平均覆盖度以及该窗口与平均覆盖度的比值，并通过绘图检查该比值向量：
+- en: '[PRE61]'
+  id: totrans-243
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'Build `SummarizedExperiment` with the new data and the row data of the old
+    one:'
+  id: totrans-244
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用新数据和旧数据的行数据构建`SummarizedExperiment`：
+- en: '[PRE62]'
+  id: totrans-245
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'Create a region of interest and extract coverage data from it:'
+  id: totrans-246
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建感兴趣区域并提取其中的覆盖数据：
+- en: '[PRE63]'
+  id: totrans-247
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: How it works...
+  id: totrans-248
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: In *Step 1*, this recipe begins in familiar fashion, using the `csaw` package
+    to get read counts in 100 bp windows over our small section of human chromosome
+    17\. The read filtering options are set in the `param` argument. In *Step 2*,
+    we extract the first and only column of data to give us a simple vector of the
+    counts using the `assay()` function and subsetting. Next, in *Step 3*, we use
+    the `quantile()` function to get the `min_count` value in the lower 10^(th) percentile
+    of the `counts` vector. The double-bracket subsetting is needed to get a single
+    number from the named vector that the `quantile()` function returns. The `min_count`
+    value will act as a cut-off. All values in the `counts` vector lower than this
+    are set to `NA` to remove them from the analysis—this acts as a low coverage threshold
+    and the percentile used can be modified in your own adaptations of the recipe
+    as needed.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 1*中，本配方以熟悉的方式开始，使用`csaw`包在我们的人类第17号染色体小段上获取100 bp窗口的读取计数。读取过滤选项在`param`参数中设置。在*步骤
+    2*中，我们提取数据的第一列（也是唯一一列），使用`assay()`函数和子集提取来获得一个简单的计数向量。接下来，在*步骤 3*中，我们使用`quantile()`函数从`counts`向量中获取低于10^(百分位)的`min_count`值。需要使用双括号子集提取，以便从`quantile()`函数返回的命名向量中获得单一数字。`min_count`值将作为切断点。`counts`向量中低于该值的所有值都将被设置为`NA`，以便从分析中移除——这充当了一个低覆盖阈值，并且可以根据需要在您自己修改的配方中调整使用的百分位数。
+- en: In *Step 4*, we add some regions with doubled coverage—so that we can detect
+    them. We select a number of windows to double the counts in and then create a
+    `multiplier` vector of equal length to counts that contains **1** where we don't
+    wish to change counts and **2** where we wish to double them. We then apply the
+    multiplication. *Step 4* will likely be left out in your own analysis as it is
+    a synthetic data-generation step.
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 4*中，我们添加了一些覆盖度翻倍的区域——以便我们能检测到它们。我们选择了一些窗口，在其中翻倍计数，然后创建一个与计数长度相等的`multiplier`向量，其中**1**表示我们不希望更改计数，**2**表示我们希望将其翻倍。然后我们应用乘法。*步骤
+    4*可能会在您的分析中省略，因为它是一个合成数据生成步骤。
+- en: In *Step 5*, we actually compute the background coverage level. Our function
+    here is a simple global mean, saved in `mean_cov`—but you can use many other functions.
+    See the *See also* section for a discussion on this. We also calculate the `log2()` of
+    the ratio of each window count to the global `mean_cov` and save it in a one-column
+    matrix object called `ratio`—as we'll need the result to be a matrix in our final
+    `SummarizedExperiment` object. We quickly use `plot()` to inspect `ratio` and
+    can clearly see the count doubled windows in the middle of the data.
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 5*中，我们实际计算背景覆盖度。我们这里的函数是一个简单的全局平均，保存在`mean_cov`中——但您可以使用许多其他函数。有关此的讨论，请参见*另见*部分。我们还计算每个窗口计数与全局`mean_cov`的比值的`log2()`，并将其保存在一个名为`ratio`的单列矩阵对象中——因为我们需要将结果保存为矩阵形式，才能用于最终的`SummarizedExperiment`对象。我们快速使用`plot()`来检查`ratio`，并可以清晰地看到数据中间窗口计数翻倍的情况。
+- en: 'This will result in the following output:'
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '![](img/ab333e87-4cfa-40b0-8f57-e2c7565533c1.png)'
+  id: totrans-253
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/ab333e87-4cfa-40b0-8f57-e2c7565533c1.png)'
+- en: In *Step 6*, we build a new `SummarizedExperiment` object, `se`, to hold the
+    window ranges and the new ratio data. We take the `GRanges` and `colData` objects
+    from `window_counts` and add our new `ratio` matrix. We can now start to subset
+    this and see what coverage is in our regions of interest.
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 6*中，我们构建一个新的`SummarizedExperiment`对象`se`，用于保存窗口范围和新的比值数据。我们从`window_counts`中提取`GRanges`和`colData`对象，并添加我们新的`ratio`矩阵。现在我们可以开始对其进行子集提取，查看感兴趣区域的覆盖情况。
+- en: In *Step 7*, we construct a manual `GRanges` object for an arbitrary region
+    we're interested in, helpfully called `region_of_interest`, and use that to find
+    the overlapping windows in our `se` object using `findOverlaps()`*.* We then use
+    the resulting `overlap_hits` vector to subset the `se` object and the `assay()` function
+    to view the counts in the region of interest.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第7步*中，我们构造了一个手动的`GRanges`对象，表示我们感兴趣的任意区域，称为`region_of_interest`，并使用它通过`findOverlaps()`找到`se`对象中重叠的窗口。然后我们使用结果中的`overlap_hits`向量对子集`se`对象，并通过`assay()`函数查看该兴趣区域的计数。
+- en: 'This will result in the following output:'
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生以下输出：
+- en: '[PRE64]'
+  id: totrans-257
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: In the output, we can see the region has roughly a log2 ratio of 1 (twofold)
+    coverage relative to the background, which we can interpret as a copy number of
+    2.
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在输出中，我们可以看到该区域相对于背景大约有一个log2比例为1（二倍）的覆盖度，我们可以将其解读为拷贝数为2。
+- en: See also
+  id: totrans-259
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另见
+- en: The calculation for the background level in this recipe is really simple—which
+    is great for learning the recipe, but might be quickly underpowered in your own
+    real data. There are numerous options you could take to modify the way you calculate
+    the background level for your own data. Check out the `rollmeans()` and `rollmedians()` functions
+    in the `zoo` package—these give the mean and median in rolling windows of arbitrary
+    step length and can give you a moving window background average that may be more
+    appropriate.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该配方中的背景水平计算非常简单——这对于学习配方是很好的，但在你自己真实数据中可能很快就不够用了。你可以采用许多选项来修改计算背景水平的方式，以适应你自己的数据。查看`zoo`包中的`rollmeans()`和`rollmedians()`函数——这些函数可以在任意步长的滚动窗口中给出均值和中位数，能为你提供一个移动窗口的背景平均值，可能会更加合适。
+- en: A related analysis to copy number is the estimation of ploidy from SNP allele
+    frequencies. You can check out the `vcfR` package's `freq_peaks()` function as
+    a starting place to estimate ploidy from variant information in `BAM` files.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与拷贝数相关的分析之一是从SNP等位基因频率估计倍性。你可以查看`vcfR`包中的`freq_peaks()`函数，作为从`BAM`文件中的变异信息估计倍性的起点。

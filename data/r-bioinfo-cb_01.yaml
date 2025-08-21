@@ -1,0 +1,2129 @@
+- en: Performing Quantitative RNAseq
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 执行定量RNAseq
+- en: The technology of RNAseq has revolutionized the study of transcript abundances,
+    bringing high-sensitivity detection and high-throughput analysis. Bioinformatic
+    analysis pipelines using RNAseq data typically start with a read quality control
+    step followed by either alignment to a reference or the assembly of sequence reads
+    into longer transcripts *de novo*. After that, transcript abundances are estimated
+    with read counting and statistical models and differential expression between
+    samples is assessed. Naturally, there are many technologies available for all
+    steps of this pipeline. The quality control and read alignment steps will usually
+    take place outside of R, so analysis in R will begin with a file of transcript
+    or gene annotations (such as GFF and BED files) and a file of aligned reads (such
+    as BAM files).
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: RNAseq技术彻底改变了转录本丰度的研究，带来了高灵敏度检测和高通量分析。使用RNAseq数据的生物信息学分析管道通常从读取质量控制步骤开始，接着是将序列比对到参考基因组或将序列读取组装成更长的转录本*de
+    novo*。之后，通过读取计数和统计模型来估算转录本丰度，并评估样本间的差异表达。自然，整个管道的各个步骤都有多种技术可供选择。质量控制和读取比对步骤通常会在R之外进行，因此在R中的分析将从转录本或基因注释文件（如GFF和BED文件）和比对后的读取文件（如BAM文件）开始。
+- en: The tools in R for performing analysis are powerful and flexible. Many of them
+    are part of the Bioconductor suite and, as such, integrate together very nicely.
+    The key question researchers wish to answer with RNAseq is usually: *Which transcripts
+    are differentially expressed*? In this chapter, we'll look at some recipes for
+    that in standard cases where we already know the genomic positions of genes we're
+    interested in, and in cases where we need to find unannotated transcripts. We'll
+    also look at other important recipes that help answer the questions *How many
+    replicates are enough*? and *Which allele is expressed more*?
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: R中的分析工具功能强大且灵活。它们中的许多是Bioconductor套件的一部分，因此它们可以很好地集成在一起。研究人员希望通过RNAseq回答的核心问题通常是：*哪些转录本有差异表达*？在本章中，我们将探讨一些标准情况下的分析方法，假设我们已经知道感兴趣基因的基因组位置，并且在需要找到未注释转录本的情况下进行分析。我们还将探讨其他重要的分析方法，帮助回答问题*多少重复实验足够*？以及*哪个等位基因表达更多*？
+- en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下分析方法：
+- en: Estimating differential expression with edgeR
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用edgeR估算差异表达
+- en: Estimating differential expression with DESeq2
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用DESeq2估算差异表达
+- en: Power analysis with powsimR
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用powsimR进行功效分析
+- en: Finding unannotated transcribed regions with GRanges objects
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用GRanges对象查找未注释的转录区域
+- en: Finding regions showing high expression ab initio with bumphunter
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用bumphunter查找初始显示高表达的区域
+- en: Differential peak analysis
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 差异峰值分析
+- en: Estimating batch effects using SVA
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用SVA估算批次效应
+- en: Finding allele-specific expression with AllelicImbalance
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用AllelicImbalance查找等位基因特异性表达
+- en: Plotting and presenting RNAseq data
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 绘制和展示RNAseq数据
+- en: Technical requirements
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: The sample data you'll need is available from this book's GitHub repository: [https://github.com/PacktPublishing/R-Bioinformatics_Cookbook](https://github.com/PacktPublishing/R-Bioinformatics_Cookbook)[.](https://github.com/danmaclean/R_Bioinformatics_Cookbook) If
+    you want to use the code examples as they are written, then you will need to make
+    sure that this data is in a sub-directory of whatever your working directory is.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要的示例数据可以从本书的GitHub仓库获取：[https://github.com/PacktPublishing/R-Bioinformatics_Cookbook](https://github.com/PacktPublishing/R-Bioinformatics_Cookbook)[.](https://github.com/danmaclean/R_Bioinformatics_Cookbook)如果你希望按照书中的代码示例使用数据，那么你需要确保这些数据在你工作目录的子目录中。
+- en: 'Here are the R packages that you''ll need. Most of these will install with
+    `install.packages()`*; *others are a little more complicated:'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里是你需要的R包。大多数可以通过`install.packages()`安装*；*其他一些则稍微复杂一些：
+- en: '`Bioconductor`'
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Bioconductor`'
+- en: '`AllelicImbalance`'
+  id: totrans-17
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`AllelicImbalance`'
+- en: '`bumphunter`'
+  id: totrans-18
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bumphunter`'
+- en: '`csaw`'
+  id: totrans-19
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`csaw`'
+- en: '`DESeq`'
+  id: totrans-20
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`DESeq`'
+- en: '`edgeR`'
+  id: totrans-21
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`edgeR`'
+- en: '`IRanges`'
+  id: totrans-22
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`IRanges`'
+- en: '`Rsamtools`'
+  id: totrans-23
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Rsamtools`'
+- en: '`rtracklayer`'
+  id: totrans-24
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`rtracklayer`'
+- en: '`sva`'
+  id: totrans-25
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`sva`'
+- en: '`SummarizedExperiment`'
+  id: totrans-26
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`SummarizedExperiment`'
+- en: '`VariantAnnotation`'
+  id: totrans-27
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`VariantAnnotation`'
+- en: '`dplyr`'
+  id: totrans-28
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`dplyr`'
+- en: '`extRemes`'
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`extRemes`'
+- en: '`forcats`'
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`forcats`'
+- en: '`magrittr`'
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`magrittr`'
+- en: '`powsimR`'
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`powsimR`'
+- en: '`readr`'
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`readr`'
+- en: '`Bioconductor` is huge and has its own installation manager. You can install
+    it with the following code:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`Bioconductor`非常庞大，并拥有自己的安装管理器。你可以通过以下代码安装它：'
+- en: '[PRE0]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Further information is available at [https://www.bioconductor.org/install/](https://www.bioconductor.org/install/).
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多信息可访问[https://www.bioconductor.org/install/](https://www.bioconductor.org/install/)。
+- en: Normally, in R, a user will load a library and use the functions directly by
+    name. This is great in interactive sessions but it can cause confusion when many
+    packages are loaded. To clarify which package and function I'm using at a given
+    moment, I will occasionally use the `packageName::functionName()` convention.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，在R中，用户会加载一个库并直接按名称使用其中的函数。这在交互式会话中很有用，但当加载了许多包时，它可能会导致混淆。为了澄清我在某个时刻使用的是哪个包和函数，我偶尔会使用`packageName::functionName()`这种约定。
+- en: 'Sometimes, in the middle of a recipe, I''ll interrupt the code so you can see
+    some intermediate output or the structure of an object it''s important to understand.
+    Whenever that happens, you''ll see a code block where each line begins with `##` (double
+    hash symbols). Consider the following command:'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时，在一个代码片段的中间，我会暂停代码执行，以便你能看到一些中间输出或一个对象的结构，这是理解时很重要的内容。每当这种情况发生时，你会看到一个代码块，其中每一行都以`##`（双井号）开头。请看以下命令：
+- en: '`letters[1:5]`'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`letters[1:5]`'
+- en: 'This will give us output as follows:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将给我们以下输出：
+- en: '`## a b c d e`'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`## a b c d e`'
+- en: Note that the output lines are prefixed with `##`.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，输出行前缀是`##`。
+- en: Estimating differential expression with edgeR
+  id: totrans-43
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用edgeR估计差异表达
+- en: edgeR is a widely used and powerful package that implements negative binomial
+    models suitable for sparse count data such as RNAseq data in a general linear
+    model framework, which are powerful for describing and understanding count relationships and
+    exact tests for multi-group experiments. It uses a weighted style normalization
+    called TMM, which is the weighted mean of log ratio between sample and control,
+    after removal of genes with high counts and outlying log ratios. The TMM value
+    should be close to one, but can be used as a correction factor to be applied to
+    overall library sizes
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: edgeR是一个广泛使用且功能强大的包，它实现了负二项模型，适用于稀疏计数数据（例如RNAseq数据），并且是一般线性模型框架中描述和理解计数关系以及多组实验的精确检验的强大工具。它使用了一种加权风格的标准化方法，称为TMM，这是样本与对照之间对数比值的加权平均值，在去除具有高计数和异常对数比值的基因之后。TMM值应该接近1，但它可以作为一个修正因子，应用到整体文库大小的调整中。
+- en: In this recipe, we'll look at some options from preparing read counts for annotated
+    regions in some object to identifying the differentially expressed features in
+    a genome. Usually, there is an upstream step requiring us to take high-throughput
+    sequence reads, align them to a reference and produce files describing those alignments,
+    such as `.bam` files. With those files prepared, we'd fire up R and start to analyze.
+    So that we can concentrate on the differential expression analysis part of the
+    process, we'll use a prepared dataset for which all of the data is ready. [Chapter
+    8](ee575089-d20d-4c7f-bbde-be145ac47ab1.xhtml), *Working with Databases and Remote
+    Data Sources,* shows you how to go from raw data to this stage if you're looking
+    for how to do that step.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个食谱中，我们将查看一些从准备注释区域的读取计数到识别基因组中差异表达特征的选项。通常，有一个上游步骤要求我们将高通量序列读取对齐到参考序列，并生成描述这些对齐的文件，例如`.bam`文件。准备好这些文件后，我们将启动R并开始分析。为了集中精力处理差异表达分析部分，我们将使用一个已经准备好的数据集，其中所有数据都已准备就绪。[第8章](ee575089-d20d-4c7f-bbde-be145ac47ab1.xhtml)，*与数据库和远程数据源的工作*，展示了如果你想了解如何做这一步，可以从原始数据开始到达这一阶段的方法。
+- en: As there are many different tools and methods for getting those alignments of
+    reads, we will look at starting the process with two common input object types.
+    We'll use a count table, like that we would have if we were loading from a text
+    file and we'll use an ExpressionSet (`eset`) object, which is an object type common
+    in Bioconductor.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于有许多不同的工具和方法来获取这些读取的对齐信息，我们将从两种常见的输入对象类型开始这个过程。我们将使用一个计数表，就像我们从文本文件加载时会用到的那样，并且我们将使用一个`ExpressionSet`（`eset`）对象，这是Bioconductor中常用的对象类型。
+- en: Our prepared dataset will be the `modencodefly` data from the NHGRI encyclopedia
+    of DNA elements project for the model organism, *Drosophila melanogaster*. You
+    can read about this project at [www.modencode.org](http://www.modencode.org/).
+    The dataset contains 147 different samples for *D. melanogaster*, a fruit fly with
+    an approximately 110 Mbp genome, annotated with about 15,000 gene features.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们准备好的数据集将是来自NHGRI DNA元素百科全书项目的`modencodefly`数据集，研究的模式生物是*果蝇*（*Drosophila melanogaster*）。你可以在[www.modencode.org](http://www.modencode.org/)上阅读关于这个项目的更多信息。该数据集包含147个*D.
+    melanogaster*的不同样本，果蝇的基因组约为110 Mbp，注释了大约15,000个基因特征。
+- en: Getting ready
+  id: totrans-48
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: The data is provided as both a count matrix and an ExpressionSet object and
+    you can see the *Appendix* at the end of this book for further information on
+    these object types. The data is in this book's code and data repository at [https://github.com/PacktPublishing/R_Bioinformatics_Cookbook](https://github.com/PacktPublishing/R_Bioinformatics_Cookbook) under `datasets/ch1/modencodefly_eset.RData`, `datasets/ch1/modencodefly_count_table.txt`,
+    and `datasets/ch1/modencodelfy_phenodata.txt` . We'll also use the `edgeR` (from
+    Bioconductor), `readr`, and `magrittr` libraries.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据提供了计数矩阵和 ExpressionSet 对象，你可以查看本书末尾的*附录*，了解更多关于这些对象类型的信息。数据存储在本书的代码和数据仓库中，网址是
+    [https://github.com/PacktPublishing/R_Bioinformatics_Cookbook](https://github.com/PacktPublishing/R_Bioinformatics_Cookbook)，位于
+    `datasets/ch1/modencodefly_eset.RData`、`datasets/ch1/modencodefly_count_table.txt`
+    和 `datasets/ch1/modencodelfy_phenodata.txt`。我们还将使用 `edgeR`（来自 Bioconductor）、`readr`
+    和 `magrittr` 库。
+- en: How to do it...
+  id: totrans-50
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: We will see two ways of estimating differential expressions with edgeR.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将展示使用 edgeR 估计差异表达的两种方法。
+- en: Using edgeR from a count table
+  id: totrans-52
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从计数表中使用 edgeR
+- en: 'For estimating differential expressions with edgeR from a count table (for
+    example, in a text file), we will use the following steps:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于从计数表（例如文本文件）使用 edgeR 估计差异表达，我们将使用以下步骤：
+- en: 'Load the count data:'
+  id: totrans-54
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载计数数据：
+- en: '[PRE1]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Specify experiments of interest:'
+  id: totrans-56
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 指定感兴趣的实验：
+- en: '[PRE2]'
+  id: totrans-57
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Form the grouping factor:'
+  id: totrans-58
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建分组因子：
+- en: '[PRE3]'
+  id: totrans-59
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Form the subset of count data:'
+  id: totrans-60
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建计数数据的子集：
+- en: '[PRE4]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Create the DGE object:'
+  id: totrans-62
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建 DGE 对象：
+- en: '[PRE5]'
+  id: totrans-63
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Perform differential expression analysis:'
+  id: totrans-64
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行差异表达分析：
+- en: '[PRE6]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Using edgeR from an ExpressionSet object
+  id: totrans-66
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从 ExpressionSet 对象中使用 edgeR
+- en: 'Estimating using edgeR from our prepared `eset` object can be done using the
+    following steps:'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 `eset` 对象通过 edgeR 进行估计可以按照以下步骤完成：
+- en: 'Load the `eset` data:'
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载 `eset` 数据：
+- en: '[PRE7]'
+  id: totrans-69
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'Specify experiments of interest:'
+  id: totrans-70
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 指定感兴趣的实验：
+- en: '[PRE8]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Form the grouping factor:'
+  id: totrans-72
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建分组因子：
+- en: '[PRE9]'
+  id: totrans-73
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Form the subset of count data:'
+  id: totrans-74
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建计数数据的子集：
+- en: '[PRE10]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'Create the DGE object:'
+  id: totrans-76
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建 DGE 对象：
+- en: '[PRE11]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Perform differential expression analysis:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行差异表达分析：
+- en: '[PRE12]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: How it works...
+  id: totrans-80
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何工作...
+- en: We saw two ways of estimating differential expression with edgeR. In the first
+    half of this recipe, we used edgeR starting with our data in a text file.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们展示了两种使用 edgeR 估计差异表达的方法。在本教程的前半部分，我们从文本文件中的数据开始，使用了 edgeR。
+- en: Using edgeR from a count table
+  id: totrans-82
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从计数表中使用 edgeR
+- en: In *step 1*, we use the `read_tsv()` function in the `readr` package to load
+    the tab delimited text file of counts into a dataframe called `count_dataframe`.
+    Then, from that, we extract the `'gene'` column to a new variable, `genes`, and
+    erase it from `count_dataframe`, by assigning `NULL`. This is all done so we can
+    easily convert into the `count_matrix` matrix with the base `as.matrix()` function
+    and add the gene information back as `rownames`. Finally, we load the phenotype
+    data we'll need from file using the `readr read_table2()` function.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤1*中，我们使用 `read_tsv()` 函数（来自 `readr` 包）将制表符分隔的计数文本文件加载到一个名为 `count_dataframe`
+    的数据框中。然后，从中提取 `'gene'` 列到一个新变量 `genes`，并通过将其赋值为 `NULL` 从 `count_dataframe` 中删除。这一切的目的是为了便于使用基础的
+    `as.matrix()` 函数将其转换为 `count_matrix` 矩阵，并将基因信息作为 `rownames` 添加回来。最后，我们使用 `readr
+    read_table2()` 函数从文件中加载所需的表型数据。
+- en: '*Step 2* is concerned with working out which columns in `count_matrix` we want
+    to use. We define a variable, `experiments_of_interest`, which holds the column
+    names we want and then use the `%in%` operator and `which()` functions to create
+    a binary vector that matches the number of columns. If, say, the third column
+    of the `columns_of_interest` vector is `TRUE` it indicates the name was in the
+    `experiments_of interest` variable.'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤2* 主要是确定在 `count_matrix` 中我们想要使用的列。我们定义了一个变量 `experiments_of_interest`，它包含了我们想要的列名，然后使用
+    `%in%` 运算符和 `which()` 函数创建一个与列数匹配的二进制向量。如果例如 `columns_of_interest` 向量的第三列为 `TRUE`，则表示该名称在
+    `experiments_of_interest` 变量中。'
+- en: '*Step 3* begins with loading the `magrittr` package to get the `%>%` operator,
+    which will allow piping. We then use R indexing with the binary `columns_of_interest`
+    factor to select the names of columns we want and send it to the `forcats as_factor()`
+    function to get a factor object for our grouping variable. Sample grouping information
+    is basically a factor that tells us which samples are replications of the same
+    thing and it''s important for the experimental design description. We need to
+    create a grouping vector, each index of which refers to a column in the counts
+    table. So, in the following example, the first three columns in the data would
+    be replicates of one sample, the second three columns in the counts table would
+    be replicates of a different replicate, and so on. We can use any symbols in the
+    grouping vector to represent the groups. The more complicated the grouping vector,
+    the more complicated the experiment design can be. In the recipe here, we''ll
+    use a simple test/control design:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤 3* 从加载 `magrittr` 包开始，以获取 `%>%` 操作符，这将允许管道传输。接着，我们使用 R 索引和二进制 `columns_of_interest`
+    因子来选择我们想要的列名，并将其传递给 `forcats as_factor()` 函数，得到一个因子对象作为我们的分组变量。样本分组信息本质上是一个因子，告诉我们哪些样本是同一样本的重复，这对于实验设计的描述非常重要。我们需要创建一个分组向量，其中每个索引都对应于计数表中的一列。因此，在下面的示例中，数据中的前三列将是同一样本的重复，计数表中的第二组三列将是另一组重复，以此类推。我们可以在分组向量中使用任何符号来表示组。分组向量越复杂，实验设计就可以越复杂。在这里的示例中，我们将使用一个简单的测试/对照设计：'
+- en: '[PRE13]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: A simple vector like this will do, but you can also use a factor object. The
+    factor is R's categorical data type and is implemented as a vector of integers
+    that have associated name labels, called levels. When a factor is displayed, the
+    name labels are taken instead of the integers. The factor object has a memory
+    of sorts, and even when a subset of levels is used, all of the levels that could
+    have been used are retained so that when, for example, the levels are used as
+    categories, empty levels can still be displayed.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像这样的简单向量就足够了，但你也可以使用一个因子对象。因子是 R 的分类数据类型，它作为一个整数向量实现，并且有相关联的名称标签，称为水平。当显示因子时，使用的是名称标签，而不是整数。因子对象有某种“记忆”，即使只使用了某些水平，所有可能使用的水平都会被保留，这样在例如将水平作为类别使用时，空的水平仍然可以显示出来。
+- en: In *Step 4*, we use indexing to extract the columns of data we want to actually
+    analyze.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *步骤 4* 中，我们使用索引提取我们实际想要分析的数据列。
+- en: By *Step 5*, our preparatory work is done and we can build the `DGEList` object
+    we need to do differential analysis. To start, we load the `edgeR` library and
+    use the `DGEList()` function on `counts_of_interest` and our grouping object.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到了 *步骤 5*，我们的准备工作完成，可以构建我们需要进行差异分析的 `DGEList` 对象。首先，我们加载 `edgeR` 库，并对 `counts_of_interest`
+    和我们的分组对象使用 `DGEList()` 函数。
+- en: In *Step 6*, with `DGEList`, we can go through the `edgeR` process. First, we
+    create the experimental design descriptor design object with the base `model.matrix()`
+    function. A model design is required to tell the functions how to compare samples;
+    this is a common thing in R and so has a base function. We use the `grouping`
+    variable we created. We must estimate the dispersions of each gene with the `estimateDisp()`
+    function, then we can use that measure of variability in tests. Finally, a generalized
+    linear model is fit and the quasi-likelihood F-test is applied with the two uses
+    of `glmQLFTest()`, first with the dispersal estimates, `eset_dge`, then with the
+    resulting `fit` object.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *步骤 6* 中，通过 `DGEList`，我们可以进行 `edgeR` 过程。首先，我们使用基础的 `model.matrix()` 函数创建实验设计描述符设计对象。模型设计是必要的，它告诉函数如何比较样本；这是
+    R 中常见的操作，因此有一个基础函数。我们使用我们创建的 `grouping` 变量。我们必须使用 `estimateDisp()` 函数估算每个基因的离散度，然后可以在测试中使用这个变异性度量。最后，拟合一个广义线性模型，并使用两次
+    `glmQLFTest()` 应用准似然 F 检验，第一次使用离散度估算，`eset_dge`，第二次使用结果的 `fit` 对象。
+- en: 'We can use the `topTags()` function to see the details of differentially expressed
+    genes. We get the following output:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用 `topTags()` 函数查看差异表达基因的详细信息。我们得到以下输出：
+- en: '[PRE14]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: The columns show the gene name, the `logFC` value of the gene, the F value,
+    the P value and the **False Detection Rate** (**FDR**). Usually, the column we
+    want to make statistical conclusions from is FDR.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 列中显示了基因名、基因的 `logFC` 值、F 值、P 值和 **假阳性率** (**FDR**)。通常，我们想要从中做出统计结论的列是 FDR。
+- en: Using edgeR from an ExpressionSet object
+  id: totrans-94
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 `edgeR` 从 ExpressionSet 对象中
+- en: In *Step 1*, we are looking at using `edgeR` from our prepared eset object.
+    We first load that in, using the base R function as it is stored in a standard
+    Rdata format file.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 1*中，我们将使用从准备好的`eset`对象中的`edgeR`。我们首先使用基础R函数加载该对象，因为它是以标准的Rdata格式文件存储的。
+- en: In *Step 2*, we prepare the vector of experiments of interest. This works as
+    in *step 2*, except that we don't need to look at the `pheno_data` object we created
+    from a file; instead, we can use the `eset` function, `phenoData()`, to extract
+    the phenotype data straight from the `eset` object (note that this is one of the
+    major differences between `eset` and the count matrix—see this book's *Appendix*
+    for further information).
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 2*中，我们准备感兴趣实验的向量。与*步骤 2*中类似，唯一不同的是，我们不需要查看从文件创建的`pheno_data`对象；相反，我们可以使用`eset`函数`phenoData()`直接从`eset`对象中提取表型数据（请注意，这是`eset`与计数矩阵之间的主要区别之一——请参阅本书的*附录*以获取更多信息）。
+- en: In *Step 3*, we create the grouping factor. Again, this can be done by using
+    the `phenoData()` extraction function, but, as it returns a factor, we need to
+    drop the levels that aren't selected using the `droplevels()` function (see the
+    *How it works...* section in the *Estimating differential expression with edgeR*
+    recipe, *step 3* from the previous method, for a brief discussion of factor objects).
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3*中，我们创建分组因子。与之前一样，这可以通过使用`phenoData()`提取函数完成，但由于它返回的是一个因子，我们需要使用`droplevels()`函数删除未被选中的级别（有关因子对象的简要讨论，请参见前述方法中*估计差异表达*部分的*步骤
+    3*）。
+- en: In *step 4*, we extract the data for the columns we are interested in into a
+    standard matrix object. Again, we have a dedicated function, `exprs()`, for extracting
+    the expression values from `eset`, and we can subset that using column indexing
+    with `column_names`.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 4*中，我们将提取我们感兴趣的列的数据到标准的矩阵对象中。同样，我们有一个专用函数`exprs()`，用于从`eset`中提取表达值，并且我们可以使用`column_names`进行列索引来对子集进行操作。
+- en: In *Step 5*, we use the `DGEList()` constructor function to build the data structure
+    for edgeR and in *step 6*, carry out the analysis. This step is identical to *Step
+    6* of the first method.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 5*中，我们使用`DGEList()`构造函数构建`edgeR`的数据结构，在*步骤 6*中，执行分析。这个步骤与第一种方法的*步骤 6*完全相同。
+- en: Estimating differential expression with DESeq2
+  id: totrans-100
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用DESeq2估计差异表达
+- en: The `DESeq2` package is a method for differential analysis of count data, so
+    it is ideal for RNAseq (and other count-style data such as `ChIPSeq`). It uses
+    dispersion estimates and relative expression changes to strengthen estimates and
+    modeling with an emphasis on improving gene ranking in results tables. `DESeq2`
+    differs from `edgeR` in that it uses a geometric style normalization in which
+    the per lane scaling factor is computed as the median of the ratios of the gene
+    count over its geometric mean ratio, whereas edgeR uses the weighted one. The
+    two normalization strategies are not mutually exclusive and both make different
+    assumptions about the data. As with any `RNAseq` or large scale experiment, there
+    is never an "out-of-the-box" best answer. You'll end up testing these methods
+    and maybe others and closely examining results from control genes and cross-validation
+    experiments to see which performs best. The performance will depend greatly on
+    the particular dataset at hand, so the flexible approach we learn here will give
+    you a good idea of how to test the different solutions for yourself.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`DESeq2`包是用于计数数据差异分析的方法，因此它非常适合RNAseq（以及其他计数类型数据，如`ChIPSeq`）。它使用离散度估计和相对表达变化来加强估计和建模，重点提高结果表中的基因排序。`DESeq2`与`edgeR`的不同之处在于，它使用几何风格的标准化方法，其中每条通道的缩放因子是通过基因计数与其几何均值比率的比值的中位数来计算的，而`edgeR`使用加权的标准化因子。两种标准化策略并不互相排斥，并且它们对数据有不同的假设。像任何`RNAseq`或大规模实验一样，永远没有“现成的”最佳答案。你将需要测试这些方法，甚至其他方法，并仔细检查控制基因和交叉验证实验的结果，以查看哪种方法表现最佳。性能将很大程度上取决于具体的数据集，因此我们在这里学习的灵活方法将为你如何自行测试不同的解决方案提供一个良好的思路。'
+- en: The process we'll look at in this recipe is somewhat similar to that for edgeR
+    in the preceding *Recipe 1*. We can use both ExpressionSets and count tables as
+    input to DESeq2 and, when we've prepared them, we have a different set of functions
+    to use to get our data into a DESeqDataSet, not the DGEList as with edgeR.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在本食谱中讨论的过程与之前*食谱 1*中的`edgeR`过程有些相似。我们可以将ExpressionSets和计数表作为输入提供给`DESeq2`，当我们准备好这些数据时，我们将有一组不同的函数来将数据转换为`DESeqDataSet`，而不是像`edgeR`那样使用`DGEList`。
+- en: Getting ready
+  id: totrans-103
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: As in *Recipe 1*, the data is provided as both a count matrix and an `ExpressionSet`
+    object and you can see the *Appendix* at the end of this book for further information
+    on these object types. The data is in this book's code and data repository at [https://github.com/PacktPublishing/R_Bioinformatics_Cookbook](https://github.com/PacktPublishing/R_Bioinformatics_Cookbook) under `datasets/ch1/modencodefly_eset.RData` , `datasets/ch1/modencodefly_count_table.txt`,
+    and `datasets/ch1/modencodelfy_phenodata.txt`. Again, we'll use `readr` and `magrittr`
+    and, from Bioconductor, `SummarizedExperiement,` and DESeq2.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如同*食谱1*中所示，数据以计数矩阵和`ExpressionSet`对象的形式提供，你可以在本书的*附录*部分找到有关这些对象类型的更多信息。数据位于本书的代码和数据仓库：[https://github.com/PacktPublishing/R_Bioinformatics_Cookbook](https://github.com/PacktPublishing/R_Bioinformatics_Cookbook)，路径为`datasets/ch1/modencodefly_eset.RData`，`datasets/ch1/modencodefly_count_table.txt`，以及`datasets/ch1/modencodelfy_phenodata.txt`。再次提醒，我们将使用`readr`和`magrittr`，以及Bioconductor中的`SummarizedExperiement`和DESeq2。
+- en: How to do it...
+  id: totrans-105
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作……
+- en: Estimating differential expressions with DESeq2 can be done in two ways, as
+    shown in the following section.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用DESeq2估计差异表达可以通过两种方式进行，如下所示。
+- en: Using DESeq2 from a count matrix
+  id: totrans-107
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从计数矩阵中使用DESeq2
+- en: 'Estimating differential expressions with DESeq2 from a count table (for example,
+    in a text file), we will use the following steps:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从计数表（例如，文本文件）中使用DESeq2估计差异表达，我们将使用以下步骤：
+- en: 'Load count data:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载计数数据：
+- en: '[PRE15]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Specify experiments of interest:'
+  id: totrans-111
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 指定感兴趣的实验：
+- en: '[PRE16]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Form the grouping factor:'
+  id: totrans-113
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 形成分组因子：
+- en: '[PRE17]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Form the subset of count data:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 形成计数数据的子集：
+- en: '[PRE18]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Build the DESeq object:'
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建DESeq对象：
+- en: '[PRE19]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Carry out the analysis:'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行分析：
+- en: '[PRE20]'
+  id: totrans-120
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Extract the results:'
+  id: totrans-121
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 提取结果：
+- en: '[PRE21]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: Using DESeq2 from an ExpressionSet object
+  id: totrans-123
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从ExpressionSet对象中使用DESeq2
+- en: 'To estimate differential expressions with DESeq2 from an ExpressionSet object,
+    we will use the following steps:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要从ExpressionSet对象中使用DESeq2估计差异表达，我们将使用以下步骤：
+- en: 'Load the `eset` data and convert into `DESeqDataSet()`:'
+  id: totrans-125
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载`eset`数据并转换为`DESeqDataSet()`：
+- en: '[PRE22]'
+  id: totrans-126
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Carry out analysis and extract results:'
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 执行分析并提取结果：
+- en: '[PRE23]'
+  id: totrans-128
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: How it works...
+  id: totrans-129
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: In the first section of this recipe, we used DESeq1 starting with our data in
+    a text file; as you'll notice *steps 1* to *4* are identical to those in the previous
+    section.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱的第一部分，我们使用DESeq1从文本文件中的数据开始；正如你会注意到的，*步骤1*到*步骤4*与前一部分完全相同。
+- en: Using DESeq2 from a count matrix
+  id: totrans-131
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从计数矩阵中使用DESeq2
+- en: In *Step 1*, we use the `readr` package's `read_tsv()` function to load the
+    tab-delimited text file of counts into a dataframe called `count_dataframe`. Then,
+    from that, we extract the `'gene'` column to a new variable, `genes`, and erase
+    it from `count_dataframe`, by assigning `NULL`. This is all done so we can easily
+    convert into the `count_matrix` matrix with the base `as.matrix()` function and
+    add the gene information back as `rownames`. Finally, we load the phenotype data
+    we'll need from the file using the `readr` `read_table2()` function.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤1*中，我们使用`readr`包中的`read_tsv()`函数加载带有制表符分隔的计数文本文件到名为`count_dataframe`的数据框中。然后，我们从中提取`'gene'`列到一个新变量`genes`，并通过赋值`NULL`将其从`count_dataframe`中删除。这些操作的目的是为了方便我们使用基础的`as.matrix()`函数将其转换为`count_matrix`矩阵，并将基因信息作为`rownames`重新添加进去。最后，我们使用`readr`的`read_table2()`函数从文件中加载所需的表型数据。
+- en: '*Step 2* is concerned with working out which columns in `count_matrix` we want
+    to use. We define a variable, `experiments_of_interest`, that holds the column
+    names we want and then use the `%in%` operator and `which()` functions to create
+    a binary vector that matches the number of columns. If, say the third column of
+    the `columns_of_interest` vector is `''TRUE''`, it indicates the name was in the `experiments_of
+    interest` variable.'
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤2*的任务是确定我们想要在`count_matrix`中使用哪些列。我们定义一个变量`experiments_of_interest`，保存我们需要的列名，然后使用`%in%`操作符和`which()`函数创建一个与列数匹配的二进制向量。如果比如`columns_of_interest`向量的第三列为`''TRUE''`，这表示该列名存在于`experiments_of_interest`变量中。'
+- en: '*Step 3* begins with loading the `magrittr` package to get the `%>%` operator,
+    which will allow piping. We then use R indexing with the binary `columns_of_interest` factor
+    to select the names of columns we want and send it to the `forcats` `as_factor()` function
+    to get a factor object for our grouping variable. Sample grouping information
+    is basically a factor that tells us which samples are replications of the same
+    thing and it''s important for the experimental design description. You can see
+    an expanded description of these grouping/factor objects in *step 3* in *Recipe
+    1*.'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第 3 步* 从加载 `magrittr` 包开始，以获取 `%>%` 操作符，这将允许管道操作。然后我们使用 R 索引与二进制 `columns_of_interest`
+    因子选择我们需要的列名，并将其传递给 `forcats` 包中的 `as_factor()` 函数，以获得分组变量的因子对象。样本分组信息基本上是一个因子，告诉我们哪些样本是相同事物的重复，这对于实验设计描述非常重要。你可以在
+    *步骤 3* 中的 *食谱 1* 中看到对这些分组/因子对象的扩展描述。'
+- en: In *Step 4*, we use indexing to extract the columns of data we want to actually
+    analyze.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *第 4 步* 中，我们使用索引提取我们实际需要分析的数据列。
+- en: By *Step 5*, we are into the actual analysis section. First, we convert our
+    matrix of counts into a `DESeqDataSet` object; this can be done with the conversion
+    function, `DESeqDataSetFromMatrix()`, passing in the counts, the groups, and a
+    design. The design is in the form of an R formula, hence, the `~ stage` annotation.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到了 *第 5 步*，我们进入了实际的分析部分。首先，我们将计数矩阵转换为 `DESeqDataSet` 对象；这可以通过转换函数 `DESeqDataSetFromMatrix()`
+    来完成，传入计数、分组和设计。设计采用 R 公式的形式，因此使用了 `~ stage` 注解。
+- en: 'In *Step 6*, we perform the actual analysis using the `DESeq()` function on
+    the `dds DESeqDataSet` object and in *Step 7*, we get the results into the `res`
+    variable using the `results()` function. The output has the following six columns:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *第 6 步* 中，我们使用 `DESeq()` 函数对 `dds DESeqDataSet` 对象进行实际分析，在 *第 7 步* 中，使用 `results()`
+    函数将结果存储到 `res` 变量中。输出有以下六列：
+- en: '[PRE24]'
+  id: totrans-138
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: This shows the mean counts, the `log2` fold change between samples for a gene,
+    the standard error of the `log2` fold change, the Wald statistic, and the raw
+    and adjusted P value. The `padj` column for adjusted P values is the one most
+    commonly used for concluding about significance.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这显示了基因的平均计数、样本之间的 `log2` fold change、`log2` fold change 的标准误差、Wald 统计量，以及原始和调整后的
+    P 值。`padj` 列表示调整后的 P 值，通常用于得出显著性的结论。
+- en: Using DESeq2 from an ExpressionSet object
+  id: totrans-140
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用来自 ExpressionSet 对象的 DESeq2
+- en: '*Steps 1* and 2 show how to do the same procedure starting from the `eset`
+    object. It only takes two short steps because DESeq2 is set up to work a lot more
+    nicely with Bioconductor objects than edgeR is. In *step 8*, we load the `eset`
+    data with the `load()` function. Then we use the `makeSummarizedExperimentFromExpressionSet()`function
+    from the `SummarizedExperiment` Bioconductor package to convert `eset` into `SummarizedExperiment`,
+    which can be used directly in the `DESeq()` function in *step 9*. This step works
+    exactly as *steps 6* and *7*.'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第 1 步* 和 *第 2 步* 显示了如何从 `eset` 对象开始进行相同的操作。只需两步，因为 DESeq2 在处理 Bioconductor
+    对象时比 edgeR 更加高效。在 *第 8 步* 中，我们使用 `load()` 函数加载 `eset` 数据。然后我们使用来自 `SummarizedExperiment`
+    Bioconductor 包的 `makeSummarizedExperimentFromExpressionSet()` 函数，将 `eset` 转换为
+    `SummarizedExperiment`，这可以直接用于 *第 9 步* 中的 `DESeq()` 函数。此步骤与 *第 6 步* 和 *第 7 步*
+    完全相同。'
+- en: Power analysis with powsimR
+  id: totrans-142
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 powsimR 进行功效分析
+- en: An important preliminary to any experiment is assessing the power of the experimental
+    design to optimize statistical sensitivity. In essence, a power analysis can tell
+    us the number of replicates required to determine an effect size of a given magnitude
+    for a given amount of experimental variability.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 任何实验的一个重要前提是评估实验设计的功效，以优化统计敏感性。从本质上讲，功效分析可以告诉我们，在给定实验变异性下，为确定特定效应大小所需的样本重复次数。
+- en: We'll use the `powsimR` package, which is not part of Bioconductor, to perform
+    two types of power analysis. Both of these will be with a small real dataset,
+    but first, we'll do it with two treatments—a test and control—then, we'll do it
+    with just one. With each, we'll estimate the number of replicates we need to spot
+    differences in gene expression of a particular magnitude—if they're present. `powsimR` takes
+    a simulation-based approach, effectively generating many datasets and evaluating
+    the detection power in each to create a distribution of detection power. The first
+    step, then, is to estimate some parameters for these simulations—for this, we'll
+    need some sample or preliminary data. After that, we can run simulations and assess
+    power.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 `powsimR` 包，它不属于 Bioconductor，用来进行两种类型的功效分析。这两种分析都使用一个小的真实数据集，但首先，我们将用两种处理方法——测试组和对照组——进行分析，然后，只用一个处理组进行分析。在每个分析中，我们将估计需要多少个重复实验才能发现基因表达的特定差异——如果这些差异存在的话。`powsimR`
+    采用基于仿真的方法，实际生成多个数据集并评估每个数据集中的检测功效，最终形成一个功效分布。因此，第一步是为这些仿真估计一些参数——为此，我们需要一些样本数据或初步数据。之后，我们可以运行仿真并评估功效。
+- en: Getting ready
+  id: totrans-145
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: The dataset for this recipe will be a test or control RNAseq experiment from
+    *Arabidopsis* with three replicates each. These are available as a prepared count
+    matrix in `datasets/ch1/arabidopsis.RDS` in this book's data repository. In this
+    section, we'll use a set of counts in a simple test or control experiment from *Arabidopsis
+    thaliana*. The matrix has six columns (three `mock` treatments and three `hrcc` treatments)
+    and 26,222 rows, each a gene feature. We'll need the `dplyr`, `extRemes`, and
+    `powsimR` packages for this code.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个配方的数据集将是来自 *Arabidopsis* 的一个测试或对照 RNAseq 实验，每组有三个重复。这些数据可以在本书的数据仓库中的 `datasets/ch1/arabidopsis.RDS`
+    中找到，作为一个预处理过的计数矩阵。在本节中，我们将使用一个来自 *Arabidopsis thaliana* 的简单测试或对照实验的计数数据集。该矩阵有六列（三个
+    `mock` 处理组和三个 `hrcc` 处理组），共 26,222 行，每行代表一个基因特征。我们需要 `dplyr`、`extRemes` 和 `powsimR`
+    包来运行这段代码。
+- en: 'Our package of interest, `powsimR`, isn''t on CRAN; it''s hosted as a source
+    on GitHub at [https://github.com/bvieth/powsimR](https://github.com/bvieth/powsimR). You''ll
+    need to use `devtools` to install it, which can be done using the following code:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们感兴趣的包 `powsimR` 不在 CRAN 上，它作为源代码托管在 GitHub 上，网址为 [https://github.com/bvieth/powsimR](https://github.com/bvieth/powsimR)。你需要使用
+    `devtools` 来安装它，以下代码可以完成安装：
+- en: '[PRE25]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'If you do this, there is a chance that this package will still fail to install. It
+    has a lot of dependencies and you might need to install those manually; there
+    is further information on the package GitHub repository and you should check that
+    for the latest information. At the time of writing, you''ll need to do the following
+    two big steps. First, create the `ipak` function outlined here, then run the three
+    different package installation steps with the `ipak` function:'
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你这样做，仍然有可能会安装失败。它有很多依赖项，你可能需要手动安装这些依赖；在该包的 GitHub 仓库上有更多信息，建议你查看最新的内容。写这篇文档时，你需要做以下两个步骤。首先，创建这里描述的
+    `ipak` 函数，然后使用 `ipak` 函数运行三个不同的包安装步骤：
+- en: '[PRE26]'
+  id: totrans-150
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'When this is done, you should be able to install the package we''re after with
+    this code:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成这些步骤后，你应该能够用以下代码安装我们需要的包：
+- en: '[PRE27]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: At the moment, for this to work, you also need to manually load `dplyr`.
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目前，为了使其正常工作，你还需要手动加载 `dplyr`。
+- en: How to do it...
+  id: totrans-154
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'We will do the power analysis using the following steps:'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将通过以下步骤进行功效分析：
+- en: 'Estimate simulation parameter values:'
+  id: totrans-156
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 估计仿真参数值：
+- en: '[PRE28]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Examine the distribution of the `log2` fold change ratios:'
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查 `log2` 变动比率的分布：
+- en: '[PRE29]'
+  id: totrans-159
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Set up parameter values for the simulation run:'
+  id: totrans-160
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置仿真运行的参数值：
+- en: '[PRE30]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'Run the simulation:'
+  id: totrans-162
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行仿真：
+- en: '[PRE31]'
+  id: totrans-163
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'Run the evaluation of the simulation:'
+  id: totrans-164
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行仿真评估：
+- en: '[PRE32]'
+  id: totrans-165
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Plot the evaluation:'
+  id: totrans-166
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 绘制评估图：
+- en: '[PRE33]'
+  id: totrans-167
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: How it works...
+  id: totrans-168
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: Power analysis in `powsimR` requires us to do some pre-analysis so that we have
+    estimates for some important parameters. To perform a simulation-based power analysis,
+    we need to estimate the distribution of log fold changes between treatments and
+    the proportion of features that are differentially expressed.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`powsimR` 中的功效分析要求我们做一些预分析，以便估算一些重要参数。为了执行基于仿真的功效分析，我们需要估计处理组之间的 log fold change
+    分布以及差异表达特征的比例。'
+- en: 'In *step 1*, we''ll get the mean counts for each feature in the two treatments.
+    After loading the expression data using the `readRDS()` function, we use the `rowMeans()` function
+    on certain columns to get the mean expression counts of each gene in both the
+    `mock` and `hrcc1` treatments. We can then get the log2 ratio of those (by simply
+    dividing the two vectors and, in the last line, use standard arithmetical operators
+    to work out those that have a log2 fold change greater than 2). Inspecting the
+    final `prop_de` variable gives the following output:'
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 1*中，我们将获得每个特征在两种处理条件下的平均计数。加载表达数据后，我们使用`readRDS()`函数，然后在某些列上使用`rowMeans()`函数，获得`mock`和`hrcc1`两种处理下每个基因的平均表达计数。接着，我们可以获得这些值的log2比率（只需将这两个向量相除，并在最后一行使用标准算术运算符计算出那些log2折叠变化大于2的值）。检查最终的`prop_de`变量时，会得到以下输出：
+- en: '[PRE34]'
+  id: totrans-171
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: So, a proportion of about 0.2 of the features have counts changing by log2 twofold.
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，大约0.2的特征在计数上变化了log2两倍。
+- en: '*Step 2* looks at the distribution of the gene expression ratios. We first
+    remove the non-finite ratios from the `log2fc` variable. We must do this because,
+    when calculating ratios, we generate `Inf` values in R; this occurs when the denominator
+    (the mock sample) has zero mean counts. We can remove them using indexing on the
+    vector with the binary vector that comes from `is.finite()` function. With the
+    `Inf` values removed, we can plot. First, we do a normal density plot using the
+    `density()` function, which shows the distribution of ratios. Then, we use the
+    `qqnorm()` function in the `extRemes` package, which plots the data against data
+    sampled from an idealized normal distribution with the same mean. A strong, linear
+    correlation indicates a normal distribution in the original data. We can see the
+    output in the following screenshot:'
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤 2* 查看基因表达比率的分布。我们首先从`log2fc`变量中移除非有限值。我们必须这样做，因为在计算比率时，会在R中生成`Inf`值；这种情况发生在分母（对照样本）的均值为零时。我们可以通过使用来自`is.finite()`函数的二进制向量对向量进行索引来移除这些值。移除`Inf`值后，我们可以进行绘图。首先，我们使用`density()`函数做一个正态密度图，展示比率的分布。然后，我们使用`extRemes`包中的`qqnorm()`函数，该函数将数据与来自理想正态分布、均值相同的采样数据进行对比。强烈的线性相关性表示原始数据符合正态分布。我们可以在以下截图中看到输出：'
+- en: '![](img/8fc16071-7ac9-4d0e-bb10-6a4ea8f656d4.png)'
+  id: totrans-174
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/8fc16071-7ac9-4d0e-bb10-6a4ea8f656d4.png)'
+- en: They look pretty log-normally distributed, so we can assume a log-normal distribution.
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它们看起来呈对数正态分布，因此我们可以假设它们符合对数正态分布。
+- en: The longest step here, *step 3,* is actually only four lines. We are basically
+    setting up the parameters for the simulation, which requires us to specify a lot
+    of values. The first set, `params`, which we create with the `estimateParam()`
+    function needs the data source (`countData`), the distribution to use (we set
+    `Distribution = "NB"`, which selects the negative binomial); the type of RNAseq
+    experiment—ours is a bulk RNAseq experiment (`RNAseq = "bulk"`), and normalization
+    strategy—we use the edgeR style TMM (`normalization = "TMM"`). The second set,
+    `desetup`, is created with the `DESetup()` function; in this, we choose the parameters
+    relating to the number of genes for which to simulate differential expression.
+    We set up 1,000 total gene simulations (`ngenes`) and 25 simulation runs (`nsims`).
+    We set the proportion to be differentially expressed to that estimated in *step
+    1* in `prop_de`. We use the vector of fold changes, `finite_log2fc`, as input
+    for the `pLFC` parameter. Setting `sim.seed` is not necessary but will ensure
+    reproducibility between runs. The third line uses the `SimSetup()` function to
+    combine `params` and `desetup` into a single object, `sim_opts`. Finally, we create
+    a `num_replicates` vector specifying the number of biological replicates (RNA
+    samples) to simulate.
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里最长的步骤，*步骤 3*，实际上只有四行代码。我们基本上是在为模拟设置参数，这需要我们指定很多值。第一组`params`是通过`estimateParam()`函数创建的，需要提供数据源（`countData`）、要使用的分布（我们设置`Distribution
+    = "NB"`，选择负二项分布）；RNAseq实验的类型——我们的实验是批量RNAseq实验（`RNAseq = "bulk"`），以及归一化策略——我们使用edgeR风格的TMM（`normalization
+    = "TMM"`）。第二组`desetup`是通过`DESetup()`函数创建的；在这里，我们选择与模拟差异表达基因数量相关的参数。我们设置总共模拟1,000个基因（`ngenes`）和25次模拟运行（`nsims`）。我们将差异表达的比例设置为*步骤
+    1*中估算的值，存储在`prop_de`中。我们使用`finite_log2fc`的向量作为`pLFC`参数的输入。设置`sim.seed`不是必须的，但它可以确保不同运行之间的可重复性。第三行使用`SimSetup()`函数将`params`和`desetup`合并为一个单一对象`sim_opts`。最后，我们创建一个`num_replicates`向量，指定要模拟的生物学重复数（RNA样本数）。
+- en: '*Step 4* is relatively straightforward: we run the differential expression
+    simulation using the `sim_opts` parameters created in the previous steps, choosing
+    `"edgeR-LRT"` as the differential expression method and `"TMM"` as the normalization.
+    The simulation data is stored in the `simDE` variable.'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤 4*相对简单：我们使用前几步创建的`sim_opts`参数运行差异表达仿真，选择`"edgeR-LRT"`作为差异表达方法，选择`"TMM"`作为标准化方法。仿真数据存储在`simDE`变量中。'
+- en: In *Step 5*, we create an evaluation of the simulation—this analyzes and extracts
+    various statistics. We pass the `simDE` simulation data to the `evaluateDE()` function
+    along with values for things pertaining to grouping, filtering, and significance.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 5*中，我们创建了一个仿真评估——它分析并提取了各种统计数据。我们将`simDE`仿真数据传递给`evaluateDE()`函数，并附带与分组、过滤和显著性相关的值。
+- en: 'Finally, in *Step 6*, we can plot the `evalDE` object from *Step 5* and see
+    the results of the simulation. We get the following plot in which we can see the
+    different powers at different replicate numbers. Note the *x*-axis indicates the
+    number of replicate RNA samples used, and the metrics include FDR, **False Negative/Positive
+    Rate (FNR/FPR)**, and **TNR/TPR (True Negative/Positive Rate)**:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在*步骤 6*中，我们可以绘制来自*步骤 5*的`evalDE`对象，并查看仿真结果。我们得到以下图表，其中可以看到不同重复次数下的不同功效。请注意，*x*轴表示使用的重复RNA样本数量，指标包括FDR、**假阴性/假阳性率
+    (FNR/FPR)**，以及**真阴性/真阳性率 (TNR/TPR)**：
+- en: '![](img/955220a7-3b79-4ec0-a826-efee2464fa1c.png)'
+  id: totrans-180
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/955220a7-3b79-4ec0-a826-efee2464fa1c.png)'
+- en: There's more...
+  id: totrans-181
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: 'When we have only one sample (or maybe even just one replicate), we have a
+    hard time estimating the log2 fold change distribution and the number of differentially
+    expressed genes. In place of estimates, we can use a callback function to generate
+    numbers as needed. The body of the function just needs to return numbers from
+    a specified distribution with parameters you decide. Here, we''ll build a function
+    that returns numbers with a normal distribution of mean 0 and standard deviation
+    2\. This reflects that we think the log fold change distribution is normal with
+    these parameters. When we''ve built the function, it gets used in the `DESetup()`
+    function in place of the vector of log2 fold changes. For the proportion of genes
+    differentially expressed, we just have to guess or take an estimate from something
+    we already know about the experimental system:'
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们只有一个样本（或者可能只有一个重复）时，我们很难估算log2倍数变化分布以及差异表达基因的数量。我们可以使用回调函数代替估算来生成所需的数字。该函数的主体只需返回一个指定分布中的数字，具体分布由你决定。在这里，我们将构建一个返回均值为0，标准差为2的正态分布数字的函数。这反映了我们认为log倍数变化分布是正态分布，且具有这些参数。构建完函数后，它将在`DESetup()`函数中替代log2倍数变化的向量。至于差异表达基因的比例，我们只需要猜测或从我们已知的实验系统中获取估算值：
+- en: '[PRE35]'
+  id: totrans-183
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: Finding unannotated transcribed regions
+  id: totrans-184
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 寻找未注释的转录区域
+- en: A common challenge is to find and count reads that have aligned outside of annotated
+    regions. In an RNAseq experiment, these reads can represent non-annotated genes
+    and novel transcripts. Essentially, we have some genes we know about and can see
+    that they are transcribed as they have aligned read coverage, but other transcribed
+    regions do not fall in any annotations and we want to know the locations of the
+    alignments of the reads representing them. In this recipe, we'll look at a deceptively
+    straightforward technique for finding such regions.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个常见的挑战是找到并计算对齐在注释区域之外的读取值。在RNAseq实验中，这些读取值可能代表未注释的基因和新型转录本。实际上，我们有一些已知的基因，并且可以看到它们被转录，因为它们有对齐的读取覆盖，但其他转录区域并未包含在任何注释中，我们希望知道这些读取代表的对齐位置。在这个配方中，我们将探讨一种看似简单的技术来寻找这些区域。
+- en: Getting ready
+  id: totrans-186
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: 'Our dataset will be a synthetic one that has a small 6,000 bp genome region
+    and two gene features with reads and a third unannotated region with aligning
+    reads, as shown in the following screenshot:'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据集将是一个合成数据集，包含一个小的6,000 bp基因组区域和两个具有读取值的基因特征，以及一个未注释的区域，具有对齐的读取值，如下图所示：
+- en: '![](img/6829527b-32fa-443c-9c5d-55dd67cf662a.png)'
+  id: totrans-188
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/6829527b-32fa-443c-9c5d-55dd67cf662a.png)'
+- en: We'll need the Bioconductor `csaw`, `IRanges`, `SummarizedExperiment`,and `rtracklayer` libraries
+    and some functions from other packages that are part of base Bioconductor. The
+    data is in this book's data repository under `datasets/ch1/windows.bam` and `datasets/ch1/genes.gff`
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将需要Bioconductor的`csaw`、`IRanges`、`SummarizedExperiment`和`rtracklayer`库，以及其他一些来自Bioconductor基本包的函数。数据位于本书的数据仓库中的`datasets/ch1/windows.bam`和`datasets/ch1/genes.gff`。
+- en: How to do it...
+  id: totrans-190
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Power analysis with `powsimR` can be done in the following steps:'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`powsimR`进行功效分析可以按照以下步骤进行：
+- en: 'Set up a loading function:'
+  id: totrans-192
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置加载函数：
+- en: '[PRE36]'
+  id: totrans-193
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'Get counts in windows across the whole genome:'
+  id: totrans-194
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 获取整个基因组的窗口计数：
+- en: '[PRE37]'
+  id: totrans-195
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Find overlaps between annotations and our windows, and subset the windows:'
+  id: totrans-196
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查找注释与窗口之间的重叠，并对子集进行操作：
+- en: '[PRE38]'
+  id: totrans-197
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'Subset the windows into those in annotated and non-annotated regions:'
+  id: totrans-198
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将窗口子集分为注释区域和非注释区域：
+- en: '[PRE39]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'Get the data out to a count matrix:'
+  id: totrans-200
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将数据提取到计数矩阵中：
+- en: '[PRE40]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: How it works...
+  id: totrans-202
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: In *step 1,* we create a function that will load gene region information in
+    a GFF file (see this book's *Appendix* for a description of GFF) and convert it
+    into a Bioconductor `GRanges` object using the `rtracklayer` package. This recipe
+    works because `GRanges` objects can be subset, just like a regular R matrix or
+    dataframe. They're an object that is "matrix-like" in that respect and although `GRanges` is
+    much more complicated than a matrix, it behaves much the same. This allows for
+    some easy manipulations and extractions. We use `GRanges`extensively throughout
+    this recipe, along with the related class, `RangedSummarizedExperiment`.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 1*中，我们创建一个函数，加载GFF文件中的基因区域信息（请参见本书的*附录*以了解GFF的描述），并使用`rtracklayer`包将其转换为Bioconductor的`GRanges`对象。此方法有效，因为`GRanges`对象可以像普通的R矩阵或数据框一样进行子集选择。它们在这方面表现得像一个“矩阵”，尽管`GRanges`比矩阵复杂得多，但它的行为却非常相似。这使得一些操作和提取变得非常简单。我们在本食谱中广泛使用`GRanges`以及相关的类`RangedSummarizedExperiment`。
+- en: In *step 2,* we use the `csaw windowCounts()` function to get counts across
+    the whole genome in 500 bp windows. The `width` parameter defines the window size,
+    and the `param` parameter determines what constitutes a passing read; here, we
+    set minimum read quality (`minq`) to a PHRED score of 20, remove PCR duplicates
+    (`dedup = TRUE`), and require that both of the pairs of a read are aligned (`pe="both"`).
+    The returned `whole_genome` object is `RangedSummarizedExperiment`. We set the
+    name of the single data column in `whole_genome` to `small_data`. Finally, we
+    use the custom function, `get_annotated_regions_from_gff()`, to make a `GRanges`
+    object, `annotated_regions`, of the genes represented in our GFF file.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 2*中，我们使用`csaw windowCounts()`函数在500 bp的窗口中获取整个基因组的计数。`width`参数定义了窗口大小，`param`参数决定了什么是通过的读数；在这里，我们将最小读数质量（`minq`）设置为PHRED评分20，去除PCR重复（`dedup
+    = TRUE`），并要求每个读数的两个配对都对齐（`pe="both"`）。返回的`whole_genome`对象是`RangedSummarizedExperiment`。我们将`whole_genome`中单一数据列的名称设置为`small_data`。最后，我们使用自定义函数`get_annotated_regions_from_gff()`，根据GFF文件中的基因信息创建`GRanges`对象`annotated_regions`。
+- en: With *Step 3*, we use the `IRanges overlapsAny()` function to check whether
+    the window locations overlap at all with the gene regions. This function requires
+    `GRanges` objects, so we extract that from the `whole_genome` variable using the
+    `SummarizedExperiment` `rowRanges()` function and pass that along with the existing
+    `GRanges` object's `annotated_regions` to `overlapsAny()`. This returns a binary
+    vector that we can use to do subsetting.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3*中，我们使用`IRanges overlapsAny()`函数检查窗口位置是否与基因区域有重叠。此函数需要`GRanges`对象，因此我们使用`SummarizedExperiment`的`rowRanges()`函数从`whole_genome`变量中提取，并将该对象与现有的`GRanges`对象的`annotated_regions`一起传递给`overlapsAny()`。此函数返回一个二进制向量，我们可以用它来进行子集选择。
+- en: In *step 4,* we simply use the binary vector, `windows_in_genes`, to subset
+    the `whole_genome` object, thereby extracting the annotated windows (into `annotated_window_counts`)
+    as a `GRanges` object. Then, we can get the non-annotated windows with the same
+    code but by logically inverting the binary vector using the `!` operator. This
+    gives us `non_annotated_window_counts`.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 4*中，我们只需使用二进制向量`windows_in_genes`来对子集`whole_genome`对象，从而提取注释窗口（存入`annotated_window_counts`）作为`GRanges`对象。然后，我们可以使用相同的代码，通过逻辑反转二进制向量（使用`!`操作符）来获取非注释窗口，从而得到`non_annotated_window_counts`。
+- en: Finally, in *step 5*, we can extract the actual counts from the `GRanges` object
+    using the `assay()` function.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在*步骤 5*中，我们可以使用`assay()`函数从`GRanges`对象中提取实际计数。
+- en: There's more...
+  id: totrans-208
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: 'We may need to get annotated regions from other file formats than GFF. `rtracklayer` supports
+    various formats—here''s a function for working with BED files:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可能需要从GFF以外的其他文件格式获取注释区域。`rtracklayer`支持多种格式——这里是处理BED文件的函数：
+- en: '[PRE41]'
+  id: totrans-210
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: Finding regions showing high expression ab initio with bumphunter
+  id: totrans-211
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用bumphunter方法发现高表达区域的初步步骤
+- en: Finding regions of read alignments that all come from the same, potentially
+    unannotated, genomic feature is a common task. The aim here is to group read alignments
+    together in such a way that we will be able to mark regions that have significant
+    coverage and then go on to compare samples for differences in expression levels.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 查找所有来自同一、可能未注释的基因组特征的读数比对区域是一项常见任务。这里的目标是将读数比对区域分组，以便标记出具有显著覆盖度的区域，并随后对样本之间的表达水平差异进行比较。
+- en: Getting ready...
+  id: totrans-213
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作...
+- en: We'll use the same `windows` dataset that had one experiment with three peaks
+    into the function that we used in *Recipe 4—*so we know we're looking for three
+    bumps. The data is in this book's data repository under `datasets/ch1/windows.bam`. We'll
+    need the `Rsamtools `and `bumphunter` libraries.
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用相同的`windows`数据集，其中有一个实验包含三个峰值，并将其传入我们在*食谱 4*中使用的函数——这样我们就知道我们要查找三个突起。数据存储在本书的数据仓库中的`datasets/ch1/windows.bam`文件下。我们需要`Rsamtools`和`bumphunter`库。
+- en: How to do it...
+  id: totrans-215
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何进行操作...
+- en: 'Load data and get per-position coverage:'
+  id: totrans-216
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载数据并获取每位置的覆盖度：
+- en: '[PRE42]'
+  id: totrans-217
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'Find preliminary clusters:'
+  id: totrans-218
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查找初步簇：
+- en: '[PRE43]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'Find the bumps with a minimum cutoff:'
+  id: totrans-220
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查找具有最小阈值的突起：
+- en: '[PRE44]'
+  id: totrans-221
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: How it works...
+  id: totrans-222
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: In *step 1,* we use Rsamtools `pileup()` function with default settings to get
+    a per-base coverage dataframe. Each row represents a single nucleotide in the
+    reference and the count column gives the depth of coverage at that point. The
+    result is stored in the `pileup_df` dataframe.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 1*中，我们使用Rsamtools的`pileup()`函数并使用默认设置，获取每碱基的覆盖度数据框。每一行代表参考中的单个核苷酸，计数列给出该点的覆盖深度。结果存储在`pileup_df`数据框中。
+- en: 'In *step 2*, we use the bumphunter `clusterMaker()` function on `pileup_df`,
+    which simply groups reads within a certain distance of each other into clusters.
+    We give it the sequence names, positions, and a maximum distance parameter (`maxGap`).
+    The function returns a vector of cluster numbers of equal length to the dataframe,
+    indicating the cluster membership of each row in the dataframe. If we tabulate
+    with table, we can see the cluster sizes (number of rows) in each cluster:'
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 2*中，我们使用`bumphunter`的`clusterMaker()`函数在`pileup_df`上进行操作，简单地将距离较近的读数分组到一起形成簇。我们传入序列名称、位置和最大距离参数（`maxGap`）。该函数返回一个与数据框长度相等的簇编号向量，指示每一行在数据框中的簇归属。如果我们用`table`进行统计，就能看到每个簇中包含的行数（簇大小）：
+- en: '[PRE45]'
+  id: totrans-225
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'In *step 3*, we refine our approach; we use `regionFinder()`, which applies
+    a read depth cutoff to ensure a minimum read depth for the clusters. We pass it
+    similar data as in *step 2*, adding the cluster membership vector clusters and
+    a minimum read cutoff—here, we set to 1 for use with this very small dataset.
+    The result of *step 3* is the regions that are clustered together, but in a useful
+    table:'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3*中，我们改进了方法；我们使用`regionFinder()`，它应用了一个读深度阈值，以确保簇的最低读深度。我们传入与*步骤 2*类似的数据，添加簇归属向量clusters以及最小读数阈值——在这个非常小的数据集中，我们设置为1。*步骤
+    3*的结果是被聚集在一起的区域，并以有用的表格形式呈现：
+- en: '[PRE46]'
+  id: totrans-227
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: In these region predictions, we can clearly see the three regions containing
+    reads that are in that data, give or take a nucleotide or two.
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这些区域预测中，我们可以清楚地看到这三个位于数据中的区域，读数大致会有几个核苷酸的偏差。
+- en: There's more...
+  id: totrans-229
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: If you have multiple experiments to analyze, try the `bumphunter()` function.
+    This will operate over multiple data columns in a matrix and perform linear modeling
+    to assess uncertainty about the position and existence from the replicates; it
+    is very similar to `regionFinder()` in operation.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你有多个实验需要分析，可以尝试`bumphunter()`函数。它会在矩阵中的多个数据列上操作，并进行线性建模，以评估来自重复样本的位点和存在的不确定性；它的操作方式与`regionFinder()`非常相似。
+- en: Differential peak analysis
+  id: totrans-231
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 差异峰值分析
+- en: When you've discovered unannotated transcripts you may want to see whether they
+    are differentially expressed between experiments. We've already looked at how
+    we might do that with **edgeR** and **DESeq**, but one problem is going from an
+    object such as a `RangedSummarizedExperiment`, comprised of the data and a `GRanges` object
+    that describes the peak regions, to the internal **DESeq** object. In this recipe,
+    we'll look at how we can summarise the data in those objects and get them into
+    the correct format.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你发现未注释的转录本时，可能想要看看它们在不同实验之间是否有差异表达。我们已经了解了如何使用**edgeR**和**DESeq**来进行这一分析，但一个问题是如何将一个如`RangedSummarizedExperiment`的对象（它由数据和描述峰值区域的`GRanges`对象组成）转换为内部的**DESeq**对象。在这个食谱中，我们将探讨如何将这些对象中的数据汇总并将其转换为正确的格式。
+- en: Getting ready
+  id: totrans-233
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: For this recipe, you'll need the `RangedSummarizedExperiment` version of the
+    *Arabidopsis thaliana* RNAseq in `datasets/ch1/arabidopsis_rse.RDS` in this book's
+    repository. We'll use the **DESeq** and `SummarizedExperiment` Bioconductor packages
+    we used earlier too.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于这个食谱，你需要本书仓库中的`datasets/ch1/arabidopsis_rse.RDS`文件，这里面包含了*拟南芥* RNAseq的`RangedSummarizedExperiment`版本。我们还将继续使用之前使用过的**DESeq**和`SummarizedExperiment`
+    Bioconductor包。
+- en: How to do it...
+  id: totrans-235
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'Load data and set up a function that creates region tags:'
+  id: totrans-236
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载数据并设置一个创建区域标签的函数：
+- en: '[PRE47]'
+  id: totrans-237
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Extract data and annotate rows:'
+  id: totrans-238
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 提取数据并注释行：
+- en: '[PRE48]'
+  id: totrans-239
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: How it works...
+  id: totrans-240
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: '*Step 1* starts by loading in our pre-prepared `RangedSummarized` experiment;
+    note that the `names` slot of the `GRanges` object in there is *not* populated.
+    We next create a custom function, `make_tag()`, which works by pasting together
+    `seqnames`, `starts` and the computed end (`start` + `width`) from a passed `GRanges` object.
+    Note the `@` sign syntax: this is used because `GRange` is an S4 object and the
+    slots are accessed with `@` rather than the more familiar `$`.'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤1*开始时加载我们预先准备好的`RangedSummarized`实验数据；请注意，`GRanges`对象中的`names`槽没有填充。接下来，我们创建一个自定义函数`make_tag()`，它通过拼接`seqnames`、`starts`和通过传递的`GRanges`对象计算出的结束位置（`start`
+    + `width`）来工作。请注意`@`符号语法：这是因为`GRange`是一个S4对象，槽是通过`@`而不是熟悉的`$`来访问的。'
+- en: 'In s*tep 2,* the code pulls out the actual data from `RangedSummarizedExperiment`
+    using the `assay()` function. The matrix returned has no row names, which is unuseful,
+    so we use the `if` clause to check the names slot—we use that as row names if
+    it''s available; if it, isn''t we make a row name tag using the position information
+    in the `GRanges` object in the `make_tag()` function we have created. This will
+    give the following output—a count matrix that has the location tag as the row
+    name that can be used in DESeq and edgeR as described in *Recipes 1* and *2* in
+    this chapter:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤2*中，代码通过`assay()`函数从`RangedSummarizedExperiment`中提取实际数据。返回的矩阵没有行名，这样不太有用，因此我们使用`if`语句来检查`names`槽——如果它可用，我们将其作为行名；如果不可用，我们使用`GRanges`对象中的位置信息，在我们创建的`make_tag()`函数中生成行名标签。这样就会得到以下输出——一个计数矩阵，其中位置标签作为行名，可以在本章的*食谱1*和*食谱2*中描述的DESeq和edgeR中使用：
+- en: '[PRE49]'
+  id: totrans-243
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: Estimating batch effects using SVA
+  id: totrans-244
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用SVA估计批次效应
+- en: High throughput data such as RNAseq is often complicated by technical errors
+    that are not explicitly modeled in the experimental design and can confound the
+    detection of differential expression. Differences in counts from samples run on
+    different days or different locations or on different machines are an example
+    of a technical error that is very often present and which we should try to model
+    in our experimental design. An approach to this is to build a *surrogate variable* into
+    our experimental design that explains the batch effect and take it into account
+    in the modeling and differential expression analysis stages. We'll use the **SVA **package
+    to do this.
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 高通量数据，如RNAseq，常常受到实验设计中未明确建模的技术误差的影响，这些误差可能会混淆差异表达的检测。来自不同日期、不同地点或不同机器上运行的样本的计数差异就是一个常见的技术误差示例，这种误差通常存在，我们应该尽量在实验设计中进行建模。解决这个问题的一种方法是将*代理变量*纳入我们的实验设计中，解释批次效应，并在建模和差异表达分析阶段考虑它。我们将使用**SVA**包来实现这一点。
+- en: Getting ready
+  id: totrans-246
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We'll need the SVA package from Bioconductor and our *Arabidopsis* count data
+    in `datasets/ch1/arabidopsis.RDS`.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要Bioconductor中的SVA包和我们的*拟南芥*计数数据，位于`datasets/ch1/arabidopsis.RDS`。
+- en: How to do it...
+  id: totrans-248
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做...
+- en: 'For estimating batch effects using SVA, perform the following steps:'
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用SVA估计批次效应，请执行以下步骤：
+- en: 'Load the libraries and data:'
+  id: totrans-250
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库和数据：
+- en: '[PRE50]'
+  id: totrans-251
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'Filter out rows with too few counts in some experiments:'
+  id: totrans-252
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在某些实验中过滤掉计数过少的行：
+- en: '[PRE51]'
+  id: totrans-253
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Create the initial design:'
+  id: totrans-254
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建初步设计：
+- en: '[PRE52]'
+  id: totrans-255
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'Set up the test and null models and run SVA:'
+  id: totrans-256
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 设置测试模型和空模型并运行SVA：
+- en: '[PRE53]'
+  id: totrans-257
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'Extract the surrogate variables to a new design for downstream use:'
+  id: totrans-258
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 提取代理变量以用于后续的设计：
+- en: '[PRE54]'
+  id: totrans-259
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: How it works...
+  id: totrans-260
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: In *step 1,* the script begins by loading in a count matrix of the *Arabidopsis* RNAseq
+    data, which you will recall is a simple experiment with three replicates of `mock` and
+    three of `hrcc` treatment.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤1*中，脚本首先加载*拟南芥* RNAseq数据的计数矩阵，你会记得这是一个简单的实验，包含三次`mock`处理和三次`hrcc`处理的重复。
+- en: In *step 2,* we create a vector of row indices that we wish to retain, which
+    we do by testing whether the row has at least two columns with a count of over
+    3—this is done by using `apply()` and an anonymous function over the rows of the
+    count matrix.
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤2*中，我们创建了一个包含我们希望保留的行索引的向量，这通过测试每一行是否至少有两列计数大于3来完成——这是通过使用`apply()`和匿名函数在计数矩阵的行上进行操作实现的。
+- en: With *step 3,* we create a `groups` factor describing the experiment sample
+    types.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤3*中，我们创建了一个`groups`因子，描述了实验样本的类型。
+- en: '*Step 4* is the one that does the work; we use the `groups` factor in `model.matrix()` to
+    create the model design we want to use. We also need a null model, which, in this
+    experimental design, is equivalent to the first column, so we extract that from
+    the `test_model` design object. We can then use the key `svaseq()` function to
+    estimate the surrogate variable to add to our design. We add in `test_model` and
+    `null_model` and select the number of surrogate variables to use with `n.sv`,
+    which should be one for a simple design like this.'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤4*是实际操作的部分；我们在`model.matrix()`中使用`groups`因子来创建我们想要使用的模型设计。我们还需要一个空模型，在此实验设计中，它等同于第一列，因此我们从`test_model`设计对象中提取它。然后，我们可以使用关键的`svaseq()`函数来估计需要添加到设计中的代理变量。我们将`test_model`和`null_model`结合，并使用`n.sv`来选择使用的代理变量数量，对于像这样的简单设计，通常设置为1。'
+- en: The final bit, *step 5*, is to add the surrogate variable to the design model,
+    which we do by binding `test_model` and the `sv` column of `svar` (`svsar$sv`)
+    together. The final design object can then be used in packages such as **edgeR**
+    and **DESeq2** as any other and those methods will use the surrogate variable
+    to deal with batch effects.
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后一步，*步骤5*，是将代理变量添加到设计模型中，我们通过将`test_model`和`svar`中的`sv`列（`svsar$sv`）结合在一起完成此操作。最终的设计对象可以像其他任何设计对象一样用于**edgeR**和**DESeq2**等包，且这些方法将使用代理变量来处理批次效应。
+- en: Finding allele-specific expressions with AllelicImbalance
+  id: totrans-266
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用AllelicImbalance寻找等位基因特异性表达
+- en: An allele-specific expression is a situation that occurs when there is a differential
+    abundance of different allelic variants of a transcript. RNAseq can help to provide
+    quantitative estimates of allele-specific expression for genes with transcribed
+    polymorphisms—that is, variants in the transcript that may result in different
+    proteins. In this recipe, we'll take a look at a method for determining which
+    of the variants of a transcript may have preferential expressions in different
+    samples. The reads will come from different `.bam` files and the variants must
+    already be known. This implies that you have already carried out a read alignment
+    and a variant call step and have per sample `.bam`and `.vcf` files. We'll use
+    the `AllelicImbalance` and `VariantAnnotation` packages for this recipe.
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 等位基因特异性表达是指在转录本的不同等位基因变异之间存在差异丰度的情况。RNAseq有助于为具有转录变异的基因提供等位基因特异性表达的定量估计——即转录本中可能导致不同蛋白质的变异。在本教程中，我们将探讨一种方法，用于确定转录本的哪些变异可能在不同样本中表现出偏向性表达。这些读取数据将来自不同的`.bam`文件，且变异必须已经被识别。这意味着你已经完成了读取比对和变异调用步骤，并且拥有每个样本的`.bam`和`.vcf`文件。我们将在此教程中使用`AllelicImbalance`和`VariantAnnotation`包。
+- en: Getting ready
+  id: totrans-268
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: You'll need `AllelicImbalance` and `VariantAnnotation` from Bioconductor. The
+    `AllelicImbalance` package provides a small but informative dataset of three SNPs
+    on Chromosome 17 of the hg19 build of the human genome. The files have been extracted
+    into this book's data repository in `datasets/ch1/allele_expression `.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要从Bioconductor中安装`AllelicImbalance`和`VariantAnnotation`。`AllelicImbalance`包提供了一个小但信息丰富的数据集，包含人类基因组hg19版本上17号染色体的三个SNP。文件已被提取到本书的数据仓库中的`datasets/ch1/allele_expression`目录下。
+- en: How to do it...
+  id: totrans-270
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作...
+- en: 'Load libraries and set up an import folder:'
+  id: totrans-271
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库并设置导入文件夹：
+- en: '[PRE55]'
+  id: totrans-272
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: 'Load reads and variants in regions of interest:'
+  id: totrans-273
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载目标区域的读取数据和变异信息：
+- en: '[PRE56]'
+  id: totrans-274
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'Build the ASEset object:'
+  id: totrans-275
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 构建ASEset对象：
+- en: '[PRE57]'
+  id: totrans-276
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'Run the test on all variants:'
+  id: totrans-277
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对所有变异进行测试：
+- en: '[PRE58]'
+  id: totrans-278
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: How it works...
+  id: totrans-279
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: In *step 1*, the script begins by creating the familar `GRanges` object describing
+    our region of interest and the folder holding the `.bam` files of reads.
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤1*中，脚本首先创建了一个熟悉的`GRanges`对象，描述了我们感兴趣的区域以及包含`.bam`文件的文件夹。
+- en: In *step 2*, the `impBamGAL()` function loads in reads in the region of interest.
+    The variant information is loaded into `variant_positions`—another `GRanges` object
+    and the reads and variants are used to make allele counts with `getAlleleCounts()`*. *
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤2*中，`impBamGAL()`函数加载了目标区域的读取数据。变异信息被加载到`variant_positions`中——另一个`GRanges`对象，读取数据和变异用于使用`getAlleleCounts()`生成等位基因计数。*
+- en: With this done, in *step 3*, we can build the **ASESet** object, `ase.vcf` (a
+    class that inherits from `RangedSummarizedExperiment`), using the constructor
+    function, `ASEsetFromCountList()`; we then use the setter functions, `ref()` and
+    `alt()`, to apply the reference and alternative base identities.
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成这一部分后，在*第三步*，我们可以构建**ASESet**对象`ase.vcf`（一个继承自`RangedSummarizedExperiment`的类），使用构造函数`ASEsetFromCountList()`；然后我们使用设置函数`ref()`和`alt()`，应用参考和替代碱基身份。
+- en: Finally, in *step 4*, we can apply tests. `binom.test()` carries out binomial
+    per position per sample (`.bam` file) tests for deviations from equality in counts
+    in reference and alternative alleles. The parameter *n* tells the test which strand
+    to consider—in this example, we haven't set up per-strand information, so we use `"*"` to
+    ignore strandedness.
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，在*第四步*，我们可以应用测试。`binom.test()`对每个位置每个样本（`.bam`文件）进行二项分布检验，测试参考和替代等位基因的计数是否有偏差。*n*参数告诉测试考虑哪个链——在这个例子中，我们没有设置每条链的信息，因此使用`"*"`来忽略链特性。
+- en: 'This will give the following output:'
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将给出以下输出：
+- en: '[PRE59]'
+  id: totrans-285
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: There's more...
+  id: totrans-286
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: The preceding analysis can be extended to carry out per strand and per phenotype
+    tests if required. The script would need amending to introduce strand information
+    in the `ASESet` object construction step. Doing so usually requires that the RNAseq
+    experiment and alignment steps were performed with strandedness in mind and the
+    bioinformatics pipeline up to here configured accordingly. Phenotype information
+    can be added in the construction step using the `colData` parameter and a vector
+    of phenotype or sample types for columns in the `ASESet` object.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果需要，前面的分析可以扩展为每条链和每种表型的测试。脚本需要进行修改，以在`ASESet`对象构造步骤中引入链信息。通常，这需要RNAseq实验和对齐步骤在考虑链特性的前提下执行，并且生物信息学流程需按此配置。可以在构造步骤中使用`colData`参数和一个表型或样本类型的向量来添加表型信息，这些信息对应`ASESet`对象中的列。
+- en: Plotting and presenting RNAseq data
+  id: totrans-288
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 绘制和展示RNAseq数据
+- en: Plotting the RNAseq data *en masse* or for individual genes or features is an
+    important step in QC and understanding. In this recipe, we'll see how to make
+    gene count plots in samples of interest, how to create an MA plot that plots counts
+    against fold change and allows us to spot expression-related sample bias, and
+    how to create a volcano plot that plots significance against fold change and allows
+    us to spot the most meaningful changes easily.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 绘制RNAseq数据*总览*或单个基因或特征的图表是质量控制和理解的重要步骤。在这个步骤中，我们将看到如何绘制样本中基因计数图、如何创建一个MA图（它绘制计数与倍数变化，并帮助我们发现与表达相关的样本偏差），以及如何创建一个火山图（它绘制显著性与倍数变化，并帮助我们轻松发现最有意义的变化）。
+- en: Getting ready
+  id: totrans-290
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: In this recipe, we'll use the `DESeq2` package, the `ggplot2` package, `magrittr`,
+    and `dplyr`. We'll use the `DESeqDataSet` object we created for the `modencodefly`
+    data in *Recipe 2—*a saved version is in the `datasets/ch1/modencode_dds.RDS`
+    file in this book's data repository.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个步骤中，我们将使用`DESeq2`包、`ggplot2`包、`magrittr`和`dplyr`。我们将使用为`modencodefly`数据创建的`DESeqDataSet`对象，*第2步配方*中保存的版本位于本书数据仓库中的`datasets/ch1/modencode_dds.RDS`文件中。
+- en: How to do it...
+  id: totrans-292
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点...
+- en: 'Load libraries and create a dataframe of RNAseq results:'
+  id: totrans-293
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载库并创建RNAseq结果的数据框：
+- en: '[PRE60]'
+  id: totrans-294
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'Create a boxplot of counts for a single gene, conditioned on "`stage"`:'
+  id: totrans-295
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个单一基因的箱线图，基于"`stage`"进行条件化：
+- en: '[PRE61]'
+  id: totrans-296
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'Create an MA plot with coloring conditioned on significance:'
+  id: totrans-297
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个基于显著性条件的MA图：
+- en: '[PRE62]'
+  id: totrans-298
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'Create a volcano plot with coloring conditioned on significance:'
+  id: totrans-299
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个基于显著性条件的火山图：
+- en: '[PRE63]'
+  id: totrans-300
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: How it works...
+  id: totrans-301
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: '*Step 1* is brief and loads the dataset and libraries we''ll need.'
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第一步*是简要加载我们需要的数据集和库。'
+- en: In *Step 2,* we take advantage of a couple of useful parameters in the `plotCounts()`
+    and `results()` functions from **DESeq2**. The `returnData` flag in `plotCounts()` will
+    optionally return a tidy dataframe of count information for a given gene in a
+    given condition, hence allowing us to send the data through `ggplot()` to make
+    a boxplot for an individual gene. The **magrittr** `%>%` operator allows us to
+    send the return value of `plotCounts()` straight to the first positional argument
+    of `ggplot()` without saving in an intermediate variable.
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第二步*，我们利用了**DESeq2**中`plotCounts()`和`results()`函数中的一些有用参数。`plotCounts()`中的`returnData`标志将可选地返回给定条件下某个基因的计数信息的整洁数据框，因此我们可以将数据传递给`ggplot()`来制作单个基因的箱线图。**magrittr**的`%>%`操作符允许我们将`plotCounts()`的返回值直接传递给`ggplot()`的第一个位置参数，而无需先保存到中间变量中。
+- en: In *Step 3,* we use the `results()` function from DESeq2 to get the `results`
+    dataframe, which we pipe to **dplyr** `mutate()` in order to add a new column
+    called `is_significant` containing `TRUE` if the value of the `padj` column is
+    lower than 0.05\. We then use the returned `result_df` dataframe in a `ggplot()`
+    command to make a scatter plot of `baseMean` (count) against log2 fold change,
+    with points colored by the `is_significant` variable, effectively colored by whether
+    the P value is lower than 0.05 or not.
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3*中，我们使用DESeq2中的`results()`函数来获取`results`数据框，并将其传递给**dplyr**的`mutate()`函数，以添加一个名为`is_significant`的新列，如果`padj`列的值小于0.05，则该列值为`TRUE`。然后，我们在`ggplot()`命令中使用返回的`result_df`数据框，绘制`baseMean`（计数）与log2折叠变化之间的散点图，点的颜色由`is_significant`变量决定，实际上是根据P值是否小于0.05来着色。
+- en: 'In *Step 4,* we use the same `result_df` dataframe to plot log2fold change
+    against the negative log10 of the `''pvalue''` to give a `''volcano''` plot of
+    the relationship between P and differential expression level:'
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 4*中，我们使用相同的`result_df`数据框，绘制log2折叠变化与`'pvalue'`的负log10值的关系，得到一个`'火山图'`，展示P值与差异表达水平之间的关系：
+- en: '![](img/8dd09475-89dd-4013-a6e4-ce5a7dbc27b0.png)'
+  id: totrans-306
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/8dd09475-89dd-4013-a6e4-ce5a7dbc27b0.png)'
+- en: The preceding three plots are the combined resultant output of these three `ggplot``()`
+    commands.
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面三个图是这三个`ggplot``()命令的合成结果输出。

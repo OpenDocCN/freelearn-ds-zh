@@ -1,0 +1,1320 @@
+- en: '5'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '5'
+- en: Data Preparation
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 数据准备
+- en: So far, we have covered the foundations of time series and Apache Spark and
+    the full lifecycle of a time series analysis project. In this chapter, we delve
+    into the critical steps of organizing, cleaning, and transforming time series
+    data for effective analysis. It covers techniques for handling missing values,
+    dealing with outliers, and structuring data to suit Spark’s distributed computing
+    model. This information is invaluable as it equips you with the skills to ensure
+    data quality and compatibility with Spark, laying a robust foundation for accurate
+    and efficient time series analysis. Proper data preparation enhances the reliability
+    of subsequent analytical processes, making this chapter an essential prerequisite
+    to derive meaningful insights from time-dependent datasets using Spark.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们已经介绍了时间序列和Apache Spark的基础知识，以及时间序列分析项目的完整生命周期。在本章中，我们将深入探讨组织、清洗和转换时间序列数据的关键步骤，以便进行有效分析。内容包括处理缺失值、应对离群值和将数据结构化以适应Spark的分布式计算模型。这些信息非常宝贵，它们将帮助你确保数据质量并与Spark兼容，为准确高效的时间序列分析奠定坚实基础。适当的数据准备增强了后续分析过程的可靠性，使本章成为利用Spark从时间相关数据集中提取有意义见解的必备前提。
+- en: 'We’re going to cover the following main topics in this chapter:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们将涵盖以下主要内容：
+- en: Data ingestion and persistence
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据摄取与持久化
+- en: Data quality checks and cleaning
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据质量检查与清洗
+- en: Transformations
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 转换
+- en: Technical requirements
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'Hands-on coding is predominant in this chapter, covering the common data preparation
+    steps of a time series analysis project. The code for this chapter can be found
+    in the `ch5` folder of the book’s GitHub repository at this URL:'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章主要是动手编码，涵盖了时间序列分析项目中常见的数据准备步骤。本章的代码可以在本书GitHub仓库中的`ch5`文件夹找到，网址如下：
+- en: '[https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch5](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch5)'
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch5](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch5)'
+- en: Note
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The code will be used with the Databricks Community Edition, as per the approach
+    explained in [*Chapter 1*](B18568_01.xhtml#_idTextAnchor016) and this chapter.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码将与Databricks Community Edition一起使用，正如[*第一章*](B18568_01.xhtml#_idTextAnchor016)和本章中所解释的方法一样。
+- en: Data ingestion and persistence
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 数据摄取与持久化
+- en: In this first section, we will cover the methods of getting time series data
+    from sources and persisting the dataset to storage.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将介绍从数据源获取时间序列数据并将数据集持久化到存储的方式。
+- en: Ingestion
+  id: totrans-14
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 摄取
+- en: Ingestion is the process by which data is retrieved from a source system for
+    further processing and analysis. This process can be executed in batches to ingest
+    a large amount of data as a one-off on demand or scheduled to run automatically
+    at regular intervals, such as every night. Alternatively, if the data is available
+    from the source system on a continual basis and is required as such, the other
+    ingestion method is structured streaming.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 摄取是从源系统检索数据进行进一步处理和分析的过程。这个过程可以批量执行，用来一次性摄取大量数据，或按计划定期自动运行，比如每晚一次。或者，如果数据是源系统持续提供且需要实时获取的，则可以使用结构化流处理作为另一种摄取方法。
+- en: Note
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: We can technically code the ingestion process as structured streaming and configure
+    it to run at triggered intervals. This gives the flexibility to adjust to changing
+    business requirements on data freshness without having to redevelop the ingestion
+    process.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从技术上讲，我们可以将数据摄取过程编码为结构化流处理，并将其配置为在触发的时间间隔运行。这为根据数据的新鲜度变化调整业务需求提供了灵活性，而无需重新开发摄取过程。
+- en: In this chapter, we will focus on batch ingestion, the most common method today.
+    We will also briefly discuss structured streaming, which is quickly gaining adoption
+    and has even overtaken batch ingestion in some organizations.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将重点讨论批量摄取，这是目前最常见的方法。我们还将简要讨论结构化流处理，它正在迅速获得应用，在一些组织中甚至超越了批量摄取。
+- en: Batch ingestion
+  id: totrans-19
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 批量摄取
+- en: Batch ingestion is usually done from file storage or from a database.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 批量摄取通常是通过文件存储或数据库完成的。
+- en: From file storage
+  id: totrans-21
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 从文件存储
+- en: 'As we saw in the hands-on sections of the previous chapters, reading from a
+    file is a frequently used batch ingestion method. This is done as follows with
+    Apache Spark, using `spark.read()`:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在前几章的动手实践部分所看到的，读取文件是一个常用的批量摄取方法。使用Apache Spark时，可以通过`spark.read()`来实现：
+- en: '[PRE0]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: With this example, we are reading a CSV-formatted file from a `file_path` storage
+    location. The header is present in this file as the first line. The different
+    columns are separated with a `;` character. We want Spark to find out the data
+    columns and types present in the file, as specified with `inferSchema`.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个例子中，我们从`file_path`存储位置读取一个CSV格式的文件。该文件的第一行包含了标题。不同的列由`；`字符分隔。我们希望Spark根据`inferSchema`自动推断文件中存在的数据列及其类型。
+- en: This example is based on the code in `ts-spark_ch5_1.dbc`, which we can import
+    from the GitHub location for [*Chapter 5*](B18568_05.xhtml#_idTextAnchor103),
+    mentioned in the *Technical requirements* section, into Databricks Community Edition,
+    as per the approach explained in [*Chapter 1*](B18568_01.xhtml#_idTextAnchor016).
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该示例基于`ts-spark_ch5_1.dbc`中的代码，我们可以从GitHub位置导入该文件，参考*技术要求*部分提到的[*第 5 章*](B18568_05.xhtml#_idTextAnchor103)，并按照[*第
+    1 章*](B18568_01.xhtml#_idTextAnchor016)中解释的方法，将其导入Databricks社区版。
+- en: The code URL is [https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch5/ts-spark_ch5_1.dbc](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch5/ts-spark_ch5_1.dbc).
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码的URL是[https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch5/ts-spark_ch5_1.dbc](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch5/ts-spark_ch5_1.dbc)。
+- en: The ingested data can then be further processed and analyzed, as shown in *Figure
+    5**.1*, based on the code example provided for this chapter.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 摄取的数据可以根据本章提供的代码示例进一步处理和分析，如*图 5.1*所示。
+- en: '![](img/B18568_05_01.jpg)'
+  id: totrans-28
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B18568_05_01.jpg)'
+- en: 'Figure 5.1: Viewing the ingested data'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 5.1：查看已摄取的数据
+- en: When reading files, it is also possible to read multiple files from a storage
+    folder by proving the folder location instead of a specific file location. This
+    is a common ingestion pattern for files. Another frequently used feature is to
+    provide a filter (`pathGlobFilter`) to only include filenames matching a pattern.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在读取文件时，也可以通过提供文件夹位置而非特定文件位置，从存储文件夹中读取多个文件。这是文件摄取的常见模式。另一个常用的功能是提供一个筛选器（`pathGlobFilter`），仅包括与模式匹配的文件名。
+- en: 'There are many other options for the `spark.read` command, depending on the
+    source being read. The following Apache Spark documentation on data sources details
+    these options:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`spark.read`命令有许多其他选项，具体取决于正在读取的数据源。以下是关于数据源的Apache Spark文档，详细说明了这些选项：'
+- en: '[https://spark.apache.org/docs/latest/sql-data-sources.html](https://spark.apache.org/docs/latest/sql-data-sources.html)'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/sql-data-sources.html](https://spark.apache.org/docs/latest/sql-data-sources.html)'
+- en: From a database
+  id: totrans-33
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 从数据库
+- en: 'Another frequently used type of source is a relational database. An example
+    for reading from PostgreSQL follows:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个常用的数据源类型是关系型数据库。以下是从PostgreSQL读取数据的示例：
+- en: '[PRE1]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'This is further detailed in the following documentation: [https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html](https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html)'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 详细内容请参见以下文档：[https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html](https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html)
+- en: 'Data from specialized time series databases, such as QuestDB, can be ingested
+    in a similar way, as shown here:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来自专门时间序列数据库（如QuestDB）的数据，可以通过类似的方式摄取，如下所示：
+- en: '[PRE2]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'This is further detailed in the following documentation:'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 详细内容请参见以下文档：
+- en: '[https://questdb.io/blog/integrate-apache-spark-questdb-time-series-analytics/](https://questdb.io/blog/integrate-apache-spark-questdb-time-series-analytics/)'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://questdb.io/blog/integrate-apache-spark-questdb-time-series-analytics/](https://questdb.io/blog/integrate-apache-spark-questdb-time-series-analytics/)'
+- en: Note
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: You will need to include the JDBC driver for the particular database on the
+    Spark classpath. The previously referenced documentation explains this.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您需要将特定数据库的JDBC驱动程序包含在Spark的类路径中。前面引用的文档对此进行了说明。
+- en: Structured Streaming
+  id: totrans-43
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 结构化流处理
+- en: In the case of event-driven or near-real-time processing with Apache Spark,
+    time series data can be ingested from streaming sources such as Apache Kafka,
+    Amazon Kinesis, Google Cloud Pub/Sub, and Azure Event Hubs. This typically involves
+    setting up Spark Structured Streaming with the corresponding connectors for the
+    source.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于基于事件驱动或近实时处理的Apache Spark，时间序列数据可以从流数据源（如Apache Kafka、Amazon Kinesis、Google
+    Cloud Pub/Sub和Azure Event Hubs）中摄取。这通常涉及到使用对应的数据源连接器设置Spark结构化流处理。
+- en: 'The following example shows how to ingest data from Apache Kafka using Spark:'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下示例展示了如何使用Spark从Apache Kafka摄取数据：
+- en: '[PRE3]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'The Apache Spark documentation provides further details on reading from streaming
+    sources:'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Spark文档提供了关于从流数据源读取的更多详细信息：
+- en: '[https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#input-sources](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#input-sources)'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#input-sources](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#input-sources)'
+- en: Once the data has been ingested, the next step is to persist it to storage for
+    further processing, as we will see next.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦数据被摄取，下一步是将其持久化存储以进行进一步处理，如我们接下来所见。
+- en: Persistence
+  id: totrans-50
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 持久化
+- en: Data is typically persisted to files on disk or to databases. With Apache Spark,
+    a proven solution for files is Delta Lake, an open source storage protocol.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据通常会持久化到磁盘上的文件或数据库中。对于文件，Apache Spark 提供了一个成熟的解决方案——Delta Lake，一个开源存储协议。
+- en: Note
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Apache Iceberg is another common open source storage protocol.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Iceberg 是另一种常见的开源存储协议。
+- en: Delta provides ACID transactions to Apache Spark and big data workloads, effectively
+    combining the best of file and database storage, in what is called a **lakehouse**
+    (merge of the terms *data lake* and *data warehouse*). Built on top of the Parquet
+    file format, Delta provides capabilities such as schema enforcement, data versioning,
+    and time travel.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Delta 为 Apache Spark 和大数据工作负载提供了 ACID 事务，有效地将文件存储和数据库存储的优势结合在一起，这种结合被称为**湖仓**（*数据湖*和*数据仓库*的合并）。Delta
+    基于 Parquet 文件格式，提供如模式强制、数据版本控制和时间旅行等功能。
+- en: 'Here’s an example of how you can persist time series data in Delta storage
+    format using Apache Spark in Python:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面是一个示例，展示如何使用 Python 在 Delta 存储格式中持久化时间序列数据：
+- en: '[PRE4]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: Load the Delta table as a DeltaTable object
+  id: totrans-57
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将 Delta 表加载为 DeltaTable 对象
+- en: delta_table = DeltaTable.forPath(spark, delta_table_path)
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: delta_table = DeltaTable.forPath(spark, delta_table_path)
+- en: Details on the Delta table
+  id: totrans-59
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Delta 表的详细信息
+- en: print("Delta table details:")
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print("Delta 表详情：")
+- en: delta_table.detail().display()
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: delta_table.detail().display()
+- en: '[PRE5]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: spark.read.load(delta_table_path).display()
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: spark.read.load(delta_table_path).display()
+- en: '[PRE6]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: jdbcDF.write \
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: jdbcDF.write \
+- en: .format("jdbc") \
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .format("jdbc") \
+- en: .option("url", "jdbc:postgresql:dbserver") \
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .option("url", "jdbc:postgresql:dbserver") \
+- en: .option("dbtable", "schema.tablename") \
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .option("dbtable", "schema.tablename") \
+- en: .option("user", "username") \
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .option("user", "username") \
+- en: .option("password", "password") \
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .option("password", "password") \
+- en: .save()
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: .save()
+- en: '[PRE7]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'df_ = spark.read.timestamp_as_of represents the timestamp of the version of
+    interest:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df_ = spark.read.timestamp_as_of表示感兴趣版本的时间戳：
+- en: '[PRE8]'
+  id: totrans-74
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: print(f"Delta table history - after modification:")
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"Delta 表历史记录 - 修改后:")
+- en: delta_table.history().display()
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: delta_table.history().display()
+- en: '[PRE9]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: delta_table.restoreToVersion(latest_version)
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: delta_table.restoreToVersion(latest_version)
+- en: '[PRE10]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'Example consistency check: Check if a column has consistent values'
+  id: totrans-80
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例一致性检查：检查某列的值是否一致
+- en: consistency_check_result = df.groupBy("Date").count().orderBy("count")
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: consistency_check_result = df.groupBy("Date").count().orderBy("count")
+- en: print(f"Data consistency result:")
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"数据一致性结果：")
+- en: consistency_check_result.display()
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: consistency_check_result.display()
+- en: '[PRE11]'
+  id: totrans-84
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Example accuracy check:'
+  id: totrans-85
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例准确性检查：
+- en: Check if values in a column meet certain criteria
+  id: totrans-86
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检查某列中的值是否符合特定条件
+- en: accuracy_check_expression = "Global_active_power < 0 OR Global_active_power
+    > 10"
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: accuracy_check_expression = "Global_active_power < 0 OR Global_active_power
+    > 10"
+- en: Check
+  id: totrans-88
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检查
+- en: accuracy_check_result = df.filter(accuracy_check_expression)
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: accuracy_check_result = df.filter(accuracy_check_expression)
+- en: accuracy_check_result_count = accuracy_check_result.count()
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: accuracy_check_result_count = accuracy_check_result.count()
+- en: 'if accuracy_check_result_count == 0:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '如果 accuracy_check_result_count == 0:'
+- en: print(f"Data meets accuracy check - !({accuracy_check_expression}).")
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"数据通过准确性检查 - !({accuracy_check_expression}).")
+- en: 'else:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'else:'
+- en: print(f"Data fails accuracy check - {accuracy_check_expression} - count {accuracy_check_result_count}:")
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"数据未通过准确性检查 - {accuracy_check_expression} - 计数 {accuracy_check_result_count}:")
+- en: accuracy_check_result.display()
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: accuracy_check_result.display()
+- en: '[PRE12]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Example completeness check: Check for null values in a column'
+  id: totrans-97
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例完整性检查：检查某列是否包含空值
+- en: completeness_check_expression = "Global_active_power is NULL"
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: completeness_check_expression = "Global_active_power is NULL"
+- en: Check
+  id: totrans-99
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检查
+- en: completeness_check_result = df.filter(
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: completeness_check_result = df.filter(
+- en: completeness_check_expression)
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: completeness_check_expression)
+- en: completeness_check_result_count = completeness_check_result.count()
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: completeness_check_result_count = completeness_check_result.count()
+- en: 'if completeness_check_result_count == 0:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '如果 completeness_check_result_count == 0:'
+- en: print(f"Data meets completeness check - !({completeness_check_expression})")
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"数据通过完整性检查 - !({completeness_check_expression})")
+- en: 'else:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'else:'
+- en: print(f"Data fails completeness check - {completeness_check_expression} - count
+    {completeness_check_result_count}:")
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"数据未通过完整性检查 - {completeness_check_expression} - 计数 {completeness_check_result_count}:")
+- en: completeness_check_result.display()
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: completeness_check_result.display()
+- en: '[PRE13]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: from pyspark.sql import functions as F
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from pyspark.sql import functions as F
+- en: from pyspark.sql import Window
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 pyspark.sql 导入 Window
+- en: 'Example: Handling missing values by forward filling'
+  id: totrans-111
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：通过向前填充处理缺失值
+- en: '"timestamp" column is ordered chronologically'
+  id: totrans-112
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '"timestamp" 列按时间顺序排列'
+- en: df = spark.sql(
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = spark.sql(
+- en: f"select timestamp, Global_active_power from {table_name} order by timestamp"
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: f"从 {table_name} 表中选择时间戳和全局有功功率，并按时间戳排序"
+- en: )
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: window = Window.rowsBetween(float('-inf'),0)
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: window = Window.rowsBetween(float('-inf'), 0)
+- en: filled_df = df.withColumn(
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df = df.withColumn(
+- en: '"filled_Global_active_power",'
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"filled_Global_active_power",'
+- en: F.last(df['Global_active_power'],
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F.last(df['Global_active_power'],
+- en: ignorenulls=True).over(window))
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ignorenulls=True).over(window))
+- en: Display updated values
+  id: totrans-121
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 显示更新后的值
+- en: filled_df.filter(
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df.filter(
+- en: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND''2008-11-10 18:17:00''"'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND ''2008-11-10 18:17:00''"'
+- en: ).display()
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).display()
+- en: '[PRE14]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: from pyspark.sql import functions as F
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 pyspark.sql 导入 functions 作为 F
+- en: from pyspark.sql import Window
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 pyspark.sql 导入 Window
+- en: 'Example: Handling missing values by backward filling'
+  id: totrans-128
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：通过向后填充处理缺失值
+- en: '"timestamp" column is ordered chronologically'
+  id: totrans-129
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '"timestamp" 列按时间顺序排列'
+- en: df = spark.sql(
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = spark.sql(
+- en: f"select timestamp, Global_active_power from {table_name} order by timestamp"
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: f"从 {table_name} 表中选择时间戳和全局有功功率，并按时间戳排序"
+- en: )
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: window = Window.rowsBetween(0,float('inf'))
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: window = Window.rowsBetween(0, float('inf'))
+- en: filled_df = df.withColumn(
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df = df.withColumn(
+- en: '"filled_Global_active_power",'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"filled_Global_active_power",'
+- en: F.first(df['Global_active_power'],
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F.first(df['Global_active_power'],
+- en: ignorenulls=True).over(window))
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ignorenulls=True).over(window))
+- en: Display updated values
+  id: totrans-138
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 显示更新后的值
+- en: filled_df.filter(
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df.filter(
+- en: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND''2008-11-10 18:17:00''"'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND ''2008-11-10 18:17:00''"'
+- en: ).display()
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).display()
+- en: '[PRE15]'
+  id: totrans-142
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: from pyspark.sql import Window
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 pyspark.sql 导入 Window
+- en: 'Example: Handling missing values by backward filling'
+  id: totrans-144
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：通过向后填充处理缺失值
+- en: '"timestamp" column is ordered chronologically'
+  id: totrans-145
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '"timestamp" 列按时间顺序排列'
+- en: df = spark.sql(
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = spark.sql(
+- en: f"select timestamp, Global_active_power from {table_name} order by timestamp"
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: f"从 {table_name} 表中选择时间戳和全局有功功率，并按时间戳排序"
+- en: )
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: windowF = Window.rowsBetween(float('-inf'),0)
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: windowF = Window.rowsBetween(float('-inf'), 0)
+- en: windowB = Window.rowsBetween(0,float('inf'))
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: windowB = Window.rowsBetween(0, float('inf'))
+- en: filled_df = df.withColumn(
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df = df.withColumn(
+- en: '"filled_Global_active_power", (F.last('
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"filled_Global_active_power", (F.last('
+- en: df['Global_active_power'], ignorenulls=True
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df['Global_active_power'], ignorenulls=True
+- en: ).over(windowF) + F.first(
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).over(windowF) + F.first(
+- en: df['Global_active_power'], ignorenulls=True
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df['Global_active_power'], ignorenulls=True
+- en: ).over(windowB))/2)
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).over(windowB))/2)
+- en: Display updated values
+  id: totrans-157
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 显示更新后的值
+- en: filled_df.filter(
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: filled_df.filter(
+- en: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND''2008-11-10 18:17:00''"'
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"timestamp BETWEEN ''2008-11-10 17:58:00'' AND ''2008-11-10 18:17:00''"'
+- en: ).display()
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).display()
+- en: '[PRE16]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Example: Remove duplicate rows based on all columns'
+  id: totrans-162
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：基于所有列移除重复行
+- en: 'print(f"With duplicates - count: {df.count()}")'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"有重复行 - 计数: {df.count()}")'
+- en: cleaned_df = df.dropDuplicates()
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: cleaned_df = df.dropDuplicates()
+- en: 'print(f"Without duplicates - count: {cleaned_df.count()}")'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"无重复行 - 计数: {cleaned_df.count()}")'
+- en: 'Example: Remove duplicate rows based on selected columns'
+  id: totrans-166
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：基于选定的列移除重复行
+- en: Assuming "timestamp" is the column to identify duplicates
+  id: totrans-167
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 假设"timestamp"是识别重复项的列
+- en: cleaned_df = df.dropDuplicates(["timestamp"])
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: cleaned_df = df.dropDuplicates(["timestamp"])
+- en: 'print(f"Without duplicates timestamp - count: {cleaned_df.count()}")'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"无重复时间戳 - 计数: {cleaned_df.count()}")'
+- en: '[PRE17]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: from pyspark.sql import functions as F
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 pyspark.sql 导入 functions 作为 F
+- en: 'Example: Detect outliers using z-score'
+  id: totrans-172
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 示例：使用z-score检测离群值
+- en: Compute z-score for each value in the "value" column
+  id: totrans-173
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算"值"列中每个值的z-score
+- en: mean_value = df.select(F.mean(
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: mean_value = df.select(F.mean(
+- en: '"Global_active_power")).collect()[0][0]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"Global_active_power")).collect()[0][0]'
+- en: stddev_value = df.select(F.stddev(
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: stddev_value = df.select(F.stddev(
+- en: '"Global_active_power")).collect()[0][0]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"Global_active_power")).collect()[0][0]'
+- en: z_score_threshold = 5  # Adjust the threshold as needed
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'z_score_threshold = 5  # 根据需要调整阈值'
+- en: df_with_z_score = df.withColumn("z_score", (F.col(
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df_with_z_score = df.withColumn("z_score", (F.col(
+- en: '"Global_active_power") - mean_value) / stddev_value)'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"Global_active_power") - mean_value) / stddev_value)'
+- en: Filter out rows where z-score exceeds the threshold
+  id: totrans-181
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 过滤掉z-score超出阈值的行
+- en: outliers = df_with_z_score.filter(~F.col("z_score").between(
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 离群值 = df_with_z_score.filter(~F.col("z_score").between(
+- en: -z_score_threshold, z_score_threshold))
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: -z_score_threshold, z_score_threshold))
+- en: cleaned_df = df_with_z_score.filter(F.col("z_score").between(
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: cleaned_df = df_with_z_score.filter(F.col("z_score").between(
+- en: -z_score_threshold, z_score_threshold))
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: -z_score_threshold, z_score_threshold))
+- en: Mark as outliers
+  id: totrans-186
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 标记为离群值
+- en: df_with_outlier = df_with_z_score.withColumn(
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df_with_outlier = df_with_z_score.withColumn(
+- en: '"_outlier",'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"_离群值",'
+- en: F.when(
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F.when(
+- en: (F.col("z_score") < -z_score_threshold) |
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (F.col("z_score") < -z_score_threshold) |
+- en: (F.col("z_score") > z_score_threshold), 1
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (F.col("z_score") > z_score_threshold), 1
+- en: ).otherwise(0))
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).otherwise(0))
+- en: 'print(f"With outliers - count: {df.count()}")'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"包含异常值 - 计数: {df.count()}")'
+- en: 'print(f"Global_active_power - mean: {mean_value}, stddev_value: {stddev_value},
+    z_score_threshold: {z_score_threshold}")'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"Global_active_power - 平均值: {mean_value}, 标准差: {stddev_value}, z分数阈值:
+    {z_score_threshold}")'
+- en: 'print(f"Without outliers - count: {cleaned_df.count()}")'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"去除异常值后 - 计数: {cleaned_df.count()}")'
+- en: 'print(f"Outliers - count: {outliers.count()}")'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'print(f"异常值 - 计数: {outliers.count()}")'
+- en: print("Outliers:")
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print("异常值:")
+- en: outliers.display()
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: outliers.display()
+- en: '[PRE18]'
+  id: totrans-199
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: from pyspark.sql import functions as F
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from pyspark.sql import functions as F
+- en: Define the columns to normalize (e.g., "value" column)
+  id: totrans-201
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 定义要归一化的列（例如，“value”列）
+- en: columns_to_normalize = ["Global_active_power"]
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: columns_to_normalize = ["Global_active_power"]
+- en: Compute the minimum and maximum values for each column to normalize
+  id: totrans-203
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算每列的最小值和最大值进行归一化
+- en: min_max_values = df.select(
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: min_max_values = df.select(
+- en: '[F.min(F.col(column)).alias(f"min_{column}")'
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[F.min(F.col(column)).alias(f"min_{column}")'
+- en: for column in columns_to_normalize] +
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: for column in columns_to_normalize] +
+- en: '[F.max(F.col(column)).alias(f"max_{column}")'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[F.max(F.col(column)).alias(f"max_{column}")'
+- en: for column in columns_to_normalize]
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: for column in columns_to_normalize]
+- en: ).collect()[0]
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).collect()[0]
+- en: Normalize the data using min-max normalization
+  id: totrans-210
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用最小-最大归一化对数据进行归一化
+- en: 'for column in columns_to_normalize:'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'for column in columns_to_normalize:'
+- en: min_value = min_max_values[f"min_{column}"]
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: min_value = min_max_values[f"min_{column}"]
+- en: max_value = min_max_values[f"max_{column}"]
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: max_value = min_max_values[f"max_{column}"]
+- en: df = df.withColumn(
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = df.withColumn(
+- en: f"normalized_{column}",
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: f"normalized_{column}",
+- en: (F.col(column) - min_value) / (max_value - min_value))
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (F.col(column) - min_value) / (max_value - min_value))
+- en: print(f"Normalized - {columns_to_normalize}:")
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"归一化后的 - {columns_to_normalize}:")
+- en: df.display()
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df.display()
+- en: '[PRE19]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: from pyspark.sql import functions as F
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from pyspark.sql import functions as F
+- en: Define the columns to standardize (e.g., "value" column)
+  id: totrans-221
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 定义要标准化的列（例如，“value”列）
+- en: columns_to_standardize = ["Global_active_power"]
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: columns_to_standardize = ["Global_active_power"]
+- en: Compute the mean and standard deviation for each column to
+  id: totrans-223
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算每列的均值和标准差以
+- en: standardize
+  id: totrans-224
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 标准化
+- en: mean_stddev_values = df.select(
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: mean_stddev_values = df.select(
+- en: '[F.mean(F.log(F.col(column))).alias(f"mean_{column}")'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[F.mean(F.log(F.col(column))).alias(f"mean_{column}")'
+- en: for column in columns_to_standardize] +
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: for column in columns_to_standardize] +
+- en: '[F.stddev(F.log(F.col(column))).alias(f"stddev_{column}")'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[F.stddev(F.log(F.col(column))).alias(f"stddev_{column}")'
+- en: for column in columns_to_standardize]
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: for column in columns_to_standardize]
+- en: ).collect()[0]
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).collect()[0]
+- en: Standardize the data using z-score standardization
+  id: totrans-231
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用z-score标准化对数据进行标准化
+- en: 'for column in columns_to_standardize:'
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'for column in columns_to_standardize:'
+- en: mean_value = mean_stddev_values[f"mean_{column}"]
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: mean_value = mean_stddev_values[f"mean_{column}"]
+- en: stddev_value = mean_stddev_values[f"stddev_{column}"]
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: stddev_value = mean_stddev_values[f"stddev_{column}"]
+- en: df = df.withColumn(
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = df.withColumn(
+- en: f"standardized_{column}",
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: f"standardized_{column}",
+- en: (F.log(F.col(column)) - mean_value) / stddev_value
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: (F.log(F.col(column)) - mean_value) / stddev_value
+- en: )
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: print(f"Standardized - {columns_to_standardize}:")
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: print(f"标准化后的 - {columns_to_standardize}:")
+- en: df.display()
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df.display()
+- en: '[PRE20]'
+  id: totrans-241
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: '[PRE21]'
+  id: totrans-242
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'

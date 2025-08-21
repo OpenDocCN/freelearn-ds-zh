@@ -1,0 +1,2279 @@
+- en: Chapter 9. Time Series
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第9章 时间序列
+- en: '|   | *"Again time elapsed."* |   |'
+  id: totrans-1
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | *“再次经过的时间。”* |   |'
+- en: '|   | --*Carolyn Keene, The Secret of the Old Clock* |'
+  id: totrans-2
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | --*卡罗琳·基恩，《老钟的秘密》* |   |'
+- en: In several of the previous chapters, we saw how we can apply iterative algorithms
+    to identify solutions to complex equations. We first encountered this with gradient
+    descent—both batch and stochastic—but most recently we saw it in community detection
+    in graphs using the graph-parallel model of computation.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在之前的几章中，我们看到如何应用迭代算法来解决复杂方程。我们首先在梯度下降法中遇到这一点——包括批量和随机梯度下降——但最近我们在使用图并行计算模型进行图社区检测时也看到了这一点。
+- en: This chapter is about time series data. A time series is any data series that
+    consists of regular observations of a quantity arranged according to the time
+    of their measurement. For many of the techniques in this chapter to work, we require
+    that the intervals between successive observations are all equal. The period between
+    measurements could be monthly in the case of sales figures, daily in the case
+    of rainfall or stock market fluctuations, or by minute in the case of hits to
+    a high-traffic website.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章讨论的是时间序列数据。时间序列是指按测量时间排列的某一数量的定期观测数据系列。为了使本章中的许多技术能够工作，我们要求连续观测之间的间隔是相等的。测量间隔可以是销售数据的月度、降雨量或股市波动的日度，或者高流量网站的访问量以分钟为单位。
+- en: 'For us to be able to predict the future values of a time series, we require
+    that the future values are, to some extent, based on the values that have come
+    before. This chapter is therefore also about recursion: how we can build up a
+    sequence where each new value is a function of the previous values. By modeling
+    a real time series as a process where new values are generated in this way, we
+    hope to be able to simulate the sequence forwards in time and produce a forecast.'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了能够预测时间序列的未来值，我们需要未来的值在某种程度上依赖于之前的值。因此，本章也涉及到递归：我们如何构建一个序列，其中每个新值都是前一个值的函数。通过将实际时间序列建模为一个新值以这种方式生成的过程，我们希望能够将序列向前推演，并做出预测。
+- en: Before we get to recursion though, we'll learn how we can adapt a technique
+    we've already encountered—linear regression—to fit curves to time series data.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不过，在我们开始讨论递归之前，我们将学习如何利用已经接触过的一种技术——线性回归——来拟合时间序列数据的曲线。
+- en: About the data
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 关于数据
+- en: 'This chapter will make use of two datasets that come pre-installed with Incanter:
+    the **Longley dataset**, which contains data on seven economic variables measured
+    in the United States between the years 1947 to 1962, and the **Airline dataset**,
+    which contains the monthly total airline passengers from January 1949 to December
+    1960.'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将使用两个Incanter预装的数据集：**Longley数据集**，包含了1947年到1962年间美国七个经济变量的数据，以及**Airline数据集**，包含了1949年1月到1960年12月的每月航空乘客总数数据。
+- en: Note
+  id: totrans-9
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: You can download the source code for this chapter from [https://github.com/clojuredatascience/ch9-time-series](https://github.com/clojuredatascience/ch9-time-series).
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以从[https://github.com/clojuredatascience/ch9-time-series](https://github.com/clojuredatascience/ch9-time-series)下载本章的源代码。
+- en: The Airline dataset is where we will spend most of our time in this chapter,
+    but first let's look at the Longley dataset. It contains columns including the
+    gross domestic product (GDP), the number of employed and unemployed people, the
+    population, and the size of the armed forces. It's a classic dataset for analyzing
+    multicollinearity since many of the predictors are themselves correlated. This
+    won't affect the analysis we're performing since we'll only be using one of the
+    predictors at a time.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Airline数据集是我们在本章中将花费大部分时间的部分，但首先让我们看看Longley数据集。它包含的列包括国内生产总值（GDP）、就业与失业人口数量、人口和军队规模。由于许多预测变量本身是相关的，这使得它成为分析多重共线性的经典数据集。幸运的是，这不会影响我们的分析，因为我们一次只使用一个预测变量。
+- en: Loading the Longley data
+  id: totrans-12
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 加载Longley数据
+- en: 'Since Incanter includes the Longley dataset as part of its sample datasets
+    library, loading the data in is a simple matter of calling `incanter.datasets/get-dataset`
+    with `:longley` as the only argument. Once loaded, we''ll view the dataset with
+    `incanter.core/view`:'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于Incanter将Longley数据集作为其示例数据集库的一部分，因此加载数据只需调用`incanter.datasets/get-dataset`并将`:longley`作为唯一参数。一旦加载完毕，我们可以通过`incanter.core/view`来查看数据集：
+- en: '[PRE0]'
+  id: totrans-14
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'The data should look something like this:'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据应大致如下所示：
+- en: '![Loading the Longley data](img/7180OS_09_100.jpg)'
+  id: totrans-16
+  prefs: []
+  type: TYPE_IMG
+  zh: '![加载Longley数据](img/7180OS_09_100.jpg)'
+- en: 'The data was originally published by the National Institute for Standards and
+    Technology as a statistical reference dataset and the column descriptions are
+    listed on their website at [http://www.itl.nist.gov/div898/strd/lls/data/LINKS/i-Longley.shtml](http://www.itl.nist.gov/div898/strd/lls/data/LINKS/i-Longley.shtml).
+    We''ll be considering the final three columns **x4**: the size of the armed forces,
+    **x5**: the "non-institutional" population aged 14 and over, and **x6**: the year.'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些数据最初由国家标准与技术研究院（NIST）发布，作为统计参考数据集，列的描述可以在他们的网站上找到：[http://www.itl.nist.gov/div898/strd/lls/data/LINKS/i-Longley.shtml](http://www.itl.nist.gov/div898/strd/lls/data/LINKS/i-Longley.shtml)。我们将考虑最后三列：**x4**：武装部队的规模，**x5**：14岁及以上的“非机构”人口，以及**x6**：年份。
+- en: 'First, let''s see how population changes with respect to time:'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们看看人口随时间的变化：
+- en: '[PRE1]'
+  id: totrans-19
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的代码生成了以下图表：
+- en: '![Loading the Longley data](img/7180OS_09_110.jpg)'
+  id: totrans-21
+  prefs: []
+  type: TYPE_IMG
+  zh: '![加载Longley数据](img/7180OS_09_110.jpg)'
+- en: The plot of population against year shows a very clear not-quite-linear relationship.
+    The slight curve suggests that the population growth rate is increasing as the
+    population increases.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 年份与人口的图表显示出一种非常明显的近似线性关系。轻微的曲线表明，随着人口增加，人口增长率也在上升。
+- en: Note
+  id: totrans-23
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'Recall Gibrat''s law from [Chapter 3](ch03.xhtml "Chapter 3. Correlation"),
+    *Correlation*, the growth rate of firms is proportional to their size. It''s common
+    to see growth curves similar to the preceding one when analyzing populations where
+    Gibrat''s law applies: the rate of growth will tend to increase over time.'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 回想一下[第3章](ch03.xhtml "第3章. 相关性")中的吉布拉特法则，*相关性*，公司增长率与其规模成正比。在分析适用吉布拉特法则的人口时，常常会看到类似前面图表的增长曲线：增长率会随着时间的推移而增加。
+- en: We have seen how to fit a straight line through data with Incanter's linear
+    model. Perhaps surprisingly, it's also possible to fit curves with the `linear-model`
+    function.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经看到如何使用Incanter的线性模型拟合直线。或许令人惊讶的是，`linear-model`函数同样可以用来拟合曲线。
+- en: Fitting curves with a linear model
+  id: totrans-26
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用线性模型拟合曲线
+- en: 'First, let''s remind ourselves how we would fit a straight line using Incanter''s
+    `linear-model` function. We want to extract the `x5` and `x6` columns from the
+    dataset and apply them (in that order: `x6`, the year, is our predictor variable)
+    to the `incanter.stats/linear-model` function.'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们回顾一下如何使用Incanter的`linear-model`函数拟合直线。我们要从数据集中提取`x5`和`x6`列，并将它们（按顺序：`x6`，年份，是我们的预测变量）应用于`incanter.stats/linear-model`函数。
+- en: '[PRE2]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的代码生成了以下图表：
+- en: '![Fitting curves with a linear model](img/7180OS_09_120.jpg)'
+  id: totrans-30
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_120.jpg)'
+- en: While the straight line is a close fit to the data—generating an *R*² of over
+    0.98—it doesn't capture the curve of the line. In particular, we can see that
+    points diverge from the line at either end and in the middle of the chart. Our
+    straightforward model has high bias and is systematically under- and over-predicting
+    the population depending on the year. A plot of the residuals would clearly show
+    that the errors are not normally distributed with equal variance.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管直线拟合数据的效果相当好，*R*²值超过0.98，但它并未捕捉到线的曲线。特别是，我们可以看到图表两端以及中间的点偏离了直线。我们简单的模型有很高的偏差，且根据年份的不同，系统性地低估和高估了人口。残差的图表清楚地显示，误差并不是均匀分布的。
+- en: 'The `linear-model` function is so-called because it generates models that have
+    a linear relationship with their parameters. However, and perhaps surprisingly,
+    it''s capable of generating non-linear predictions, provided we supply it with
+    non-linear features. For example, we could add the year squared as a parameter,
+    in addition to the year. In the following code, we do this using Incanter''s `bind-columns`
+    function to create a matrix of both of these features:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`linear-model`函数之所以被称为线性模型，是因为它生成的模型与其参数之间存在线性关系。然而，或许出乎意料的是，只要我们提供非线性特征，它也能够生成非线性预测。例如，我们可以在年份之外，添加年份的平方作为一个参数。在以下代码中，我们使用Incanter的`bind-columns`函数将这两个特征结合起来，形成一个矩阵：'
+- en: '[PRE3]'
+  id: totrans-33
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Our *R*² has increased and we get the following chart:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的*R*²值有所提高，得到以下图表：
+- en: '![Fitting curves with a linear model](img/7180OS_09_130.jpg)'
+  id: totrans-35
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_130.jpg)'
+- en: 'This appears to be a much better fit for the data. We can use our model for
+    forecasting by creating a `forecast` function that takes the coefficients of the
+    model and returns a function of `x`, the year, that multiplies them them by the
+    features we''ve defined:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这显然更适合数据。我们可以通过创建一个 `forecast` 函数来使用我们的模型进行预测，该函数接受模型的系数并返回一个关于 `x`（年份）的函数，将系数乘以我们定义的特征：
+- en: '[PRE4]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The coefficients includes a parameter for the bias term, so we're multiplying
+    the coefficients by *1.0*, *x*, and *x*².
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 系数包括了一个偏置项参数，因此我们将系数乘以 *1.0*、*x* 和 *x*²。
+- en: '[PRE5]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Next, we extend our function plot all the way to 1970 to more clearly see the
+    curve of the fitted model as follows:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将函数图扩展到1970年，以更清晰地看到拟合模型的曲线，如下所示：
+- en: '![Fitting curves with a linear model](img/7180OS_09_140.jpg)'
+  id: totrans-41
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_140.jpg)'
+- en: 'Of course, we are extrapolating beyond the bounds of our data. As discussed
+    back in [Chapter 3](ch03.xhtml "Chapter 3. Correlation"), *Correlation*, it is
+    generally unwise to extrapolate very far. To illustrate why more clearly, let''s
+    turn our attention to another column in the Longley dataset, the size of the armed
+    forces: `x6`.'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，我们正在进行超出数据范围的外推。如同在[第3章](ch03.xhtml "第3章. 相关性")《相关性》中讨论的那样，外推太远通常是不明智的。为了更清楚地说明这一点，让我们关注一下Longley数据集中的另一个列，即武装力量的规模：`x6`。
+- en: 'We can plot this in the same way as before:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以像之前一样绘制它：
+- en: '[PRE6]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'This generates the following chart:'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这生成了以下图表：
+- en: '![Fitting curves with a linear model](img/7180OS_09_150.jpg)'
+  id: totrans-46
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_150.jpg)'
+- en: This is clearly a much more complicated series. We can see a sharp increase
+    in the size of the armed forces between 1950 and 1952 followed by a gentle decline.
+    On June 27^(th) 1950, President Truman ordered air and naval forces to assist
+    South Korea in what would become known as the Korean War.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这显然是一个更复杂的序列。我们可以看到，在1950年到1952年间，武装力量的规模急剧增加，随后出现了缓慢下降。在1950年6月27日，杜鲁门总统命令空军和海军支援韩国，这成为了后来所称的朝鲜战争。
+- en: 'To fit a curve to these data, we''ll need to generate higher order polynomials.
+    First, let''s construct a `polynomial-forecast` function that will create the
+    higher-order features for us automatically, based on a single `x` and the highest-degree
+    polynomial to create:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要拟合这些数据的曲线，我们需要生成高阶多项式。首先，让我们构建一个 `polynomial-forecast` 函数，它将基于单一的 `x` 和要创建的最高次多项式自动生成更高阶的特征：
+- en: '[PRE7]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'For example, we could train a model all the way up to *x*11 using the following
+    code:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，我们可以使用以下代码训练一个模型，直到 *x*11：
+- en: '[PRE8]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码生成了以下图表：
+- en: '![Fitting curves with a linear model](img/7180OS_09_160.jpg)'
+  id: totrans-53
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_160.jpg)'
+- en: 'The curve fits the data quite well, with an *R*² of over 0.97\. However, it
+    should come as no surprise to you now to discover that we are overfitting the
+    data. The model we have built is unlikely to have very much forecasting power.
+    In fact, if we extend the range of the chart to the right, as we do with `ex-9-8`
+    to show predictions into the future, we obtain the following:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 曲线拟合数据相当好，*R*²超过0.97。然而，现在你应该不感到惊讶，我们实际上是在过拟合数据。我们构建的模型可能没有太多的预测能力。事实上，如果我们像在
+    `ex-9-8` 中那样将图表的范围向右延伸，展示未来的预测，我们将得到以下结果：
+- en: '![Fitting curves with a linear model](img/7180OS_09_170.jpg)'
+  id: totrans-55
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用线性模型拟合曲线](img/7180OS_09_170.jpg)'
+- en: Just two-and-a-half years after the last measured data point, our model is predicting
+    that the military will grow more than 500 percent to over 175,000 people.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一次测量数据点后的两年半，我们的模型预测军事人数将增长超过500%，达到超过175,000人。
+- en: Time series decomposition
+  id: totrans-57
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 时间序列分解
+- en: 'One of the problems that we have modeling the military time series is that
+    there is simply not enough data to be able to produce a general model of the process
+    that produced the series. A common way to model a time series is to decompose
+    the series into a number of separate components:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在建模军事时间序列时面临的一个问题是，数据量不足以生成一个能够代表产生该系列过程的通用模型。建模时间序列的常见方法是将序列分解为若干个独立的组件：
+- en: '**Trend**: Does the series generally increase or decrease over time? Is the
+    trend an exponential curve as we saw with the population?'
+  id: totrans-59
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**趋势**：序列是否随时间总体上升或下降？这种趋势是否像我们在观察人口时看到的那样是指数曲线？'
+- en: '**Seasonality**: Does the series exhibit periodic rises and falls at a set
+    number of intervals? For monthly data it is common to observe a period cycle of
+    12 months.'
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**季节性**：序列是否表现出周期性的涨跌，且周期数目固定？对于月度数据，通常可以观察到12个月的周期性循环。'
+- en: '**Cycles**: Are there longer-term cycles in the dataset that span multiple
+    seasons? For example, in financial data we might observe multi-year cycles corresponding
+    to periods of expansion and recession.'
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**周期**：数据集中是否存在跨越多个季节的长期周期？例如，在金融数据中，我们可能会观察到与扩张和衰退周期相对应的多年度周期。'
+- en: Another way of specifying the issue with the military data is that there is
+    not enough information to determine whether or not there is a trend, and whether
+    the observed peak is part of a seasonal or cyclic pattern. Although the data appears
+    to trend upwards, it could be that we are looking closely at a cycle that will
+    eventually decline back to where it started.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个指定军事数据问题的方式是，由于没有足够的信息，我们无法确定是否存在趋势，或者观察到的峰值是否属于季节性或周期性模式的一部分。尽管数据似乎有上升的趋势，但也有可能我们正在密切观察一个最终会回落的周期。
+- en: One of the datasets that we'll study in this chapter is a classic time series
+    looking at monthly airline passenger numbers from 1949-1960\. This dataset is
+    larger and clearly exhibits trend and seasonal components.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们将研究的一个数据集是经典的时间序列数据，观察的是1949到1960年间的月度航空公司乘客人数。该数据集较大，并且明显展示了趋势和季节性成分。
+- en: Inspecting the airline data
+  id: totrans-64
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 检查航空公司数据
+- en: Like the Longley dataset, the Airline dataset is part of Incanter's datasets
+    library. We load the `incanter.datasets` library as `d` and `incanter.code` as
+    `i`.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与Longley数据集类似，航空公司数据集也是Incanter数据集库的一部分。我们加载`incanter.datasets`库为`d`，并将`incanter.code`库加载为`i`。
+- en: '[PRE9]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'The first few rows should look like this:'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前几行数据应如下所示：
+- en: '![Inspecting the airline data](img/7180OS_09_180.jpg)'
+  id: totrans-68
+  prefs: []
+  type: TYPE_IMG
+  zh: '![检查航空公司数据](img/7180OS_09_180.jpg)'
+- en: When analyzing time series, it's important that the data is ordered sequentially
+    in time. This data is ordered by year and by month. All the January data is followed
+    by all the February data, and so on. To proceed further, we'll need to convert
+    the year and month columns into a single column we can sort by. For this, we'll
+    use the `clj-time` library ([https://github.com/clj-time/clj-time](https://github.com/clj-time/clj-time))
+    once again.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在分析时间序列时，确保数据按时间顺序排列是非常重要的。该数据按年份和月份排序。所有一月的数据都排在所有二月数据之前，以此类推。为了进一步处理，我们需要将年份和月份列转换为一个可以排序的单一列。为此，我们将再次使用`clj-time`库（[https://github.com/clj-time/clj-time](https://github.com/clj-time/clj-time)）。
+- en: Visualizing the airline data
+  id: totrans-70
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 可视化航空公司数据
+- en: When parsing times previously in [Chapter 3](ch03.xhtml "Chapter 3. Correlation"),
+    *Correlation*, we were able to take advantage of the fact that the string representation
+    of the time was a default format that clj-time understood. Clj-time is not able
+    to automatically infer all time representations of course. Particularly problematic
+    is the difference between the *mm/dd/yyyy* American format and the *dd/mm/yyyy*
+    favored by most of the rest of the world. The `clj-time.format` namespace provides
+    a `parse` function that allows us to pass a format string instructing the library
+    how it should interpret the string. We're including the `format` namespace as
+    `tf` in the following code and specifying that our time will be expressed in the
+    format `"MMM YYYY"`.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第3章](ch03.xhtml "第3章. 相关性")*相关性*中解析时间时，我们能够利用时间的字符串表示是clj-time默认理解的格式。自然，clj-time并不能自动推断所有时间表示的格式。特别是，美国格式的*mm/dd/yyyy*与世界大多数地方偏好的*dd/mm/yyyy*格式之间的差异尤为问题。在`clj-time.format`命名空间中提供了一个`parse`函数，允许我们传递一个格式字符串，指示库如何解释该字符串。在以下代码中，我们将`format`命名空间作为`tf`引入，并指定我们的时间将采用`"MMM
+    YYYY"`格式。
+- en: Note
+  id: totrans-72
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: A list of formatter strings used by clj-time is available at [http://www.joda.org/joda-time/key_format.html](http://www.joda.org/joda-time/key_format.html).
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个由clj-time使用的格式化字符串列表可以在[http://www.joda.org/joda-time/key_format.html](http://www.joda.org/joda-time/key_format.html)找到。
+- en: In other words, three characters of "month" followed by four characters of "year".
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 换句话说，是三个字符表示“月”，后面跟着四个字符表示“年”。
+- en: '[PRE10]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'With the earlier functions in place we can parse our year and month columns
+    into a single time, order them sequentially, and extract the passenger numbers:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有了之前的函数，我们可以将年份和月份列解析成一个单一的时间，按顺序排列它们，并提取乘客人数：
+- en: '[PRE11]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'The result is a sequence of numbers representing the passenger count in order
+    of ascending time. Let''s visualize this as a line chart now:'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果是一组按时间顺序排列的乘客人数数据。现在让我们将其作为折线图来可视化：
+- en: '[PRE12]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码生成了以下图表：
+- en: '![Visualizing the airline data](img/7180OS_09_190.jpg)'
+  id: totrans-81
+  prefs: []
+  type: TYPE_IMG
+  zh: '![可视化航空公司数据](img/7180OS_09_190.jpg)'
+- en: You can see how the data has a pronounced seasonal pattern (repeating every
+    12 months), an upward trend, and a gentle growth curve.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到数据呈现出明显的季节性模式（每12个月重复一次）、上升趋势和缓慢增长曲线。
+- en: The variance to the right of the chart is greater than the variance to the left,
+    so we say that the data is exhibiting some **heteroscedasticity**. We'll want
+    to remove the increase in variance and also the upward trend from the dataset.
+    This will yield a time series which is **stationary**.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图表右侧的方差大于左侧的方差，因此我们说数据表现出一定的**异方差性**。我们需要去除数据集中的方差增加和上升趋势。这样会得到一个**平稳**的时间序列。
+- en: Stationarity
+  id: totrans-84
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 平稳性
+- en: 'A stationary time series is one whose statistical properties are constant in
+    time. Most statistical forecasting methodologies assume the series has been transformed
+    to be stationary. A prediction is made much easier with a stationary time series:
+    we assume the statistical properties of the series will be the same in the future
+    as they have been in the past. To remove both the increasing variance and the
+    growth curve from the airline data, we can simply take the logarithm of the passenger
+    numbers:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个平稳的时间序列是指其统计特性随时间保持不变的序列。大多数统计预测方法假设序列已经被转换为平稳序列。对于平稳的时间序列，预测变得更加容易：我们假设该序列的统计特性在未来与过去相同。为了去除航空公司数据中的方差增长和增长曲线，我们可以简单地对乘客数量取对数：
+- en: '[PRE13]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'This generates the following chart:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这生成了以下图表：
+- en: '![Stationarity](img/7180OS_09_200.jpg)'
+  id: totrans-88
+  prefs: []
+  type: TYPE_IMG
+  zh: '![Stationarity](img/7180OS_09_200.jpg)'
+- en: The effect of taking the logarithm is twofold. Firstly, the heteroscedasticity
+    evident in the initial chart has been removed. Secondly, the exponential growth
+    curve has been reduced to a straight line.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 取对数的效果是双重的。首先，初始图表中显现的异方差性被去除了。其次，指数增长曲线被转化为一条直线。
+- en: This has made the data much easier to work with but we still have a trend, also
+    known as **drift**, in the series. To get a truly stationary time series, we'll
+    want to stabilize the mean as well. There are several ways to do this.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这使得数据变得更容易处理，但我们仍然在序列中看到趋势，也称为**漂移**。为了获得真正平稳的时间序列，我们还需要使均值稳定。实现这一点有几种方法。
+- en: De-trending and differencing
+  id: totrans-91
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 去趋势和差分
+- en: 'The first method is de-trending the series. After taking the logarithm, the
+    airline dataset contains a very strong linear trend. We could fit a linear model
+    to this data and then plot the residuals:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一种方法是去趋势处理序列。在取对数后，航空公司数据集包含了一个非常强的线性趋势。我们可以为这些数据拟合一个线性模型，然后绘制残差图：
+- en: '[PRE14]'
+  id: totrans-93
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'This generates the following chart:'
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这生成了以下图表：
+- en: '![De-trending and differencing](img/7180OS_09_210.jpg)'
+  id: totrans-95
+  prefs: []
+  type: TYPE_IMG
+  zh: '![De-trending and differencing](img/7180OS_09_210.jpg)'
+- en: The residual plot shows a series whose mean is much more stable than the original
+    series and the upward trend has been entirely removed. Unfortunately, though,
+    the residuals don't appear to be quite normally distributed around the new mean.
+    In particular there appears to be a "hump" in the middle of the chart. This suggests
+    that our linear model is not performing ideally on the airline data. We could
+    fit a curve to the data like we did at the beginning of the chapter, but let's
+    instead look at another method of making time series stationary.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 残差图显示了一个均值比原始序列更稳定的序列，并且上升趋势已被完全去除。然而，不幸的是，残差似乎并未围绕新均值呈现正态分布。特别是图表中间似乎出现了一个“驼峰”。这表明我们的线性模型在航空公司数据上表现不佳。我们可以像本章开始时那样拟合一条曲线，但让我们改为查看另一种使时间序列平稳的方法。
+- en: The second method is differencing. If we subtract the value of the directly
+    preceding point from each point in the time series, we'll obtain a new time series
+    (one data point shorter) that contains only the differences between successive
+    points.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二种方法是差分。如果我们从时间序列中的每个点中减去其直接前一个点的值，我们将得到一个新的时间序列（少一个数据点），其中只包含相邻点之间的差异。
+- en: '[PRE15]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'We can see the effect in the following chart:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以在以下图表中看到这一效果：
+- en: '![De-trending and differencing](img/7180OS_09_220.jpg)'
+  id: totrans-100
+  prefs: []
+  type: TYPE_IMG
+  zh: '![De-trending and differencing](img/7180OS_09_220.jpg)'
+- en: Notice how the upward trend has been replaced with a series of fluctuations
+    around a constant mean value. The mean is slightly above zero, corresponding to
+    an increased propensity for differences to be positive and leading to the upward
+    trend we observe.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，上升趋势已经被替换为围绕常数均值波动的序列。均值略高于零，这对应于差异更可能为正，并导致我们观察到的上升趋势。
+- en: Both techniques aim to result in a series whose mean is constant. In some cases,
+    it may be necessary to difference the series more than once, or to apply differencing
+    after de-trending to obtain a series which a truly a stable mean. Some drift is
+    still evident in the series after de-trending, for example, so we'll use the differenced
+    data for the rest of this chapter.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这两种技术的目标都是使序列的均值保持恒定。在某些情况下，可能需要对序列进行多次差分，或者在去趋势之后应用差分，以获得一个真正均值稳定的序列。例如，在去趋势之后，序列中仍然可以看到一些漂移，因此在本章的其余部分，我们将使用差分后的数据。
+- en: Before moving on to discuss how to model such time series for forecasting, let's
+    take a detour to think about what a time series is, and how we might model a time
+    series as a recursive process.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在继续讨论如何为预测建模这样的时间序列之前，让我们绕个弯，思考一下什么是时间序列，以及我们如何将时间序列建模为一个递归过程。
+- en: Discrete time models
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 离散时间模型
+- en: Discrete time models, such as the ones we have been looking at so far, separate
+    time into slices at regular intervals. For us to be able to predict future values
+    of time slices, we assume that they are dependent on past slices.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 离散时间模型，如我们迄今为止所看的那些，将时间划分为定期的时间片。为了使我们能够预测未来时间片的值，我们假设它们依赖于过去的时间片。
+- en: Note
+  id: totrans-106
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Time series can also be analyzed with respect to frequency rather than time.
+    We won't discuss frequency domain analysis in this chapter but the book's wiki
+    at [http://wiki.clojuredatascience.com](http://wiki.clojuredatascience.com) contains
+    links to further resources.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 时间序列也可以根据频率而不是时间进行分析。我们在本章中不讨论频域分析，但书籍的维基页面[http://wiki.clojuredatascience.com](http://wiki.clojuredatascience.com)包含了更多资源的链接。
+- en: 'In the following, let *y*[t] denote the value of an observation at time *t*.
+    The simplest time series possible would be one where the value of each time slice
+    is the same as the one directly preceding it. The predictor for such a series
+    would be:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在以下内容中，令*y*[t]表示时间*t*时刻观察值的值。最简单的时间序列是每个时间片的值与前一个时间片的值相同。此类序列的预测器为：
+- en: '![Discrete time models](img/7180OS_09_01.jpg)'
+  id: totrans-109
+  prefs: []
+  type: TYPE_IMG
+  zh: '![离散时间模型](img/7180OS_09_01.jpg)'
+- en: 'This is to say that the prediction at time *t + 1* given *t* is equal to the
+    observed value at time *t*. Notice that this definition is recursive: the value
+    at time *t* depends on the value at *t - 1*. The value at *t - 1* depends on the
+    value at *t - 2*, and so on.'
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是说，在时间*t + 1*的预测值给定时间*t*时等于时间*t*的观察值。请注意，这个定义是递归的：时间*t*的值依赖于时间*t - 1*的值。时间*t
+    - 1*的值依赖于时间*t - 2*的值，依此类推。
+- en: 'We could model this "constant" time series as a lazy sequence in Clojure, where
+    each value in the sequence is a constant value:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将这个“常数”时间序列建模为Clojure中的惰性序列，其中序列中的每个值都是常数值：
+- en: '[PRE16]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Notice how the definition of `constant-series` contains a reference to itself.
+    This is a recursive function definition that creates an infinite lazy sequence
+    from which we can consume values.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意`constant-series`的定义中包含了对其自身的引用。这是一个递归函数定义，它创建了一个无限的惰性序列，我们可以从中获取值。
+- en: 'The next time slice, at time *t + 1*, the actual value is observed to be *y*[t+1].
+    If this value and our predicted value ![Discrete time models](img/7180OS_09_02.jpg)
+    differ, then we can compute this difference as the error of our prediction:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下一时刻，即时间*t + 1*，实际观察到的值为*y*[t+1]。如果此值与我们的预测值![离散时间模型](img/7180OS_09_02.jpg)不同，则我们可以将这个差异计算为预测的误差：
+- en: '![Discrete time models](img/7180OS_09_03.jpg)'
+  id: totrans-115
+  prefs: []
+  type: TYPE_IMG
+  zh: '![离散时间模型](img/7180OS_09_03.jpg)'
+- en: By combining the two previous equations we obtain the stochastic model for a
+    time series.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过结合前两个方程，我们得到了时间序列的随机模型。
+- en: '![Discrete time models](img/7180OS_09_04.jpg)'
+  id: totrans-117
+  prefs: []
+  type: TYPE_IMG
+  zh: '![离散时间模型](img/7180OS_09_04.jpg)'
+- en: In other words, the value at the current time slice is the value at the previous
+    time slice, plus some error.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 换句话说，当前时间片的值等于前一个时间片的值加上一些误差。
+- en: Random walks
+  id: totrans-119
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 随机漫步
+- en: One of the simplest stochastic processes is the random walk. Let's extend our
+    `constant-series` into a `random-walk` process. We'll want our errors to be normally
+    distributed with a zero mean and constant variance. Let's simulate random noise
+    with a call to Incanter's `stats/sample-normal` function.
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最简单的随机过程之一是随机漫步。让我们将`constant-series`扩展为一个`random-walk`过程。我们希望我们的误差服从均值为零且方差恒定的正态分布。我们将通过调用Incanter的`stats/sample-normal`函数来模拟随机噪声。
+- en: '[PRE17]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'You''ll get a different result, of course, but it should look similar to the
+    following chart:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，您会得到不同的结果，但它应该类似于以下图表：
+- en: '![Random walks](img/7180OS_09_230.jpg)'
+  id: totrans-123
+  prefs: []
+  type: TYPE_IMG
+  zh: '![随机漫步](img/7180OS_09_230.jpg)'
+- en: The random walk model is very often seen in finance and econometrics.
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机游走模型在金融学和计量经济学中非常常见。
+- en: Note
+  id: totrans-125
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The term *random walk* was first introduced by Karl Pearson in 1905\. Many processes—from
+    fluctuating stock prices to the path traced by a molecule as it travels in a gas—can
+    be modeled as simple random walks. In 1973, the Princeton economist Burton Gordon
+    Malkiel argued in his book *A Random Walk Down Wall Street* that stock prices
+    evolve according to a random walk as well.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*随机游走*这一术语最早由卡尔·皮尔逊在1905年提出。许多过程——从波动的股价到分子在气体中运动时所描绘的路径——都可以被建模为简单的随机游走。1973年，普林斯顿经济学家伯顿·戈登·马基尔在他的著作《华尔街随机漫步》中提出，股价也遵循随机游走的规律。'
+- en: The random walk is not entirely unpredictable. Although the difference between
+    each point and the next is governed by a random process, the variance of that
+    difference is constant. This means that we can estimate confidence intervals for
+    the magnitude of each step. However, since the mean is zero we cannot say with
+    any confidence whether the difference will be positive or negative relative to
+    the current value.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机游走并非完全无法预测。虽然每个点与下一个点之间的差异由随机过程决定，但该差异的方差是恒定的。这意味着我们可以估计每一步的置信区间。然而，由于均值为零，我们无法有任何信心地判断差异相对于当前值是正的还是负的。
+- en: Autoregressive models
+  id: totrans-128
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 自回归模型
+- en: We've seen already in this chapter how to use a linear model to make a prediction
+    based on a linear combination of predictors. In an autoregressive model we forecast
+    the variable of interest by using a linear combination of the past values of the
+    variable.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在本章中已经看到如何使用线性模型基于预测变量的线性组合做出预测。在自回归模型中，我们通过使用该变量过去的值的线性组合来预测感兴趣的变量。
+- en: 'The autoregressive model regresses the predictor against itself. In order to
+    see how this works in practice, let''s look at the following code:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自回归模型将预测变量与其自身回归。为了实际观察这一过程，让我们看一下以下代码：
+- en: '[PRE18]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: This shares much in common with the random walk recursive definition that we
+    encountered a few pages previously. This time, however, we're generating each
+    new `y` as a product of previous `ys` and the `coefs`.
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这与我们在几页前遇到的随机游走递归定义有很多相似之处。然而，这次我们通过将之前的`ys`与`coefs`相乘，生成每一个新的`y`。
+- en: 'We can generate an autoregressive series with a call to our new `ar` function,
+    passing the previous `ys` and the coefficients of the autoregressive model:'
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过调用我们新的`ar`函数，传入之前的`ys`和自回归模型的系数，来生成一个自回归序列：
+- en: '[PRE19]'
+  id: totrans-134
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'This generates the following chart:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成以下图表：
+- en: '![Autoregressive models](img/7180OS_09_240.jpg)'
+  id: totrans-136
+  prefs: []
+  type: TYPE_IMG
+  zh: '![自回归模型](img/7180OS_09_240.jpg)'
+- en: By taking an initial value of 1.0 and a coefficient of 2.0, with zero noise,
+    we're creating an exponential growth curve. Each time step in the series is a
+    power of two.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过取初始值1.0和系数2.0，且无噪声，我们正在创建一个指数增长曲线。序列中的每一个时间步都是二的幂。
+- en: The autoregressive series is said to be *autocorrelated*. In other words, each
+    point is linearly correlated to its preceding points. In the earlier case, this
+    is simply twice the preceding value. The quantity of coefficients is said to be
+    the order of the autocorrelation model and is often denoted by the letter *p*.
+    The preceding example is therefore an autoregressive process with *p=1*, or an
+    *AR(1)* process.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自回归序列被称为*自相关*的。换句话说，每个点与其前面的点是线性相关的。在之前的例子中，这只是前一个值的两倍。系数的数量被称为自相关模型的阶数，通常用字母*p*表示。因此，前面的例子是一个*p=1*的自回归过程，或者是*AR(1)*过程。
+- en: More intricate autoregressive series can be generated by increasing *p*.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过增加*p*，可以生成更复杂的自回归序列。
+- en: '[PRE20]'
+  id: totrans-140
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: For example, the previous code generates an autoregressive time series of order
+    5, or an *AR(5)* series. The effect is visible in the series as a regular cycle
+    with a period of 5 points.
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，前面的代码生成了一个5阶自回归时间序列，或*AR(5)*序列。效果在序列中表现为一个周期为5个点的规律性循环。
+- en: '![Autoregressive models](img/7180OS_09_250.jpg)'
+  id: totrans-142
+  prefs: []
+  type: TYPE_IMG
+  zh: '![自回归模型](img/7180OS_09_250.jpg)'
+- en: 'We can combine the autoregressive model together with some noise to introduce
+    a component of the random walk we saw previously. Let''s increase sigma to 0.2:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将自回归模型与一些噪声结合起来，引入我们之前看到的随机游走组件。让我们将sigma增加到0.2：
+- en: '[PRE21]'
+  id: totrans-144
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'This generates the following chart:'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成以下图表：
+- en: '![Autoregressive models](img/7180OS_09_260.jpg)'
+  id: totrans-146
+  prefs: []
+  type: TYPE_IMG
+  zh: '![自回归模型](img/7180OS_09_260.jpg)'
+- en: Notice how the characteristic "seasonal" cycle every five points is preserved,
+    but has been combined with an element of noise too. Although this is simulated
+    data, this simple model is beginning to approach the sort of series that regularly
+    appears in time series analysis.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，每五个点的典型“季节性”周期是如何被保留下来的，但也与一些噪声元素结合在一起。虽然这是模拟数据，但这个简单的模型已经开始接近在时间序列分析中经常出现的系列类型。
+- en: 'The general equation for an AR model of one lag is given by:'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一阶滞后AR模型的一般方程如下：
+- en: '![Autoregressive models](img/7180OS_09_05.jpg)'
+  id: totrans-149
+  prefs: []
+  type: TYPE_IMG
+  zh: '![自回归模型](img/7180OS_09_05.jpg)'
+- en: 'where *c* is some constant, *ε*[t] is the error, *y*[t-1] is the value of the
+    series at the previous time step, and *φ*[1] is the coefficient denoted by the
+    Greek symbol *phi*. More generally, the equation for an autoregressive model up
+    to *p* lags is given by:'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中*c*是某个常数，*ε*[t]是误差，*y*[t-1]是序列在上一个时间步的值，*φ*[1]是由希腊字母*phi*表示的系数。更一般地，自回归模型在*p*个滞后下的方程为：
+- en: '![Autoregressive models](img/7180OS_09_06.jpg)'
+  id: totrans-151
+  prefs: []
+  type: TYPE_IMG
+  zh: '![自回归模型](img/7180OS_09_06.jpg)'
+- en: Since our series are stationary, we have omitted the constant term *c* in the
+    code.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们的序列是平稳的，因此我们在代码中省略了常数项*c*。
+- en: Determining autocorrelation in AR models
+  id: totrans-153
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 在AR模型中确定自相关
+- en: Just as linear regression can establish a (linear) correlation between multiple
+    independent variables, autoregression can establish a correlation between a variable
+    and itself at different points in time.
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像线性回归可以建立多个自变量之间的（线性）相关性一样，自回归可以建立一个变量与自身在不同时间点之间的相关性。
+- en: Just as in linear regression we sought to establish correlation between the
+    predictors and the response variable, so in time series analysis we seek to establish
+    an autocorrelation with the time series and itself at a certain number of lags.
+    Knowing the number of lags for which autocorrelation exists allows us to calculate
+    the order of the autoregressive model.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像在线性回归中，我们试图建立预测变量与响应变量之间的相关性一样，在时间序列分析中，我们试图建立时间序列与自身在一定数量滞后下的自相关。知道存在自相关的滞后数量可以让我们计算出自回归模型的阶数。
+- en: It follows that we want to study the autocorrelation of the series at different
+    lags. For example, a lag of zero will mean that we compare each point with itself
+    (an autocorrelation of 1.0). A lag of 1 will mean that we compare each point with
+    the directly preceding point. The **autocorrelation function** (**ACF**) is a
+    linear dependence between a dataset and itself with a given lag. The ACF is therefore
+    parameterized by the lag, *k*.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由此可得，我们想要研究序列在不同滞后下的自相关。例如，零滞后意味着我们将每个点与其本身进行比较（自相关为1.0）。滞后1意味着我们将每个点与直接前面的点进行比较。**自相关函数**（**ACF**）是一个数据集与自身在给定滞后下的线性依赖关系。因此，ACF由滞后*k*参数化。
+- en: '![Determining autocorrelation in AR models](img/7180OS_09_07.jpg)'
+  id: totrans-157
+  prefs: []
+  type: TYPE_IMG
+  zh: '![在AR模型中确定自相关](img/7180OS_09_07.jpg)'
+- en: 'Incanter contains an `auto-correlation` function that will return the autocorrelation
+    for a given sequence and lag. However, we''re defining our own `autocorrelation`
+    function that will return the `autocorrelation` for a sequence of lags:'
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Incanter包含一个`auto-correlation`函数，可以返回给定序列和滞后的自相关。然而，我们定义了自己的`autocorrelation`函数，它将返回一系列滞后的`autocorrelation`：
+- en: '[PRE22]'
+  id: totrans-159
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: Before calculating the autocorrelation, we use `sweep` function of `incanter.stats`
+    to remove the mean from the series. This means that we can simply multiply the
+    values of the series together with the values at lag *k* to determine whether
+    they have a tendency to vary together. If they do, their products will be positive;
+    if not, their products will be negative.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在计算自相关之前，我们使用`incanter.stats`的`sweep`函数来从序列中去除均值。这意味着我们可以简单地将序列中的值与滞后* k *的值相乘，以确定它们是否有一起变化的趋势。如果有，它们的乘积将是正的；如果没有，它们的乘积将是负的。
+- en: 'This function returns an infinite lazy sequence of autocorrelation values corresponding
+    to the autocorrelation of lags *0...k*. Let''s define a function for plotting
+    these values as a bar chart. As with the `timeseries-plot`, this function will
+    accept an ordered sequence of values:'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该函数返回一个无限懒加载的自相关值序列，对应于滞后*0...k*的自相关。我们来定义一个函数，将这些值绘制成条形图。与`timeseries-plot`一样，该函数将接受一个有序的值序列：
+- en: '[PRE23]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'This generates the following chart:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这生成了以下图表：
+- en: '![Determining autocorrelation in AR models](img/7180OS_09_270.jpg)'
+  id: totrans-164
+  prefs: []
+  type: TYPE_IMG
+  zh: '![在AR模型中确定自相关](img/7180OS_09_270.jpg)'
+- en: The peaks every 5 lags are consistent with our *AR(5)* series generator. They
+    diminish over time as noise interferes with the signal and decreases the measured
+    autocorrelation.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每隔 5 个滞后的峰值与我们的*AR(5)*系列生成器一致。随着噪声对信号的干扰，峰值逐渐减弱，测得的自相关也随之下降。
+- en: Moving-average models
+  id: totrans-166
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 移动平均模型
+- en: An assumption of AR models is that noise is random with constant mean and variance.
+    Our recursive AR function sampled values from the normal distribution to generate
+    noise that satisfied these assumptions. In an AR process, therefore, the noise
+    terms are *uncorrelated* with each other.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: AR 模型的一个假设是噪声是随机的，且均值和方差恒定。我们的递归 AR 函数从正态分布中抽取值来生成满足这些假设的噪声。因此，在 AR 过程中，噪声项是相互*不相关*的。
+- en: In some processes, though, the noise terms themselves are not uncorrelated.
+    For an example of this consider a time series that reports the daily number of
+    barbeques sold. We might observe peaks every 7 days corresponding to customers'
+    increased likelihood of buying barbeques at the weekend. Occasionally, we might
+    observe a period of several weeks where the total sales are down, and other periods
+    of several weeks where the sales are correspondingly up. We might reason that
+    this is due to the weather, with poor sales corresponding to a period of cold
+    or rainy weather and good sales corresponding to a period of favorable weather.
+    Whatever the cause, it will appear in our data as a pronounced shift in the mean
+    value of the series. Series that exhibit this behavior are called **moving-average**
+    (**MA**), models.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在某些过程中，噪声项本身并不是不相关的。以一个示例来说明，假设有一个时间序列记录了每天的烧烤销售数量。我们可能会观察到每隔 7 天就有一个峰值，代表着顾客在周末更倾向于购买烧烤。偶尔，我们可能会观察到几周的销售总量下降，另外几周销售则会相应上升。我们可能推测这是由天气造成的，差的销售额对应于寒冷或雨天的时期，而好的销售额则对应于有利天气的时期。无论是什么原因，这种现象都会以均值明显变化的形式出现在我们的数据中。展现此行为的系列被称为**移动平均**（**MA**）模型。
+- en: 'A first-order moving-average model, denoted by *MA(1)*, is:'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一阶移动平均模型，记作*MA(1)*，为：
+- en: '![Moving-average models](img/7180OS_09_08.jpg)'
+  id: totrans-170
+  prefs: []
+  type: TYPE_IMG
+  zh: '![移动平均模型](img/7180OS_09_08.jpg)'
+- en: 'where *μ* is the mean of the series, *ε[t]* are the noise values, and *θ[1]*
+    is the parameter to the model. More generally for *q* terms the MA model is given
+    by:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中，*μ* 是系列的均值，*ε[t]* 是噪声值，*θ[1]* 是模型的参数。更一般地，对于*q*项，MA 模型可表示为：
+- en: '![Moving-average models](img/7180OS_09_09.jpg)'
+  id: totrans-172
+  prefs: []
+  type: TYPE_IMG
+  zh: '![移动平均模型](img/7180OS_09_09.jpg)'
+- en: Thus, an MA model is conceptually a linear regression of the current value of
+    the series against current and previous (unobserved) white noise error terms or
+    random shocks. The error terms at each point are assumed to be mutually independent
+    and come from the same (usually normal) distribution with zero mean and constant
+    variance.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，MA 模型本质上是当前系列值与当前及前一时刻（未观测到的）白噪声误差项或随机冲击的线性回归。假设每个点的误差项是相互独立的，并且来自同一（通常为正态）分布，具有零均值和恒定方差。
+- en: 'In MA models, we make the assumption that the noise values themselves are autocorrelated.
+    We can model it like this:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 MA 模型中，我们假设噪声值本身是自相关的。我们可以这样建模：
+- en: '[PRE24]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: Here, `es` are the previous errors, `coefs` are the parameters to the MA model,
+    and `sigma` is the standard deviation of the errors.
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，`es` 是前一时刻的误差，`coefs` 是 MA 模型的参数，`sigma` 是误差的标准差。
+- en: 'Notice how the function differs from the `ar` function previously defined.
+    Instead of retaining a sequence of the previous *ys*, we retain a sequence of
+    the previous *es*. Let''s see what sort of series an MA model generates:'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意该函数与之前定义的`ar`函数的不同。我们不再保留前一系列的*ys*，而是保留前一系列的*es*。接下来，让我们看看 MA 模型生成的系列：
+- en: '[PRE25]'
+  id: totrans-178
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'This generates a graph similar to the following:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这会生成类似于以下的图形：
+- en: '![Moving-average models](img/7180OS_09_280.jpg)'
+  id: totrans-180
+  prefs: []
+  type: TYPE_IMG
+  zh: '![移动平均模型](img/7180OS_09_280.jpg)'
+- en: You can see that the chart for an MA lacks the obvious repetition of the AR
+    model. Viewed over a longer series of points, though, you can see how it reintroduces
+    *drift* into the model as the reverberations of one random shock are perpetuated
+    in a new temporary mean.
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到，MA 模型的图表没有 AR 模型那样明显的重复。如果从更长的时间序列来看，你可以看到它如何重新引入*漂移*，因为一个随机冲击的反响在新的临时均值中得以延续。
+- en: Determining autocorrelation in MA models
+  id: totrans-182
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 确定 MA 模型中的自相关
+- en: You may wonder if an autocorrelation plot would help identify an MA process.
+    Let's plot that now. An MA model can be harder to spot, so we'll generate more
+    points before plotting the autocorrelation.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会想，是否可以通过自相关图来帮助识别MA过程。我们现在就来绘制一下。MA模型可能更难识别，因此我们将在绘制自相关之前生成更多数据点。
+- en: '[PRE26]'
+  id: totrans-184
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'This generates the following chart:'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成以下图表：
+- en: '![Determining autocorrelation in MA models](img/7180OS_09_290.jpg)'
+  id: totrans-186
+  prefs: []
+  type: TYPE_IMG
+  zh: '![确定MA模型中的自相关](img/7180OS_09_290.jpg)'
+- en: You can see on the preceding chart how it clearly shows the order of the MA
+    process with a pronounced peak at lag 5\. Notice though that, unlike the autoregressive
+    process, there is no recurring peak every 5 lags. It's a feature of the MA process
+    that, since the process introduces drift into the mean, autocorrelation for the
+    other lags is greatly diminished.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在前面的图表中看到，MA过程的阶数被清晰地显示出来，在滞后5的位置有一个明显的峰值。请注意，然而，与自回归过程不同，这里没有每5个滞后就出现一个周期性的峰值。这是MA过程的一个特征，因为该过程引入了漂移至均值，自相关在其他滞后下大幅减弱。
+- en: Combining the AR and MA models
+  id: totrans-188
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 结合AR和MA模型
+- en: The AR and MA models that we've been considering so far this chapter are two
+    different but closely related ways of generating autocorrelated time series. They
+    are not mutually exclusive, though, and when trying to model real time series
+    you'll often encounter situations where the series appears to be a mixture of
+    both.
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们所考虑的AR和MA模型是生成自相关时间序列的两种不同但紧密相关的方法。它们并不是互相排斥的，实际上在建模实际时间序列时，你经常会遇到序列看起来是两者的混合情况。
+- en: '![Combining the AR and MA models](img/7180OS_09_10.jpg)'
+  id: totrans-190
+  prefs: []
+  type: TYPE_IMG
+  zh: '![结合AR和MA模型](img/7180OS_09_10.jpg)'
+- en: 'We can combine both AR and MA processes into a single ARMA model, with two
+    sets of coefficients: those of the autoregressive model and those of the moving-average
+    model. The number of coefficients for each model need not be identical, and by
+    convention the order of the AR model is identified by *p* and the order of the
+    MA model identified by *q*.'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将AR和MA过程结合成一个单一的ARMA模型，包含两组系数：自回归模型的系数和移动平均模型的系数。每个模型的系数数量不必相同，按照惯例，AR模型的阶数用*p*表示，而MA模型的阶数用*q*表示。
+- en: '[PRE27]'
+  id: totrans-192
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'Let''s plot a longer series of points to see what sort of structure emerges:'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们绘制一个更长的数据点序列，看看会出现什么样的结构：
+- en: '[PRE28]'
+  id: totrans-194
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Notice how we''re specifying a different number of parameters for the AR and
+    MA portions of the model: 5 parameters for the AR and 2 parameters for the MA
+    model. This is referred to as an *ARMA(5,2)* model.'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意我们如何为模型的AR部分和MA部分指定不同数量的参数：AR部分为5个参数，MA模型为2个参数。这被称为*ARMA(5,2)*模型。
+- en: '![Combining the AR and MA models](img/7180OS_09_300.jpg)'
+  id: totrans-196
+  prefs: []
+  type: TYPE_IMG
+  zh: '![结合AR和MA模型](img/7180OS_09_300.jpg)'
+- en: 'The plot of the earlier ARMA model over a longer series of points allows the
+    effect of the MA terms to become visible. At this scale we can''t see the effect
+    of the AR component, so let''s run the series though an autocorrelation plot as
+    before:'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的ARMA模型在更长的点序列上绘制，可以让MA项的效果变得明显。在这个尺度下，我们看不到AR成分的效果，因此让我们像之前一样通过自相关图来运行这个序列：
+- en: '[PRE29]'
+  id: totrans-198
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'You should see a chart similar to the following:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该看到一个类似以下的图表：
+- en: '![Combining the AR and MA models](img/7180OS_09_310.jpg)'
+  id: totrans-200
+  prefs: []
+  type: TYPE_IMG
+  zh: '![结合AR和MA模型](img/7180OS_09_310.jpg)'
+- en: Far from making the order of the series clearer, with more data and both AR
+    and MA components in the series the ACF plot is not very useful and quite unlike
+    the strikingly clear autocorrelation plots that we have been looking at so far.
+    The autocorrelation decays slowly to zero making it impossible to determine the
+    order of the AR and MA processes, even though we've provided it with a large quantity
+    of data.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事实上，随着更多数据和AR与MA成分的加入，ACF图并没有让序列的阶数变得更加清晰，相反，它不像我们之前看到的那些自相关图那么明确和清晰。自相关缓慢衰减至零，这使得我们即使提供了大量数据，也无法确定AR和MA过程的阶数。
+- en: The reason for this is that the MA portion of the model is overwhelming the
+    AR portion of the model. We can't determine a cyclic pattern in the data because
+    it is hidden behind a moving average that makes all points that are close to each
+    other appear correlated. The best approach to fixing this is to plot the partial
+    autocorrelation.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样做的原因是MA部分的影响压倒了AR部分。我们无法在数据中识别出周期性模式，因为它被一个移动平均所掩盖，这使得所有相邻的点看起来都存在相关性。解决这个问题的最佳方法是绘制偏自相关。
+- en: Calculating partial autocorrelation
+  id: totrans-203
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 计算偏自相关
+- en: The **partial autocorrelation function** (**PACF**) aims to address the issue
+    of spotting cyclic components in a hybrid ARMA model. It's defined as the correlation
+    coefficient between *y*[t] and *y*[t+k] given all the in-between observations.
+    In other words, it's the autocorrelation at lag *k* that isn't already accounted
+    for by lags 1 through *k-1*.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**部分自相关函数**（**PACF**）旨在解决在混合 ARMA 模型中识别周期性成分的问题。它被定义为给定所有中间观测值时，*y*[t] 和 *y*[t+k]
+    之间的相关系数。换句话说，它是在滞后 *k* 下的自相关，且该自相关并未被滞后1到滞后 *k-1* 的自相关所涵盖。'
+- en: 'The first order, lag 1 partial autocorrelation is defined to equal the first
+    order autocorrelation. The second order, lag 2 partial autocorrelation is equal
+    to:'
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一阶滞后1的部分自相关被定义为等于一阶自相关。二阶滞后2的部分自相关等于：
+- en: '![Calculating partial autocorrelation](img/7180OS_09_11.jpg)'
+  id: totrans-206
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算部分自相关](img/7180OS_09_11.jpg)'
+- en: This is the correlation between values two time periods apart, *y*[t] and *y*[t-2],
+    conditional on knowledge of *y*[t-1]. In a stationary time series, the two variances
+    in the denominator will be equal.
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是两个时间周期间隔的值之间的相关性，*y*[t] 和 *y*[t-2]，条件是已知 *y*[t-1]。在平稳时间序列中，分母中的两个方差将是相等的。
+- en: 'The third order, lag 3 partial autocorrelation is equal to:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 三阶滞后3的部分自相关等于：
+- en: '![Calculating partial autocorrelation](img/7180OS_09_12.jpg)'
+  id: totrans-209
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算部分自相关](img/7180OS_09_12.jpg)'
+- en: And so on, for any lag.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以此类推，适用于任何滞后。
+- en: Autocovariance
+  id: totrans-211
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 自协方差
+- en: 'The equations for partial autocorrelation require us to calculate the covariance
+    of our data with itself at some lag. This is called the **autocovariance**. We
+    have seen in previous chapters how to measure the covariance between two series
+    of data, the tendency of two or more attributes to vary together. This function
+    is very similar to the autocorrelation function we defined earlier in the chapter,
+    and calculates the autocovariance for a range of lags beginning at zero:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部分自相关的公式要求我们计算数据在某个滞后下的自协方差。这称为**自协方差**。我们在前几章已经学习了如何测量两组数据之间的协方差，也就是两项或多项属性一起变化的趋势。这个函数与我们之前在本章定义的自相关函数非常相似，计算从零开始的一系列滞后的自协方差：
+- en: '[PRE30]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: As before, the return value will be a lazy sequence of lags, so we'll be sure
+    to take only the values we need.
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，返回值将是一个懒序列（lazy sequence）滞后值，所以我们只需要取我们所需的值。
+- en: PACF with Durbin-Levinson recursion
+  id: totrans-215
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 Durbin-Levinson 递推法的PACF
+- en: Because of the need to account for previously explained variation, calculating
+    partial autocorrelation is a lot more involved than calculating autocorrelation.
+    The Durbin-Levinson algorithm provides a way to calculate it recursively.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于需要考虑先前已解释的变化，计算部分自相关比计算自相关要复杂得多。Durbin-Levinson 算法提供了一种递归计算的方法。
+- en: Note
+  id: totrans-217
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Durbin-Levinson recursion, or simply Levinson Recursion, is a method for calculating
+    the solution to equations involving matrices with constant values on the diagonals
+    (called **Toeplitz matrices**). More information is available at [https://en.wikipedia.org/wiki/Levinson_recursion](https://en.wikipedia.org/wiki/Levinson_recursion).
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Durbin-Levinson 递推法，简称Levinson递推法，是一种计算涉及对角线元素为常数的矩阵（称为**托普利茨矩阵**）方程解的方法。更多信息请参考
+    [https://en.wikipedia.org/wiki/Levinson_recursion](https://en.wikipedia.org/wiki/Levinson_recursion)。
+- en: An implementation of Levinson recursion is shown as follows. The math is beyond
+    the scope of this book, but the general shape of the recursive function should
+    be familiar to you now. At each iteration, we calculate the partial autocorrelation
+    with a function of the previous partial autocorrelations and the autocovariance.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Levinson 递推法的实现如下所示。数学推导超出了本书的范围，但递推函数的一般形状你现在应该已经熟悉了。在每次迭代中，我们通过上一轮部分自相关和自协方差的函数来计算部分自相关。
+- en: '[PRE31]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: As before, this function will create an infinite lazy sequence of partial autocorrelations,
+    so we have to take only the numbers that we actually want from it.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，这个函数将创建一个无限的懒序列部分自相关，所以我们只能从中取出我们实际需要的数字。
+- en: Plotting partial autocorrelation
+  id: totrans-222
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 绘制部分自相关
+- en: Now that we've implemented a function to calculate the partial autocorrelations
+    of a time series, let's plot them. We'll use the same ARMA coefficients as before
+    so we can compare the difference.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经实现了一个计算时间序列部分自相关的函数，接下来就来绘制它们。我们将使用与之前相同的 ARMA 系数，以便进行差异比较。
+- en: '[PRE32]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'This should generate a bar chart similar to the following:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该生成一个类似于以下的条形图：
+- en: '![Plotting partial autocorrelation](img/7180OS_09_320.jpg)'
+  id: totrans-226
+  prefs: []
+  type: TYPE_IMG
+  zh: '![绘制部分自相关](img/7180OS_09_320.jpg)'
+- en: Fortunately, this is rather different from the ACF plot that we created previously.
+    There is a high partial autocorrelation at lags 1 and 2\. This suggests that an
+    *MA(2)* process is at work. Then, there is low partial autocorrelation until lag
+    5\. This suggests that there is a an *AR(5)* model at work too.
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，这与我们之前绘制的ACF图有所不同。在滞后1和滞后2处有很高的部分自相关。这表明正在进行一个*MA(2)*过程。然后，滞后5之前部分自相关较低，这表明也存在一个*AR(5)*模型。
+- en: Determining ARMA model order with ACF and PACF
+  id: totrans-228
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用ACF和PACF确定ARMA模型阶数
+- en: The differences between ACF and PACF plots are useful to help with selecting
+    the most appropriate model for the time series. The following table describes
+    the appearance of ACF and PACF plots for idealized AR and MA series.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ACF和PACF图之间的差异有助于选择最合适的时间序列模型。下表描述了理想化AR和MA序列的ACF和PACF图的特征。
+- en: '| Model | ACF | PACF |'
+  id: totrans-230
+  prefs: []
+  type: TYPE_TB
+  zh: '| 模型 | ACF | PACF |'
+- en: '| --- | --- | --- |'
+  id: totrans-231
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| *AR(p)* | Decays gradually | Cuts off after *p* lags |'
+  id: totrans-232
+  prefs: []
+  type: TYPE_TB
+  zh: '| *AR(p)* | 渐渐衰减 | 在*p*滞后之后截断 |'
+- en: '| *MA(q)* | Cuts off after *q* lags | Decays gradually |'
+  id: totrans-233
+  prefs: []
+  type: TYPE_TB
+  zh: '| *MA(q)* | 在* q *滞后之后截断 | 渐渐衰减 |'
+- en: '| *ARMA(p,q)* | Decays gradually | Decays gradually |'
+  id: totrans-234
+  prefs: []
+  type: TYPE_TB
+  zh: '| *ARMA(p,q)* | 渐渐衰减 | 渐渐衰减 |'
+- en: We are often not confronted with data that confirms to these ideals though.
+    Given a real time series, particularly one without a significant number of points,
+    it's not always obvious which would be the most appropriate model. The best course
+    of action is often to pick the simplest model (the one with the lowest order)
+    capable of describing your data.
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们常常面对的数据并不符合这些理想情况。给定一个实际的时间序列，尤其是没有足够多数据点的序列，通常不容易明确哪个模型最为合适。最好的做法通常是选择最简单的模型（即最低阶的模型），它能有效描述你的数据。
+- en: '![Determining ARMA model order with ACF and PACF](img/7180OS_09_330.jpg)'
+  id: totrans-236
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用ACF和PACF确定ARMA模型阶数](img/7180OS_09_330.jpg)'
+- en: The preceding illustration shows sample ACF and PACF plots for an idealized
+    *AR(1)* series. Next are sample ACF and PACF plots for an idealized *MA(1)* series.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上面的插图展示了理想化*AR(1)*序列的ACF和PACF示例图。接下来是理想化*MA(1)*序列的ACF和PACF示例图。
+- en: '![Determining ARMA model order with ACF and PACF](img/7180OS_09_340.jpg)'
+  id: totrans-238
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用ACF和PACF确定ARMA模型阶数](img/7180OS_09_340.jpg)'
+- en: 'The dotted lines on the graphics indicate the threshold of significance. In
+    general, we are not able to produce a model that perfectly captures all the autocorrelations
+    in the time series and the significance threshold helps us prioritize the most
+    important. A simple formula for determining significance threshold with an *α*
+    of 5 percent is:'
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图中的虚线表示显著性阈值。一般来说，我们无法创建一个完美捕捉时间序列中所有自相关的模型，显著性阈值帮助我们优先考虑最重要的部分。使用5%显著性水平的显著性阈值的简单公式是：
+- en: '![Determining ARMA model order with ACF and PACF](img/7180OS_09_13.jpg)'
+  id: totrans-240
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用ACF和PACF确定ARMA模型阶数](img/7180OS_09_13.jpg)'
+- en: Here, *n* is the number of points in the time series. If all points in the ACF
+    and PACF are close to zero, the data are basically random.
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*n*是时间序列中的数据点数量。如果ACF和PACF中的所有点都接近零，则数据基本上是随机的。
+- en: ACF and PACF of airline data
+  id: totrans-242
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 航空数据的ACF和PACF
+- en: Let's return to the airline data that we started considering earlier and plot
+    the ACF of the data for the first 25 lags.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们回到之前开始考虑的航空数据，并绘制数据的前25个滞后的ACF。
+- en: '[PRE33]'
+  id: totrans-244
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'This code generates the following chart:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码生成了以下图表：
+- en: '![ACF and PACF of airline data](img/7180OS_09_350.jpg)'
+  id: totrans-246
+  prefs: []
+  type: TYPE_IMG
+  zh: '![航空数据的ACF和PACF](img/7180OS_09_350.jpg)'
+- en: You can see that there are regular peaks and troughs in the data. The first
+    peak is at lag 12; the second is at lag 24\. Since the data is monthly, these
+    peaks correspond to an annual, seasonal, cycle. Since we have 144 points in our
+    time series, the threshold for significance is about ![ACF and PACF of airline
+    data](img/7180OS_09_14.jpg) or 0.17.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以看到数据中有规律的峰值和谷值。第一个峰值出现在滞后12；第二个出现在滞后24。由于数据是按月记录的，这些峰值对应着年度季节性循环。因为我们的时间序列有144个数据点，显著性阈值大约为![航空数据的ACF和PACF](img/7180OS_09_14.jpg)
+    或0.17。
+- en: 'Next, let''s look at the partial autocorrelation plot for the airline data:'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们看一下航空数据的部分自相关图：
+- en: '[PRE34]'
+  id: totrans-249
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'This code generates the following chart:'
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码生成了以下图表：
+- en: '![ACF and PACF of airline data](img/7180OS_09_360.jpg)'
+  id: totrans-251
+  prefs: []
+  type: TYPE_IMG
+  zh: '![航空数据的ACF和PACF](img/7180OS_09_360.jpg)'
+- en: The partial autocorrelation plot also has a peak at lag 12\. Unlike the autocorrelation
+    plot it doesn't have a peak at lag 24 because the periodic autocorrelation has
+    already been accounted for at lag 12.
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部分自相关图在滞后12处也有一个峰值。与自相关图不同，它在滞后24处没有峰值，因为周期性自相关已在滞后12时被考虑在内。
+- en: Although this appears to suggest an AR(12) model will be appropriate, that will
+    create a large number of coefficients to learn, especially on a relatively small
+    amount of data. Since the periodic cycle is seasonal, we ought to remove it with
+    a second phase of differencing.
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管这看起来表明AR(12)模型会合适，但这会创建大量的系数需要学习，特别是在数据量相对较少的情况下。由于周期性循环是季节性的，我们应该通过第二次差分来去除它。
+- en: Removing seasonality with differencing
+  id: totrans-254
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 通过差分去除季节性
+- en: We have already differenced the data once, meaning that our model is referred
+    to as an **autoregressive integrated moving-average** (**ARIMA**) model. The level
+    of differencing is given the parameter *d*, and the full model order can therefore
+    be specified as *ARIMA(p,d,q)*.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经对数据进行了第一次差分，这意味着我们的模型被称为**自回归积分滑动平均**（**ARIMA**）模型。差分的级别由参数*d*给出，因此完整的模型阶数可以指定为*ARIMA(p,d,q)*。
+- en: 'We can difference the data a second time to remove the strong seasonality in
+    the data. Let''s do this next:'
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以对数据进行第二次差分，以去除数据中的强季节性。接下来我们来做这个：
+- en: '[PRE35]'
+  id: totrans-257
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'First, we plot the autocorrelation:'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们绘制自相关图：
+- en: '![Removing seasonality with differencing](img/7180OS_09_362.jpg)'
+  id: totrans-259
+  prefs: []
+  type: TYPE_IMG
+  zh: '![通过差分去除季节性](img/7180OS_09_362.jpg)'
+- en: 'Next, the partial autocorrelation:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，部分自相关：
+- en: '[PRE36]'
+  id: totrans-261
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'This generates the following chart:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这会生成以下图表：
+- en: '![Removing seasonality with differencing](img/7180OS_09_364.jpg)'
+  id: totrans-263
+  prefs: []
+  type: TYPE_IMG
+  zh: '![通过差分去除季节性](img/7180OS_09_364.jpg)'
+- en: The strong seasonal cycle accounted for most of the significance in the charts.
+    We're left with negative autocorrelation at lag 1 on both charts, and a barely
+    significant autocorrelation at lag 9 on the ACF. A general rule of thumb is that
+    positive autocorrelation is best treated by adding an *AR* term to the model,
+    while negative autocorrelation is usually best treated by adding an *MA* term
+    to the model.
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 强季节性周期解释了图表中大部分的显著性。在两个图表中，我们剩下了滞后1的负自相关，以及在ACF中滞后9的微弱显著自相关。一个一般的经验法则是，正自相关最好通过在模型中添加*AR*项来处理，而负自相关通常最好通过添加*MA*项来处理。
+- en: It appears based on the preceding charts that a justified model is an *MA(1)*
+    model. This would probably be a good enough model for this case, but let's use
+    this as an opportunity to demonstrate how to fit a large number of parameters
+    to a model by trying to capture the *AR(9)* autocorrelation as well.
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从之前的图表来看，似乎一个合理的模型是*MA(1)*模型。这可能是一个足够好的模型，但我们可以借此机会演示如何通过尝试捕捉*AR(9)*自相关来拟合大量的参数。
+- en: We'll consider an alternative to the cost function, the likelihood, which measures
+    how closely the given model fits the data. The better the model fits, the greater
+    the likelihood. Thus, we will want to maximize the likelihood, a goal also known
+    as **maximum likelihood estimation**.
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将考虑成本函数的替代方案——似然度，它衡量给定模型与数据的拟合程度。模型拟合得越好，似然度越大。因此，我们希望最大化似然度，这个目标也称为**最大似然估计**。
+- en: Maximum likelihood estimation
+  id: totrans-267
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 最大似然估计
+- en: On several occasions throughout this book, we've expressed optimization problems
+    in terms of a cost function to be minimized. For example, in [Chapter 4](ch04.xhtml
+    "Chapter 4. Classification"), *Classification*, we used Incanter to minimize the
+    logistic cost function whilst building a logistic regression classifier, and in
+    [Chapter 5](ch05.xhtml "Chapter 5. Big Data"), *Big Data*, we used gradient descent
+    to minimize a least-squares cost function when performing batch and stochastic
+    gradient descent.
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本书的多次场合，我们已经将优化问题表示为需要最小化的成本函数。例如，在[第4章](ch04.xhtml "第4章 分类")，*分类*中，我们使用Incanter最小化逻辑回归成本函数，同时建立一个逻辑回归分类器；在[第5章](ch05.xhtml
+    "第5章 大数据")，*大数据*中，我们在执行批量和随机梯度下降时使用梯度下降法最小化最小二乘成本函数。
+- en: Optimization can also be expressed as a benefit to maximize, and it's sometimes
+    more natural to think in these terms. Maximum likelihood estimation aims to find
+    the best parameters for a model by maximizing the likelihood function.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 优化也可以表示为要最大化的效益，有时用这种方式思考会更自然。最大似然估计的目标是通过最大化似然函数来找到模型的最佳参数。
+- en: 'Let''s say that the probability of an observation *x* given model parameters
+    *β* is written as:'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设给定模型参数*β*时，观测值*x*的概率表示为：
+- en: '![Maximum likelihood estimation](img/7180OS_09_15.jpg)'
+  id: totrans-271
+  prefs: []
+  type: TYPE_IMG
+  zh: '![最大似然估计](img/7180OS_09_15.jpg)'
+- en: 'Then, the likelihood can be expressed as:'
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，似然度可以表示为：
+- en: '![Maximum likelihood estimation](img/7180OS_09_16.jpg)'
+  id: totrans-273
+  prefs: []
+  type: TYPE_IMG
+  zh: '![最大似然估计](img/7180OS_09_16.jpg)'
+- en: The likelihood is a measure of the *probability of the parameters*, given the
+    data. The aim of maximum likelihood estimation is to find the parameter values
+    that make the observed data most likely.
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 似然是给定数据下*参数的概率*的度量。最大似然估计的目标是找到使观察到的数据最有可能的参数值。
+- en: Calculating the likelihood
+  id: totrans-275
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 计算似然
+- en: Before calculating the likelihood for a time series, we'll illustrate the process
+    by way of a simple example. Say we toss a coin 100 times and observe 56 heads,
+    *h*, and 44 tails, *t*. Rather than assume that we have a fair coin with *P(h)=0.5*
+    (and therefore that the slightly unequal totals are the result of chance variation),
+    instead we could ask whether the observed values differ significantly from 0.5\.
+    We can do this by asking what value of *P(h)* makes the observed data most likely.
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在计算时间序列的似然之前，我们将通过一个简单的例子来说明这一过程。假设我们投掷硬币100次，观察到56次正面，*h*，44次反面，*t*。我们不假设硬币是公平的，*P(h)=0.5*（因此，稍微不平等的总数是由于偶然变动的结果），而是可以问观察到的值是否与0.5有显著差异。我们可以通过询问什么值的*P(h)*使得观察到的数据最有可能来做到这一点。
+- en: '[PRE37]'
+  id: totrans-277
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'In the preceding code, we''re using binomial distribution to model the sequence
+    of coin tosses (recall from [Chapter 4](ch04.xhtml "Chapter 4. Classification"),
+    *Classification*, that binomial distribution is used to model the number of times
+    a binary outcome is expected to occur). The key point is that the data is fixed,
+    and we''re plotting the varying probabilities of observing that data given different
+    parameters to the binomial distribution. The following plot shows the likelihood
+    surface:'
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上面的代码中，我们使用二项分布来模拟投掷硬币的序列（回想一下在[第4章](ch04.xhtml "第4章。分类")中提到的*分类*，二项分布用于模拟二元结果发生的次数）。关键点是数据是固定的，我们在绘制给定不同参数下，观察到该数据的变化概率。以下图表展示了似然面：
+- en: '![Calculating the likelihood](img/7180OS_09_366.jpg)'
+  id: totrans-279
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算似然](img/7180OS_09_366.jpg)'
+- en: As we might have expected, the most likely parameter to the binomial distribution
+    is *p=0.56*. This contrived example could have more easily been calculated by
+    hand, but the principle of maximum likelihood estimation is able to cope with
+    much more complicated models.
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们可能预期的，二项分布中最可能的参数是*p=0.56*。这个人工设定的例子本可以通过手工计算更简单地得出，但最大似然估计的原理能够应对更为复杂的模型。
+- en: In fact, our ARMA model is one such complicated model. The math for calculating
+    the likelihood of time series parameters is beyond the scope of this book. We'll
+    be making use of the Clojure library Succession ([https://github.com/henrygarner/succession](https://github.com/henrygarner/succession))
+    to calculate the likelihood for our time series.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事实上，我们的ARMA模型就是一个复杂的模型。计算时间序列参数似然的数学超出了本书的范围。我们将使用Clojure库Succession（[https://github.com/henrygarner/succession](https://github.com/henrygarner/succession)）来计算时间序列的似然。
+- en: 'It is often the case that we work with the log-likelihood rather than the likelihood.
+    This is simply for mathematical convenience, since the log-likelihood:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们通常使用对数似然而不是似然。这仅仅是出于数学上的方便，因为对数似然：
+- en: '![Calculating the likelihood](img/7180OS_09_17.jpg)'
+  id: totrans-283
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算似然](img/7180OS_09_17.jpg)'
+- en: 'can be re-written as:'
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以重写为：
+- en: '![Calculating the likelihood](img/7180OS_09_18.jpg)'
+  id: totrans-285
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算似然](img/7180OS_09_18.jpg)'
+- en: Here, *k* is the number of parameters to the model. Taking the sum of a large
+    number of parameters is more computationally convenient than taking the product,
+    so the second formula is often preferred. Let's get a feel for how the likelihood
+    function behaves on some test data by plotting the log-likelihood of different
+    parameters against a simple *AR(2)* time series.
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*k*是模型的参数个数。求多个参数的和比求其积更方便进行计算，因此第二个公式通常更受青睐。让我们通过绘制不同参数下的对数似然与简单的*AR(2)*时间序列的关系，来感受一下似然函数在一些测试数据上的表现。
+- en: '[PRE38]'
+  id: totrans-287
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上面的代码生成了以下图表：
+- en: '![Calculating the likelihood](img/7180OS_09_370.jpg)'
+  id: totrans-289
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算似然](img/7180OS_09_370.jpg)'
+- en: 'The peak of the curve corresponds to the best estimate for the parameters,
+    given the data. Notice how the peak in the preceding plot is a little higher than
+    0.5: the noise we added to the model has meant that the best estimate is not exactly
+    0.5\.'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 曲线的峰值对应于根据数据得到的参数最佳估计值。注意，前面图表中的峰值略高于0.5：我们为模型添加的噪声使得最佳估计并非恰好为0.5\。
+- en: Estimating the maximum likelihood
+  id: totrans-291
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 估计最大似然
+- en: The number of parameters to our ARMA model is large, and so to determine the
+    maximum likelihood we're going to use an optimization method that performs well
+    in high-dimensional spaces. The method is called the **Nelder-Mead**, or **simplex**,
+    method. In a space of *n* dimensions, a simplex is a *polytope* of *n+1* vertices.
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的 ARMA 模型的参数数量很大，因此为了确定最大似然，我们将使用一种在高维空间中表现良好的优化方法。该方法叫做 **Nelder-Mead** 方法，或称为
+    **simplex** 方法。在 *n* 维空间中，简单形体是一个具有 *n+1* 个顶点的 *多面体*。
+- en: Note
+  id: totrans-293
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: A polytope is a geometric object with flat sides that can exist in an arbitrary
+    number of dimensions. A two-dimensional polygon is 2-polytope, and a three dimensional
+    polyhedron is a 3-polytope.
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多面体是一个具有平面边的几何对象，可以存在于任意维度中。二维多边形是 2-多面体，三维多面体是 3-多面体。
+- en: The advantage of simplex optimization is that it doesn't need to calculate the
+    gradient at each point in order to descend (or ascend) to a more optimal position.
+    The Nelder-Mead method extrapolates the behavior of the objective function measured
+    at each test point on the simplex. The worst point is replaced with a point created
+    by reflecting through the centroid of the remaining points. If the new point is
+    better than the current best point then we stretch the simplex out exponentially
+    along this line. If the new point isn't much better than before we could be stepping
+    across a valley, so we contract the simplex towards a possibly better point.
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 简单形体优化的优势在于，它不需要在每个点计算梯度来下降（或上升）到更优位置。Nelder-Mead 方法通过推测在每个测试点测量的目标函数行为来进行优化。最差的点将被一个通过剩余点的质心反射创建的新点所替代。如果新点比当前最优点更好，我们将沿此线指数地拉伸简单形体。如果新点和之前的点没有显著改善，我们可能是跨越了一个低谷，因此我们会将简单形体收缩向可能更优的点。
+- en: The following plot shows an example of how the simplex, represented as a triangle,
+    reflects and contracts to find the optimal parameters.
+  id: totrans-296
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图示展示了简单形体（作为三角形表示）如何反射和收缩以找到最优参数的示例。
+- en: '![Estimating the maximum likelihood](img/7180OS_09_380.jpg)'
+  id: totrans-297
+  prefs: []
+  type: TYPE_IMG
+  zh: '![估计最大似然](img/7180OS_09_380.jpg)'
+- en: The simplex is always represented as a shape whose number of vertices is one
+    greater than the number of dimensions. The simplex for two-dimensional optimization,
+    as in the preceding plot, is represented by a triangle. For an arbitrary *n*-dimensional
+    space, the simplex will be represented as a polygon of *n+1* vertices.
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 简单形体总是表示为一个形状，其顶点数量比维度数多一个。对于二维优化，如前面的图所示，简单形体表示为三角形。对于任意 *n* 维空间，简单形体将表示为一个
+    *n+1* 个顶点的多边形。
+- en: Note
+  id: totrans-299
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The simplex method is also called the **amoeba method** due to the way it appears
+    to crawl towards a more optimal position.
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 简单形体方法也被称为 **变形虫方法**，因为它看起来像是在朝着更优位置爬行。
+- en: The simplex method of optimization isn't implemented in Incanter, but it's available
+    in the Apache Commons Math library ([http://commons.apache.org/proper/commons-math/](http://commons.apache.org/proper/commons-math/)).
+    To use it, we'll need to wrap our objective function, the log-likelihood, in a
+    representation that the library understands.
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 简单形体优化方法没有在 Incanter 中实现，但可以在 Apache Commons Math 库中使用（[http://commons.apache.org/proper/commons-math/](http://commons.apache.org/proper/commons-math/)）。要使用它，我们需要将我们的目标函数——对数似然——包装成库能够理解的表示方式。
+- en: Nelder-Mead optimization with Apache Commons Math
+  id: totrans-302
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 使用 Apache Commons Math 进行 Nelder-Mead 优化
+- en: Apache Commons Math is a large and sophisticated library. We can't cover more
+    than the barest essentials here. The next example is provided simply to illustrate
+    how to integrate Clojure code with the Java interfaces provided by the library.
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Commons Math 是一个庞大且复杂的库。我们无法在这里覆盖太多细节。下一个示例仅用于展示如何将 Clojure 代码与该库提供的
+    Java 接口集成。
+- en: Note
+  id: totrans-304
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: An overview of Apache Commons Math's extensive optimization capabilities is
+    available at [http://commons.apache.org/proper/commons-math/userguide/optimization.html](http://commons.apache.org/proper/commons-math/userguide/optimization.html).
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有关 Apache Commons Math 库广泛优化功能的概述，可以参考 [http://commons.apache.org/proper/commons-math/userguide/optimization.html](http://commons.apache.org/proper/commons-math/userguide/optimization.html)。
+- en: 'The Apache Commons Math library expects that we''ll provide an `ObjectiveFunction`
+    to be optimized. Next, we create one by reifying a `MultivariateFunction`, since
+    our objective function needs to be supplied with multiple parameters. Our response
+    will be a single value: the log-likelihood.'
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Commons Math 库期望我们提供一个要优化的 `ObjectiveFunction`。接下来，我们通过实现一个 `MultivariateFunction`
+    来创建它，因为我们的目标函数需要多个参数。我们的响应将是一个单一值：对数似然。
+- en: '[PRE39]'
+  id: totrans-307
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: The preceding code will return an `ObjectiveFunction` representation of an arbitrary
+    function `f`. A `MultivariateFunction` expects to receive a parameter vector `v`,
+    which we pass straight through to our `f`.
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码将返回一个`ObjectiveFunction`表示的任意函数`f`。`MultivariateFunction`期望接收一个参数向量`v`，我们将其直接传递给`f`。
+- en: With this in place, we use some Java interop to call `optimize` on a `SimplexOptimizer`
+    with some sensible default values. Our `InitialGuess` at the parameters is simply
+    an array of zeros. The `NelderMeadSimplex` must be initialized with a default
+    step size for each dimension, which can be any value except zero. We're picking
+    a value of 0.2 for each parameter.
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在此基础上，我们使用一些Java互操作性调用`optimize`，在`SimplexOptimizer`上使用一些合理的默认值。我们对参数的`InitialGuess`只是一个零数组。`NelderMeadSimplex`必须使用每个维度的默认步长进行初始化，该步长可以是任何非零值。我们选择每个参数的步长为0.2。
+- en: '[PRE40]'
+  id: totrans-310
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Our model is a large one with many parameters and so the optimization will
+    take a while to converge. If you run the preceding example you should eventually
+    see returned parameters similar to those shown next:'
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的模型是一个大模型，拥有许多参数，因此优化过程会花费一段时间才能收敛。如果你运行上面的示例，你最终会看到类似下面的返回参数：
+- en: '[PRE41]'
+  id: totrans-312
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: These are the maximum likelihood estimates for our model. Also included in the
+    response is the log-likelihood for the model with the maximum-likelihood parameters.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些是我们模型的最大似然估计。此外，响应中还包含了使用最大似然参数的模型的对数似然值。
+- en: Identifying better models with Akaike Information Criterion
+  id: totrans-314
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用赤池信息量准则识别更好的模型
+- en: When evaluating multiple models, it might appear that the best model is the
+    one with the greatest maximum likelihood estimate. After all, the estimate has
+    determined that the model is the best candidate for generating the observed data.
+    However, the maximum likelihood estimate takes no account of the complexity of
+    the model and, in general, simpler models are to be preferred. Think back to the
+    beginning of the chapter and our high-order polynomial model that had a high *R*2
+    but provided no predictive power.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在评估多个模型时，可能会出现最佳模型是最大似然估计值最大的那个模型的情况。毕竟，最大似然估计表明该模型是生成观测数据的最佳候选者。然而，最大似然估计没有考虑模型的复杂性，通常来说，简单的模型更受青睐。回想一下章节开始时我们的高阶多项式模型，它虽然有很高的*R*²，但却没有提供任何预测能力。
+- en: The **Akaike Information Criterion** (**AIC**) is a method for comparing models
+    that rewarded goodness of fit, as assessed by the likelihood function, but includes
+    a penalty that is a function of the number of parameters. This penalty discourages
+    overfitting, since increasing the number of parameters to the model almost always
+    improves the goodness of fit.
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**赤池信息量准则**（**AIC**）是一种用于比较模型的方法，它奖励拟合优度（通过似然函数评估），但同时也包括了与参数数量相关的惩罚项。这种惩罚项能有效避免过拟合，因为增加模型的参数数量几乎总是会提高拟合优度。'
+- en: 'The AIC can be calculated from the following formula:'
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: AIC可以通过以下公式计算：
+- en: '![Identifying better models with Akaike Information Criterion](img/7180OS_09_19.jpg)'
+  id: totrans-318
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用赤池信息量准则识别更好的模型](img/7180OS_09_19.jpg)'
+- en: Here, *k* is the number of parameters to the model and *L* is the likelihood
+    function. We can calculate the AIC in the following way in Clojure with the parameter
+    counts *p* and *q*.
+  id: totrans-319
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*k*是模型的参数数量，*L*是似然函数。我们可以在Clojure中通过以下方式使用参数计数*p*和*q*来计算AIC。
+- en: '[PRE42]'
+  id: totrans-320
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: If we were to produce multiple models and pick the best one, we would want to
+    pick the one with the lowest AIC.
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们要生成多个模型并选择最佳的，我们会选择具有最低AIC的那个模型。
+- en: Time series forecasting
+  id: totrans-322
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 时间序列预测
+- en: 'With the parameter estimates having been defined, we''re finally in a position
+    to use our model for forecasting. We''ve actually already written most of the
+    code we need to do this: we have an `arma` function that''s capable of generating
+    an autoregressive moving-average series based on some seed data and the model
+    parameters *p* and *q*. The seed data will be our measured values of *y* from
+    the airline data, and the values of *p* and *q* will be the parameters that we
+    calculated using the Nelder-Mead method.'
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在参数估计已被定义后，我们终于可以使用我们的模型进行预测了。实际上，我们已经编写了大部分需要的代码：我们有一个`arma`函数，能够根据一些种子数据和模型参数*p*和*q*生成自回归滑动平均序列。种子数据将是我们从航空公司数据中测量到的*y*值，*p*和*q*的值是我们使用Nelder-Mead方法计算出来的参数。
+- en: 'Let''s plug those numbers into our ARMA model and generate a sequence of predictions
+    for *y*:'
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们将这些数字代入我们的ARMA模型，并生成*y*的预测序列：
+- en: '[PRE43]'
+  id: totrans-325
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'The preceding code generates the following chart:'
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码生成了以下图表：
+- en: '![Time series forecasting](img/7180OS_09_390.jpg)'
+  id: totrans-327
+  prefs: []
+  type: TYPE_IMG
+  zh: '![时间序列预测](img/7180OS_09_390.jpg)'
+- en: 'The line up to time slice 144 is the original series. The line subsequent to
+    this point is our forecast series. The forecast looks a lot like we might have
+    hoped: the exponentially increasing trend continues, as do the regular seasonal
+    pattern of peaks and troughs.'
+  id: totrans-328
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到时间切片144为止的线条是原始序列。从此点之后的线条是我们的预测序列。预测看起来与我们预期的差不多：指数增长趋势持续下去，季节性波动的峰值和谷值模式也在继续。
+- en: In fact, the forecast is almost too regular. Unlike the series at points 1 to
+    144, our forecast contains no noise. Let's add some noise to make our forecast
+    more realistic. To determine how much noise is justified, we could look to see
+    what the error was in our past forecasting. To avoid our errors compounding, we
+    should make predictions one time step ahead, and observe the difference between
+    the prediction and the actual value.
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，预测几乎太规则了。与第1到144点的系列不同，我们的预测没有噪声。让我们加入一些噪声，使我们的预测更具现实性。为了确定噪声的合理性，我们可以查看过去预测中的误差。为了避免错误的积累，我们应该每次预测一个时间步长，并观察预测值与实际值之间的差异。
+- en: 'Let''s run our ARMA function with a sigma of 0.02:'
+  id: totrans-330
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们用0.02的sigma值运行我们的ARMA函数：
+- en: '[PRE44]'
+  id: totrans-331
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'The preceding code may generate a chart like the following:'
+  id: totrans-332
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上面的代码可能会生成如下图表：
+- en: '![Time series forecasting](img/7180OS_09_395.jpg)'
+  id: totrans-333
+  prefs: []
+  type: TYPE_IMG
+  zh: '![时间序列预测](img/7180OS_09_395.jpg)'
+- en: 'Now we get a sense of the volatility of the forecast. By running the simulation
+    several times we can get a sense of the variety of different possible outcomes.
+    What would be useful is if we could determine the confidence interval of our predictions:
+    the upper and lower expectation of all future series, including noise.'
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以感知到预测的波动性了。通过多次运行模拟，我们可以了解不同可能结果的多样性。如果我们能够确定预测的置信区间，包括噪声的上下期望值，这将非常有用。
+- en: Forecasting with Monte Carlo simulation
+  id: totrans-335
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 蒙特卡洛模拟预测
+- en: Although analytic methods do exist for calculating the expected future value
+    of a time series, together with confidence intervals, we'll use this final section
+    to arrive at these values through simulation instead. By studying the variation
+    amongst many forecasts we can arrive at confidence intervals for our model predictions.
+  id: totrans-336
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管确实存在用于计算时间序列预期未来值的方法，并且可以得到置信区间，我们将在本节通过模拟来获得这些值。通过研究多个预测之间的变异性，我们可以为模型预测得出置信区间。
+- en: For example, if we run a very large number of simulations we can calculate the
+    95 percent confidence intervals on our future predictions based on the range within
+    which values fall 95 percent of the time. This is the essence of the Monte Carlo
+    simulation, which is a commonly used statistical tool for problems that are analytically
+    intractable.
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果我们运行大量的模拟，我们可以计算基于95%时间内值范围的未来预测的95%置信区间。这正是蒙特卡洛模拟的核心，它是一个常用于解决分析上难以处理问题的统计工具。
+- en: Note
+  id: totrans-338
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The Monte Carlo method was developed and used systematically during the Manhattan
+    Project, the American World War II effort to develop nuclear weapons. John Von
+    Neumann and Stanislaw Ulam suggested it as a means to investigate properties of
+    neutron travel through radiation shielding and named the method after the Monte
+    Carlo Casino in Monaco.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 蒙特卡洛方法是在曼哈顿计划期间开发并系统地使用的，这是美国在二战期间开发核武器的努力。约翰·冯·诺依曼和斯坦尼斯瓦夫·乌拉姆建议将其作为研究中子穿越辐射屏蔽的性质的一种手段，并以摩纳哥蒙特卡洛赌场命名该方法。
+- en: We've already laid all the foundations for Monte Carlo simulations of the time
+    series forecasts. We simply need to run the simulation many hundreds of times
+    and collect the results. In the following code, we run 1,000 simulations and gather
+    the mean and standard deviation across all forecasts at each future time slice.
+    By creating two new series (an upper bound that adds the standard deviation multiplied
+    by 1.96 and a lower bound that subtracts the standard deviation multiplied by
+    1.96), we're able to visualize the 95 percent confidence interval for the future
+    values of the series.
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经为时间序列预测的蒙特卡洛模拟奠定了所有基础。我们只需要多次运行模拟并收集结果。在以下代码中，我们运行1,000次模拟，并收集每个未来时间切片下所有预测的均值和标准差。通过创建两个新序列（一个上界，通过将标准差乘以1.96并加上标准差，另一个下界，通过将标准差乘以1.96并减去标准差），我们能够可视化系列未来值的95%置信区间。
+- en: '[PRE45]'
+  id: totrans-341
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'This generates the following chart:'
+  id: totrans-342
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这生成了以下图表：
+- en: '![Forecasting with Monte Carlo simulation](img/7180OS_09_400.jpg)'
+  id: totrans-343
+  prefs: []
+  type: TYPE_IMG
+  zh: '![蒙特卡洛模拟预测](img/7180OS_09_400.jpg)'
+- en: The upper and lower bounds provide the confidence intervals for our time series
+    predictions into the future.
+  id: totrans-344
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上限和下限为我们对未来时间序列预测提供了置信区间。
+- en: Summary
+  id: totrans-345
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: 'In this chapter, we''ve considered the task of analyzing discrete time series:
+    sequential observations taken at fixed intervals in time. We''ve seen how the
+    challenge of modeling such a series can be made easier by decomposing it into
+    a set of components: a trend component, a seasonal component, and a cyclic component.'
+  id: totrans-346
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们考虑了分析离散时间序列的任务：在固定时间间隔内进行的顺序观察。我们看到，通过将序列分解为一组组件：趋势成分、季节性成分和周期性成分，可以使建模这种序列的挑战变得更加容易。
+- en: We've seen how ARMA models decompose a series further into autoregressive and
+    moving-average components, each of which is in some way determined by past values
+    of the series. This conception of a series is inherently recursive, and we've
+    seen how Clojure's natural capabilities for defining recursive functions and lazy
+    sequences lend themselves to the algorithmic generation of such series. By determining
+    each value of the series as a function of the previous values, we implemented
+    a recursive ARMA generator that was capable of simulating a measured series and
+    forecasting it forwards in time.
+  id: totrans-347
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们看到了ARMA模型如何将一个序列进一步分解为自回归（AR）和滑动平均（MA）组件，每个组件都以某种方式由序列的过去值决定。这种对序列的理解本质上是递归的，我们也看到了Clojure自然支持定义递归函数和懒序列的能力，如何有助于算法生成此类序列。通过将序列的每个值确定为前一个值的函数，我们实现了一个递归的ARMA生成器，它能够模拟一个已测量的序列并进行未来的预测。
+- en: 'We''ve also learned about expectation maximization: a way of reframing solutions
+    to optimization problems as those which generate the greatest likelihood, given
+    the data. And we''ve also seen how the Apache Commons Math library can be used
+    to estimate the maximum likelihood parameters using the Nelder-Mead method. Finally,
+    we saw how forecasting could be accomplished by playing the sequence forward in
+    time, and how Monte Carlo simulation could be used to estimate the future error
+    of the series.'
+  id: totrans-348
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还学习了期望最大化：一种将优化问题的解重新表述为根据数据生成最大可能性的解的方法。我们还看到了如何使用Apache Commons Math库，通过Nelder-Mead方法估计最大似然参数。最后，我们了解了如何通过将序列向前推进来进行预测，以及如何使用蒙特卡洛模拟来估计序列的未来误差。
+- en: In the final chapter, we'll turn our attention away from data analysis towards
+    data visualization. In some respects, the most important challenge for data scientists
+    is communication, and we'll see how Clojure can support us in presenting our data
+    in the most effective way.
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一章，我们将注意力从数据分析转向数据可视化。从某种程度上说，数据科学家的最重要挑战是沟通，我们将看到Clojure如何帮助我们以最有效的方式展示数据。

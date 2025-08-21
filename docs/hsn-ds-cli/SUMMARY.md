@@ -1,0 +1,8 @@
++   [命令行数据科学实用指南](README.md)
++   [前言](hsn-ds-cli_0.md)
++   [第一章：命令行中的数据科学与其设置](hsn-ds-cli_1.md)
++   [第二章：必备命令](hsn-ds-cli_2.md)
++   [第三章：Shell 工作流、数据获取与处理](hsn-ds-cli_3.md)
++   [第四章：Bash 函数与数据可视化](hsn-ds-cli_4.md)
++   [第五章：循环、函数和字符串处理](hsn-ds-cli_5.md)
++   [第六章：SQL、数学及总结](hsn-ds-cli_6.md)

@@ -1,0 +1,3238 @@
+- en: Chapter 7. Recommender Systems
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第7章 推荐系统
+- en: '|   | *"People who like this sort of thing will find this the sort of thing
+    they like."* |   |'
+  id: totrans-1
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | *"喜欢这种东西的人会发现这正是他们喜欢的东西。"* |   |'
+- en: '|   | --*attributed to Abraham Lincoln* |'
+  id: totrans-2
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | —*归功于亚伯拉罕·林肯* |'
+- en: In the previous chapter, we performed clustering on text documents using the
+    k-means algorithm. This required us to have a measure of similarity between the
+    text documents to be clustered. In this chapter, we'll be investigating recommender
+    systems and we'll use this notion of similarity to suggest items that we think
+    users might like.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一章中，我们使用k-means算法对文本数据进行了聚类。这要求我们必须有一种衡量文本文件相似度的方式。在本章中，我们将研究推荐系统，并利用这种相似度的概念来推荐我们认为用户可能喜欢的物品。
+- en: We also saw the challenge presented by high-dimensional data—the so-called **curse
+    of dimensionality**. Although it's not a problem specific to recommender systems,
+    this chapter will show a variety of techniques that tackle its effects. In particular,
+    we'll look at the means of establishing the most important dimensions with principle
+    component analysis and singular value decomposition, and probabilistic ways of
+    compressing very high dimensional sets with Bloom filters and MinHash. In addition—because
+    determining the similarity of items with each other involves making many pairwise
+    comparisons—we'll learn how to efficiently precompute groups with the most probable
+    similarity using locality-sensitive hashing.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还看到了高维数据所带来的挑战——即所谓的**维度灾难**。尽管这不是推荐系统特有的问题，但本章将展示多种技术来应对其影响。特别地，我们将通过主成分分析和奇异值分解来确定最重要的维度，并通过布隆过滤器和MinHash来使用概率方法压缩非常高维的数据集。此外——由于确定物品之间的相似度涉及大量的成对比较——我们将学习如何使用局部敏感哈希高效地预计算最可能的相似性分组。
+- en: Finally, we'll introduce Spark, a distributed computation framework, and an
+    associated Clojure library called Sparkling. We'll show how Sparkling can be used
+    with Spark's machine learning library MLlib to build a distributed recommender
+    system.
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将介绍Spark，一个分布式计算框架，以及一个相关的Clojure库，名为Sparkling。我们将展示如何结合Spark的机器学习库MLlib使用Sparkling构建分布式推荐系统。
+- en: But first, we'll begin this chapter with a discussion on the basic types of
+    recommender systems and implement one of the simplest in Clojure. Then, we'll
+    demonstrate how Mahout, introduced in the previous chapter, can be used to create
+    a variety of different types of recommender.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但首先，我们将从讨论推荐系统的基本类型开始，并在Clojure中实现其中一个最简单的推荐系统。接下来，我们将演示如何使用前一章中介绍的Mahout来创建多种不同类型的推荐系统。
+- en: Download the code and data
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 下载代码和数据
+- en: In this chapter, we'll make use of data on film recommendations from the website
+    [https://movielens.org/](https://movielens.org/). The site is run by GroupLens,
+    a research lab in the Department of Computer Science and Engineering at the University
+    of Minnesota, Twin Cities.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将使用来自[https://movielens.org/](https://movielens.org/)的电影推荐数据。该网站由GroupLens运营，GroupLens是明尼苏达大学双城校区计算机科学与工程系的一个研究实验室。
+- en: 'Datasets have been made available in several different sizes at [https://grouplens.org/datasets/movielens/](https://grouplens.org/datasets/movielens/).
+    In this chapter, we''ll be making use of "MovieLens 100k"—a collection of 100,000
+    ratings from 1,000 users on 1,700 movies. As the data was released in 1998, it''s
+    beginning to show its age, but it provides a modest dataset on which we can demonstrate
+    the principles of recommender systems. This chapter will give you the tools you
+    need to process the more recently released "MovieLens 20M" data: 20 million ratings
+    by 138,000 users on 27,000 movies.'
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据集已通过[https://grouplens.org/datasets/movielens/](https://grouplens.org/datasets/movielens/)提供了不同大小的版本。在本章中，我们将使用"MovieLens
+    100k"——一个包含来自1,000名用户对1,700部电影的100,000条评分的集合。由于数据发布于1998年，它开始显得有些陈旧，但它提供了一个适中的数据集，供我们展示推荐系统的原理。本章将为你提供处理最新发布的"MovieLens
+    20M"数据所需的工具：1.38万用户对27,000部电影的2,000万条评分。
+- en: Note
+  id: totrans-10
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The code for this chapter is available from the Packt Publishing's website or
+    from [https://github.com/clojuredatascience/ch7-recommender-systems](https://github.com/clojuredatascience/ch7-recommender-systems).
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码可以从Packt Publishing网站或[https://github.com/clojuredatascience/ch7-recommender-systems](https://github.com/clojuredatascience/ch7-recommender-systems)获取。
+- en: 'As usual, a shell script has been provided that will download and decompress
+    the data to this chapter''s `data` directory. You can run it from within the same
+    code directory with:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像往常一样，提供了一个 shell 脚本，它将下载并解压数据到本章的 `data` 目录。你可以在相同的代码目录中运行它：
+- en: '[PRE0]'
+  id: totrans-13
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Once you've run the script, or downloaded an unpacked data manually, you should
+    see a variety of files beginning with the letter "u". The ratings data we'll be
+    mostly using in this chapter is in the `ua.base` file. The `ua.base`, `ua.test`,
+    `ub.base`, and `ub.test` files contain subsets of the data to perform cross-validation.
+    We'll also be using the `u.item` file, which contains information on the movies
+    themselves.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在你运行脚本或手动下载解压数据后，你应该能看到以字母 "u" 开头的各种文件。在本章中，我们主要使用的评分数据位于 `ua.base` 文件中。`ua.base`、`ua.test`、`ub.base`
+    和 `ub.test` 文件包含用于交叉验证的数据子集。我们还将使用 `u.item` 文件，它包含关于电影本身的信息。
+- en: Inspect the data
+  id: totrans-15
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检查数据
+- en: 'The ratings files are tab-separated, containing the field''s user ID, item
+    ID, rating, and timestamp. The user ID links to a row in the `u.user` file, which
+    provides basic demographic information such as age, sex, and occupation:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 评分文件是制表符分隔的，包含用户 ID、物品 ID、评分和时间戳字段。用户 ID 与 `u.user` 文件中的一行数据相对应，该文件提供了用户的基本人口统计信息，如年龄、性别和职业：
+- en: '[PRE1]'
+  id: totrans-17
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: The string shows a single line from the file—a tab-separated line containing
+    the user ID, item ID, rating (1-5), and timestamp showing when the rating was
+    made. The rating is an integer from 1 to 5 and the timestamp is given as the number
+    of seconds since January 1, 1970\. The item ID links to a row in the `u.item`
+    file.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 字符串显示的是文件中的一行——一行以制表符分隔，包含用户 ID、物品 ID、评分（1-5）以及显示评分时间的时间戳。评分是一个从 1 到 5 的整数，时间戳表示自
+    1970 年 1 月 1 日以来的秒数。物品 ID 与 `u.item` 文件中的一行数据相对应。
+- en: 'We''ll also want to load the `u.item` file, so we can determine the names of
+    the items being rated (and the items being predicted in return). The following
+    example shows how data is stored in the `u.item` file:'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还需要加载 `u.item` 文件，这样我们就可以确定正在评分的物品（以及返回预测的物品）的名称。以下示例展示了 `u.item` 文件中数据的存储方式：
+- en: '[PRE2]'
+  id: totrans-20
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: The first two fields are the item ID and name, respectively. Subsequent fields,
+    not used in this chapter, are the release date, the URL of the movie on IMDB,
+    and a series of flags indicating the genre of the movie.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前两个字段分别是物品 ID 和名称。之后的字段，在本章中没有使用，分别是发行日期、电影在 IMDB 上的 URL，以及一系列标志，指示电影的类型。
+- en: Parse the data
+  id: totrans-22
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 解析数据
+- en: 'Since the data will all fit in the main memory for convenience, we''ll define
+    several functions that will load the ratings into Clojure data structures. The
+    `line->rating` function takes a line, splits it into fields where a tab character
+    is found, converts each field to a `long` datatype, then uses `zipmap` to convert
+    the sequence into a map with the supplied keys:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于数据将全部加载到主内存中以便于操作，我们将定义几个函数，将评分数据加载到 Clojure 数据结构中。`line->rating` 函数接收一行数据，将其按制表符分割成各个字段，将每个字段转换为
+    `long` 数据类型，然后使用 `zipmap` 将序列转换为一个包含提供键的映射：
+- en: '[PRE3]'
+  id: totrans-24
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Let''s write a function to parse the `u.items` file as well, so that we know
+    what the movie names are:'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们写一个函数来解析 `u.items` 文件，这样我们就能知道电影名称是什么：
+- en: '[PRE4]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The `load-items` function returns a map of an item ID to a movie name, so that
+    we can look up the names of movies by their ID.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`load-items` 函数返回一个从物品 ID 到电影名称的映射，以便我们可以根据物品 ID 查找电影名称。'
+- en: '[PRE5]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: With these simple functions in place, it's time to learn about the different
+    types of recommender systems.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这些简单的函数就绪后，是时候了解不同类型的推荐系统了。
+- en: Types of recommender systems
+  id: totrans-30
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 推荐系统的类型
+- en: There are typically two approaches taken to the problem of recommendation. Both
+    make use of the notion of similarity between things, as we encountered it in the
+    previous chapter.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 推荐问题通常有两种处理方法。这两种方法都利用了我们在上一章中遇到的事物相似度的概念。
+- en: One approach is to start with an item we know the user likes and recommend the
+    other items that have similar attributes. For example, if a user is interested
+    in action adventure movies, we might present to them a list of all the action
+    adventure movies that we can offer. Or, if we have more data available than simply
+    the genre—perhaps a list of tags—then we could recommend movies that have the
+    most tags in common. This approach is called **content-based** filtering, because
+    we're using the attributes of the items themselves to generate recommendations
+    for similar items.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一种方法是从我们知道用户喜欢的项目开始，并推荐其他具有相似属性的项目。例如，如果用户对动作冒险电影感兴趣，我们可能会给他们展示我们能够提供的所有动作冒险电影的列表。或者，如果我们拥有比单纯的电影类型更多的数据——例如标签列表——那么我们就可以推荐具有最多共同标签的电影。这个方法叫做**基于内容**的过滤，因为我们利用项目本身的属性来生成相似项目的推荐。
+- en: Another approach to recommendation is to take as input some measure of the user's
+    preferences. This may be in the form of numeric ratings for movies, or of movies
+    bought or previously viewed. Once we have this data, we can identify the movies
+    that other users with similar ratings (or purchase history, viewing habits, and
+    so on) have a preference for that the user in question has not already stated
+    a preference for. This approach takes into account the behavior of other users,
+    so it's commonly called **collaborative filtering**. Collaborative filtering is
+    a powerful means of recommendation, because it harnesses the so-called "wisdom
+    of the crowd".
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种推荐方法是将用户的偏好作为输入。这可以是电影的数字评分，或者是购买过或曾观看过的电影。我们一旦获得这些数据，就可以识别出其他有相似评分（或购买历史、观看习惯等）的用户偏好的电影，而这些电影是该用户尚未明确表示偏好的。这种方法考虑了其他用户的行为，因此通常被称为**协同过滤**。协同过滤是一种强大的推荐手段，因为它利用了所谓的“群体智慧”。
+- en: In this chapter, we'll primarily study collaborative filtering approaches. However,
+    by harnessing notions of similarity, we'll provide you with the concepts you'll
+    need to implement content-based recommendation as well.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将主要研究协同过滤方法。然而，通过利用相似度的概念，我们也会为你提供实施基于内容的推荐所需的概念。
+- en: Collaborative filtering
+  id: totrans-35
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 协同过滤
+- en: By taking account only of the users' relationship to items, these techniques
+    require no knowledge of the properties of the items themselves. This makes collaborative
+    filtering a very general technique—the items in question can be anything that
+    can be rated. We can picture collaborative filtering as the act of trying to fill
+    a sparse matrix containing known ratings for users. We'd like to be able to replace
+    the unknowns with predicted ratings and then recommend the predictions with the
+    highest score.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过仅考虑用户与项目的关系，这些技术不需要了解项目本身的属性。这使得协同过滤成为一种非常通用的技术——相关的项目可以是任何可以被评分的东西。我们可以将协同过滤视为尝试填充一个稀疏矩阵，其中包含用户的已知评分。我们希望能够用预测的评分来替代未知值，并推荐评分最高的预测项。
+- en: '![Collaborative filtering](img/7180OS_07_090.jpg)'
+  id: totrans-37
+  prefs: []
+  type: TYPE_IMG
+  zh: '![协同过滤](img/7180OS_07_090.jpg)'
+- en: Notice that each question mark sits at the intersection of a row and a column.
+    The rows contain a particular user's preference for all the movies they've rated.
+    The columns contain the ratings for a particular movie from all the users who
+    have rated it. To substitute the question marks in this matrix using only the
+    other numbers in this matrix is the core challenge of collaborative filtering.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，每个问号位于行和列的交叉处。行包含特定用户对他们评分的所有电影的偏好。列包含所有评分过某部电影的用户的评分。要仅使用该矩阵中的其他数字来替代该矩阵中的问号，是协同过滤的核心挑战。
+- en: Item-based and user-based recommenders
+  id: totrans-39
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 基于项目和基于用户的推荐
+- en: 'Within the field of collaborative filtering, we can usefully make the distinction
+    between two types of filtering—item-based and user-based recommenders. With item-based
+    recommenders, we take a set of items that a user has already rated highly and
+    look for other items that are similar. The process is visualized in the next diagram:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在协同过滤领域内，我们可以有区分地讲两种过滤类型——基于项目的推荐和基于用户的推荐。对于基于项目的推荐，我们从用户已经高度评分的一组项目出发，寻找其他相似的项目。这个过程可以通过下图来展示：
+- en: '![Item-based and user-based recommenders](img/7180OS_07_100.jpg)'
+  id: totrans-41
+  prefs: []
+  type: TYPE_IMG
+  zh: '![基于项目和基于用户的推荐](img/7180OS_07_100.jpg)'
+- en: A recommender might recommend item **B**, based on the information presented
+    in the diagram, since it's similar to two items that are already highly rated.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于图表中提供的信息，推荐器可能会推荐项目 **B**，因为它与两部已被高度评价的项目相似。
+- en: We can contrast this approach to the process of a user-based recommendation
+    shown in the following diagram. A user-based recommendation aims to identify users
+    with similar tastes to the user in question to recommend items that they have
+    rated highly, but which the user has not already rated.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将这种方法与下面图示的基于用户的推荐过程进行对比。基于用户的推荐旨在识别与目标用户口味相似的其他用户，以推荐他们高评分的项目，但这些项目目标用户尚未评分。
+- en: '![Item-based and user-based recommenders](img/7180OS_07_110.jpg)'
+  id: totrans-44
+  prefs: []
+  type: TYPE_IMG
+  zh: '![基于项目和基于用户的推荐器](img/7180OS_07_110.jpg)'
+- en: The user-based recommender is likely to recommend item **B**, because it has
+    been rated highly by two other users with similar taste. We'll be implementing
+    both kinds of recommenders in this chapter. Let's start with one of the simplest
+    approaches—**Slope One** predictors for item-based recommendation.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于用户的推荐器很可能会推荐项目 **B**，因为它已经被两位口味相似的用户高评分过。我们将在本章实现两种推荐器。让我们从最简单的方法之一——**Slope
+    One** 项目推荐预测器开始。
+- en: Slope One recommenders
+  id: totrans-46
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Slope One 推荐器
+- en: Slope One recommenders are a part of a family of algorithms introduced in a
+    2005 paper by Daniel Lemire and Anna Maclachlan. In this chapter, we'll introduce
+    the weighted Slope One recommender.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Slope One 推荐器是由 Daniel Lemire 和 Anna Maclachlan 在 2005 年的论文中提出的一系列算法的一部分。在本章中，我们将介绍加权
+    Slope One 推荐器。
+- en: Note
+  id: totrans-48
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: You can read the paper introducing the Slope One recommender at [http://lemire.me/fr/abstracts/SDM2005.html](http://lemire.me/fr/abstracts/SDM2005.html).
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在 [http://lemire.me/fr/abstracts/SDM2005.html](http://lemire.me/fr/abstracts/SDM2005.html)
+    阅读介绍 Slope One 推荐器的论文。
+- en: 'To illustrate how weighted Slope One recommendation works, let''s consider
+    the simple example of four users, labeled **W**, **X**, **Y**, and **Z**, who
+    have rated three movies—Amadeus, Braveheart, and Casablanca. The ratings each
+    user has provided are illustrated in the following diagram:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了说明加权 Slope One 推荐的工作原理，让我们考虑一个简单的例子，四个用户，分别标记为 **W**、**X**、**Y** 和 **Z**，他们对三部电影——《阿马迪乌斯》、《勇敢的心》和《卡萨布兰卡》进行了评分。每个用户提供的评分在下图中有所示：
+- en: '![Slope One recommenders](img/7180OS_07_112.jpg)'
+  id: totrans-51
+  prefs: []
+  type: TYPE_IMG
+  zh: '![Slope One 推荐器](img/7180OS_07_112.jpg)'
+- en: 'As with any recommendation problem, we''re looking to replace the question
+    marks with some estimate on how the user would rate the movie: the highest predicted
+    ratings can be used to recommend new movies to users.'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 和任何推荐问题一样，我们的目标是用某种估算来替代问号，估算用户对电影的评分：最高预测评分可以用来向用户推荐新电影。
+- en: Weighted Slope One is an algorithm in two steps. Firstly, we must calculate
+    the difference between the ratings for every pair of items. Secondly, we'll use
+    this set of differences to make predictions.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加权 Slope One 是一个分两步进行的算法。首先，我们必须计算每对项目之间的评分差异。其次，我们将使用这些差异集合来进行预测。
+- en: Calculating the item differences
+  id: totrans-54
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 计算项目差异
+- en: 'The first step of the Slope One algorithm is to calculate the average difference
+    between each pair of items. The following equation may look intimidating but,
+    in fact, it''s simple:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Slope One 算法的第一步是计算每对项目之间的平均评分差异。以下公式看起来可能有点吓人，但实际上它很简单：
+- en: '![Calculating the item differences](img/7180OS_07_01.jpg)'
+  id: totrans-56
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算项目差异](img/7180OS_07_01.jpg)'
+- en: The formula calculates ![Calculating the item differences](img/7180OS_07_02.jpg),
+    which is the average difference between the ratings for items *i* and *j*. It
+    does so by summing over all the *u* taken from *S*[i],[j]*(R)*, which is the set
+    of all the users who have rated both the items. The quantity that is summed is
+    *u*[i] *- u*[j], the difference between the user's rating for items *i* and *j*
+    divided by ![Calculating the item differences](img/7180OS_07_05.jpg), the cardinality
+    of set *S*[i],[j]*(R)*, or the number of people who have rated both the items.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 公式计算了![计算项目差异](img/7180OS_07_02.jpg)，这是项目 *i* 和 *j* 评分之间的平均差异。它通过对所有从 *S*[i],[j]*(R)*
+    中提取的 *u* 求和来实现，*S*[i],[j]*(R)* 是所有对两个项目都打过分的用户集合。求和的量是 *u*[i] - *u*[j]，即用户对项目
+    *i* 和 *j* 评分之间的差异，除以![计算项目差异](img/7180OS_07_05.jpg)，即集合 *S*[i],[j]*(R)* 的基数，或已对两个项目都打过分的人的数量。
+- en: Let's make this more concrete by applying the algorithm to the ratings in the
+    previous diagram. Let's calculate the difference between the ratings for "Amadeus"
+    and "Braveheart".
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过将算法应用到之前图表中的评分来使这一点更加具体。让我们计算《阿马迪乌斯》和《勇敢的心》之间的评分差异。
+- en: There are two users who have rated both the movies, so ![Calculating the item
+    differences](img/7180OS_07_05.jpg) is two. For each of these users, we take the
+    difference between their ratings for each of the two movies and add them together.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有两个用户都对这两部电影进行了评分，因此 ![计算项目差异](img/7180OS_07_05.jpg) 是 2。对于这两个用户，我们计算他们对每部电影的评分差异并将它们加起来。
+- en: '![Calculating the item differences](img/7180OS_07_06.jpg)'
+  id: totrans-60
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算项目差异](img/7180OS_07_06.jpg)'
+- en: 'The result is *2*, meaning on average, users voted Amadeus two ratings higher
+    than Braveheart. As you might expect, if we calculate the difference in the other
+    direction, between Braveheart and Amadeus, we get *-2*:'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果是 *2*，这意味着平均来说，用户对《莫扎特传》评分比对《勇敢的心》高 2 分。如你所料，如果我们反过来计算差异，即从《勇敢的心》到《莫扎特传》，得到的结果是
+    *-2*：
+- en: '![Calculating the item differences](img/7180OS_07_07.jpg)'
+  id: totrans-62
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算项目差异](img/7180OS_07_07.jpg)'
+- en: 'We can think of the result as the average difference in the rating between
+    the two movies, as judged by all the people who have rated both the movies. If
+    we perform the calculation several more times, we could end up with the matrix
+    in the following diagram, which shows the average pairwise difference in the rating
+    for each of the three movies:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以把结果看作所有评分过这两部电影的用户所评定的两部电影之间的平均评分差异。如果我们再多做几次计算，最终可以得到下图中的矩阵，显示了三部电影之间的每对评分差异的平均值：
+- en: '![Calculating the item differences](img/7180OS_07_114.jpg)'
+  id: totrans-64
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算项目差异](img/7180OS_07_114.jpg)'
+- en: 'By definition, the values on the main diagonal are zero. Rather than continuing
+    our calculations manually, we can express the computation in the following Clojure
+    code, which will build up a sequence of differences between the pairs of items
+    that every user has rated:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据定义，主对角线上的值为零。我们可以通过以下 Clojure 代码来表达计算，而不是继续手动计算，这段代码将计算出每个用户评价过的项目对之间的差异序列：
+- en: '[PRE6]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'The following example loads the `ua.base` file into a sequence of ratings using
+    the functions we defined at the beginning of the chapter. The `collect-item-differences`
+    function takes each user''s list of ratings and, for each pair of rated items,
+    calculates the difference between the ratings. The `item-differences` function
+    reduces over all the users to build up a sequence of pairwise differences between
+    the items for all the users who have rated both the items:'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下示例使用本章开头定义的函数将 `ua.base` 文件加载为评分序列。`collect-item-differences` 函数接收每个用户的评分列表，并计算每对评分项目之间的差异。`item-differences`
+    函数会对所有用户进行汇总，构建出所有评分过这两项的用户之间的评分差异序列：
+- en: '[PRE7]'
+  id: totrans-68
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'We''re storing the lists in both directions as values contained within the
+    nested maps, so we can retrieve the differences between any two items using `get-in`:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将这两个方向的列表存储为嵌套映射中的值，因此我们可以使用 `get-in` 获取任何两个项目之间的差异：
+- en: '[PRE8]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'To use these differences for prediction, we''ll need to summarize them into
+    a mean and keep track of the count of ratings on which the mean was based:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了使用这些差异进行预测，我们需要将它们汇总为均值，并记录基于该均值的评分次数：
+- en: '[PRE9]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: One of the practical benefits of this method is that we have to perform the
+    earlier step only once. From this point onwards, we can incorporate future user
+    ratings by adjusting the mean difference and count only for the items that the
+    user has already rated. For example, if a user has already rated 10 items, which
+    have been incorporated into the earlier data structure, the eleventh rating only
+    requires that we recalculate the differences for the eleven items. It is not necessary
+    to perform the computationally expensive differencing process from scratch to
+    incorporate new information.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该方法的一个实际好处是，我们只需执行之前的步骤一次。从这时起，我们可以通过调整均值差异和评分次数，来结合用户未来的评分，仅对用户已评分的项目进行更新。例如，如果某个用户已经评分了
+    10 个项目并被包含在早期的数据结构中，那么第 11 个评分只需要重新计算这 11 个项目的差异。而不必重新执行计算量较大的差异化过程来纳入新信息。
+- en: Making recommendations
+  id: totrans-74
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 制定推荐
+- en: Now that we have calculated the average differences for each pair of items,
+    we have all we need to recommend new items to users. To see how, let's return
+    to one of our earlier examples.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经计算出了每对项目的平均差异，接下来我们可以利用这些差异向用户推荐新项目。为了了解如何操作，我们回到之前的一个例子。
+- en: User **X** has already provided ratings for **Amadeus** and **Braveheart**.
+    We'd like to infer how they would rate the movie **Casablanca** so that we can
+    decide whether or not to recommend it to them.
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户**X**已经为**阿马迪乌斯**和**勇敢的心**提供了评分。我们希望推测他们会如何评分电影**卡萨布兰卡**，以便决定是否推荐给他们。
+- en: '![Making recommendations](img/7180OS_07_116.jpg)'
+  id: totrans-77
+  prefs: []
+  type: TYPE_IMG
+  zh: '![推荐生成](img/7180OS_07_116.jpg)'
+- en: 'In order to make predictions for a user, we need two things—the matrix of differences
+    we calculated just now and the users'' own previous ratings. Given these two things,
+    we can calculate a predicted rating ![Making recommendations](img/7180OS_07_08.jpg)
+    for item *j*, given user *u*, using the following formula:'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了对用户进行预测，我们需要两样东西——刚刚计算出的差异矩阵和用户自己以前的评分。给定这两样东西，我们可以使用以下公式，计算用户*u*对项目*j*的预测评分！[推荐生成](img/7180OS_07_08.jpg)：
+- en: '![Making recommendations](img/7180OS_07_09.jpg)![Making recommendations](img/7180OS_07_10.jpg)'
+  id: totrans-79
+  prefs: []
+  type: TYPE_IMG
+  zh: '![推荐生成](img/7180OS_07_09.jpg)![推荐生成](img/7180OS_07_10.jpg)'
+- en: As before, this equation looks more complicated than it is, so let's step through
+    it, starting with the numerator.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如之前所示，这个方程看起来比实际要复杂，所以我们从分子开始一步步解析。
+- en: The ![Making recommendations](img/7180OS_07_11.jpg) expression means that we're
+    summing over all the *i* items that user *u* has rated (which clearly does not
+    include *j*, the item for which we're trying to predict a rating). The sum we
+    calculate is over the difference between the users' rating for *i* and *j*, plus
+    u's rating for *i*. We multiply that quantity by *C*[j],[i]—the number of users
+    that rated both.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![推荐生成](img/7180OS_07_11.jpg) 这个表达式意味着我们正在对用户*u*评分过的所有*i*项进行求和（显然不包括*j*，即我们试图预测评分的项目）。我们计算的总和是用户对*i*和*j*的评分差值，再加上用户*u*对*i*的评分。我们将该值乘以*C*[j],[i]——即评分过这两个项目的用户数量。'
+- en: The ![Making recommendations](img/7180OS_07_13.jpg) denominator is simply the
+    sum of all the users who have rated *j* and any of the movies that user *u* has
+    rated. It's a constant factor to adjust the size of the numerator downwards to
+    ensure that the output can be interpreted as a rating.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![推荐生成](img/7180OS_07_13.jpg) 分母是所有评分过*j*以及用户*u*评分过的任何电影的用户数量之和。它是一个常数因子，用来调整分子的大小，以确保输出能够被解释为评分。'
+- en: 'Let''s illustrate the previous formula by calculating the predicted rating
+    of user X for "Casablanca" using the table of differences and the ratings provided
+    earlier:'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过计算用户X对《卡萨布兰卡》的预测评分来说明之前的公式，使用之前提供的差异表和评分：
+- en: '![Making recommendations](img/7180OS_07_14.jpg)![Making recommendations](img/7180OS_07_15.jpg)'
+  id: totrans-84
+  prefs: []
+  type: TYPE_IMG
+  zh: '![推荐生成](img/7180OS_07_14.jpg)![推荐生成](img/7180OS_07_15.jpg)'
+- en: So, given the previous ratings, we would predict that user X would rate Casablanca
+    **3.375**. By performing the same process for all the items also rated by the
+    people who rated any of the other items rated by user X, we can arrive at a set
+    of recommendations for user X.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，基于之前的评分，我们预测用户X会给《卡萨布兰卡》评分**3.375**。通过对所有其他用户评分的项目执行相同的过程，我们可以为用户X得出一组推荐项。
+- en: 'The Clojure code calculates the weighted rating for all such candidates:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下面的Clojure代码计算了所有候选项的加权评分：
+- en: '[PRE10]'
+  id: totrans-87
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'Next, we calculate a weighted rating, which is the weighted average rating
+    for each candidate. The weighted average ensures that the differences generated
+    by large numbers of users count for more than those generated by only a small
+    number of users:'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们计算加权评分，即每个候选项的加权平均评分。加权平均确保由大量用户生成的差异比仅由少量用户生成的差异更为重要：
+- en: '[PRE11]'
+  id: totrans-89
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Finally, we remove from the candidate pool any items we have already rated
+    and order the remainder by rating descending: we can take just the highest rated
+    results and present these as our top recommendations. The following example calculates
+    the top ratings for user ID 1:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们从候选池中移除任何已经评分过的项目，并按评分降序排列剩余的项目：我们可以选择最高评分的结果，将其作为我们的顶级推荐。以下示例计算了用户ID为1的用户的最高评分：
+- en: '[PRE12]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'The earlier example will take a while to build the Slope One recommender and
+    output the differences. It will take a couple of minutes, but when it''s finished,
+    you should see something like the following:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的示例会花一些时间来构建Slope One推荐器并输出差异。它需要几分钟，但完成后，您应该能看到如下内容：
+- en: '[PRE13]'
+  id: totrans-93
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: Try running `slope-one-recommender` in the REPL and predicting recommendations
+    for multiple users. You'll find that once the differences have been built, making
+    recommendations is very fast.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尝试在 REPL 中运行`slope-one-recommender`，并为多个用户预测推荐。你会发现，一旦差异矩阵构建完成，生成推荐的速度非常快。
+- en: Practical considerations for user and item recommenders
+  id: totrans-95
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 用户和物品推荐系统的实际考虑
+- en: As we've seen in the previous section, compiling pairwise differences for all
+    items is a time-consuming job. One of the advantages of item-based recommenders
+    is that pairwise differences between items are likely to remain relatively stable
+    over time. The differences matrix need only be calculated periodically. As we've
+    seen, it's possible to incrementally update very easily too; for a user who has
+    already rated 10 items, if they rate an additional item, we only need to adjust
+    the difference for the 11 items they have now rated. We don't need to calculate
+    the differences from scratch whenever we want to update the matrix.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在前一节中看到的，编译所有物品的成对差异是一个耗时的工作。基于物品的推荐系统的一个优点是，物品之间的成对差异通常会随着时间的推移保持相对稳定。因此，差异矩阵只需定期计算。正如我们所看到的，也可以非常容易地增量更新；对于已经评价过
+    10 个物品的用户，如果他们再评价一个新物品，我们只需要调整这 11 个物品的差异，而不需要每次更新矩阵时都从头计算差异。
+- en: The runtime of item-based recommenders scales with the number of items they
+    store though. In situations where the number of users is small compared to the
+    number of items, it may be more efficient to implement a user-based recommender.
+    For example content aggregation sites, where items could outnumber users by orders
+    of magnitude, are good candidates for user-based recommendation.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于物品的推荐系统的运行时随着它们存储的物品数量增加而扩展。然而，在用户数量相比物品数量较少的情况下，实施基于用户的推荐系统可能更加高效。例如，对于内容聚合类网站，物品的数量可能远远超过用户数量，这类网站非常适合使用基于用户的推荐系统。
+- en: The `Mahout` library, which we encountered in the previous chapter, contains
+    the tools to create a variety of recommenders, including user-based recommenders.
+    Let's look at these next.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们接触到的`Mahout`库包含了创建各种推荐系统的工具，包括基于用户的推荐系统。接下来我们将介绍这些工具。
+- en: Building a user-based recommender with Mahout
+  id: totrans-99
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Mahout 构建基于用户的推荐系统
+- en: The Mahout library comes with a lot of built-in classes, which are designed
+    to work together to assist in building custom recommendation engines. Mahout's
+    functionality to construct recommenders is in the `org.apache.mahout.cf.taste`
+    namespace.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mahout 库包含许多内置类，这些类设计用于协同工作，以帮助构建定制的推荐引擎。Mahout 用于构建推荐系统的功能位于`org.apache.mahout.cf.taste`命名空间中。
+- en: Note
+  id: totrans-101
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Mahout's recommendation engine capabilities come from the Taste open source
+    project with which it merged in 2008.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mahout 的推荐引擎能力来自于 Taste 开源项目，该项目与 Mahout 于 2008 年合并。
+- en: In the previous chapter, we discovered how to make use of Mahout to cluster
+    with Clojure's Java interop capabilities. In this chapter, we'll make use of Mahout's
+    recommenders with `GenericUserBasedRecommender` available in the `org.apache.mahout.cf.taste.impl.recommender`
+    package.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们学习了如何利用 Mahout 和 Clojure 的 Java 互操作性进行聚类。在本章中，我们将使用 Mahout 的推荐系统，具体使用`GenericUserBasedRecommender`，它位于`org.apache.mahout.cf.taste.impl.recommender`包中。
+- en: As with many user-based recommenders, we also need to define a similarity metric
+    to quantify how alike two users are. We'll also define a user neighborhood as
+    each user's set of 10 most similar users.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与许多基于用户的推荐系统一样，我们也需要定义一个相似度度量来量化两个用户之间的相似度。我们还需要定义一个用户邻域，作为每个用户的 10 个最相似用户的集合。
+- en: 'First, we must load the data. Mahout includes a utility class, `FileDataModel`,
+    to load the MovieLens data in the `org.apache.mahout.cf.taste.impl.model.file`
+    package, which we use next:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们必须加载数据。Mahout 包含一个工具类`FileDataModel`，用于加载 MovieLens 数据，它位于`org.apache.mahout.cf.taste.impl.model.file`包中，我们接下来将使用这个类。
+- en: '[PRE14]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'Having loaded the data, we can produce recommendations with the following code:'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加载数据后，我们可以使用以下代码生成推荐：
+- en: '[PRE15]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: The distance metric that we used in the previous example was the Euclidean distance.
+    This places each user in a high-dimensional space defined by the ratings for the
+    movies they have rated.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在前面的示例中使用的距离度量是欧氏距离。这将每个用户放置在一个由他们评价过的电影评分定义的高维空间中。
+- en: '![Building a user-based recommender with Mahout](img/7180OS_07_120.jpg)'
+  id: totrans-110
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用 Mahout 构建基于用户的推荐系统](img/7180OS_07_120.jpg)'
+- en: The earlier chart places three users **X**, **Y**, and **Z** on a two-dimensional
+    chart according to their ratings for movies **A** and **B**. We can see that users
+    **Y** and **Z** are more similar to each other, based on these two movies, than
+    they are to user **X**.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 早期的图表根据用户 **X**，**Y** 和 **Z** 对电影 **A** 和 **B** 的评分将它们放置在二维图表上。我们可以看到用户 **Y**
+    和 **Z** 在这两部电影上更相似，而不是与用户 **X** 更相似。
+- en: If we were trying to produce recommendations for user **Y**, we might reason
+    that other items rated highly by user **X** would be good candidates.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们试图为用户 **Y** 生成推荐，我们可能会推断用户 **X** 给出高评分的其他项目可能是不错的候选项。
+- en: k-nearest neighbors
+  id: totrans-113
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: k最近邻
+- en: Our Mahout user-based recommender is making recommendations by looking at the
+    neighborhood of the most similar users. This is commonly called ***k*-nearest
+    neighbors** or ***k*-NN**.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的 Mahout 基于用户的推荐器通过查看最相似用户的邻域进行推荐。这通常被称为 ***k*-最近邻** 或 ***k*-NN**。
+- en: It might appear that a user neighborhood is a lot like the *k*-means clusters
+    we encountered in the previous chapter, but this is not quite the case. This is
+    because each user sits at the center of their own neighborhood. With clustering,
+    we aim to establish a smaller number of groupings, but with *k*-NN, there are
+    as many neighborhoods as there are users; each user is their own neighborhood
+    centroid.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看起来用户邻域与前一章中遇到的 *k*-均值聚类很相似，但实际上并非如此。这是因为每个用户位于其自己邻域的中心。在聚类中，我们的目标是建立少量的分组，但是在
+    *k*-NN 中，有多少用户就有多少邻域；每个用户都是其自己邻域的中心。
+- en: Note
+  id: totrans-116
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Mahout also defines `ThresholdUserNeighbourhood` that we could use to construct
+    a neighborhood containing only the users that fall within a certain similarity
+    from each other.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mahout 还定义了 `ThresholdUserNeighbourhood`，我们可以用它来构建一个只包含彼此之间相似度在一定阈值内的用户邻域。
+- en: The *k*-NN algorithm means that we only generate recommendations based on the
+    taste of the *k* most similar users. This makes intuitive sense; the users with
+    taste most similar to your own are most likely to offer meaningful recommendations.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*k*-NN 算法意味着我们仅基于最相似用户的口味生成推荐。这是直觉上的合理选择；与您自己口味最相似的用户最有可能提供有意义的推荐。'
+- en: Two questions naturally arise—what's the best neighborhood size? Which similarity
+    measure should we use? To answer these questions, we can turn to Mahout's recommender
+    evaluation capabilities and see how our recommender behaves against our data for
+    a variety of different configurations.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自然会出现两个问题——最佳邻域大小是多少？我们应该使用哪种相似度度量？为了回答这些问题，我们可以借助 Mahout 的推荐器评估能力，查看我们的推荐器在各种不同配置下针对我们的数据的表现。
+- en: Recommender evaluation with Mahout
+  id: totrans-120
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Mahout 进行推荐器评估
+- en: 'Mahout provides a set of classes to help with the task of evaluating our recommender.
+    Like the cross-validation we performed with the `clj-ml` library in [Chapter 4](ch04.xhtml
+    "Chapter 4. Classification"), *Classification*, Mahout''s evaluation proceeds
+    by splitting the our ratings into two sets: a test set and a training set.'
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mahout 提供了一组类来帮助评估我们的推荐器。就像我们在第 4 章中使用 `clj-ml` 库进行交叉验证时的分类一样，Mahout 的评估通过将我们的评分分为两组：测试集和训练集来进行。
+- en: 'By training our recommender on the training set and then evaluating its performance
+    on the test set, we can gain an understanding of how well, or poorly, our algorithm
+    is performing against real data. To handle the task of training a model on the
+    training data provided by Mahout''s evaluator, we must supply an object conforming
+    to the `RecommenderBuilder` interface. The interface defines just one method:
+    `buildRecommender`. We can create an anonymous `RecommenderBuilder` type using
+    reify:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过在训练集上训练我们的推荐器，然后评估其在测试集上的性能，我们可以了解我们的算法在真实数据上表现如何。为了处理在 Mahout 评估器提供的训练数据上训练模型的任务，我们必须提供一个符合
+    `RecommenderBuilder` 接口的对象。该接口只定义了一个方法：`buildRecommender`。我们可以使用 `reify` 创建一个匿名的
+    `RecommenderBuilder` 类型：
+- en: '[PRE16]'
+  id: totrans-123
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Mahout provides a variety of evaluators in the `org.apache.mahout.cf.taste.impl.eval`
+    namespace. In the following code, we construct a root-mean-square error evaluator
+    using the `RMSRecommenderEvaluator` class by passing in a recommender builder
+    and the data model that we''ve loaded:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mahout 在 `org.apache.mahout.cf.taste.impl.eval` 命名空间中提供了多种评估器。在下面的代码中，我们使用 `RMSRecommenderEvaluator`
+    类构建一个均方根误差评估器，通过传入我们加载的推荐器构建器和数据模型：
+- en: '[PRE17]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: The `nil` value we pass to evaluate in the preceding code indicates that we
+    aren't supplying a custom model builder, which means the `evaluate` function will
+    use the default model builder based on the model we supply. The numbers `0.7`
+    and `1.0` are the proportion of data used for training, and the proportion of
+    the test data to evaluate on. In the earlier code, we're using 70 percent of the
+    data for training and evaluate the model on 100 percent of what's left. The **root
+    mean square error** (**RMSE**) evaluator will calculate the square root of the
+    mean squared error between the predicted rating and the actual rating for each
+    of the test data.
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在前面的代码中传递给 `evaluate` 的 `nil` 值表示我们没有提供自定义模型构建器，这意味着 `evaluate` 函数将使用基于我们提供的模型的默认模型构建器。数字
+    `0.7` 和 `1.0` 分别表示用于训练的数据比例和用于评估的测试数据比例。在之前的代码中，我们使用了 70% 的数据进行训练，并对剩余的 100% 数据进行评估。**均方根误差**（**RMSE**）评估器将计算预测评分与实际评分之间的均方误差的平方根。
+- en: 'We can use both of the previous functions to evaluate the performance of the
+    user-based recommender using a Euclidean distance and a neighborhood of 10 like
+    this:'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用前面提到的两个函数，通过欧几里得距离和 10 的邻域来评估基于用户的推荐系统的性能，方法如下：
+- en: '[PRE18]'
+  id: totrans-128
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: Your result may differ of course, since the evaluation is performed on random
+    subsets of the data.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当然，您的结果可能会有所不同，因为评估是基于数据的随机子集进行的。
+- en: 'We defined the Euclidean distance *d* in the previous chapter to be a positive
+    value where zero represents perfect similarity. This could be converted into a
+    similarity measure *s* in the following way:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们定义了欧几里得距离 *d* 为一个正值，其中零表示完全相似。这可以通过以下方式转换为相似度度量 *s*：
+- en: '![Recommender evaluation with Mahout](img/7180OS_07_16.jpg)'
+  id: totrans-131
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用 Mahout 进行推荐评估](img/7180OS_07_16.jpg)'
+- en: 'Unfortunately, the previous measure would bias against users with more rated
+    items in common, since each dimension would provide an opportunity to be further
+    apart. To correct this, Mahout computes the Euclidean similarity as:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，之前的度量方法会对那些有更多共同评分项目的用户产生偏差，因为每个维度都会提供进一步分开的机会。为了解决这个问题，Mahout 计算欧几里得相似度如下：
+- en: '![Recommender evaluation with Mahout](img/7180OS_07_17.jpg)'
+  id: totrans-133
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用 Mahout 进行推荐评估](img/7180OS_07_17.jpg)'
+- en: Here, *n* is the number of dimensions. As this formula might result in a similarity
+    which exceeds 1, Mahout clips similarities at 1.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*n* 是维度的数量。由于该公式可能导致相似度超过 1，Mahout 会将相似度裁剪为 1。
+- en: Evaluating distance measures
+  id: totrans-135
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 评估距离度量
+- en: We encountered a variety of other distance and similarity measures in the previous
+    chapter; in particular, we made use of the Jaccard, Euclidean, and cosine distances.
+    Mahout includes implementations of these as similarity measures in the `org.apache.mahout.cf.taste.impl.similarity`
+    package as `TanimotoCoefficientSimilarity`, `EuclideanDistanceSimilarity`, and
+    `UncenteredCosineSimilarity` respectively.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们遇到了各种不同的距离和相似度度量；特别地，我们使用了 Jaccard、欧几里得和余弦距离。Mahout 在 `org.apache.mahout.cf.taste.impl.similarity`
+    包中提供了这些度量的实现，分别为 `TanimotoCoefficientSimilarity`、`EuclideanDistanceSimilarity`
+    和 `UncenteredCosineSimilarity`。
+- en: We've just evaluated the performance of the Euclidean similarity on our ratings
+    data, so let's see how well the others perform. While we're at it, let's try two
+    other similarity measures that Mahout makes available—`PearsonCorrelationSimilarity`
+    and `SpearmanCorrelationSimilarity`.
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们刚刚评估了基于欧几里得相似度的推荐系统在评分数据上的表现，那么让我们看看其他的评估结果如何。在此过程中，我们还可以尝试 Mahout 提供的另外两种相似度度量——`PearsonCorrelationSimilarity`
+    和 `SpearmanCorrelationSimilarity`。
+- en: The Pearson correlation similarity
+  id: totrans-138
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Pearson 相关性相似度
+- en: The Pearson correlation similarity is a similarity measure based on the correlation
+    between users' tastes. The following diagram shows the ratings of two users for
+    three movies **A**, **B**, and **C**.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Pearson 相关性相似度是一种基于用户品味相关性的相似度度量。下图展示了两个用户对三部电影 **A**、**B** 和 **C** 的评分。
+- en: '![The Pearson correlation similarity](img/7180OS_07_140.jpg)'
+  id: totrans-140
+  prefs: []
+  type: TYPE_IMG
+  zh: '![Pearson 相关性相似度](img/7180OS_07_140.jpg)'
+- en: 'One of the potential drawbacks of the Euclidean distance is that it fails to
+    account for the cases where one user agrees with another precisely in their relative
+    ratings for movies, but tends to be more generous with their rating. Consider
+    the two users in the earlier example. There is perfect correlation between their
+    ratings for movies **A**, **B**, and **C**, but user **Y** rates the movies more
+    highly than user **X**. The Euclidean distance between these two users could be
+    calculated with the following formula:'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 欧几里得距离的一个潜在缺点是，它没有考虑到一种情况，即两个用户在电影的相对评分上完全一致，但其中一个用户可能评分更为慷慨。考虑之前例子中的两位用户。它们在电影**A**、**B**和**C**上的评分完全相关，但用户**Y**给这些电影的评分高于用户**X**。这两位用户之间的欧几里得距离可以通过以下公式计算：
+- en: '![The Pearson correlation similarity](img/7180OS_07_18.jpg)'
+  id: totrans-142
+  prefs: []
+  type: TYPE_IMG
+  zh: '![皮尔逊相关相似度](img/7180OS_07_18.jpg)'
+- en: 'Yet, in a sense, they are in complete agreement. Back in [Chapter 3](ch03.xhtml
+    "Chapter 3. Correlation"), *Correlation* we calculated the Pearson correlation
+    between two series as:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，从某种意义上来说，它们是完全一致的。在[第三章](ch03.xhtml "Chapter 3. Correlation")中，我们计算了两组数据的皮尔逊相关系数，如下所示：
+- en: '![The Pearson correlation similarity](img/7180OS_07_19.jpg)'
+  id: totrans-144
+  prefs: []
+  type: TYPE_IMG
+  zh: '![皮尔逊相关相似度](img/7180OS_07_19.jpg)'
+- en: Here, ![The Pearson correlation similarity](img/7180OS_07_20.jpg) and ![The
+    Pearson correlation similarity](img/7180OS_07_21.jpg). The example given earlier
+    yields a Pearson correlation of 1.
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，![皮尔逊相关相似度](img/7180OS_07_20.jpg) 和 ![皮尔逊相关相似度](img/7180OS_07_21.jpg)。前面的例子得出的皮尔逊相关系数为1。
+- en: 'Let''s try making predictions with the Pearson correlation similarity. Mahout
+    implements the Pearson correlation with the `PearsonCorrelationSimilarity` class:'
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们尝试使用皮尔逊相关相似度进行预测。Mahout通过`PearsonCorrelationSimilarity`类实现了皮尔逊相关：
+- en: '[PRE19]'
+  id: totrans-147
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: In fact, the RMSE has increased for the movies data using the Pearson correlation.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 事实上，使用皮尔逊相关计算电影数据时，RMSE（均方根误差）已经增加。
+- en: The Pearson correlation similarity is mathematically equivalent to the cosine
+    similarity for data which have been centered (data for which the mean is zero).
+    In the example of our two users *X* and *Y* illustrated earlier, the means are
+    not identical, so the cosine similarity measure would give a different result
+    to the Pearson correlation similarity. Mahout implements the cosine similarity
+    as `UncenteredCosineSimilarity`.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 皮尔逊相关相似度在数学上等同于针对已经中心化的数据（均值为零的数据）计算的余弦相似度。在之前所举的两位用户**X**和**Y**的例子中，它们的均值并不相同，因此余弦相似度的结果将与皮尔逊相关相似度不同。Mahout实现了余弦相似度作为`UncenteredCosineSimilarity`。
+- en: Although the Pearson method makes intuitive sense, it has some drawbacks in
+    the context of recommendation engines. It doesn't take into account the number
+    of rated items that two users have in common. If they only share one item, then
+    no similarity can be computed. Also, if one user always gives items the same rating,
+    then no correlation can be computed between the user and any other user, even
+    another user who does the same. Perhaps there's simply not enough variety of ratings
+    in the data for the Pearson correlation similarity to work well.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管皮尔逊方法直观易懂，但在推荐引擎的背景下，它存在一些缺点。它没有考虑到两个用户共同评分的项目数量。如果他们只共享一个项目，则无法计算相似度。而且，如果一个用户总是给所有项目相同的评分，那么无法计算该用户与任何其他用户之间的相关性，即使另一个用户的评分也完全相同。也许数据中评分的多样性不足，导致皮尔逊相关相似度无法很好地工作。
+- en: Spearman's rank similarity
+  id: totrans-151
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 斯皮尔曼等级相似度
+- en: 'Another way in which users may be similar is that the rankings are not particularly
+    closely correlated, but the ordering of the ranks are preserved between users.
+    Consider the following diagram showing the ratings of two users for five different
+    movies:'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用户相似的另一种方式是，尽管排名之间没有特别紧密的相关性，但他们的排名顺序在用户之间保持一致。考虑下面的图示，显示了两位用户对五部不同电影的评分：
+- en: '![Spearman''s rank similarity](img/7180OS_07_160.jpg)'
+  id: totrans-153
+  prefs: []
+  type: TYPE_IMG
+  zh: '![斯皮尔曼等级相似度](img/7180OS_07_160.jpg)'
+- en: We can see that the linear correlation between users' ratings is not perfect,
+    since their ratings aren't plotted on a straight line. This would result in a
+    moderate Pearson correlation similarity and an even lower cosine similarity. Yet,
+    the ordering between their preferences is identical. If we were to compare a ranked
+    list of users' preferences, they would be exactly the same.
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以看到，用户评分之间的线性相关性并不完美，因为他们的评分没有落在一条直线上。这会导致一个适中的皮尔逊相关相似度，并且余弦相似度会更低。然而，他们的偏好排序是相同的。如果我们比较用户的排名列表，它们会完全一致。
+- en: 'The Spearman''s rank correlation coefficient uses this measure to calculate
+    the difference between users. It is defined as the Pearson correlation coefficient
+    between the ranked items:'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 斯皮尔曼等级相关系数使用此度量来计算用户之间的差异。它被定义为排好序的项目之间的皮尔逊相关系数：
+- en: '![Spearman''s rank similarity](img/7180OS_07_22.jpg)'
+  id: totrans-156
+  prefs: []
+  type: TYPE_IMG
+  zh: '![斯皮尔曼等级相关性](img/7180OS_07_22.jpg)'
+- en: 'Here, *n* is the number of ratings and ![Spearman''s rank similarity](img/7180OS_07_23.jpg)
+    is the difference between the ranks for item *i*. Mahout implements the Spearman''s
+    rank correlation similarity with the `SpearmanCorrelationSimilarity` class which
+    we use in the next code. The algorithm has much more work to do, so we evaluate
+    on a much smaller subset, just 10 percent of the test data:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*n*是评分的数量，而![斯皮尔曼等级相关性](img/7180OS_07_23.jpg)是项目*i*的排名差异。Mahout实现了斯皮尔曼等级相关性，通过`SpearmanCorrelationSimilarity`类，我们将在下一段代码中使用它。由于算法需要做更多的工作，因此我们只对一个较小的子集进行评估，测试数据的10%：
+- en: '[PRE20]'
+  id: totrans-158
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: The RMSE evaluation score is even higher than it is for the Pearson correlation
+    similarity. It appears that the best similarity measure so far for the MovieLens
+    data is the Euclidean similarity.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: RMSE评估得分甚至比皮尔逊相关性相似度还要高。目前，对于MovieLens数据，最好的相似度度量是欧几里得相似度。
+- en: Determining optimum neighborhood size
+  id: totrans-160
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 确定最优邻域大小
+- en: 'One aspect we haven''t altered in the earlier comparisons is the size of the
+    user neighborhood on which the recommendations are based. Let''s see how the RMSE
+    is affected by the neighborhood size:'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在之前的比较中没有改变的一个方面是推荐所基于的用户邻域大小。我们来看一下邻域大小如何影响RMSE：
+- en: '[PRE21]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: The previous code creates a scatterplot of the RMSE for the Euclidean similarity
+    as the neighborhood increases from 1 to 10.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的代码绘制了一个散点图，展示了随着邻域从1增加到10，欧几里得相似度的RMSE变化。
+- en: '![Determining optimum neighborhood size](img/7180OS_07_165.jpg)'
+  id: totrans-164
+  prefs: []
+  type: TYPE_IMG
+  zh: '![确定最优邻域大小](img/7180OS_07_165.jpg)'
+- en: 'Perhaps surprisingly, as the size of the neighborhood grows, the RMSE of the
+    predicted rating rises. The most accurate predicted ratings are based on a neighborhood
+    of just two people. But, perhaps this should not surprise us: for the Euclidean
+    similarity, the most similar other users are defined as being the users who most
+    closely agree with a user''s ratings. The larger the neighborhood, the more diverse
+    a range of ratings we''ll observe for the same item.'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可能令人惊讶的是，随着邻域的增大，预测评分的RMSE也上升。最准确的预测评分基于只有两个人的邻域。但是，也许这并不令人意外：对于欧几里得相似度，最相似的用户是那些与目标用户评分最一致的用户。邻域越大，我们会观察到的相同项目的评分就越多样化。
+- en: The earlier RMSE ranges between **0.25** and **0.38**. On this basis alone,
+    it's hard to know if the recommender is performing well or not. Does getting the
+    rating wrong by **0.38** matter much in practice? For example, if we always guess
+    a rating that's exactly **0.38** too high (or too low), we'll be making recommendations
+    of a relative value that precisely agrees with the users' own. Fortunately, Mahout
+    supplies an alternative evaluator that returns a variety of statistics from the
+    field of information retrieval. We'll look at these next.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的RMSE在**0.25**到**0.38**之间。仅凭这一点，很难判断推荐系统的表现好坏。比如，评分误差为**0.38**，在实际应用中会不会有很大影响呢？例如，如果我们总是猜测一个比实际高（或低）**0.38**的评分，那么我们的推荐值与用户自己的相对价值将会完全一致。幸运的是，Mahout提供了一个替代的评估器，返回来自信息检索领域的多种统计数据。我们接下来将研究这些数据。
+- en: Information retrieval statistics
+  id: totrans-167
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 信息检索统计
+- en: One way for us to get a better handle on how to improve our recommendations
+    is to use an evaluator that provides more detail on how well the evaluator is
+    performing in a number of different aspects. The `GenericRecommenderIRStatsEvaluator`
+    function includes several information retrieval statistics that provide this detail.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过使用一个提供更多细节的评估器来更好地了解如何改进我们的推荐系统，该评估器可以展示评估器在多个不同方面的表现。`GenericRecommenderIRStatsEvaluator`函数包括了几个信息检索统计数据，提供了这些细节。
+- en: In many cases, it's not necessary to guess the exact rating that a user would
+    have assigned a movie; presenting an ordered list from best to worst is enough.
+    In fact, even the exact order may not be particularly important either.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在许多情况下，我们并不需要猜测用户对电影的确切评分；呈现从最好到最差的排序列表就足够了。实际上，甚至精确的顺序可能也不是特别重要。
+- en: Note
+  id: totrans-170
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Information retrieval systems are those which return results in response to
+    user queries. Recommender systems can be considered a subset of information retrieval
+    systems where the query is the set of prior ratings associated with the user.
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 信息检索系统是指那些根据用户查询返回结果的系统。推荐系统可以被视为信息检索系统的一个子集，其中查询是与用户相关联的先前评分集。
+- en: The **Information Retrieval statistics** (**IR stats**) evaluator treats recommendation
+    evaluation a bit like search engine evaluation. A search engine should strive
+    to return as many of the results that the user is looking for without also returning
+    a lot of unwanted information. These proportions are quantified by the statistics
+    precision and recall.
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**信息检索统计**（**IR 统计**）评估器将推荐评估处理得有点像搜索引擎评估。搜索引擎应该尽量返回用户需要的结果，同时避免返回大量不相关的信息。这些比例通过统计中的精度和召回率来量化。'
+- en: Precision
+  id: totrans-173
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 精度
+- en: 'The precision of an information retrieval system is the percentage of items
+    it returns that are relevant. If the correct recommendations are the **true positives**
+    and the incorrect recommendations are the **false positives**, then the precision
+    can be measured as the total number of **true positives** returned:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 信息检索系统的精度是返回的相关项所占的百分比。如果正确的推荐是**真正的正例**，而错误的推荐是**假正例**，那么精度可以通过返回的**真正的正例**的总数来衡量：
+- en: '![Precision](img/7180OS_07_24.jpg)'
+  id: totrans-175
+  prefs: []
+  type: TYPE_IMG
+  zh: '![精度](img/7180OS_07_24.jpg)'
+- en: Since we return a defined number of recommendations, for example, the top 10,
+    we would talk about the precision at 10\. For example, if the model returns 10
+    recommendations, eight of which were a part of the users' true top 10, the model's
+    precision is 80 percent at 10.
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们返回的是定义数量的推荐项，例如前 10 项，我们通常会谈论精度为 10。例如，如果模型返回了 10 个推荐项，其中 8 个是用户真实的前 10
+    项之一，那么模型在 10 上的精度为 80%。
+- en: Recall
+  id: totrans-177
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 召回率
+- en: 'Recall complements precision and the two measures are often quoted together.
+    Recall measures the fraction of relevant recommendations that are returned:'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 召回率与精度互为补充，二者通常一起引用。召回率衡量的是返回的相关推荐项占所有相关推荐项的比例：
+- en: '![Recall](img/7180OS_07_25.jpg)'
+  id: totrans-179
+  prefs: []
+  type: TYPE_IMG
+  zh: '![回忆](img/7180OS_07_25.jpg)'
+- en: We could think of this as being the proportion of possible good recommendations
+    the recommender actually made. For example, if the system only recommended five
+    of the user's top 10 movies, then we could say the recall was 50 percent at 10.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将其视为推荐系统实际推荐的潜在好推荐项的比例。例如，如果系统仅推荐了用户前 10 项中的 5 部电影，那么我们可以说召回率在 10 上为 50%。
+- en: Mahout's information retrieval evaluator
+  id: totrans-181
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Mahout 的信息检索评估器
+- en: The statistics of information retrieval can reframe the recommendation problem
+    as a search problem on a user-by-user basis. Rather than divide the data into
+    test and training sets randomly, `GenericRecommenderIRStatsEvaluator` evaluates
+    the performance of the recommender for each user. It does this by removing some
+    quantity of the users' top-rated items (say, the top five). The evaluator will
+    then see how many of the users' true top-five rated items were actually recommended
+    by the system.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 信息检索的统计数据可以将推荐问题重新构造为逐用户的搜索问题。`GenericRecommenderIRStatsEvaluator`通过移除用户一些评分最高的项目（比如前五个）来评估每个用户的推荐器性能。评估器接着会查看系统实际推荐了多少个用户的真实前五个评分项目。
+- en: 'We implement this as follows:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的实现方式如下：
+- en: '[PRE22]'
+  id: totrans-184
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'The "at" value in the preceding code is `5`, which we pass immediately before
+    the `GenericRecommenderIRStatsEvaluator/CHOOSE_THRESHOLD` that causes Mahout to
+    compute a sensible relevance threshold. The previous code returns the following
+    output:'
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面代码中的“at”值为`5`，我们将其传递到紧接着的`GenericRecommenderIRStatsEvaluator/CHOOSE_THRESHOLD`，该代码使
+    Mahout 计算出一个合理的相关性阈值。前面的代码返回以下输出：
+- en: '[PRE23]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: The evaluator returns an instance of `org.apache.mahout.cf.taste.eval.IRStatistics`,
+    which we can convert into a map with Clojure's `bean` function. The map contains
+    all the information retrieval statistics calculated by the evaluator. Their meaning
+    is explained in the next section.
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 评估器返回一个`org.apache.mahout.cf.taste.eval.IRStatistics`实例，我们可以通过 Clojure 的`bean`函数将其转换为一个映射。该映射包含评估器计算的所有信息检索统计数据。它们的含义将在下一节解释。
+- en: F-measure and the harmonic mean
+  id: totrans-188
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: F-measure 和调和平均数
+- en: 'Also called the **F1 measure** or the **balanced F-score**, the F-measure is
+    the weighted harmonic mean of precision and recall:'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F-measure 也叫**F1度量**或**平衡F得分**，它是精度和召回率的加权调和平均数：
+- en: '![F-measure and the harmonic mean](img/7180OS_07_26.jpg)'
+  id: totrans-190
+  prefs: []
+  type: TYPE_IMG
+  zh: '![F-measure 和调和平均数](img/7180OS_07_26.jpg)'
+- en: The harmonic mean is related to the more common arithmetic mean and, in fact,
+    is one of the three Pythagorean means. It's defined as the reciprocal of the arithmetic
+    mean of the reciprocals and it's particularly useful in situations involving rates
+    and ratios.
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 调和均值与更常见的算术均值有关，实际上，它是三种毕达哥拉斯均值之一。它的定义是倒数的算术均值的倒数，在涉及速率和比率的情况中特别有用。
+- en: 'For example, consider a vehicle traveling a distance *d* at a certain speed
+    *x*, then travelling distance *d* again at speed *y*. Speed is measured as a ratio
+    of distance traveled over time taken and therefore the average speed is the harmonic
+    mean of *x* and *y*. If *x* is 60 mph and *y* is 40 mph, then the average speed
+    is 48 mph, which we can calculate like this:'
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，考虑一辆车以速度*x*行驶距离*d*，然后以速度*y*再次行驶距离*d*。速度是通过行驶的距离与所用时间的比值来衡量的，因此平均速度是*x*和*y*的调和均值。如果*x*是60英里/小时，而*y*是40英里/小时，则平均速度为48英里/小时，计算方式如下：
+- en: '![F-measure and the harmonic mean](img/7180OS_07_27.jpg)'
+  id: totrans-193
+  prefs: []
+  type: TYPE_IMG
+  zh: '![F-度量与调和均值](img/7180OS_07_27.jpg)'
+- en: Note that this is lower than the arithmetic mean, which would be 50 mph. If
+    instead *d* represented a certain amount of time rather than distance, so the
+    vehicle traveled for a certain amount of time at speed *x* and then the same amount
+    of time at speed *y*, then its average speed would be the arithmetic mean of *x*
+    and *y*, or 50 mph.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，这比算术均值要低，算术均值会是50英里/小时。如果* d*代表的是一段时间而不是距离，比如车辆在一定时间内以速度*x*行驶，然后在相同时间内以速度*y*行驶，那么它的平均速度就是*x*和*y*的算术均值，即50英里/小时。
+- en: 'The F-Measure can be generalized to the *F*[β]-measure that allows the weight
+    associated with either precision or recall to be adjusted independently:'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F-度量可以推广为*F*[β]-度量，允许独立调整与精确度或召回率相关的权重：
+- en: '![F-measure and the harmonic mean](img/7180OS_07_28.jpg)'
+  id: totrans-196
+  prefs: []
+  type: TYPE_IMG
+  zh: '![F-度量与调和均值](img/7180OS_07_28.jpg)'
+- en: Common measures are *F*[2], which weights recall twice as much as precision,
+    and *F*[0.5], which weights precision twice as much as recall.
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 常见的度量有*F*[2]，它将召回率的权重设为精确度的两倍，和*F*[0.5]，它将精确度的权重设为召回率的两倍。
+- en: Fall-out
+  id: totrans-198
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 落选率
+- en: 'Also called the **false positive** rate, the proportion of nonrelevant recommendations
+    that are retrieved out of all the nonrelevant recommendations:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 也叫做**假阳性**率，指从所有非相关推荐中检索到的非相关推荐的比例：
+- en: '![Fall-out](img/7180OS_07_29.jpg)'
+  id: totrans-200
+  prefs: []
+  type: TYPE_IMG
+  zh: '![落选率](img/7180OS_07_29.jpg)'
+- en: Unlike the other IR statistics we've seen so far, the lower the fall-out, the
+    better our recommender is doing.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与我们迄今看到的其他信息检索统计量不同，落选率越低，我们的推荐系统表现越好。
+- en: Normalized discounted cumulative gain
+  id: totrans-202
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 归一化折扣累计增益
+- en: The **Discounted** **Cumulative Gain** (**DCG**) is a measure of the performance
+    of a recommendation system based on the graded relevance of the recommended entities.
+    It varies between zero and one, with one representing perfect ranking.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**折扣累计增益**（**DCG**）是基于推荐实体的分级相关性来衡量推荐系统性能的指标。其值范围从零到一，值为一表示完美的排名。'
+- en: 'The premise of discounted cumulative gain is that highly relevant results appearing
+    lower in a search result list should be penalized as a function of both their
+    relevance and how far down the result list they appear. It can be calculated with
+    the following formula:'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 折扣累计增益的前提是，高相关性结果在搜索结果列表中排名较低时，应该根据它们的相关性和在结果列表中出现的距离进行惩罚。其计算公式如下：
+- en: '![Normalized discounted cumulative gain](img/7180OS_07_30.jpg)'
+  id: totrans-205
+  prefs: []
+  type: TYPE_IMG
+  zh: '![归一化折扣累计增益](img/7180OS_07_30.jpg)'
+- en: Here, *rel*[i] is the relevance of the result at position *i* and *p* is the
+    position in the rank. The version presented earlier is a popular formulation that
+    places strong emphasis on retrieving relevant results.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*rel*[i]表示位置*i*处结果的相关性，*p*是排名中的位置。前面展示的版本是一种常见的公式，强调检索相关结果。
+- en: Since the search result lists vary in length depending on the query, we can't
+    consistently compare results using the DCG alone. Instead, we can sort the result
+    by their relevance and calculate the DCG again. Since this will give the best
+    possible cumulative discounted gain for the results (as we sorted them in the
+    order of relevance), the result is called the **Ideal Discounted Cumulative Gain**
+    (**IDCG**).
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于搜索结果列表的长度取决于查询，我们不能仅使用DCG来一致地比较结果。相反，我们可以按相关性对结果进行排序，再次计算DCG。由于这样可以为结果（按相关性排序）提供最佳的累计折扣增益，因此该结果被称为**理想折扣累计增益**（**IDCG**）。
+- en: 'Taking the ratio of the DCG and the IDCG gives the normalized discounted cumulative
+    gain:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将DCG与IDCG的比值取出，即为归一化折扣累计增益：
+- en: '![Normalized discounted cumulative gain](img/7180OS_07_31.jpg)'
+  id: totrans-209
+  prefs: []
+  type: TYPE_IMG
+  zh: '![标准化折扣累积增益](img/7180OS_07_31.jpg)'
+- en: In a perfect ranking algorithm, the *DCG* will equal the *IDCG* resulting in
+    an *nDCG* of 1.0\. Since the *nDCG* provides a result in the range of zero to
+    one, it provides a means to compare the relative performance of different query
+    engines, where each returns different numbers of results.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在完美的排名算法中，*DCG*将等于*IDCG*，从而导致*nDCG*为1.0。由于*nDCG*的结果范围是从零到一，它提供了一种比较不同查询引擎相对表现的方式，每个引擎返回的结果数量不同。
+- en: Plotting the information retrieval results
+  id: totrans-211
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 绘制信息检索结果
+- en: 'We can plot the results of the information retrieval evaluation with the following
+    code:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用以下代码绘制信息检索评估结果：
+- en: '[PRE24]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'This generates the following chart:'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成以下图表：
+- en: '![Plotting the information retrieval results](img/7180OS_07_168.jpg)'
+  id: totrans-215
+  prefs: []
+  type: TYPE_IMG
+  zh: '![绘制信息检索结果](img/7180OS_07_168.jpg)'
+- en: In the previous chart, we can see that the highest precision corresponds to
+    a neighborhood size of two; consulting the most similar user generates the fewest
+    false positives. You may have noticed, though that the values reported for precision
+    and recall are quite low. As the neighborhood grows larger, the recommender will
+    have more candidate recommendations to make. Remember, however, that the information
+    retrieval statistics are calculated at 5, meaning that only the top five recommendations
+    will be counted.
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的图表中，我们可以看到，最高的精度对应于邻域大小为2；咨询最相似的用户能产生最少的假阳性。然而，您可能已经注意到，报告的精度和召回率值相当低。随着邻域增大，推荐系统将有更多候选推荐可以做。但请记住，信息检索统计是以5为基准计算的，意味着只有前五条推荐会被计入。
+- en: There's a subtle problem concerning these measures in the context of recommenders—the
+    precision is based entirely on *how well we can predict the other items the user
+    has rated*. The recommender will be penalized for making recommendations for rare
+    items that the user has not rated, even if they are brilliant recommendations
+    for items the user would love.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在推荐系统中，这些度量方法有一个微妙的问题——精度完全依赖于*我们预测用户已评分其他项目的能力*。即使推荐的是用户非常喜爱的稀有项目，推荐系统仍然会因为推荐了用户未评分的稀有项目而受到惩罚。
+- en: Recommendation with Boolean preferences
+  id: totrans-218
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 布尔偏好的推荐
+- en: There's been an assumption throughout this chapter that the rating a user gives
+    to an item is an important fact. The distance measures we've been looking at so
+    far attempt in different ways to predict the numeric value of a user's future
+    rating.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，一直假设用户对某个项目的评分是一个重要的事实。我们迄今为止所探讨的距离度量方法都试图以不同的方式预测用户未来评分的数值。
+- en: An alternative distance measure takes the view that the rating a user assigns
+    to an item is much less important than the fact that they rated it at all. In
+    other words, all ratings, even poor ones, could be treated the same. Consider
+    that, for every movie a user rates poorly, there are many more that the user will
+    not even bother to watch—let alone rate. There are many other situations where
+    Boolean preferences are the primary basis on which a recommendation is made; user's
+    likes or favorites on social media, for example.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种距离度量方法认为，用户为某个项目指定的评分远不如他们是否对该项目进行评分重要。换句话说，所有评分，无论好坏，都可以被视为相同。考虑到每当用户对一部电影评分较低时，往往还有更多电影用户甚至懒得观看——更别提评分了。还有许多其他情况，其中布尔偏好是推荐的主要依据，例如，用户在社交媒体上的喜欢或收藏。
+- en: 'To use a Boolean similarity measure, we first have to convert our model into
+    a Boolean preferences model, which we can do with the following code:'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了使用布尔相似度度量，我们首先需要将我们的模型转换为布尔偏好模型，下面的代码可以实现这一点：
+- en: '[PRE25]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: Treating a user's ratings as Boolean values can reduce the user's list of movie
+    ratings to a set representation and, as we saw in the previous chapter, the Jaccard
+    index can be used to determine set similarity. Mahout implements a similarity
+    measure that's closely related to the Jaccard index called the **Tanimoto coefficient**.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将用户的评分视为布尔值可以将用户的电影评分列表简化为集合表示，正如我们在上一章中看到的，Jaccard指数可用于确定集合相似度。Mahout实现了一种与Jaccard指数密切相关的相似度度量，称为**Tanimoto系数**。
+- en: Note
+  id: totrans-224
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The Tanimoto coefficient applies to vectors where each index represents a feature
+    that can be zero or one, whereas the Jaccard index applies to sets which may contain,
+    or not contain, an element. Which measure to use depends only on your data representation—the
+    two measures are equivalent.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Tanimoto系数适用于每个索引代表一个可以是零或一的特征的向量，而Jaccard指数适用于可能包含或不包含某个元素的集合。使用哪种度量仅取决于你的数据表示——这两种度量是等价的。
+- en: 'Let''s plot the IR statistics for several different neighborhood sizes using
+    Mahout''s IR statistics evaluator:'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用Mahout的IR统计评估器绘制不同邻域大小的IR统计图：
+- en: '[PRE26]'
+  id: totrans-227
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'The previous code generates the following chart:'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的代码生成了以下图表：
+- en: '![Recommendation with Boolean preferences](img/7180OS_07_169.jpg)'
+  id: totrans-229
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用布尔偏好的推荐](img/7180OS_07_169.jpg)'
+- en: For a Boolean recommender, a larger neighborhood improves the precision score.
+    This is an intriguing result, given what we observed for the Euclidean similarity.
+    Bear in mind though that with Boolean preferences, there is no notion of relative
+    item preference, they are either rated or not rated. The most similar users, and
+    therefore the group forming a neighborhood, will be the ones who have simply rated
+    the same items. The larger this group is, the more chance we will have of predicting
+    the items a user rated.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于布尔推荐系统，更大的邻域可以提高精确度评分。考虑到我们在欧几里得相似度中观察到的结果，这一发现颇为引人注目。然而，值得记住的是，对于布尔偏好，没有相对项目偏好的概念，它们要么被评分，要么没有评分。最相似的用户，因此组成邻域的群体，将是那些简单地评分了相同项目的用户。这个群体越大，我们越有可能预测出用户评分的项目。
+- en: Also, because there's no relative score for Boolean preferences, the normalized
+    discounted cumulative gain is missing from the earlier chart. The lack of order
+    might make Boolean preferences seem less desirable than the other data, but they
+    can be very useful, as we'll see next.
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，由于布尔偏好没有相对评分，早期图表中缺少归一化折扣累积增益。缺乏顺序可能会使布尔偏好看起来不如其他数据那样有吸引力，但它们仍然非常有用，正如我们接下来所看到的那样。
+- en: Implicit versus explicit feedback
+  id: totrans-232
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 隐式反馈与显式反馈
+- en: In fact, rather than trying to elicit explicit ratings from users on what they
+    like and dislike, a common technique is to simply observe user activity. For example,
+    on an E-commerce site, the set of items viewed could provide an indicator of the
+    sort of products a user is interested in. In the same way, the list of pages a
+    user browses on a website is a strong indicator of the sort of content they're
+    interested in reading.
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，与其尝试从用户那里获得他们喜欢和不喜欢的明确评分，不如采用一种常见的技术——直接观察用户活动。例如，在电子商务网站上，浏览过的商品集可以提供用户感兴趣的商品种类的指示。同样，用户在网站上浏览的页面列表也是他们感兴趣的内容类型的强烈指示。
+- en: Using implicit sources such as clicks and page views can vastly increase the
+    amount of information on which to base predictions. It also avoids the so-called
+    "cold start" problem, where a user must provide explicit ratings before you can
+    offer any recommendations at all; the user will begin generating data as soon
+    as they arrive on your site.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用点击和页面浏览等隐式来源可以大大增加用于预测的信息量。它还避免了所谓的“冷启动”问题，即用户必须在你提供任何推荐之前提供明确的评分；用户只要进入你的网站，就会开始生成数据。
+- en: In these cases, each page view could be treated as an element in a large set
+    of pages representing the users' preferences, and a Boolean similarity measure
+    could be used to recommend related content. For a popular site, such sets will
+    clearly grow very large very quickly. Unfortunately, Mahout 0.9's recommendation
+    engines are designed to run on a single server in memory. So, they impose a limit
+    on the quantity of data we can process.
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这些情况下，每次页面浏览都可以被视为一个元素，代表用户偏好的一个大型页面集，并且可以使用布尔相似度度量来推荐相关内容。对于一个热门网站，这样的集合显然会很快变得非常庞大。不幸的是，Mahout
+    0.9的推荐引擎设计用于在单个服务器内存上运行，因此它们对我们可以处理的数据量施加了限制。
+- en: Before we look at an alternative recommender that's designed to run on a cluster
+    of machines and scale with the volume of data you have, let's take a detour to
+    look at the ways of performing dimensionality reduction. We'll begin with the
+    ways of probabilistically reducing the size of very large sets.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们查看设计用于在集群机器上运行并随着数据量的增长而扩展的替代推荐系统之前，让我们先绕道看看执行降维的方法。我们将从概率性减少非常大数据集大小的方法开始。
+- en: Probabilistic methods for large sets
+  id: totrans-237
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 大规模数据集的概率方法
+- en: Large sets appear in many contexts in data science. We're likely to encounter
+    them while dealing with users' implicit feedback as previously mentioned, but
+    the approaches described next can be applied to any data that can be represented
+    as a set.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大集合在数据科学的许多场景中都有出现。我们很可能会在处理用户的隐式反馈时遇到它们，如前所述，但接下来的方法可以应用于任何可以表示为集合的数据。
+- en: Testing set membership with Bloom filters
+  id: totrans-239
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用布隆过滤器测试集合成员资格
+- en: Bloom filters are data structures that provide a means to compress the size
+    of a set while preserving our ability to tell whether a given item is a member
+    of the set or not. The price of this compression is some uncertainty. A Bloom
+    filter tells us when an item may be in a set, although it will tell us for certain
+    if it isn't. In situations where disk space saving is worth the small sacrifice
+    in certainty, they are a very popular choice for set compression.
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 布隆过滤器是数据结构，它通过压缩集合的大小来保留我们判断某个项目是否属于该集合的能力。压缩的代价是一些不确定性。布隆过滤器告诉我们某个项目可能在集合中，但如果它不在集合中，它会告诉我们确切的答案。在需要节省磁盘空间而小幅牺牲确定性的场合，它们是集合压缩的热门选择。
+- en: The base data structure of a Bloom filter is a bit vector—a sequence of cells
+    that may contain 1 or 0 (or true or false). The level of compression (and the
+    corresponding increase in uncertainty) is configurable with two parameters—**k
+    hash functions** and **m bits**.
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 布隆过滤器的基础数据结构是一个位向量——一系列可以包含1或0（或true或false）的单元格。压缩级别（及对应的不确定性增加）可以通过两个参数配置——**k个哈希函数**和**m位**。
+- en: '![Testing set membership with Bloom filters](img/7180OS_07_190.jpg)'
+  id: totrans-242
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用布隆过滤器测试集合成员资格](img/7180OS_07_190.jpg)'
+- en: 'The previous diagram illustrates the process of taking an input item (the top
+    square) and hashing it multiple times. Each hash function outputs an integer,
+    which is used as an index into the bit vector. The elements matching the hash
+    indices are set to 1\. The following illustration shows a different element being
+    hashed into a different bit vector, generating a different set of indices that
+    will be assigned the value 1:'
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的图示说明了如何对输入项（顶部方框）进行多次哈希。每个哈希函数输出一个整数，作为位向量的索引。匹配哈希索引的元素被设置为1。下图展示了另一个元素如何被哈希到不同的位向量中，生成一组不同的索引，这些索引将被赋值为1：
+- en: '![Testing set membership with Bloom filters](img/7180OS_07_200.jpg)'
+  id: totrans-244
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用布隆过滤器测试集合成员资格](img/7180OS_07_200.jpg)'
+- en: 'We can implement Bloom filters using the following Clojure. We''re using Google''s
+    implementation of MurmurHash with different seeds to provide *k* different hash
+    functions:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用以下Clojure实现布隆过滤器。我们使用谷歌的MurmurHash实现，并使用不同的种子来提供*k*个不同的哈希函数：
+- en: '[PRE27]'
+  id: totrans-246
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'The earlier code defines a Bloom filter as a map containing a `:filter` (the
+    bit vector) and an `:indices` function. The `indices` function handles the task
+    of applying the *k* hash functions to generate *k* indices. We''re representing
+    the 0s as `false` and the 1s as `true`, but the effect is the same. We use the
+    code to create a Bloom filter of length `8` with `5` hash functions in the following
+    example:'
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的代码将布隆过滤器定义为一个包含`:filter`（位向量）和`:indices`函数的映射。`indices`函数负责应用*k*个哈希函数来生成*k*个索引。我们将0表示为`false`，1表示为`true`，但效果是相同的。我们使用代码创建一个长度为`8`、具有`5`个哈希函数的布隆过滤器，示例如下：
+- en: '[PRE28]'
+  id: totrans-248
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'The response is a map of two keys—the filter itself (a vector of Boolean values,
+    all false), and an indices function, which has been generated from five hash functions.
+    We can bring the earlier code together with a simple `Bloom-assoc` function:'
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 响应是一个包含两个键的映射——过滤器本身（一个布尔值向量，初始全为false），以及由五个哈希函数生成的`indices`函数。我们可以将之前的代码与一个简单的`Bloom-assoc`函数结合使用：
+- en: '[PRE29]'
+  id: totrans-250
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Given a Bloom filter, we simply call the `indices-fn` function to get the indices
+    we need to set in the Bloom filter:'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 给定一个布隆过滤器，我们只需调用`indices-fn`函数来获取我们需要设置的布隆过滤器的索引：
+- en: '[PRE30]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'To determine whether the Bloom filter contains an item, we simply need to query
+    whether all of the indices that should be true are actually true. If they are,
+    we reason that the item has been added to the filter:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要判断布隆过滤器是否包含某个项目，我们只需要查询是否所有应该为true的索引实际上都是true。如果是这样，我们就可以推测该项目已被添加到过滤器中：
+- en: '[PRE31]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'We add `"Indiana Jones"` to the Bloom filter and find that it contains `"Indiana
+    Jones"`. Let''s instead search for another of Harrison Ford''s movies `"The Fugitive"`:'
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将“Indiana Jones”添加到布隆过滤器中，并发现它包含“Indiana Jones”。现在我们改为搜索哈里森·福特的另一部电影“逃亡者”：
+- en: '[PRE32]'
+  id: totrans-256
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'So far, so good. But we have traded some accuracy for this huge compression.
+    Let''s search for a movie that shouldn''t be in the Bloom filter. Perhaps, the
+    1996 movie `Bogus`:'
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，一切顺利。但我们为了这种巨大的压缩，牺牲了一些准确性。让我们搜索一个不应出现在布隆过滤器中的电影。也许是1996年的电影`Bogus`：
+- en: '[PRE33]'
+  id: totrans-258
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: This is not what we want. The filter claims to contain `"Bogus (1996)"`, even
+    though we haven't associated it into the filter yet. This is the tradeoff that
+    Bloom filters make; although a filter will never claim that an item hasn't been
+    added when it has, it may incorrectly claim that an item has been added when it
+    hasn't.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这不是我们想要的结果。即使我们还没有将“`Bogus (1996)`”添加到过滤器中，过滤器却声称它包含该项。这是布隆过滤器的折中；虽然过滤器永远不会声称某个项目没有被添加到集合中，但它可能错误地声称某个项目已经被添加，即使它没有。
+- en: Note
+  id: totrans-260
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: In the information retrieval terminology we encountered earlier in the chapter,
+    Bloom filters have 100 percent recall, but their precision is less than 100 percent.
+    How much less is configurable through the values we choose for *m* and *k*.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们之前章节中遇到的信息检索术语中，布隆过滤器具有100%的召回率，但其精确度低于100%。这种差距可以通过我们为*m*和*k*选择的值来配置。
+- en: 'In all, there are 56 movie titles out of the 1,682 titles in the MovieLens
+    dataset that the Bloom filter incorrectly reports on after adding "Indiana Jones"—a
+    3.3 percent false positive rate. Given that we are only using five hash functions
+    and an eight element filter, you may have expected it to be much higher. Of course,
+    our Bloom filter only contains one element and, as we add more, the probability
+    of obtaining a collision will rise sharply. In fact, the probability of a false
+    positive is approximately:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总的来说，在MovieLens数据集中1,682个电影标题中，有56个电影标题被布隆过滤器错误地报告为“印第安纳·琼斯”已添加—假阳性率为3.3%。考虑到我们只使用了五个哈希函数和一个八元素过滤器，你可能预期它的假阳性率会更高。当然，我们的布隆过滤器只包含一个元素，随着更多元素的添加，发生碰撞的概率会急剧上升。事实上，假阳性的概率大约是：
+- en: '![Testing set membership with Bloom filters](img/7180OS_07_32.jpg)'
+  id: totrans-263
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用布隆过滤器测试集合成员关系](img/7180OS_07_32.jpg)'
+- en: 'Here, *k* and *m* are the number of hash functions and the length of the filter
+    as it was before, and *n* is the number of items added to the set. For our earlier
+    singular Bloom, this gives:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，*k*和*m*分别是哈希函数的数量和过滤器的长度，就像之前一样，*n*是添加到集合中的项目数。对于我们之前提到的单一布隆过滤器，这给出了：
+- en: '![Testing set membership with Bloom filters](img/7180OS_07_33.jpg)'
+  id: totrans-265
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用布隆过滤器测试集合成员关系](img/7180OS_07_33.jpg)'
+- en: So, in fact, the theoretical false positive rate is even lower than what we've
+    observed.
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，实际上，理论上的假阳性率甚至比我们观察到的还要低。
+- en: Bloom filters are a very general algorithm, and are very useful when we want
+    to test set membership and don't have the resources to store all the items in
+    the set explicitly. The fact that the precision is configurable through the choice
+    of values for *m* and *k* means that it's possible to select the false positive
+    rate you're willing to tolerate. As a result, they're used in a large variety
+    of data-intensive systems.
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 布隆过滤器是一种非常通用的算法，当我们想要测试集合成员关系而又没有资源显式存储集合中的所有项时，它非常有用。由于精确度可以通过选择*m*和*k*的值进行配置，因此可以选择你愿意容忍的假阳性率。因此，它们被广泛应用于各种数据密集型系统中。
+- en: A drawback of Bloom filters is that it's impossible to retrieve the values you've
+    added to the filter; although we can use the filter to test for set membership,
+    we aren't able to say what that set contains without exhaustive checks. For recommendation
+    systems (and indeed for others too, such as clustering), we're primarily interested
+    in the similarity between two sets rather than their precise contents. But here,
+    the Bloom lets us down; we can't reliably use the compressed filter as a measure
+    of the similarity between two sets of items.
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 布隆过滤器的一个缺点是无法检索你已添加到过滤器中的值；虽然我们可以使用过滤器来测试集合成员关系，但如果没有进行详尽的检查，我们无法知道该集合包含什么。对于推荐系统（实际上对于其他一些系统，如聚类），我们主要关注的是两个集合之间的相似性，而不是它们的精确内容。但是在这里，布隆过滤器未能满足我们的需求；我们无法可靠地使用压缩后的过滤器来衡量两个集合之间的相似性。
+- en: Next, we'll introduce an algorithm that will preserve set similarity as measured
+    by the Jaccard similarity. It does so while also preserving the configurable compression
+    provided by the Bloom filter.
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将介绍一种算法，它可以保留通过Jaccard相似度衡量的集合相似性。它在保留布隆过滤器提供的可配置压缩的同时，也保留了集合的相似性。
+- en: Jaccard similarity for large sets with MinHash
+  id: totrans-270
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用MinHash计算大型集合的Jaccard相似度
+- en: The Bloom filter is a probabilistic data structure to determine whether an item
+    is a member of a set. While comparing user or item similarities, what we are usually
+    interested in is the intersection between sets, as opposed to their precise contents.
+    MinHash is a technique that enables a large set to be compressed in such a way
+    that we can still perform the Jaccard similarity on the compressed representations.
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Bloom filter 是一种概率数据结构，用于确定一个项目是否是集合的成员。在比较用户或项目相似度时，我们通常关心的是集合之间的交集，而不是它们的精确内容。MinHash
+    是一种技术，它可以将一个大集合压缩成一个较小的集合，同时我们仍然能够在压缩后的表示上执行 Jaccard 相似度计算。
+- en: 'Let''s see how it works with a reference to two of the most prolific raters
+    in the MovieLens dataset. Users 405 and 655 have rated 727 and 675 movies respectively.
+    In the following code, we extract their ratings and convert them into sets before
+    passing to Incanter''s `jaccard-index` function. Recall that this returns the
+    ratio of movies they''ve both rated out of all the movies they''ve rated:'
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看它是如何工作的，参考 MovieLens 数据集中两个最 prolific 的评分用户。用户 405 和 655 分别评分了 727 和 675
+    部电影。在下面的代码中，我们提取他们的评分并将其转换为集合，再传递给 Incanter 的 `jaccard-index` 函数。回顾一下，这个函数返回他们共同评分的电影占所有他们评分的电影的比例：
+- en: '[PRE34]'
+  id: totrans-273
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: There is an approximate similarity of 29 percent between the two large sets
+    of ratings. Let's see how we can reduce the size of these sets while also preserving
+    the similarity between them using MinHash.
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 两个大的评分集合之间的近似相似度为 29%。让我们看看如何在使用 MinHash 的同时减少这些集合的大小，同时保持它们之间的相似性。
+- en: The MinHash algorithm shares much in common with the Bloom filter. Our first
+    task is to pick *k* hash functions. Rather than hashing the set representation
+    itself, these *k* hash functions are used to hash each element within the set.
+    For each of the *k* hash functions, the MinHash algorithm stores the minimum value
+    generated by any of the set elements. The output therefore, is a set of *k* numbers;
+    each equals the minimum hash value for that hash function. The output is referred
+    to as the MinHash signature.
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MinHash 算法与 Bloom filter 有很多相似之处。我们的第一个任务是选择 *k* 个哈希函数。不同于直接对集合表示进行哈希，这些 *k*
+    个哈希函数用于对集合中的每个元素进行哈希。对于每个 *k* 个哈希函数，MinHash 算法存储由任何集合元素生成的最小值。因此，输出是一个包含 *k* 个数字的集合；每个数字都等于该哈希函数的最小哈希值。输出被称为
+    MinHash 签名。
+- en: 'The following diagram illustrates the process for two sets, each containing
+    three elements, being converted into MinHash signatures with a *k* of 2:'
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下图展示了将两个包含三个元素的集合转换为 *k* 为 2 的 MinHash 签名的过程：
+- en: '![Jaccard similarity for large sets with MinHash](img/7180OS_07_210.jpg)'
+  id: totrans-277
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用 MinHash 处理大集合的 Jaccard 相似度](img/7180OS_07_210.jpg)'
+- en: The input sets share two elements out of a total of four unique elements, which
+    equates to Jaccard index of 0.5\. The MinHash signatures for the two sets are
+    `#{3, 0}` and `#{3, 55}` respectively, which equates to a Jaccard Index of 0.33\.
+    Thus, MinHash has reduced the size of our input sets (by just one, in this case),
+    while conserving the approximate similarity between them.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输入集合中有两个元素与四个唯一元素中的总数相比，这相当于 Jaccard 指数为 0.5。两个集合的 MinHash 签名分别是 `#{3, 0}` 和
+    `#{3, 55}`，这相当于 Jaccard 指数为 0.33。因此，MinHash 在保持它们之间近似相似性的同时，缩小了输入集合的大小（在此情况下减少了一个元素）。
+- en: 'As with the Bloom filter, an appropriate choice of *k* allows you to specify
+    the loss of precision that it is acceptable to tolerate. We can implement the
+    MinHash algorithm using the following Clojure code:'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与 Bloom filter 类似，合适的 *k* 选择允许你指定可以容忍的精度损失。我们可以使用以下 Clojure 代码实现 MinHash 算法：
+- en: '[PRE35]'
+  id: totrans-280
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'In the following code, we define a `minhasher` function with a *k* of 10 and
+    use it to perform a set test using the Jaccard index on the compressed ratings
+    for users 405 and 655:'
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下面的代码中，我们定义了一个 *k* 为 10 的 `minhasher` 函数，并使用它对用户 405 和 655 的压缩评分进行集合测试，计算 Jaccard
+    指数：
+- en: '[PRE36]'
+  id: totrans-282
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: The Jaccard index based on our MinHash signatures is remarkably close to that
+    on the original sets—25 percent compared to 29 percent—despite the fact that we
+    compressed the sets down to only 10 elements each.
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 基于我们的 MinHash 签名计算的 Jaccard 指数与原始集合的 Jaccard 指数非常接近——25% 对比 29%——尽管我们将集合压缩到了只有
+    10 个元素。
+- en: 'The benefit of much smaller sets is twofold: clearly storage space is much
+    reduced, but so is the computational complexity required to check the similarity
+    between the two sets as well. It''s much less work to check the similarity of
+    the sets that contain only 10 elements than the sets that contain many hundreds.
+    MinHash is, therefore, not just a space-saving algorithm, but also a time-saving
+    algorithm in cases where we need to make a large number of set similarity tests;
+    cases that occur in recommender systems, for example.'
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更小集合的好处是双重的：显然，存储空间大大减少，但检查两个集合之间相似度所需的计算复杂度也大大降低。检查只包含10个元素的集合相似度，比检查包含数百个元素的集合要轻松得多。因此，MinHash不仅是一个节省空间的算法，还是一个节省时间的算法，特别是在我们需要进行大量集合相似度测试的情况下；例如，在推荐系统中就经常会遇到这种情况。
+- en: 'If we''re trying to establish a user neighborhood for the purposes of recommending
+    items, we''ll still need to perform a large number of set tests in order to determine
+    which the most similar users are. In fact, for a large number of users, it may
+    be prohibitively time-consuming to check every other user exhaustively, even after
+    we''ve calculated MinHash signatures. The final probabilistic technique will look
+    at addressing this specific problem: how to reduce the number of candidates that
+    have to be compared while looking for similar items.'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们试图为推荐项目建立用户邻域，我们仍然需要执行大量的集合测试，以确定哪些用户最相似。事实上，对于大量用户来说，即使我们已经计算了MinHash签名，逐一检查每个其他用户仍可能耗费大量时间。因此，最终的概率技术将着眼于解决这个具体问题：如何在寻找相似项时减少必须比较的候选数量。
+- en: Reducing pair comparisons with locality-sensitive hashing
+  id: totrans-286
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 通过局部敏感哈希减少配对比较
+- en: In the previous chapter, we computed the similarity matrix for a large number
+    of documents. With the 20,000 documents in the Reuters corpus, this was already
+    a time-consuming process. As the size of the dataset doubles, the length of time
+    required to check every pair of items is multiplied by four. It can, therefore,
+    become prohibitively time-consuming to perform this sort of analysis at scale.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们计算了大量文档的相似度矩阵。对于路透社语料库中的20,000个文档来说，这已经是一个耗时的过程。随着数据集大小的翻倍，检查每对项目所需的时间将增加四倍。因此，在大规模进行这种分析时，可能会变得耗时且不可行。
+- en: For example, suppose we had a million documents and that we computed MinHash
+    signatures of length 250 for each of them. This means we use 1,000 bytes to store
+    each document. As all the signatures can be stored in a Gigabyte, they can all
+    be stored in the main system memory for speed. However, there are ![Reducing pair
+    comparisons with locality-sensitive hashing](img/7180OS_07_34.jpg) pairs of documents,
+    or 499,999, 500,000 pairwise combinations to be checked. Even if it takes only
+    a microsecond to compare two signatures, it will still take almost 6 days to compute
+    all the similarities overall.
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，假设我们有一百万个文档，并且我们为每个文档计算了长度为250的MinHash签名。这意味着我们使用1,000字节来存储每个文档。由于所有签名可以存储在1GB的内存中，它们都可以存储在主系统内存中以提高速度。然而，存在![通过局部敏感哈希减少配对比较](img/7180OS_07_34.jpg)的文档对，或者需要检查499,999,500,000对组合。即使比较两个签名只需微秒级的时间，计算所有相似度的过程仍然需要将近6天。
+- en: '**Locality-sensitive hashing** (**LSH**), addresses this problem by significantly
+    reducing the number of pairwise comparisons that have to be made. It does this
+    by bucketing sets that are likely to have a minimum threshold of similarity together;
+    only the sets that are bucketed together need to be checked for similarity.'
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**局部敏感哈希**（**LSH**）通过显著减少必须进行的配对比较次数来解决这个问题。它通过将可能具有最小相似度阈值的集合分到同一个桶中来实现；只有分到同一桶中的集合才需要进行相似度检查。'
+- en: Bucketing signatures
+  id: totrans-290
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 签名分桶
+- en: We consider any pair of items that hash to the same bucket a candidate pair
+    and check only the candidate pairs for similarity. The aim is that only similar
+    items should become candidate pairs. Dissimilar pairs that happen to hash to the
+    same bucket will be false positives and we seek to minimize these. Similar pairs
+    that hash to different buckets are false negatives and we likewise seek to minimize
+    these too.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们认为任何哈希到同一桶的项对都是候选对，并且仅检查候选对的相似度。目标是让只有相似的项成为候选对。哈希到同一桶的不同项将是误报，我们力求将这些误报最小化。哈希到不同桶的相似项将是漏报，我们同样力求将这些漏报最小化。
+- en: 'If we have computed MinHash signatures for the items, an effective way to bucket
+    them would be to divide the signature matrix into *b* bands consisting of *r*
+    elements each. This is illustrated in the following diagram:'
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们已经为项计算了MinHash签名，那么一种有效的分桶方法是将签名矩阵划分为由*r*个元素组成的*b*个带。下图说明了这一点：
+- en: '![Bucketing signatures](img/7180OS_07_220.jpg)'
+  id: totrans-293
+  prefs: []
+  type: TYPE_IMG
+  zh: '![分桶签名](img/7180OS_07_220.jpg)'
+- en: 'Having already written the code to produce the MinHash signatures in the previous
+    section, performing LSH in Clojure is simply a matter of partitioning the signature
+    into a certain number of bands, each of length *r*. Each band is hashed (for simplicity,
+    we''re using the same hashing function for each band) to a particular bucket:'
+  id: totrans-294
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一部分中，我们已经编写了生成MinHash签名的代码，在Clojure中执行LSH只是将签名分成一定数量的带，每个带的长度为*r*。每个带都会被哈希（为简单起见，我们对每个带使用相同的哈希函数），并且哈希到特定的桶中：
+- en: '[PRE37]'
+  id: totrans-295
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'The earlier example defines a locality-sensitive hash simply as a map containing
+    empty bands and some value, *r*. When we come to associate an item into the LSH
+    with `lsh-assoc`, we split the signature into bands based on the value of *r*
+    and determine the bucket for each band. The item''s ID gets added to each of these
+    buckets. Buckets are grouped by the band ID so that items which share a bucket
+    in different bands are not bucketed together:'
+  id: totrans-296
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 早期的例子将局部敏感哈希定义为一个简单的映射，包含空的带和一些值*r*。当我们通过`lsh-assoc`将一项与LSH关联时，我们根据*r*的值将签名拆分为带，并确定每个带的桶。该项的ID会被添加到每个桶中。桶按带ID分组，以便在不同带中共享同一个桶的项不会被一起分桶：
+- en: '[PRE38]'
+  id: totrans-297
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The preceding example shows the result of performing LSH on the signature of
+    user 13 with *k=27* and *r=3*. The buckets for 9 bands are returned. Next, we
+    add further items to the locality-sensitive hash:'
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的例子展示了对用户13的签名执行LSH的结果，*k=27*且*r=3*。返回了9个带的桶。接下来，我们向局部敏感哈希中添加更多的项：
+- en: '[PRE39]'
+  id: totrans-299
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: In the previous example, we can see that both the user IDs `655` and `13` are
+    placed in the same bucket for band `8`, although they're in different buckets
+    for all the other bands.
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的例子中，我们可以看到用户ID`655`和`13`在带`8`中被放置在同一个桶中，尽管它们在其他所有带中都在不同的桶中。
+- en: The probability that the signatures agree for one particular band is *s*^r,
+    where *s* is the true similarity of the sets and *r* is the length of each band.
+    It follows that the probability that the signatures do not agree in at least one
+    particular band is ![Bucketing signatures](img/7180OS_07_35.jpg) and so, the probability
+    that signatures don't agree across all bands is ![Bucketing signatures](img/7180OS_07_36.jpg).
+    Therefore, we can say the probability that two items become a candidates pair
+    is ![Bucketing signatures](img/7180OS_07_37.jpg).
+  id: totrans-301
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个特定带上签名一致的概率是*s*^r，其中*s*是集合的真实相似度，*r*是每个带的长度。因此，至少在一个特定带上签名不一致的概率是![分桶签名](img/7180OS_07_35.jpg)，因此，所有带上签名不一致的概率是![分桶签名](img/7180OS_07_36.jpg)。因此，我们可以说，两项成为候选对的概率是![分桶签名](img/7180OS_07_37.jpg)。
+- en: Regardless of the specific values of *b* and *r*, this equation describes an
+    S-curve. The threshold (the value of the similarity at which the probability of
+    becoming a candidate is 0.5) is a function of *b* and *r*. Around the threshold,
+    the S-curve rises steeply. Thus, pairs with similarity above the threshold are
+    very likely to become candidates, while those below are correspondingly unlikely
+    to become candidates.
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 无论*b*和*r*的具体值是多少，这个方程描述了一个S曲线。阈值（即相似度值，使得成为候选项的概率为0.5）是*b*和*r*的函数。在阈值附近，S曲线急剧上升。因此，相似度超过阈值的对非常可能成为候选项，而低于阈值的对则相应不太可能成为候选项。
+- en: '![Bucketing signatures](img/7180OS_07_230.jpg)'
+  id: totrans-303
+  prefs: []
+  type: TYPE_IMG
+  zh: '![分桶签名](img/7180OS_07_230.jpg)'
+- en: 'To search for candidate pairs, we now only need to perform the same process
+    on a target signature and see which other items hash to the same buckets in the
+    same bands:'
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要搜索候选对，我们现在只需对目标签名执行相同的过程，并查看哪些其他项哈希到相同的桶中，在相同的带内：
+- en: '[PRE40]'
+  id: totrans-305
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'The preceding code returns the distinct list of items that share at least one
+    bucket in at least one band with the target signature:'
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的代码返回了与目标签名至少在一个带内共享一个桶的不同项列表：
+- en: '[PRE41]'
+  id: totrans-307
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: In the previous example, we associate the signature for users `655` and `405`
+    into the locality-sensitive hash. We then ask for the candidates for user ID `13`.
+    The result is a sequence containing the single ID `655`. Thus, `655` and `13`
+    are candidate pairs and should be checked for similarity. User `405` has been
+    judged by the algorithm as not being sufficiently similar, and we therefore will
+    not check them for similarity.
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的例子中，我们将用户`655`和`405`的签名关联到局部敏感哈希中。然后，我们查询用户ID为`13`的候选者。结果是一个包含单一ID `655`的序列。因此，`655`和`13`是候选对，需要检查它们的相似性。算法已判断用户`405`的相似度不足，因此我们不再检查它们的相似性。
+- en: Note
+  id: totrans-309
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: For more information on locality-sensitive hashing, MinHash, and other useful
+    algorithms to deal with huge volumes of data, refer to the excellent *Mining of
+    Massive Datasets* online book for free at [http://www.mmds.org/](http://www.mmds.org/).
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 欲了解有关局部敏感哈希、MinHash及其他用于处理大量数据的有用算法的更多信息，请参考免费的在线书籍《*Mining of Massive Datasets*》，网址为[http://www.mmds.org/](http://www.mmds.org/)。
+- en: Locality-sensitive hashing is a way of significantly reducing the space of pairwise
+    comparisons that we need to make while comparing sets for similarity. Thus, with
+    appropriate values set for *b* and *r*, locality-sensitive hashing allows us to
+    precompute the user neighborhood. The task of finding similar users, given a target
+    user, is as simple as finding the other users who share the same bucket across
+    any of the bands; a task whose time complexity is related to the number of bands
+    rather than the number of users.
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 局部敏感哈希是一种显著减少在比较集合相似性时需要进行的成对比较的空间的方法。因此，通过为*b*和*r*设置适当的值，局部敏感哈希允许我们预先计算用户邻域。给定目标用户，找到相似用户的任务变得简单：只需找到在任何带子中共享相同桶的其他用户；这个任务的时间复杂度与带子数量相关，而不是与用户数量相关。
+- en: Dimensionality reduction
+  id: totrans-312
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 降维
+- en: What algorithms such as MinHash and LSH aim to do is reduce the quantity of
+    data that must be stored without compromising on the essence of the original.
+    They're a form of compression and they define helpful representations that preserve
+    our ability to do useful work. In particular, MinHash and LSH are designed to
+    work with data that can be represented as a set.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像MinHash和LSH这样的算法旨在减少必须存储的数据量，而不损害原始数据的本质。它们是一种压缩形式，定义了有助于保持我们进行有用工作的表示。特别是，MinHash和LSH旨在处理可以表示为集合的数据。
+- en: 'In fact, there is a whole class of dimensionality-reducing algorithms that
+    will work with data that is not so easily represented as a set. We saw, in the
+    previous chapter with k-means clustering, how certain data could be most usefully
+    represented as a weighted vector. Common approaches to reduce the dimensions of
+    data represented as vectors are principle component analysis and singular-value
+    decomposition. To demonstrate these, we''ll return to Incanter and make use of
+    one of its included datasets: the Iris dataset:'
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实际上，有一类降维算法可以处理那些不容易作为集合表示的数据。我们在前一章的k-means聚类中看到，某些数据最有效的表示方式是加权向量。常见的降维方法包括主成分分析和奇异值分解。为了演示这些方法，我们将返回Incanter，并利用其中的一个内置数据集：鸢尾花数据集：
+- en: '[PRE42]'
+  id: totrans-315
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'The previous code should return the following table:'
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的代码应该返回以下表格：
+- en: '![Dimensionality reduction](img/7180OS_07_240.jpg)'
+  id: totrans-317
+  prefs: []
+  type: TYPE_IMG
+  zh: '![降维](img/7180OS_07_240.jpg)'
+- en: The first four columns of the Iris dataset contain measurements of the sepal
+    length, sepal width, petal length, and petal width of Iris plants. The dataset
+    is ordered by the species of plants. Rows 0 to 49 represent Iris setosa, rows
+    50 to 99 represent Iris virsicolor, and rows above 100 contain Iris virginica.
+    The exact species aren't important; we'll only be interested in the differences
+    between them.
+  id: totrans-318
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 鸢尾花数据集的前四列包含鸢尾花植物的萼片长度、萼片宽度、花瓣长度和花瓣宽度的测量值。数据集按植物的物种排序。第0到49行代表鸢尾花Setosa，第50到99行代表鸢尾花Virsicolor，100行以上包含鸢尾花Virginica。具体物种不重要；我们只关心它们之间的差异。
+- en: Plotting the Iris dataset
+  id: totrans-319
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 绘制鸢尾花数据集
+- en: 'Let''s visualize some of the attributes of the Iris dataset on a scatter plot.
+    We''ll make use of the following helper function to plot each of the species as
+    a separate color:'
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在散点图上可视化鸢尾花数据集的一些属性。我们将使用以下辅助函数，将每个物种作为不同颜色绘制：
+- en: '[PRE43]'
+  id: totrans-321
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'Having defined this function, let''s see how the sepal widths and lengths compare
+    for each of the three species:'
+  id: totrans-322
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 定义了这个函数后，让我们看看三个物种的萼片宽度和长度之间的比较：
+- en: '[PRE44]'
+  id: totrans-323
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'The previous example should generate the following chart:'
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的例子应该生成如下图表：
+- en: '![Plotting the Iris dataset](img/7180OS_07_250.jpg)'
+  id: totrans-325
+  prefs: []
+  type: TYPE_IMG
+  zh: '![绘制鸢尾花数据集](img/7180OS_07_250.jpg)'
+- en: 'We can see how one of the species is quite different from the other two while
+    comparing these two attributes, but two of the species are barely distinguishable:
+    the widths and heights for several of the points are evenly overlaid.'
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在比较这两个属性时，我们可以看到其中一个物种与另外两个物种有很大不同，但两个物种几乎无法区分：几个点的宽度和高度几乎重叠。
+- en: 'Let''s instead plot the petal width and height to see how these compare:'
+  id: totrans-327
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们改为绘制花瓣的宽度和高度，看看它们的比较情况：
+- en: '[PRE45]'
+  id: totrans-328
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'This should generate the following chart:'
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该生成以下图表：
+- en: '![Plotting the Iris dataset](img/7180OS_07_255.jpg)'
+  id: totrans-330
+  prefs: []
+  type: TYPE_IMG
+  zh: '![绘制鸢尾花数据集](img/7180OS_07_255.jpg)'
+- en: This does a much better job of distinguishing between the different species.
+    This is partly because the variance of the petal width and length is greater—the
+    length, for example, stretches a full 6 units on the *y* axis. A useful side effect
+    of this greater spread is that it allows us to draw a much clearer distinction
+    between the species of Iris.
+  id: totrans-331
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样做可以更好地区分不同的物种。这部分是因为花瓣的宽度和长度的方差更大——例如，长度在*y*轴上延伸了6个单位。这个更大范围的一个有用副作用是，它让我们能更清晰地分辨鸢尾花的物种之间的差异。
+- en: Principle component analysis
+  id: totrans-332
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 主成分分析
+- en: In principle component analysis, often abbreviated to PCA, we're looking to
+    find a rotation of data that maximizes the variance. In the previous scatter plot,
+    we identified a way of looking at the data that provided a high degree of variance
+    on the *y* axis, but the variance of the *x* axis was not as great.
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在主成分分析（Principle Component Analysis，简称PCA）中，我们的目标是找到一个旋转数据的方法，以最大化方差。在之前的散点图中，我们找到了一个观察数据的方式，它在*y*轴上提供了较高的方差，但*x*轴的方差并不大。
+- en: We have four dimensions available in the Iris dataset, each representing the
+    value of the length and width of a petal or a sepal. Principle component analysis
+    allows us to determine whether there is a another basis, which is some linear
+    combination of all the available dimensions, that best re-expresses our data to
+    maximize the variance.
+  id: totrans-334
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在鸢尾花数据集中，我们有四个维度可用，每个维度表示花瓣或萼片的长度和宽度。主成分分析可以帮助我们确定是否存在一个新的基，它是所有可用维度的线性组合，能最好地重新表达我们的数据，以最大化方差。
+- en: 'We can apply principle component analysis with the Incanter.stats'' `principle-components`
+    function. In the following code, we pass it a matrix of data and plot the first
+    two returned rotations:'
+  id: totrans-335
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过Incanter.stats的`principle-components`函数应用主成分分析。在以下代码中，我们传递给它一个数据矩阵，并绘制返回的前两个旋转：
+- en: '[PRE46]'
+  id: totrans-336
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'The preceding example produces the following chart:'
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述例子生成了以下图表：
+- en: '![Principle component analysis](img/7180OS_07_280.jpg)'
+  id: totrans-338
+  prefs: []
+  type: TYPE_IMG
+  zh: '![主成分分析](img/7180OS_07_280.jpg)'
+- en: Notice how the axes can no longer be identified as being sepals or petals—the
+    components have been derived as a linear combination of the values across all
+    the dimensions and define a new basis to view the data that maximizes the variance
+    within each component. In fact, the `principle-component` function returns `:std-dev`
+    along with `:rotation` for each dimension.
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，轴不再能被标识为萼片或花瓣——这些成分已经通过所有维度的值的线性组合来推导出来，并定义了一个新的基，用来查看数据，从而在每个成分中最大化方差。事实上，`principle-component`函数返回了每个维度的`:std-dev`以及`:rotation`。
+- en: Note
+  id: totrans-340
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: For interactive examples demonstrating principle component analysis, see [http://setosa.io/ev/principal-component-analysis/](http://setosa.io/ev/principal-component-analysis/).
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 若要查看演示主成分分析的互动示例，请访问 [http://setosa.io/ev/principal-component-analysis/](http://setosa.io/ev/principal-component-analysis/)。
+- en: As a result of taking the principle components of the data, the variance across
+    the *x* and the *y* axis is greater than even the previous scatter plot showing
+    petal width and length. The points corresponding to the different species of iris
+    are therefore spread out as wide as they can be, so the relative difference of
+    the species is clearly observable.
+  id: totrans-342
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过对数据进行主成分分析，*x*轴和*y*轴的方差比之前显示花瓣宽度和长度的散点图还要大。因此，对应于不同鸢尾花物种的点分布尽可能地展开，这样物种之间的相对差异就清晰可见。
+- en: Singular value decomposition
+  id: totrans-343
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 奇异值分解
+- en: A technique that's closely related to PCA is **Singular Value Decomposition**
+    (**SVD**). SVD is, in fact, a more general technique than PCA which also seeks
+    to change the basis of a matrix.
+  id: totrans-344
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与PCA密切相关的一个技术是**奇异值分解**（**SVD**）。事实上，SVD比PCA更通用，它也旨在改变矩阵的基。
+- en: Note
+  id: totrans-345
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: An excellent mathematical description of PCA and its relationship to SVD is
+    available at [http://arxiv.org/pdf/1404.1100.pdf](http://arxiv.org/pdf/1404.1100.pdf).
+  id: totrans-346
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA及其与SVD的关系有一个很好的数学描述，可以参考[http://arxiv.org/pdf/1404.1100.pdf](http://arxiv.org/pdf/1404.1100.pdf)。
+- en: 'As its name implies, SVD decomposes a matrix into three related matrices, commonly
+    referred to as the *U*, *Σ* (or *S*), and *V* matrices, such that:'
+  id: totrans-347
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 顾名思义，SVD将一个矩阵分解为三个相关的矩阵，通常称为*U*、*Σ*（或*S*）和*V*矩阵，满足以下条件：
+- en: '![Singular value decomposition](img/7180OS_07_38.jpg)'
+  id: totrans-348
+  prefs: []
+  type: TYPE_IMG
+  zh: '![奇异值分解](img/7180OS_07_38.jpg)'
+- en: If *X* is an m x n matrix, *U* is an m x m matrix, *Σ* is an m x n matrix, and
+    *V* is an n x n matrix. *Σ* is, in fact, a diagonal matrix, meaning that all the
+    cells with the exception of those on the main diagonal (top left to bottom right)
+    are zero. Although clearly, it need not be square. The columns of the matrices
+    returned by SVD are ordered by their singular value with the most important dimensions
+    coming first. SVD thus allows us to represent the matrix *X* more approximately
+    by discarding the least important dimensions.
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果*X*是一个m x n矩阵，*U*是一个m x m矩阵，*Σ*是一个m x n矩阵，*V*是一个n x n矩阵。*Σ*实际上是一个对角矩阵，意味着除了主对角线（从左上角到右下角）上的元素外，所有单元格都是零。显然，它不一定是方阵。SVD返回的矩阵的列是按奇异值排序的，最重要的维度排在最前面。因此，SVD使我们能够通过丢弃最不重要的维度来更近似地表示矩阵*X*。
+- en: For example, the decomposition of our 150 x 4 Iris matrix will result in a *U*
+    of 150 x 150, *Σ* of 150 x 4 and *V* of 4 x 4\. Multiplying these matrices together
+    will yield our original Iris matrix.
+  id: totrans-350
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，我们150 x 4的鸢尾花矩阵的分解会得到一个150 x 150的*U*，一个150 x 4的*Σ*和一个4 x 4的*V*。将这些矩阵相乘将得到原始的鸢尾花矩阵。
+- en: 'However, we could choose instead to take only the top two singular values and
+    adjust our matrices such that *U* is 150 x 2, *Σ* is 2 x 2, and *V* is 2 x 4\.
+    Let''s construct a function that takes a matrix and projects it into a specified
+    number of dimensions by taking this number of columns from each of the *U*, *Σ*,
+    and *V* matrices:'
+  id: totrans-351
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们也可以选择只取前两个奇异值，并调整矩阵，使得*U*是150 x 2，*Σ*是2 x 2，*V*是2 x 4。让我们构建一个函数，该函数接受一个矩阵，并通过从每个*U*、*Σ*和*V*矩阵中取出指定数量的列，将其投影到指定的维度中：
+- en: '[PRE47]'
+  id: totrans-352
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Here, *d* is the number of dimensions that we want to retain. Let''s demonstrate
+    this with a simple example by taking a multivariate normal distribution generated
+    by Incanter using `s/sample-mvn` and reducing it to just one dimension:'
+  id: totrans-353
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，*d*是我们想要保留的维度数量。我们通过一个简单的示例来演示这一点，假设我们用Incanter生成一个多变量正态分布（使用`s/sample-mvn`），并将其减少到仅一维：
+- en: '[PRE48]'
+  id: totrans-354
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'The output of the previous example contains the most important aspects of the
+    data reduced to just one dimension. To recreate an approximation of the original
+    dataset in two dimensions, we can simply multiply the three matrices together.
+    In the following code, we project the one-dimensional approximation of the distribution
+    back into two dimensions:'
+  id: totrans-355
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上一个示例的输出包含了数据中最重要的方面，这些方面被减少到只有一维。为了在二维中重新创建原始数据集的近似值，我们可以简单地将三个矩阵相乘。在下面的代码中，我们将分布的一维近似值投影回二维：
+- en: '[PRE49]'
+  id: totrans-356
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'This produces the following chart:'
+  id: totrans-357
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这会生成以下图表：
+- en: '![Singular value decomposition](img/7180OS_07_290.jpg)'
+  id: totrans-358
+  prefs: []
+  type: TYPE_IMG
+  zh: '![奇异值分解](img/7180OS_07_290.jpg)'
+- en: Notice how SVD has preserved the primary feature of the multivariate distribution,
+    the strong diagonal, but has collapsed the variance of the off-diagonal points.
+    In this way, SVD preserves the most important structure in the data while discarding
+    less important information. Hopefully, the earlier example makes it even clearer
+    than the PCA example that the preserved features need not be explicit in the original
+    data. In the example, the strong diagonal is a *latent* feature of the data.
+  id: totrans-359
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，SVD保留了多变量分布的主要特征，即强对角线，但将非对角点的方差压缩了。通过这种方式，SVD保留了数据中最重要的结构，同时丢弃了不太重要的信息。希望前面的示例比PCA示例更清楚地说明，保留的特征不一定在原始数据中显式存在。在这个示例中，强对角线是数据的*潜在*特征。
+- en: Note
+  id: totrans-360
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Latent features are those which are not directly observable, but which can be
+    inferred from other features. Sometimes, latent features refer to aspects that
+    could be measured directly, such as the correlation in the previous example or—in
+    the context of recommendation—they can be considered to represent underlying preferences
+    or attitudes.
+  id: totrans-361
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 潜在特征是那些不能直接观察到的特征，但可以通过其他特征推断出来。有时，潜在特征指的是那些可以直接测量的方面，比如前面示例中的相关性，或者在推荐系统的背景下，它们可以代表潜在的偏好或态度。
+- en: 'Having observed the principle of SVD at work on the earlier synthetic data,
+    let''s see how it performs on the Iris dataset:'
+  id: totrans-362
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在之前观察到的合成数据上已经看到了 SVD 的原理，现在让我们看看它在 Iris 数据集上的表现：
+- en: '[PRE50]'
+  id: totrans-363
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'This code generates the following chart:'
+  id: totrans-364
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码生成了以下图表：
+- en: '![Singular value decomposition](img/7180OS_07_300.jpg)'
+  id: totrans-365
+  prefs: []
+  type: TYPE_IMG
+  zh: '![奇异值分解](img/7180OS_07_300.jpg)'
+- en: After comparing the Iris charts for PCA and SVD, it should be clear that the
+    two approaches are closely related. This scatter plot looks a lot like an inverted
+    version of the PCA plot that we saw previously.
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在比较了 PCA 和 SVD 的 Iris 图后，应该清楚这两种方法是密切相关的。这个散点图看起来非常像我们之前看到的 PCA 图的倒转版本。
+- en: Let's return to the problem of movie recommendation now, and see how dimensionality
+    reduction could assist. In the next section, we'll make use of the Apache Spark
+    distributed computing framework and an associated machine learning library, MLlib,
+    to perform movie recommendations on dimensionally-reduced data.
+  id: totrans-367
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们回到电影推荐的问题，看看降维如何提供帮助。在下一节中，我们将利用 Apache Spark 分布式计算框架和相关的机器学习库 MLlib，在降维后的数据上进行电影推荐。
+- en: Large-scale machine learning with Apache Spark and MLlib
+  id: totrans-368
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Apache Spark 和 MLlib 进行大规模机器学习
+- en: The Spark project ([https://spark.apache.org/](https://spark.apache.org/)) is
+    a cluster computing framework that emphasizes low-latency job execution. It's
+    a relatively recent project, growing out of UC Berkley's AMP Lab in 2009.
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark 项目（[https://spark.apache.org/](https://spark.apache.org/)）是一个集群计算框架，强调低延迟作业执行。它是一个相对较新的项目，起源于
+    2009 年 UC 伯克利的 AMP 实验室。
+- en: Although Spark is able to coexist with Hadoop (by connecting to the files stored
+    on **Hadoop Distributed File System** (**HDFS**), for example), it targets much
+    faster job execution times by keeping much of the computation in memory. In contrast
+    with Hadoop's two-stage MapReduce paradigm, which stores files on the disk in
+    between each iteration, Spark's in-memory model can perform tens or hundreds of
+    times faster for some applications, particularly those performing multiple iterations
+    over the data.
+  id: totrans-370
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管 Spark 可以与 Hadoop 共存（例如，通过连接存储在 **Hadoop 分布式文件系统** (**HDFS**) 上的文件），但它通过将大部分计算保存在内存中，目标是实现更快的作业执行时间。与
+    Hadoop 的两阶段 MapReduce 模式不同，后者在每次迭代之间将文件存储在磁盘上，Spark 的内存模型在某些应用中，特别是那些对数据执行多次迭代的应用中，可以提高数十倍甚至数百倍的速度。
+- en: In [Chapter 5](ch05.xhtml "Chapter 5. Big Data"), *Big Data*, we discovered
+    the value of iterative algorithms to the implementation of optimization techniques
+    on large quantities of data. This makes Spark an excellent choice for large-scale
+    machine learning. In fact, the MLlib library ([https://spark.apache.org/mllib/](https://spark.apache.org/mllib/))
+    is built on top of Spark and implements a variety of machine learning algorithms
+    out of the box.
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第五章](ch05.xhtml "第5章 大数据")，*大数据*中，我们发现迭代算法在大数据量的优化技术实现中的价值。这使得 Spark 成为大规模机器学习的优秀选择。实际上，MLlib
+    库（[https://spark.apache.org/mllib/](https://spark.apache.org/mllib/)）就是建立在 Spark
+    之上的，内置了多种机器学习算法。
+- en: We won't provide an in-depth account of Spark here, but will explain just enough
+    on the key concepts required to run a Spark job using the Clojure library, Sparkling
+    ([https://github.com/gorillalabs/sparkling](https://github.com/gorillalabs/sparkling)).
+    Sparkling wraps much of Spark's functionality behind a friendly Clojure interface.
+    In particular, the use of the thread-last macro `->>` to chain Spark operations
+    together can make Spark jobs written in Sparkling appear a lot like the code we
+    would write to process data using Clojure's own sequence abstractions.
+  id: totrans-372
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里不会对 Spark 进行深入讲解，只会解释运行 Spark 作业所需的关键概念，使用的是 Clojure 库 Sparkling（[https://github.com/gorillalabs/sparkling](https://github.com/gorillalabs/sparkling)）。Sparkling
+    将 Spark 的大部分功能封装在一个友好的 Clojure 接口背后。特别是，使用 `->>` 线程最后宏来将 Spark 操作链式组合，使得使用 Sparkling
+    编写的 Spark 作业看起来更像我们用 Clojure 自身的序列抽象处理数据时写的代码。
+- en: Note
+  id: totrans-373
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'Be sure also to check out Flambo, which makes use of the thread-first macro
+    to chain tasks: [https://github.com/yieldbot/flambo](https://github.com/yieldbot/flambo).'
+  id: totrans-374
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还要确保查看 Flambo，它利用线程优先宏来链式组合任务：[https://github.com/yieldbot/flambo](https://github.com/yieldbot/flambo)。
+- en: We're going to be producing recommendations based on the MovieLens ratings,
+    so the first step will be to load this data with Sparkling.
+  id: totrans-375
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将基于 MovieLens 的评分数据生成推荐，所以第一步是用 Sparkling 加载这些数据。
+- en: Loading data with Sparkling
+  id: totrans-376
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 Sparkling 加载数据
+- en: Spark can load data from any storage source supported by Hadoop, including the
+    local file system and HDFS, as well as other data sources such as Cassandra, HBase,
+    and Amazon S3\. Let's start with the basics by writing a job to simply count the
+    number of ratings.
+  id: totrans-377
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark可以从Hadoop支持的任何存储源加载数据，包括本地文件系统和HDFS，以及其他数据源，如Cassandra、HBase和Amazon S3。让我们从基础开始，编写一个作业来简单地统计评分数量。
+- en: 'The MovieLens ratings are stored as a text file, which can be loaded in Sparkling
+    using the `text-file` function in the `sparkling.core` namespace (referred to
+    as `spark` in the code). To tell Spark where the file is located, we pass a URI
+    that can point to a remote source such as `hdfs://..., s3n://....` Since we''re
+    running Spark in local mode, it could simply be a local file path. Once we have
+    the text file, we''ll call `spark/count` to get the number of lines:'
+  id: totrans-378
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MovieLens的评分存储为文本文件，可以通过`sparkling.core`命名空间中的`text-file`函数在Sparkling中加载（在代码中称为`spark`）。为了告诉Spark文件的位置，我们传递一个URI，指向一个远程源，如`hdfs://...`、`s3n://...`。由于我们在本地模式下运行Spark，它也可以是一个本地文件路径。一旦我们获得文本文件，就会调用`spark/count`来获取行数：
+- en: '[PRE51]'
+  id: totrans-379
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: If you run the previous example, you may see many logging statements from Spark
+    printed to the console. One of the final lines will be the count that has been
+    calculated.
+  id: totrans-380
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你运行前面的示例，可能会看到很多来自Spark的日志打印到控制台。最后几行中会显示已计算的计数。
+- en: Notice that we have to pass a Spark context as the first argument to the `text-file`
+    function. The Spark context tells Spark how to access your cluster. The most basic
+    configuration specifies the location of the Spark master and the application name
+    Spark should use for this job. For running locally, the Spark master is `"local"`,
+    which is useful for REPL-based interactive development.
+  id: totrans-381
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们必须将Spark上下文作为第一个参数传递给`text-file`函数。Spark上下文告诉Spark如何访问你的集群。最基本的配置指定了Spark主节点的位置和Spark应该为此作业使用的应用程序名称。对于本地运行，Spark主节点为`"local"`，这对于基于REPL的交互式开发非常有用。
+- en: Mapping data
+  id: totrans-382
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 映射数据
+- en: Sparkling provides analogues to many of the Clojure core sequence functions
+    you would expect such as map, reduce, and filter. At the beginning of this chapter,
+    we stored our ratings as a map with the `:item`, `:user`, and `:rating` keys.
+    While we could parse our data into a map again, let's parse each rating into a
+    `Rating` object instead. This will allow us to more easily interact with MLlib
+    later in the chapter.
+  id: totrans-383
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Sparkling提供了许多Clojure核心序列函数的类比，如map、reduce和filter。在本章开始时，我们将评分存储为一个包含`:item`、`:user`和`:rating`键的映射。虽然我们可以再次将数据解析为映射，但让我们改为将每个评分解析为`Rating`对象。这将使我们更容易在本章后面与MLlib进行交互。
+- en: 'The `Rating` class is defined in the `org.apache.spark.mllib.recommendation`
+    package. The constructor takes three numeric arguments: representations of the
+    user, the item, and the user''s rating for the item. As well as creating a `Rating`
+    object, we''re also calculating the time modulo `10`, returning a number between
+    0 and 9 and creating `tuple` of both values:'
+  id: totrans-384
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`Rating`类定义在`org.apache.spark.mllib.recommendation`包中。构造函数接受三个数字参数：用户、项目的表示，以及用户对该项目的评分。除了创建一个`Rating`对象外，我们还计算了时间模`10`，返回一个介于0和9之间的数字，并创建一个包含这两个值的`tuple`：'
+- en: '[PRE52]'
+  id: totrans-385
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: The returned value is a tuple with an integer key (defined as the time modulo
+    `10`) and a rating as the value. Having a key which partitions the data into ten
+    groups will be useful when we come to split the data into test and training sets.
+  id: totrans-386
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 返回的值是一个元组，包含一个整数键（定义为时间模`10`）和一个评分作为值。拥有一个将数据分为十个组的键，在我们将数据拆分为测试集和训练集时将会非常有用。
+- en: Distributed datasets and tuples
+  id: totrans-387
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 分布式数据集和元组
+- en: Tuples are used extensively by Spark to represent pairs of keys and values.
+    In the preceding example the key was an integer, but this is not a requirement—keys
+    and values can be any type serializable by Spark.
+  id: totrans-388
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark广泛使用元组来表示键值对。在前面的示例中，键是一个整数，但这不是必须的——键和值可以是任何Spark可序列化的类型。
+- en: 'Datasets in Spark are represented as **Resilient Distributed Datasets** (**RDDs**).
+    In fact, RDDs are the core abstraction that Spark provides—a fault-tolerant collection
+    of records partitioned across all the nodes in your cluster that can be operated
+    in parallel. There are two fundamental types of RDDs: those that represent sequences
+    of arbitrary objects (such as the kind returned by `text-file`—a sequence of lines),
+    and those which represent sequences of key/value pairs.'
+  id: totrans-389
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Spark 中，数据集被表示为 **弹性分布式数据集**（**RDDs**）。事实上，RDD 是 Spark 提供的核心抽象——它是一个容错的记录集合，分布在集群中的所有节点上，可以并行操作。RDD
+    有两种基本类型：一种表示任意对象的序列（例如 `text-file` 返回的那种——一系列行），另一种表示键/值对的序列。
+- en: We can convert between plain RDDs and pair RDDs simply, and this is accomplished
+    in the previous example with the `map-to-pair` function. The tuple returned by
+    our `parse-rating` function specifies the key and the value that should be used
+    for each pair in the sequence. As with Hadoop, there's no requirement that the
+    key be unique within the dataset. In fact, as we'll see, keys are often a useful
+    means of grouping similar records together.
+  id: totrans-390
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以简单地在普通 RDD 和配对 RDD 之间进行转换，这在前面的示例中通过 `map-to-pair` 函数实现。我们 `parse-rating`
+    函数返回的元组指定了每对序列中的键和值。与 Hadoop 一样，键在数据集中不要求是唯一的。实际上，正如我们将看到的，键通常是将相似记录分组在一起的有用手段。
+- en: Filtering data
+  id: totrans-391
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 过滤数据
+- en: Let's now filter our data based on the value of the key and create a subset
+    of the overall data that we can use for training. Like the core Clojure function
+    of the same name, Sparkling provides a `filter` function that will keep only those
+    rows for which a predicate returns logical true.
+  id: totrans-392
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们根据键的值来过滤数据，并创建一个可以用于训练的子集。与同名的 Clojure 核心函数类似，Sparkling 提供了一个`filter`函数，它只保留那些谓词返回逻辑真值的行。
+- en: 'Given our pair RDD of ratings, we can filter only those ratings that have a
+    key value less than 8\. Since the keys roughly and uniformly distributed integers
+    0-9, this will retain approximately 80 percent of the dataset:'
+  id: totrans-393
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 给定我们评分的配对 RDD，我们可以仅过滤出那些键值小于 8 的评分。由于这些键大致是均匀分布在 0 到 9 之间的整数，这样会保留大约 80% 的数据集：
+- en: '[PRE53]'
+  id: totrans-394
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: Our ratings are stored in a pair RDD, so the result of filter is also a pair
+    RDD. We're calling `values` on the result so that we're left with a plain RDD
+    containing only the `Rating` objects. This will be the RDD that we pass to our
+    machine learning algorithm. We perform exactly the same process, but for the keys
+    greater than or equal to 8, to obtain the test data we'll be using.
+  id: totrans-395
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的评分存储在一个配对 RDD 中，因此 `filter` 的结果也是一个配对 RDD。我们在结果上调用 `values`，以便得到一个只包含 `Rating`
+    对象的普通 RDD。这将是我们传递给机器学习算法的 RDD。我们进行完全相同的过程，但对于键值大于或等于 8 的情况，得到我们将用作测试数据的数据集。
+- en: Persistence and caching
+  id: totrans-396
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 持久化与缓存
+- en: Spark's actions are lazy and won't be calculated until they're needed. Similarly,
+    once data has been calculated, it won't be explicitly cached. Sometimes, we'd
+    like to keep data around though. In particular, if we're running an iterative
+    algorithm, we don't want the dataset to be recalculated from source each time
+    we perform an iteration. In cases where the results of a transformed dataset should
+    be saved for subsequent use within a job, Spark provides the ability to persist
+    RDDs. Like the RDDs themselves, the persistence is fault-tolerant, meaning that
+    if any partition is lost, it will be recomputed using the transformations that
+    originally created it.
+  id: totrans-397
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark 的操作是惰性执行的，只有在需要时才会计算。同样，一旦数据被计算，Spark 不会显式地缓存这些数据。不过，有时我们希望保留数据，特别是当我们运行一个迭代算法时，我们不希望每次执行迭代时都从源头重新计算数据集。在需要保存转换后的数据集结果以便在作业中后续使用的情况下，Spark
+    提供了持久化 RDD 的能力。与 RDD 本身一样，持久化是容错的，这意味着如果任何分区丢失，它将使用最初创建它的转换重新计算。
+- en: 'We can persist an RDD using the `spark/persist` function, which expects us
+    to pass the RDD and also configure the storage level most appropriate for our
+    application. In most cases, this will be in-memory storage. But in cases where
+    recomputing the data would be computationally expensive, we can spill to disk
+    or even replicate the cache across disks for fast fault recovery. In-memory is
+    most common, so Sparkling provides the `spark/cache` function shorthand that will
+    set this storage level on an RDD:'
+  id: totrans-398
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用` spark/persist`函数持久化一个RDD，该函数要求我们传递RDD并配置最适合我们应用的存储级别。在大多数情况下，这将是内存存储。但在需要重新计算数据会非常耗费计算资源的情况下，我们可以将数据溢出到磁盘，甚至在多个磁盘之间复制缓存以实现快速的故障恢复。内存存储是最常见的，因此Sparkling提供了`spark/cache`函数简写，可以在RDD上设置该存储级别：
+- en: '[PRE54]'
+  id: totrans-399
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: In the preceding example, we cache the result of the call to `parse-ratings`.
+    This means that the loading and parsing of ratings is performed a single time,
+    and the training and test ratings functions both use the cached data to filter
+    and perform their counts. The call to `cache` optimizes the performance of jobs
+    and allows spark to avoid recalculating data more than necessary.
+  id: totrans-400
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的示例中，我们缓存了对`parse-ratings`函数的调用结果。这意味着加载和解析评分的操作只执行一次，训练和测试评分函数都使用缓存的数据来筛选和执行计数。调用`cache`优化了作业的性能，并允许Spark避免不必要的重复计算。
+- en: Machine learning on Spark with MLlib
+  id: totrans-401
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: Spark上的机器学习与MLlib
+- en: We've covered enough of the basics of Spark now to use our RDDs for machine
+    learning. While Spark handles the infrastructure, the actual work of performing
+    machine learning is handled by an apache Spark subproject called MLlib.
+  id: totrans-402
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在已经掌握了Spark的基础知识，可以使用我们的RDD进行机器学习。虽然Spark处理基础设施，但执行机器学习的实际工作由一个名为MLlib的Apache
+    Spark子项目来完成。
+- en: Note
+  id: totrans-403
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: An overview of all the capabilities of the MLlib library are at [https://spark.apache.org/docs/latest/mllib-guide.html](https://spark.apache.org/docs/latest/mllib-guide.html).
+  id: totrans-404
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MLlib库的所有功能概览可以参考[https://spark.apache.org/docs/latest/mllib-guide.html](https://spark.apache.org/docs/latest/mllib-guide.html)。
+- en: 'MLlib provides a wealth of machine learning algorithms for use on Spark, including
+    those for regression, classification, and clustering covered elsewhere in this
+    book. In this chapter, we''ll be using the algorithm MLlib provides for performing
+    collaborative filtering: alternating least squares.'
+  id: totrans-405
+  prefs: []
+  type: TYPE_NORMAL
+  zh: MLlib提供了丰富的机器学习算法供Spark使用，包括回归、分类和聚类算法，这些算法在本书其他部分中都有介绍。在本章中，我们将使用MLlib提供的算法来执行协同过滤：交替最小二乘法。
+- en: Movie recommendations with alternating least squares
+  id: totrans-406
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用交替最小二乘法进行电影推荐
+- en: In [Chapter 5](ch05.xhtml "Chapter 5. Big Data"), *Big Data*, we discovered
+    how to use gradient descent to identify the parameters that minimize a cost function
+    for a large quantity of data. In this chapter, we've seen how SVD can be used
+    to calculate latent factors within a matrix of data through decomposition.
+  id: totrans-407
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[第5章](ch05.xhtml "第5章。大数据")，*大数据*中，我们发现如何使用梯度下降法来识别最小化成本函数的大量数据的参数。在本章中，我们看到如何使用SVD通过分解来计算数据矩阵中的潜在因子。
+- en: 'The **alternating least squares** (**ALS**) algorithm can be thought of as
+    a combination of both of these approaches. It is an iterative algorithm that uses
+    least-squares estimates to decompose the user-movies matrix of rankings into two
+    matrices of latent factors: the user factors and the movie factors.'
+  id: totrans-408
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**交替最小二乘法**（**ALS**）算法可以看作是这两种方法的结合。它是一个迭代算法，使用最小二乘法估计来将用户-电影评分矩阵分解成两个潜在因子矩阵：用户因子和电影因子。'
+- en: '![Movie recommendations with alternating least squares](img/7180OS_07_310.jpg)'
+  id: totrans-409
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用交替最小二乘法进行电影推荐](img/7180OS_07_310.jpg)'
+- en: Alternating least squares is therefore based on the assumption that the users'
+    ratings are based on some latent property of the movie that can't be measured
+    directly, but can be inferred from the ratings matrix. The earlier diagram shows
+    how the sparse matrix of user-movie ratings can be decomposed into two matrices
+    containing the user factors and the movie factors. The diagram associates just
+    three factors with each user and movie, but let's make it even more simplistic
+    by just using two factors.
+  id: totrans-410
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 交替最小二乘法基于假设，用户的评分是基于某种电影的潜在属性，而这种属性无法直接衡量，但可以从评分矩阵中推断出来。前面的图表显示了如何将用户-电影评分的稀疏矩阵分解成包含用户因子和电影因子的两个矩阵。该图表为每个用户和电影关联了三个因子，但我们可以通过使用两个因子来简化这个过程。
+- en: 'We could hypothesize that all the movies exist in a two-dimensional space identified
+    by their level of action, romance, and how realistic (or not) they may be. We
+    visualize such a space as follows:'
+  id: totrans-411
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以假设所有电影存在于一个二维空间中，由它们的动作水平、浪漫元素以及它们的现实主义程度（或非现实主义程度）来标定。我们可以将这种空间可视化如下：
+- en: '![Movie recommendations with alternating least squares](img/7180OS_07_320.jpg)'
+  id: totrans-412
+  prefs: []
+  type: TYPE_IMG
+  zh: '![交替最小二乘法的电影推荐](img/7180OS_07_320.jpg)'
+- en: We could likewise imagine all the users represented in an equivalent two-dimensional
+    space, where their tastes were simply expressed as their relative preference for
+    **Romance**/**Action** and **Realist**/**Escapist**.
+  id: totrans-413
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们同样可以将所有用户想象成一个等效的二维空间，在这个空间中，他们的口味仅仅通过他们对**浪漫**/**动作**和**现实主义**/**逃避现实**的相对偏好来表达。
+- en: Once we've reduced all the movies and users to their factor representation,
+    the problem of prediction is reduced to a simple matrix multiplication—our predicted
+    rating for a user, given a movie, is simply the product of their factors. The
+    challenge for ALS then is to calculate the two factor matrices.
+  id: totrans-414
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们将所有电影和用户降维为它们的因子表示，预测问题就简化为一个简单的矩阵乘法——给定一部电影和一个用户，我们的预测评分就是它们因子的乘积。对于ALS来说，挑战就在于计算这两个因子矩阵。
+- en: ALS with Spark and MLlib
+  id: totrans-415
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用Spark和MLlib进行ALS
+- en: 'At the time of writing, no Clojure wrapper exists for the MLlib library, so
+    we''ll be using Clojure''s interop capabilities to access it directly. MLlib''s
+    implementation of alternating least squares is provided by the ALS class in the
+    `org.apache.spark.mllib.recommendation` package. Training ALS is almost as simple
+    as calling the `train` static method on the class with our RDD and provided arguments:'
+  id: totrans-416
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在撰写本文时，MLlib库没有Clojure包装器，因此我们将使用Clojure的互操作能力直接访问它。MLlib中交替最小二乘法的实现由`org.apache.spark.mllib.recommendation`包中的ALS类提供。训练ALS几乎就像调用该类的`train`静态方法，传入我们的RDD和提供的参数一样简单：
+- en: '[PRE55]'
+  id: totrans-417
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: 'The slight complexity is that the RDD of training data returned by our preceding
+    Sparkling job is expressed as a `JavaRDD` type. MLlib, since it has no Java API,
+    expects to receive standard Spark `RDD` types. Converting between the two is a
+    straightforward enough process, albeit somewhat tedious. The following functions
+    convert back and forth between RDD types; into `RDDs` ready for consumption by
+    MLlib and then back into `JavaRDDs` for use in Sparkling:'
+  id: totrans-418
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一点复杂性在于，我们之前Sparkling任务返回的训练数据RDD是以`JavaRDD`类型表示的。由于MLlib没有Java API，它期望接收标准的Spark
+    `RDD`类型。将两者之间进行转换是一个相对简单的过程，尽管稍微有点繁琐。以下函数可以在RDD类型之间来回转换；将数据转换成MLlib可以使用的`RDDs`，然后再转换回`JavaRDDs`以供Sparkling使用：
+- en: '[PRE56]'
+  id: totrans-419
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: The second argument in `from-mllib-rdd` is a value defined in the `sparkling.scalaInterop`
+    namespace. This is required to interact with the JVM bytecode generated by Scala's
+    function definition.
+  id: totrans-420
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`from-mllib-rdd`中的第二个参数是一个在`scalaInterop`命名空间中定义的值。这是与Scala函数定义生成的JVM字节码交互所必需的。'
+- en: Note
+  id: totrans-421
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: For more on Clojure/Scala interop consult the excellent from the `scala` library
+    by Tobias Kortkamp at [http://t6.github.io/from-scala/](http://t6.github.io/from-scala/).
+  id: totrans-422
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如需了解更多关于Clojure/Scala互操作的信息，请查阅Tobias Kortkamp提供的出色资料，来源于`scala`库：[http://t6.github.io/from-scala/](http://t6.github.io/from-scala/)。
+- en: 'With the previous boilerplate out of the way, we can finally perform ALS on
+    the training ratings. We do this in the following example:'
+  id: totrans-423
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在完成前面的模板代码之后，我们终于可以在训练评分上执行ALS了。我们在以下示例中进行此操作：
+- en: '[PRE57]'
+  id: totrans-424
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: The function takes several arguments—`rank`, `num-iter`, and `lambda`, and it
+    returns a MLlib `MatrixFactorisationModel` function. The rank is the number of
+    features to use for the factor matrices.
+  id: totrans-425
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该函数接受几个参数—`rank`、`num-iter`和`lambda`，并返回一个MLlib的`MatrixFactorisationModel`函数。rank是用于因子矩阵的特征数量。
+- en: Making predictions with ALS
+  id: totrans-426
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用ALS进行预测
+- en: 'Once we''ve calculated `MatrixFactorisationModel`, we can use it to make predictions
+    with the `recommendProducts` method. This expects to receive the ID of the user
+    to recommend to and the number of recommendations to return:'
+  id: totrans-427
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们计算了`MatrixFactorisationModel`，就可以使用它通过`recommendProducts`方法进行预测。该方法期望接收推荐目标用户的ID以及要返回的推荐数量：
+- en: '[PRE58]'
+  id: totrans-428
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'You can see that the output of the model, like the input, are the `Rating`
+    objects. They contain the user ID, the item ID, and a predicted rating calculated
+    as the product of the factor matrices. Let''s make use of the function that we
+    defined at the beginning of the chapter to give these ratings names:'
+  id: totrans-429
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到，模型的输出像输入一样，是`Rating`对象。它们包含用户ID、项目ID和预测评分，该评分是因子矩阵的乘积。我们可以利用在本章开始时定义的函数，为这些评分命名：
+- en: '[PRE59]'
+  id: totrans-430
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: It's not particularly clear that these are good recommendations though. For
+    this, we'll need to evaluate the performance of our ALS model.
+  id: totrans-431
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，这些推荐看起来并不特别好。为此，我们需要评估ALS模型的性能。
+- en: Evaluating ALS
+  id: totrans-432
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 评估ALS
+- en: Unlike Mahout, Spark doesn't include a built-in evaluator for the model, so
+    we're going to have to write our own. One of the simplest evaluators, and one
+    we've used already in this chapter, is the root mean square error (RMSE) evaluator.
+  id: totrans-433
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与Mahout不同，Spark没有内置的模型评估器，因此我们需要自己编写一个。最简单的评估器之一，也是我们在本章中已经使用过的，就是均方根误差（RMSE）评估器。
+- en: 'The first step for our evaluation is to use the model to predict ratings for
+    all of our training set. Spark''s implementation of ALS includes a predict function
+    that we can use, which will accept an RDD containing all of the user IDs and item
+    IDs to return predictions for:'
+  id: totrans-434
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们评估的第一步是使用模型预测我们所有训练集的评分。Spark的ALS实现包括一个`predict`函数，我们可以使用它，该函数接受一个包含所有用户ID和商品ID的RDD，并返回预测值：
+- en: '[PRE60]'
+  id: totrans-435
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: The `.recommendProducts` method we called previously uses the model to return
+    product recommendations for a specific user. By contrast, the `.predict` method
+    will predict the rating for many users and items at once.
+  id: totrans-436
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前调用的`.recommendProducts`方法使用模型为特定用户返回产品推荐。相比之下，`.predict`方法将同时预测多个用户和商品的评分。
+- en: '![Evaluating ALS](img/7180OS_07_330.jpg)'
+  id: totrans-437
+  prefs: []
+  type: TYPE_IMG
+  zh: '![评估ALS](img/7180OS_07_330.jpg)'
+- en: The result of our call to the `.predict` function is a pair RDD, where the key
+    is itself a tuple of user and product. The value of the pair RDD is the predicted
+    rating.
+  id: totrans-438
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们调用`.predict`函数的结果是一个键值对RDD，其中键本身是一个包含用户和产品的元组。该对RDD的值是预测评分。
+- en: Calculating the sum of squared errors
+  id: totrans-439
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 计算平方误差之和
+- en: 'To calculate the difference between the predicted rating and the actual rating
+    given to the product by the user, we''ll need to join the `predictions` and the
+    `actuals` together based on a matching user/product tuple. As the keys will be
+    the same in both the `predictions` and `actuals` RDDs, we can simply pass them
+    both to Sparkling''s `join` function:'
+  id: totrans-440
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了计算预测评分与用户给出的实际评分之间的差异，我们需要根据匹配的用户/商品元组将`predictions`和`actuals`连接起来。由于这两个RDD的键是相同的，我们可以直接将它们传递给Sparkling的`join`函数：
+- en: '[PRE61]'
+  id: totrans-441
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'We can visualize the whole `sum-squared-errors` function as the following flow,
+    comparing the predicted and actual ratings:'
+  id: totrans-442
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将整个`sum-squared-errors`函数可视化为以下流程，比较预测评分和实际评分：
+- en: '![Calculating the sum of squared errors](img/7180OS_07_340.jpg)'
+  id: totrans-443
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算平方误差之和](img/7180OS_07_340.jpg)'
+- en: 'Once we''ve calculated the `sum-squared-errors`, calculating the root mean
+    square is simply a matter of dividing it by the count and taking the square root:'
+  id: totrans-444
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们计算了`sum-squared-errors`，计算均方根误差就只是将其除以计数并取平方根的过程：
+- en: '[PRE62]'
+  id: totrans-445
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'The `rmse` function will take a model and some data and calculate RMSE of the
+    prediction against the actual rating. Earlier in the chapter, we plotted the different
+    values of RMSE as the size of the neighborhood changed with a user-based recommender.
+    Let''s employ the same technique now, but alter the rank of the factor matrix:'
+  id: totrans-446
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`rmse`函数将接受一个模型和一些数据，并计算预测值与实际评分之间的RMSE。在本章之前，我们绘制了随着用户推荐器邻域大小变化，RMSE的不同值。现在让我们使用相同的技巧，但改变因子矩阵的秩：'
+- en: '[PRE63]'
+  id: totrans-447
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'The earlier code generates the following plot:'
+  id: totrans-448
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前的代码生成了如下图表：
+- en: '![Calculating the sum of squared errors](img/7180OS_07_350.jpg)'
+  id: totrans-449
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算平方误差之和](img/7180OS_07_350.jpg)'
+- en: Observe how, as we increase the rank of the factor matrix, the ratings returned
+    by our model become closer and closer to the ratings that the model was trained
+    on. As the dimensions of the factor matrix grow, it can capture more of the variation
+    in individual users' ratings.
+  id: totrans-450
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，随着因子矩阵的秩增加，我们模型返回的评分越来越接近于模型训练时使用的评分。随着因子矩阵维度的增长，它可以捕捉到更多个体用户评分中的变异。
+- en: 'What we''d really like to do though is to see how well the recommender performs
+    against the test set—the data it hasn''t already seen. The final example in this
+    chapter, `ex-7-41`, runs the preceding analysis again, but tests the RMSE of the
+    model against the test set rather than the training set. The example generates
+    the following plot:'
+  id: totrans-451
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们真正想做的是看看推荐系统在测试集上的表现——即它之前没有见过的数据。本章的最后一个示例`ex-7-41`再次执行前面的分析，但测试的是模型在测试集上的RMSE，而不是训练集上的RMSE。该示例生成了如下图表：
+- en: '![Calculating the sum of squared errors](img/7180OS_07_355.jpg)'
+  id: totrans-452
+  prefs: []
+  type: TYPE_IMG
+  zh: '![计算平方误差之和](img/7180OS_07_355.jpg)'
+- en: As we would hope, the RMSE of the predictions fall as the rank of the factor
+    matrix is increased. A larger factor matrix is able to capture more of the latent
+    features that lie within the ratings, and more accurately predict the rating a
+    user will give a movie.
+  id: totrans-453
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们所期望的那样，随着因子矩阵的秩增加，预测的RMSE逐渐下降。较大的因子矩阵能够捕捉到评分中的更多潜在特征，从而更准确地预测用户给电影的评分。
+- en: Summary
+  id: totrans-454
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 概述
+- en: We've covered a lot of ground in this chapter. Although the subject was principally
+    recommender systems, we've also discussed dimensionality reduction and introduced
+    the Spark distributed computation framework as well.
+  id: totrans-455
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们讨论了很多内容。尽管主题主要是推荐系统，我们也涉及了降维技术，并介绍了Spark分布式计算框架。
+- en: We started by discussing the difference between content- and collaborative filtering-based
+    approaches to the problem of recommendation. Within the context of collaborative
+    filtering, we discussed item-item recommenders and built a Slope One recommender.
+    We also discussed user-user recommenders and used Mahout's implementations of
+    a variety of similarity measures and evaluators to implement and test several
+    user-based recommenders too. The challenge of evaluation provided an opportunity
+    to introduce the statistics of information retrieval.
+  id: totrans-456
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先讨论了基于内容过滤和协同过滤两种推荐方法的区别。在协同过滤的背景下，我们讨论了物品-物品推荐器，并构建了一个Slope One推荐器。我们还讨论了用户-用户推荐器，并使用Mahout的各种相似度度量和评估器的实现来实现并测试了几种基于用户的推荐器。评估的挑战为我们提供了一个引入信息检索统计学的机会。
+- en: We spent a lot of time in this chapter covering several different types of dimensionality
+    reduction. For example, we learned about the probabilistic methods offered by
+    Bloom filters and MinHash, and the analytic methods offered by principle component
+    analysis and singular value decomposition. While not specific to recommender systems,
+    we saw how such techniques could be used to help implement more efficient similarity
+    comparisons.
+  id: totrans-457
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们花了很多时间讨论不同类型的降维方法。例如，我们学习了Bloom过滤器和MinHash提供的概率方法，以及主成分分析和奇异值分解提供的分析方法。虽然这些方法并非专门针对推荐系统，但我们看到这些技术如何帮助实现更高效的相似度比较。
+- en: Finally, we introduced the distributed computation framework Spark and learned
+    how the alternating least squares algorithm uses dimensionality reduction to discover
+    latent factors in a matrix of ratings. We implemented ALS and a RMSE evaluator
+    using Spark, MLlib, and the Clojure library Sparkling.
+  id: totrans-458
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们介绍了分布式计算框架Spark，并学习了交替最小二乘算法如何利用降维技术在评分矩阵中发现潜在因子。我们使用Spark、MLlib和Clojure库Sparkling实现了ALS和RMSE评估器。
+- en: 'Many of the techniques we learned this chapter are very general, and the next
+    chapter will be no different. We''ll continue to explore the Spark and Sparkling
+    libraries as we learn about network analysis: the study of connections and relationships.'
+  id: totrans-459
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章所学的许多技术非常通用，下一章也不会例外。我们将继续探索Spark和Sparkling库，学习网络分析：即连接和关系的研究。

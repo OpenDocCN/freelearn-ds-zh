@@ -1,0 +1,1485 @@
+- en: Chapter 10. Large-Scale Machine Learning – Online Learning
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第10章 大规模机器学习 – 在线学习
+- en: 'In this chapter, we will see the following recipes:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将看到以下内容：
+- en: Using perceptron as an online linear algorithm
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用感知机作为在线线性算法
+- en: Using stochastic gradient descent for regression
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用随机梯度下降进行回归
+- en: Using stochastic gradient descent for classification
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用随机梯度下降进行分类
+- en: Introduction
+  id: totrans-5
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 引言
+- en: In this chapter, we will concentrate on large-scale machine learning and the
+    algorithms suited to tackle such large-scale problems. Till now, when we trained
+    all our models, we assumed that our training set can fit into our computer's memory.
+    In this chapter, we will see how to go about building models when this assumption
+    is no longer satisfied. Our training records are of a huge size and so we cannot
+    fit them completely into our memory. We may have to load them piecewise and still
+    produce a model with a good accuracy. The argument of a training set not fitting
+    into our computer memory can be extrapolated to streaming data. With streaming
+    data, we don't see all the data at once. We should be able to make decisions based
+    on whatever data we are exposed to and also have a mechanism for continuously
+    improving our model as new data arrives.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，我们将专注于大规模机器学习以及适合解决此类大规模问题的算法。直到现在，当我们训练所有模型时，我们假设训练集可以完全存入计算机的内存中。在本章中，我们将看到如何在这一假设不再成立时构建模型。我们的训练数据集非常庞大，因此无法完全加载到内存中。我们可能需要按块加载数据，并且仍能生成一个具有良好准确度的模型。训练集无法完全存入计算机内存的问题可以扩展到流数据上。对于流数据，我们不会一次性看到所有的数据。我们应该能够根据我们所接触到的数据做出决策，并且还应有一个机制，在新数据到达时不断改进我们的模型。
+- en: We will introduce the framework of the stochastic gradient descent-based algorithms.
+    This is a versatile framework to handle very large-scale datasets that will not
+    fit completely into our memory. Several types of linear algorithms, including
+    logistic regression, linear regression, and linear SVM, can be accommodated using
+    this framework. The kernel trick, which we introduced in our previous chapter,
+    can be included in this framework in order to deal with datasets with nonlinear
+    relationships.
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将介绍基于随机梯度下降的算法框架。这是一个多功能的框架，用于处理非常大规模的数据集，这些数据集无法完全存入我们的内存中。包括逻辑回归、线性回归和线性支持向量机等多种类型的线性算法，都可以通过该框架进行处理。我们在前一章中介绍的核技巧，也可以纳入该框架中，以应对具有非线性关系的数据集。
+- en: We will begin our list of recipes with the perceptron algorithm, the oldest
+    machine learning algorithm. Perceptron is easy to understand and implement. However,
+    Perceptron is limited to solving only linear problems. A kernel-based perceptron
+    can be used to solve nonlinear datasets.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从感知机算法开始介绍，感知机是最古老的机器学习算法。感知机易于理解和实现。然而，感知机仅限于解决线性问题。基于核的感知机可以用于解决非线性数据集。
+- en: In our second recipe, we will formally introduce the framework of gradient descent-based
+    methods and how it can be used to perform regression-based tasks. We will look
+    at different loss functions to see how different types of linear models can be
+    built using these functions. We will also see how perceptron belongs to the family
+    of stochastic gradient descent.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的第二个案例中，我们将正式介绍基于梯度下降的方法框架，以及如何使用该方法执行回归任务。我们将查看不同的损失函数，看看如何使用这些函数构建不同类型的线性模型。我们还将看到感知机如何属于随机梯度下降家族。
+- en: In our final recipe, we will see how classification algorithms can be built
+    using the stochastic gradient descent framework.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的最后一个案例中，我们将看到如何使用随机梯度下降框架构建分类算法。
+- en: Even though we don't have a direct example of streaming data, with our existing
+    datasets, we will see how the streaming data use cases can be addressed. Online
+    learning algorithms are not limited to streaming data, they can be applied to
+    batch data also, except that they process only one instance at a time.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使我们没有直接的流数据示例，通过现有的数据集，我们将看到如何解决流数据的使用场景。在线学习算法不限于流数据，它们也可以应用于批量数据，只是它们一次只处理一个实例。
+- en: Using perceptron as an online learning algorithm
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用感知机作为在线学习算法
+- en: 'As mentioned earlier, perceptron is one of the oldest machine learning algorithms.
+    It was first mentioned in a 1943 paper:'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，感知机是最古老的机器学习算法之一。它最早在1943年的一篇论文中提到：
+- en: '*A LOGICAL CALCULUS OF THE IDEAS IMMANENT IN NERVOUS ACTIVITY*. WARREN S. MCCULLOCH
+    AND WALTER PITTS University of Illinois, College of Medicine, Department of Psychiatry
+    at the Illinois Neuropsychiatric Institute, University of Chicago, Chicago, U.S.A.'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*《神经活动中固有思想的逻辑演算》*。沃伦·S·麦卡洛克和沃尔特·皮茨，伊利诺伊大学医学学院，伊利诺伊神经精神病学研究所精神病学系，芝加哥大学，美国芝加哥。'
+- en: Let's revisit our definition of a classification problem. Each record or instance
+    can be written as a set (X,y), where X is a set of attributes and y is a corresponding
+    class label.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们重新审视分类问题的定义。每个记录或实例可以表示为一个集合(X, y)，其中X是一组属性，y是相应的类标签。
+- en: Learning a target function, F, that maps each record's attribute set to one
+    of the predefined class label, y, is the job of a classification algorithm.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 学习一个目标函数F，该函数将每个记录的属性集映射到预定义的类标签y，是分类算法的任务。
+- en: The difference in our case is that we have a large-scale learning problem. All
+    our data will not fit into our main memory. So, we need to keep our data on a
+    disk and use only a portion of it at a time in order to build our perceptron model.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的差异在于我们面对的是一个大规模的学习问题。我们的所有数据无法完全加载到主内存中。因此，我们需要将数据保存在磁盘上，并且每次只使用其中的一部分来构建我们的感知器模型。
+- en: 'Let''s proceed to outline the perceptron algorithm:'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们继续概述感知器算法：
+- en: Initialize the weights of the model to a small random number.
+  id: totrans-19
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将模型的权重初始化为一个小的随机数。
+- en: Center the input data, `x`, with its mean.
+  id: totrans-20
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将输入数据`x`以其均值进行中心化。
+- en: 'At each time step t (also called epoch):'
+  id: totrans-21
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在每个时间步t（也称为epoch）：
+- en: Shuffle the dataset
+  id: totrans-22
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 洗牌数据集
+- en: Pick a single instance of the record and make a prediction
+  id: totrans-23
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 选择单个记录实例并进行预测。
+- en: Observe the deviation of the prediction from the true label output
+  id: totrans-24
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 观察预测与真实标签输出的偏差。
+- en: Update the weights if the prediction is different from the true label
+  id: totrans-25
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 如果预测与真实标签不同，则更新权重。
+- en: Let's consider the following scenario. We have the complete dataset on our disk.
+    In a single epoch, that is, in step 3, all the steps mentioned are performed on
+    all the data on our disk. In an online learning scenario, a bunch of instances
+    based on a windowing function will be available to us at any point in time. We
+    can update the weights as many times as the number of instances in our window
+    in a single epoch.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们考虑以下场景。我们将完整的数据集存储在磁盘上。在单个epoch中，即在步骤3中，所有提到的步骤都在磁盘上的所有数据上执行。在在线学习场景中，一组基于窗口函数的实例将随时提供给我们。我们可以在单个epoch中根据窗口中的实例数量更新权重。
+- en: Let's see how to go about updating our weights.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下如何更新我们的权重。
+- en: 'Let''s say our input X is as follows:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们的输入X如下：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_01.jpg)'
+  id: totrans-29
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用感知器作为在线学习算法](img/B04041_10_01.jpg)'
+- en: 'Our `Y` is as follows:'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的`Y`如下：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_02.jpg)'
+  id: totrans-31
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用感知器作为在线学习算法](img/B04041_10_02.jpg)'
+- en: 'We will define our weights as the following equation:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将定义我们的权重如下方程：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_03.jpg)'
+  id: totrans-33
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用感知器作为在线学习算法](img/B04041_10_03.jpg)'
+- en: 'Our prediction after we see each record is defined as follows:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在看到每个记录后的预测定义如下：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_04.jpg)'
+  id: totrans-35
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用感知器作为在线学习算法](img/B04041_10_04.jpg)'
+- en: The sign function returns +1 if the product of the weight and attributes is
+    positive, or -1 if the product is negative.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 符号函数在权重和属性的乘积为正时返回+1，如果乘积为负，则返回-1。
+- en: 'Perceptron proceeds to compare the predicted y with the actual y. If the predicted
+    y is correct, it moves on to the next record. If the prediction is incorrect,
+    there are two scenarios. If the predicted y is +1 and the actual y is -1, it decrements
+    the weight with an x value, and vice versa. If the actual y is +1 and the predicted
+    y is -1, it increments the weights. Let''s see this as an equation for more clarity:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 感知器接着将预测的y与实际的y进行比较。如果预测的y是正确的，它将继续处理下一个记录。如果预测错误，则有两种情况。如果预测的y是+1，而实际的y是-1，则减小该权重值与x的乘积，反之亦然。如果实际的y是+1，而预测的y是-1，则增加权重。我们可以用方程式来更清楚地表示这一点：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_05.jpg)'
+  id: totrans-38
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用感知器作为在线学习算法](img/B04041_10_05.jpg)'
+- en: 'Typically, a learning rate alpha is provided so that the weights are updated
+    in a controlled manner. With the presence of noise in the data, a full increment
+    of decrements will lead to the weights not converging:'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，学习率 alpha 会被提供，以便以可控的方式更新权重。由于数据中存在噪声，完全的增量和减量将导致权重无法收敛：
+- en: '![Using perceptron as an online learning algorithm](img/B04041_10_06.jpg)'
+  id: totrans-40
+  prefs: []
+  type: TYPE_IMG
+  zh: '![将感知机作为在线学习算法使用](img/B04041_10_06.jpg)'
+- en: Alpha is a very small value ranging, between 0.1 and 0.4.
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Alpha 是一个非常小的值，范围在 0.1 到 0.4 之间。
+- en: Let's jump into our recipe now.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们跳入我们的配方。
+- en: Getting ready
+  id: totrans-43
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: Let's generate data using `make_classification` in batches with a generator
+    function to simulate large-scale data and data streaming, and proceed to write
+    the perceptron algorithm.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 `make_classification` 生成数据，采用生成器函数批量生成，以模拟大规模数据和数据流，并继续编写感知机算法。
+- en: How to do it…
+  id: totrans-45
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现…
+- en: 'Let''s load the necessary libraries. We will then write a function, `get_data`,
+    which is a generator:'
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们加载必要的库。然后我们将编写一个名为 `get_data` 的生成器函数：
+- en: '[PRE0]'
+  id: totrans-47
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'We will proceed to write two functions, one to build our perceptron model and
+    the other one to test the worthiness of our model:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将编写两个函数，一个用来构建感知机模型，另一个用来测试我们的模型的有效性：
+- en: '[PRE1]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Finally, we will write our main function to invoke all the preceding functions,
+    to demonstrate the perceptron algorithm:'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将编写主函数来调用所有前面的函数，以展示感知机算法：
+- en: '[PRE2]'
+  id: totrans-51
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: How it works…
+  id: totrans-52
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理…
+- en: 'Let''s start with our main function. We will ask our generator to send us 10
+    sets of data:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从主函数开始。我们将要求生成器给我们发送 10 组数据：
+- en: '[PRE3]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Here, we want to simulate both large-scale data and data streaming. While building
+    our model, we don''t have access to all the data, just part of it:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们希望模拟大规模数据和数据流。在构建模型时，我们无法访问所有数据，只能访问部分数据：
+- en: '[PRE4]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'We will use the `next()` function in the generator in order to get the next
+    set of data. In the `get_data` function, we will use the `make_classification`
+    function from scikit-learn:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用生成器中的 `next()` 函数来获取下一组数据。在 `get_data` 函数中，我们将使用 scikit-learn 的 `make_classification`
+    函数：
+- en: '[PRE5]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Let's look at the parameters passed to the `make_classification` method. The
+    first parameter is the number of instances required, in this case, we need 1,000
+    instances. The second parameter is about how many attributes per instance are
+    required. We will assume that we need 30\. The third parameter, `flip_y`, randomly
+    interchanges 3 percent of the instances. This is done to introduce some noise
+    in our data. The next parameter is about these 30 features and how many of them
+    should be informative enough to be used in our classification. We specified that
+    60 percent of our features, that is, 18 out of 30, should be informative. The
+    next parameter is about the redundant features. These are generated as a linear
+    combination of the informative features in order to introduce correlation among
+    the features. Finally, repeated features are duplicate features that are drawn
+    randomly from both the informative features and the redundant features.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看传递给 `make_classification` 方法的参数。第一个参数是所需的实例数量，在本例中，我们需要 1,000 个实例。第二个参数是每个实例所需的属性数量。我们假设需要
+    30 个属性。第三个参数 `flip_y` 随机交换 3% 的实例。这是为了在数据中引入一些噪声。下一个参数涉及这 30 个特征中有多少个应该足够有信息量，以便用于我们的分类。我们指定
+    60% 的特征，即 30 个特征中的 18 个，应该是有信息量的。下一个参数是冗余特征。这些特征是通过有信息量的特征的线性组合生成的，以便在特征之间引入相关性。最后，重复特征是从有信息量的特征和冗余特征中随机抽取的重复特征。
+- en: 'When we call `next()`, we will get 1,000 instances of this data. This function
+    returns a y label as `{0,1}`; we want `{-1,+1}` and hence we will change all the
+    zeros in y to `-1`:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们调用 `next()` 时，我们将获得 1,000 个数据实例。该函数返回一个 y 标签，值为 `{0,1}`；我们希望得到 `{-1,+1}`，因此我们将
+    y 中的所有零改为 `-1`：
+- en: '[PRE6]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Finally, we will center our data using the scale function from scikit-learn.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将使用 scikit-learn 的 scale 函数来对数据进行中心化处理。
+- en: 'Let''s proceed to build our model with the first batch of data. We will initialize
+    our weights matrix with zeros:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用第一批数据来构建模型。我们将用零初始化我们的权重矩阵：
+- en: '[PRE7]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'As we need 10 batches of data to simulate large-scale learning and data streaming,
+    we will do the model building 10 times in the for loop:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们需要 10 批数据来模拟大规模学习和数据流，因此我们将在 for 循环中执行 10 次模型构建：
+- en: '[PRE8]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Our perceptron algorithm is built in `build_model`. A predictor x, response
+    variable y, the weights matrix, and number of time steps or epochs are passed
+    as parameters. In our case, we have set the number of epochs to `100`. This function
+    has one additional parameter, alpha value:'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的感知机算法在`build_model`中构建。一个预测变量x、响应变量y、权重矩阵和时间步数或周期数作为参数传递。在我们的情况下，我们已将周期数设置为`100`。此函数还有一个附加参数：alpha值：
+- en: '[PRE9]'
+  id: totrans-68
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: By default, we have set our alpha value to `0.5`.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 默认情况下，我们将alpha值设置为`0.5`。
+- en: 'Let''s see in our `build_model`. We will start with shuffling the data:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们在`build_model`中查看。我们将从数据洗牌开始：
+- en: '[PRE10]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'We will go through each record in our dataset and start updating our weights:'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将遍历数据集中的每条记录，并开始更新我们的权重：
+- en: '[PRE11]'
+  id: totrans-73
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'In the for loop, you can see that we do the prediction:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在for循环中，你可以看到我们在做预测：
+- en: '[PRE12]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'We will multiply our training data with weights, and add them together. Finally,
+    we will use the np.sign function to get our prediction. Now, based on the prediction,
+    we will update our weights:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将把训练数据与权重相乘，并将它们加在一起。最后，我们将使用np.sign函数来获取我们的预测结果。根据预测结果，我们将更新我们的权重：
+- en: '[PRE13]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: That is all. We will return the weights to the calling function.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就是这样。我们将把权重返回给调用函数。
+- en: 'In our main function, we will invoke the `model_worth` function to print the
+    goodness of the model. Here, we will use the `classification_report` convienience
+    function to print the accuracy score of the model:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的主函数中，我们将调用`model_worth`函数来打印模型的优度。这里，我们将使用`classification_report`便捷函数来打印模型的准确度评分：
+- en: '[PRE14]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: We will then proceed to update our model for the next batch of incoming data.
+    Note that we have not altered the `weights` parameter. It gets updated with every
+    batch of new data coming in.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们将继续更新模型以处理下一批输入数据。请注意，我们没有更改`weights`参数。它会随着每批新数据的到来而更新。
+- en: 'Let''s see what `model_worth` has printed:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看`model_worth`打印了什么：
+- en: '![How it works…](img/B04041_10_07.jpg)'
+  id: totrans-83
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_07.jpg)'
+- en: There's more…
+  id: totrans-84
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: 'Scikit-learn provides us with an implementation of perceptron. Refer to the
+    following URL for more details:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Scikit-learn为我们提供了感知机的实现。更多细节请参考以下网址：
+- en: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Perceptron.html](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Perceptron.html).'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Perceptron.html](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Perceptron.html)。'
+- en: Another improvement that can be made in the perceptron algorithm is to use more
+    features.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 感知机算法中可以改进的另一个方面是使用更多特征。
+- en: 'Remember the prediction equation, we can rewrite it as follows:'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住预测方程，我们可以将其重写如下：
+- en: '![There''s more…](img/B04041_10_08.jpg)'
+  id: totrans-89
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_10_08.jpg)'
+- en: 'We replaced the x values with a function. Here, we can send a feature generator.
+    For example, a polynomial feature generator can be added to our `get_data` function,
+    as follows:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们用一个函数替换了x值。在这里，我们可以发送一个特征生成器。例如，一个多项式特征生成器可以添加到我们的`get_data`函数中，如下所示：
+- en: '[PRE15]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Finally, kernel-based perceptron algorithms are available to handle nonlinear
+    datasets. Refer to the Wikipedia article for more information about kernel-based
+    perceptron:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，基于核的感知机算法可以处理非线性数据集。有关基于核的感知机的更多信息，请参阅维基百科文章：
+- en: '[https://en.wikipedia.org/wiki/Kernel_perceptron](https://en.wikipedia.org/wiki/Kernel_perceptron).'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://en.wikipedia.org/wiki/Kernel_perceptron](https://en.wikipedia.org/wiki/Kernel_perceptron)。'
+- en: See also
+  id: totrans-94
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: '*Learning and using Kernels* recipe in [Chapter 5](ch05.xhtml "Chapter 5. Data
+    Mining – Needle in a Haystack"), *Data Mining - Finding a needle in a haystack*'
+  id: totrans-95
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在[第5章](ch05.xhtml "第5章. 数据挖掘 – 大海捞针")中，*学习和使用核*的方法，*数据挖掘 - 在大海捞针中找针*。
+- en: Using stochastic gradient descent for regression
+  id: totrans-96
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用随机梯度下降进行回归
+- en: 'In a typical regression setup, we have a set of predictors (instances), as
+    follows:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在典型的回归设置中，我们有一组预测变量（实例），如下所示：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_09.jpg)'
+  id: totrans-98
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_09.jpg)'
+- en: 'Each instance has m attributes, as follows:'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个实例有m个属性，如下所示：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_10.jpg)'
+  id: totrans-100
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_10.jpg)'
+- en: 'The response variable, Y, is a vector of real-valued entries. The job of regression
+    is to find a function such that when x is provided as an input to this function,
+    it should return y:'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 响应变量Y是一个实值条目的向量。回归的任务是找到一个函数，使得当x作为输入提供给该函数时，它应返回y：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_11.jpg)'
+  id: totrans-102
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_11.jpg)'
+- en: 'The preceding function is parameterized by a weight vector, that is, a combination
+    of the weight vector and input vector is used to predict `Y`, so rewriting the
+    function with the weight vector will get the following:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的函数通过一个权重向量进行参数化，也就是说，使用权重向量和输入向量的组合来预测`Y`，因此通过权重向量重新编写函数会得到如下形式：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_13.jpg)'
+  id: totrans-104
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_13.jpg)'
+- en: 'So, the question now is how do we know that we have the right weight vectors?
+    We will use a loss function, L, to get the right weight vectors. The loss function
+    measures the cost of making a wrong prediction. It empirically measures the cost
+    of predicting y when the actual value is y. The regression problem now becomes
+    the problem of finding the right weight vector that will minimize the loss function.
+    For our whole dataset of `n` elements, the overall loss function is as follows:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，现在的问题是我们如何知道我们拥有正确的权重向量？我们将使用损失函数L来得到正确的权重向量。损失函数衡量了预测错误的成本。它通过经验来衡量预测y时的成本，当实际值为y时。回归问题现在变成了寻找正确的权重向量的问题，该向量能够最小化损失函数。对于我们包含`n`个元素的整个数据集，总的损失函数如下：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_14.jpg)'
+  id: totrans-106
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_14.jpg)'
+- en: Our weight vectors should be those that minimize the preceding value.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的权重向量应该是那些能够最小化前面值的权重向量。
+- en: Gradient descent is an optimization technique used to minimize the preceding
+    equation. For this equation, we will find the gradient, that is, the first-order
+    derivative with respect to W.
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 梯度下降是一种优化技术，用于最小化前面的方程。对于这个方程，我们将计算梯度，即相对于W的一阶导数。
+- en: 'Unlike other optimization techniques such as the batch gradient descent, stochastic
+    gradient descent operates on one instance at a time. The steps involved in stochastic
+    gradient descent are as follows:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不同于批量梯度下降等其他优化技术，随机梯度下降每次只操作一个实例。随机梯度下降的步骤如下：
+- en: For each epoch, shuffle the dataset.
+  id: totrans-110
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于每一个周期，打乱数据集。
+- en: Pick an instance and its response variable, y.
+  id: totrans-111
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择一个实例及其响应变量y。
+- en: Calculate the loss function and its derivative, w.r.t weights.
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算损失函数及其相对于权重的导数。
+- en: Update the weights.
+  id: totrans-113
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 更新权重。
+- en: 'Let''s say:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_15.jpg)'
+  id: totrans-115
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_15.jpg)'
+- en: 'This signifies the derivative, w.r.t w. The weights are updated as follows:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这表示相对于w的导数。权重更新如下：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_16.jpg)'
+  id: totrans-117
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_16.jpg)'
+- en: As you can see, the weights are moved in the opposite direction to the gradient,
+    thus forcing a descent that will eventually give the weight vector values, which
+    can reduce the objective cost function.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，权重朝着与梯度相反的方向移动，从而实现下降，最终得到的权重向量值能够减少目标成本函数。
+- en: 'A squared loss is a typical loss function used with regression. The squared
+    loss of an instance is defined in the following way:'
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 平方损失是回归中常用的损失函数。一个实例的平方损失定义如下：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_17.jpg)'
+  id: totrans-120
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_17.jpg)'
+- en: The derivative of the preceding equation is substituted into the weight update
+    equation. With this background knowledge, let's proceed to our recipe for stochastic
+    gradient descent regression.
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面方程的导数被代入到权重更新方程中。通过这些背景知识，让我们继续介绍随机梯度下降回归的步骤。
+- en: 'As explained in perceptron, a learning rate, eta, is added to the weight update
+    equation in order to avoid the effect of noise:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如感知机中所解释的，学习率eta被添加到权重更新方程中，以避免噪声的影响：
+- en: '![Using stochastic gradient descent for regression](img/B04041_10_18.jpg)'
+  id: totrans-123
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行回归](img/B04041_10_18.jpg)'
+- en: Getting ready
+  id: totrans-124
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will be leveraging the scikit-learn's implementation of SGD regression. As
+    in some of the previous recipes, we will use the `make_regression` function from
+    scikit-learn to generate data for our recipe in order to demonstrate stochastic
+    gradient descent regression.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将利用scikit-learn实现的SGD回归。与之前的一些示例一样，我们将使用scikit-learn中的`make_regression`函数生成数据，以展示随机梯度下降回归。
+- en: How to do it…
+  id: totrans-126
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作…
+- en: Let's start with a very simple example demonstrating how to build a stochastic
+    gradient descent regressor.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从一个非常简单的示例开始，演示如何构建一个随机梯度下降回归器。
+- en: 'We will first load the required libraries. We will then write a function to
+    generate predictors and response variables to demonstrate regression:'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先将加载所需的库。然后我们将编写一个函数来生成预测变量和响应变量，以演示回归：
+- en: '[PRE16]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'We will proceed to write the functions that will help us build, validate, and
+    inspect our model:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将继续编写有助于我们构建、验证和检查模型的函数：
+- en: '[PRE17]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'Finally, we will write our main function to invoke all the preceding functions:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将编写我们的主函数来调用所有前面的函数：
+- en: '[PRE18]'
+  id: totrans-133
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: How it works…
+  id: totrans-134
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理…
+- en: 'Let''s start with our main function. We will invoke the `get_data` function
+    to generate our predictor x and response variable y:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从主函数开始。我们将调用`get_data`函数来生成我们的预测变量x和响应变量y：
+- en: '[PRE19]'
+  id: totrans-136
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'In the `get_data` function, we will leverage the convenient `make_regression`
+    function from scikit-learn to generate a dataset for the regression problems:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`get_data`函数中，我们将利用scikit-learn中便捷的`make_regression`函数来生成回归问题的数据集：
+- en: '[PRE20]'
+  id: totrans-138
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: As you can see, we will generate a dataset with 1,000 instances specified by
+    an `n_samples` parameter, and 30 features defined by an `n_features` parameter.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，我们将生成一个包含1,000个实例的数据集，其中实例数量由`n_samples`参数指定，特征数量由`n_features`参数定义，共有30个特征。
+- en: 'Let''s split the data into training and testing sets using `train_test_split`.
+    We will reserve 30 percent of our data to test:'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用`train_test_split`将数据划分为训练集和测试集。我们将保留30%的数据用于测试：
+- en: '[PRE21]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'Once again, we will leverage `train_test_split` to split our test data into
+    dev and test sets:'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将再次利用`train_test_split`来将测试数据划分为开发集和测试集：
+- en: '[PRE22]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: With the data divided to build, evaluate, and test the model, we will proceed
+    to build our models.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在数据划分为用于构建、评估和测试模型之后，我们将继续构建我们的模型。
+- en: 'We will invoke the `build_model` function with our training dataset:'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用训练数据集调用`build_model`函数：
+- en: '[PRE23]'
+  id: totrans-146
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'In `build_model`, we will leverage scikit-learn''s SGD regressor class to build
+    our stochastic gradient descent method:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`build_model`中，我们将利用scikit-learn的SGD回归器类来构建我们的随机梯度下降方法：
+- en: '[PRE24]'
+  id: totrans-148
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: The SGD regressor is a vast method and can be used to fit a number of linear
+    models with a lot of parameters. We will first explain the basic method of stochastic
+    gradient descent and then proceed to explain the other details.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SGD回归器是一种广泛的方法，可以用于拟合具有大量参数的多种线性模型。我们将首先解释随机梯度下降的基本方法，然后再继续解释其他细节。
+- en: Let's look at the parameters that we used. The first parameter is the number
+    of times that we want to go through our dataset in order to update the weights.
+    Here, we will say that we want 10 iterations. As in perceptron, after going through
+    all the records once, we need to shuffle our input records when we start the next
+    iteration. A parameter shuffle is used for the same. The default value of shuffle
+    is true, we have included it here for explanation purposes. Our loss function
+    is the squared loss and we want to do a linear regression; hence, we will specify
+    this using the loss parameter.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看我们使用的参数。第一个参数是我们希望通过数据集的次数，用于更新权重。这里，我们将设置为10次迭代。与感知机类似，在遍历所有记录一次之后，我们需要在开始下一次迭代时打乱输入记录。我们使用`shuffle`参数来实现这一点。`shuffle`的默认值为`true`，我们这里包含它是为了说明。我们的损失函数是平方损失，并且我们要进行线性回归，因此我们将通过`loss`参数指定这一点。
+- en: Our learning rate, eta, is a constant that we will specify with the `learning_rate`
+    parameter. We will provide a value for our learning rate using the eta`0` parameter.
+    We will then say that we need to fit the intercept as we have not centered our
+    data by its mean. Finally, the penalty parameter controls the type of shrinkage
+    required. In our case, we don't need any shrinkage using the none string.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的学习率`eta`是一个常数，我们将通过`learning_rate`参数指定。我们将通过`eta=0`来为学习率提供一个值。然后我们会说我们需要拟合截距，因为我们没有按数据的均值来对数据进行中心化。最后，惩罚参数控制所需的收缩类型。在我们的案例中，我们不需要任何收缩，因此使用`none`字符串。
+- en: We will proceed to build our model by invoking the fit function with our predictor
+    and response variable. Finally we will return the model that we built to our calling
+    function.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将通过调用拟合函数并传入我们的预测变量和响应变量来构建模型。最后，我们将把构建好的模型返回给调用函数。
+- en: 'Let''s now inspect our model and see the value of the intercept and coefficients:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们检查一下我们的模型，并查看截距和系数的值：
+- en: '[PRE25]'
+  id: totrans-154
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'In the inspect model, we will print the values of the model intercepts and
+    coefficients:'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在检查模型时，我们将打印模型截距和系数的值：
+- en: '![How it works…](img/B04041_10_19.jpg)'
+  id: totrans-156
+  prefs: []
+  type: TYPE_IMG
+  zh: '![工作原理…](img/B04041_10_19.jpg)'
+- en: 'Let''s now look at how our model has performed in our training data:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们来看一下我们的模型在训练数据中的表现：
+- en: '[PRE26]'
+  id: totrans-158
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: We will invoke the model_worth function to look at our model's performance.
+    The model_worth function prints the mean absolute error and mean squared error
+    values.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将调用 `model_worth` 函数来查看模型的表现。`model_worth` 函数打印出平均绝对误差和均方误差的值。
+- en: 'The mean squared error is defined as follows:'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 均方误差定义如下：
+- en: '![How it works…](img/B04041_10_22.jpg)'
+  id: totrans-161
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_22.jpg)'
+- en: 'The mean absolute error is defined in the following way:'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 平均绝对误差定义如下：
+- en: '![How it works…](img/B04041_10_23.jpg)'
+  id: totrans-163
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_23.jpg)'
+- en: 'The mean squared error is sensitive to outliers. Hence, the mean absolute error
+    is a more robust measure. Let''s look at the model''s performance using the training
+    data:'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 均方误差对异常值非常敏感。因此，平均绝对误差是一个更稳健的衡量标准。让我们通过训练数据来查看模型的表现：
+- en: '![How it works…](img/B04041_10_20.jpg)'
+  id: totrans-165
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_20.jpg)'
+- en: 'Let''s now look at the model''s performance using our dev data:'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们来看一下使用开发数据的模型表现：
+- en: '![How it works…](img/B04041_10_21.jpg)'
+  id: totrans-167
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_21.jpg)'
+- en: There's more…
+  id: totrans-168
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: 'We can include regularization in the stochastic gradient descent framework.
+    Recall the following cost function of ridge regression from the previous chapter:'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以在随机梯度下降框架中加入正则化。回顾前一章节中岭回归的成本函数：
+- en: '![There''s more…](img/B04041_10_24.jpg)'
+  id: totrans-170
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_10_24.jpg)'
+- en: 'We included an expanded version of the square loss function here and added
+    the regularization term—the sum of the square of the weights. We can include it
+    in our gradient descent procedure. Let''s say that we denote our regularization
+    term as R(W). Our weight update is now as follows:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们加入了平方损失函数的扩展版本，并添加了正则化项——权重平方和。我们可以将其包含在我们的梯度下降过程中。假设我们将正则化项表示为 R(W)。我们的权重更新规则现在如下：
+- en: '![There''s more…](img/B04041_10_25.jpg)'
+  id: totrans-172
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_10_25.jpg)'
+- en: As you can see, now we have the derivative of the loss function with respect
+    to the weight vector, w, and the derivative of the regularization term with respect
+    to the weights is added to our weight update rule.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，现在我们有了损失函数关于权重向量 w 的导数，正则化项对权重的导数被添加到我们的权重更新规则中。
+- en: 'Let''s write a new function to build our model to include regularization:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们写一个新的函数来构建包含正则化的模型：
+- en: '[PRE27]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'We can invoke this function from our main function as follows:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过如下方式从主函数中调用这个函数：
+- en: '[PRE28]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Let''s see the new parameters that we passed compared with our previous build
+    model method:'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看看与之前构建模型方法相比，我们传递的新参数：
+- en: '[PRE29]'
+  id: totrans-179
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Earlier, we mentioned our penalty as none. Now, you can see that we mentioned
+    that we need to add an L2 penalty to our model. Again, we will give an `alpha`
+    value of `0.01` using the `alpha` parameter. Let''s look at our coefficients:'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之前，我们提到过惩罚项为 none。现在，你可以看到我们提到需要在模型中加入 L2 惩罚项。我们将给 `alpha` 参数一个值为 `0.01`。让我们来看看我们的系数：
+- en: '![There''s more…](img/B04041_10_26.jpg)'
+  id: totrans-181
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_10_26.jpg)'
+- en: 'You can see the effect of the L2 regularization: a lot of the coefficients
+    have attained a zero value. Similarly, the L1 regularization and elastic net,
+    which combines both the L1 and L2 regularization, can be included using the penalty
+    parameter.'
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到 L2 正则化的效果：很多系数已被压缩为零。类似地，L1 正则化和结合了 L1 和 L2 正则化的弹性网方法，也可以通过惩罚参数来实现。
+- en: Remember in our introduction, we mentioned that stochastic gradient descent
+    is more of a framework than a single method. Other linear models can be generated
+    using this framework by changing the loss function.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记得在介绍中提到过，随机梯度下降更像是一个框架，而不是单一的方法。通过更改损失函数，可以使用这个框架生成其他线性模型。
+- en: 'SVM regression models can be built using the epsilon-insensitive loss function.
+    This loss function is defined as follows:'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以使用不敏感于 epsilon 的损失函数构建支持向量机回归模型。这个损失函数定义如下：
+- en: '![There''s more…](img/B04041_10_27.jpg)'
+  id: totrans-185
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_10_27.jpg)'
+- en: 'Refer to the following URL for the various parameters that can be passed to
+    the SGD regressor in scikit-learn:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请参考以下网址，了解可以传递给 scikit-learn 中 SGD 回归器的各种参数：
+- en: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDRegressor.html](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDRegressor.html).'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDRegressor.html](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDRegressor.html)。'
+- en: See also
+  id: totrans-188
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: '*Predicting real valued numbers using regression* recipe in [Chapter 7](ch07.xhtml
+    "Chapter 7. Machine Learning 2"), *Machine Learning II*'
+  id: totrans-189
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在[第7章](ch07.xhtml "第7章：机器学习2")中，*使用回归预测实数值* 的方法，*机器学习 II*
+- en: '*Shrinkage using Ridge Regression* recipe in [Chapter 7](ch07.xhtml "Chapter 7. Machine
+    Learning 2"), *Machine Learning II*'
+  id: totrans-190
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[第7章](ch07.xhtml "第7章. 机器学习 II")中的*岭回归的收缩*示例，*机器学习 II*'
+- en: Using stochastic gradient descent for classification
+  id: totrans-191
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用随机梯度下降进行分类
+- en: A classification problem setup is very similar to a regression setup except
+    for the response variable. In a classification setup, the response is a categorical
+    variable. Due to its nature, we have a different loss function to measure the
+    cost of the wrong predictions. Let's assume a binary classifier for our discussion
+    and recipe, and our target variable, Y, can take the values {`0`,`1`}.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分类问题的设置与回归问题非常相似，唯一的区别在于响应变量。在分类问题中，响应是一个类别变量。由于其性质，我们有不同的损失函数来衡量错误预测的代价。假设我们的讨论和配方是针对二分类器的，我们的目标变量
+    Y 可以取值 {`0`,`1`}。
+- en: We will use the derivative of this loss function in our weight update rule to
+    arrive at our weight vectors.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用该损失函数的导数作为权重更新规则，以得到我们的权重向量。
+- en: The SGD classifier class from scikit-learn provides us with a variety of loss
+    functions. However, in this recipe, we will see log loss, which will give us logistic
+    regression.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: scikit-learn 的 SGD 分类器类为我们提供了多种损失函数。然而，在本示例中，我们将看到对数损失，它将给出逻辑回归。
+- en: 'Logistic regression fits a linear model to a data of the following form:'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 逻辑回归为以下形式的数据拟合一个线性模型：
+- en: '![Using stochastic gradient descent for classification](img/B04041_10_29.jpg)'
+  id: totrans-196
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行分类](img/B04041_10_29.jpg)'
+- en: 'We have given a generalized notation. The intercept is assumed to be the first
+    dimension of our weight vector. For a binary classification problem, a logit function
+    is applied to get a prediction. as follows:'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经给出了一个广义的符号表示。假设截距是我们权重向量的第一维。对于二分类问题，应用对数几率函数来得到预测，如下所示：
+- en: '![Using stochastic gradient descent for classification](img/B04041_10_30.jpg)'
+  id: totrans-198
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行分类](img/B04041_10_30.jpg)'
+- en: 'The preceding function is also called the sigmoid function. For very large
+    positive values of x_i, this function will return a value close to one, and vice
+    versa for large negative values close to zero. With this, we can define our log
+    loss function as follows:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述函数也被称为 sigmoid 函数。对于非常大的正值 x_i，该函数将返回接近 1 的值，反之，对于非常大的负值，将返回接近 0 的值。由此，我们可以将对数损失函数定义如下：
+- en: '![Using stochastic gradient descent for classification](img/B04041_10_31.jpg)'
+  id: totrans-200
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用随机梯度下降进行分类](img/B04041_10_31.jpg)'
+- en: With the preceding loss function fitted into the weight update rule of the gradient
+    descent, we can arrive at the appropriate weight vectors.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将上述损失函数应用于梯度下降的权重更新规则，我们可以得到适当的权重向量。
+- en: 'For the log loss function defined in scikit-learn, refer to the following URL:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于在 scikit-learn 中定义的对数损失函数，请参考以下网址：
+- en: '[http://scikit-learn.org/stable/modules/generated/sklearn.metrics.log_loss.html](http://scikit-learn.org/stable/modules/generated/sklearn.metrics.log_loss.html).'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://scikit-learn.org/stable/modules/generated/sklearn.metrics.log_loss.html](http://scikit-learn.org/stable/modules/generated/sklearn.metrics.log_loss.html)。'
+- en: With this knowledge, let's jump into our recipe for stochastic gradient descent-based
+    classification.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 了解这些知识后，让我们进入基于随机梯度下降的分类配方。
+- en: Getting ready
+  id: totrans-205
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will leverage scikit-learn's implementation of the stochastic gradient descent
+    classifier. As we did in some of the previous recipes, we will use the `make_classification`
+    function from scikit-learn to generate data for our recipe in order to demonstrate
+    the stochastic gradient descent classification.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将利用 scikit-learn 实现的随机梯度下降分类器。就像在之前的一些示例中一样，我们将使用 scikit-learn 的 `make_classification`
+    函数来生成数据，以演示随机梯度下降分类。
+- en: How to do it…
+  id: totrans-207
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现……
+- en: Let's start with a very simple example demonstrating how to build a stochastic
+    gradient descent regressor.
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从一个非常简单的例子开始，演示如何构建一个随机梯度下降回归器。
+- en: 'We will first load the required libraries. We will then write a function to
+    generate the predictors and response variables:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将首先加载所需的库。然后，我们将编写一个函数来生成预测变量和响应变量：
+- en: '[PRE30]'
+  id: totrans-210
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'We will proceed to write functions that will help us build and validate our
+    model:'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将继续编写一些函数，帮助我们构建和验证我们的模型：
+- en: '[PRE31]'
+  id: totrans-212
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'Finally, we will write our main function to invoke all the preceding functions:'
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将编写主函数，调用所有先前的函数：
+- en: '[PRE32]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: How it works…
+  id: totrans-215
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: 'Let''s start with our main function. We will invoke `get_data` to get our `x`
+    predictor attributes and `y` response attributes. In `get_data`, we will leverage
+    the `make_classification` dataset in order to generate our training data for the
+    random forest method:'
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从主函数开始。我们将调用`get_data`来获取我们的`x`预测属性和`y`响应属性。在`get_data`中，我们将利用`make_classification`数据集来生成用于随机森林方法的训练数据：
+- en: '[PRE33]'
+  id: totrans-217
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: Let's look at the parameters passed to the `make_classification` method. The
+    first parameter is the number of instances required. In this case, we need 500
+    instances. The second parameter is about how many attributes per instance are
+    required. We say that we need 30\. The third parameter, `flip_y`, randomly interchanges
+    3 percent of the instances. This is done to introduce noise in our data. The next
+    parameter is about how many out of those 30 features should be informative enough
+    to be used in our classification. We specified that 60 percent of our features,
+    that is, 18 out of 30, should be informative. The next parameter is about redundant
+    features. These are generated as a linear combination of the informative features
+    in order to introduce correlation among the features. Finally, the repeated features
+    are duplicate features that are drawn randomly from both the informative and redundant
+    features.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下传递给`make_classification`方法的参数。第一个参数是所需的实例数量。在这种情况下，我们需要500个实例。第二个参数是每个实例所需的属性数量。我们设置为30。第三个参数`flip_y`，随机交换3%的实例。这是为了在数据中引入噪声。接下来的参数是关于这30个特征中有多少个应该足够信息量，可以用于分类。我们指定60%的特征，也就是30个中的18个，应该是有信息量的。接下来的参数是冗余特征。这些特征是通过信息特征的线性组合生成的，用来在特征之间引入相关性。最后，重复特征是从信息特征和冗余特征中随机抽取的重复特征。
+- en: 'Let''s split the data into training and testing sets using `train_test_split`.
+    We will reserve 30 percent of our data to test:'
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用`train_test_split`将数据分为训练集和测试集。我们将预留30%的数据用于测试：
+- en: '[PRE34]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'Once again, we will leverage `train_test_split` to split our test data into
+    dev and test sets:'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 再一次，我们将利用`train_test_split`将测试数据分成开发集和测试集：
+- en: '[PRE35]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'With the data divided to build, evaluate, and test the model, we will proceed
+    to build our models:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将数据分为用于构建、评估和测试模型的三部分，然后开始构建我们的模型：
+- en: '[PRE36]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'In `build_model`, we will leverage scikit-learn''s `SGDClassifier` class to
+    build our stochastic gradient descent method:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`build_model`中，我们将利用scikit-learn的`SGDClassifier`类来构建我们的随机梯度下降方法：
+- en: '[PRE37]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Let''s look at the parameters that we used. The first parameter is the number
+    of times we want to go through our dataset to update the weights. Here, we say
+    that we want 50 iterations. As in perceptron, after going through all the records
+    once, we need to shuffle our input records when we start the next iteration. The
+    shuffle parameter is used for the same. The default value of shuffle is true,
+    we have included it here for explanation purposes. Our loss function is log loss:
+    we want to do a logistic regression and we will specify this using the loss parameter.
+    Our learning rate, eta, is a constant that we will specify with the `learning_rate`
+    parameter. We will provide the value for our learning rate using the eta`0` parameter.
+    We will then proceed to say that we need to fit the intercept, as we have not
+    centered our data by its mean. Finally, the penalty parameter controls the type
+    of shrinkage required. In our case, we will say that we don''t need any shrinkage
+    using the none string.'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下我们使用的参数。第一个参数是我们希望遍历数据集的次数，以更新权重。在这里，我们设定为50次迭代。与感知机一样，在遍历完所有记录一次后，我们需要对输入记录进行洗牌，开始下一轮迭代。`shuffle`参数用于控制这个操作。`shuffle`的默认值是true，这里我们加上它是为了说明。我们的损失函数是对数损失：我们希望进行逻辑回归，并且通过`loss`参数来指定这一点。我们的学习率eta是一个常数，我们将通过`learning_rate`参数来指定。我们将通过`eta0`参数来提供学习率的值。接着，我们将设置需要拟合截距，因为我们没有通过均值对数据进行中心化。最后，`penalty`参数控制所需的收缩类型。在我们的案例中，我们将设置不需要任何收缩，使用`none`字符串。
+- en: 'We will proceed to build our model by invoking the fit function with our predictor
+    and response variable, and evaluate our model with our training and dev dataset:'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将通过调用`fit`函数来构建我们的模型，并用训练集和开发集来评估我们的模型：
+- en: '[PRE38]'
+  id: totrans-229
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'Let''s look at our accuracy scores:'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看我们的准确度得分：
+- en: '![How it works…](img/B04041_10_28.jpg)'
+  id: totrans-231
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_10_28.jpg)'
+- en: There's more…
+  id: totrans-232
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容……
+- en: Regularization, L1, L2, or elastic net can be applied for SGD classification.
+    The procedure is the same as that of regression, and hence, we will not repeat
+    it here. Refer to the previous recipe for this.
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于SGD分类，可以应用正则化（L1、L2或弹性网）。这个过程与回归相同，因此我们在这里不再重复。请参考前面的步骤。
+- en: 'The learning rate, eta, was constant in our example. This need not be the case.
+    With every iteration, the eta value can be reduced. The learning rate parameter,
+    `learning_rate`, can be set to an optimal string or invscaling. Refer to the following
+    scikit documentation:'
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的示例中，学习率（eta）是常数，但这不一定是必要的。在每次迭代时，eta值可以被减小。学习率参数`learning_rate`可以设置为一个最优的字符串或invscaling。请参考以下scikit文档：
+- en: '[http://scikit-learn.org/stable/modules/sgd.html](http://scikit-learn.org/stable/modules/sgd.html).'
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://scikit-learn.org/stable/modules/sgd.html](http://scikit-learn.org/stable/modules/sgd.html)'
+- en: 'The parameter is specified as follows:'
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该参数的设置如下：
+- en: '[PRE39]'
+  id: totrans-237
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'We used the fit method to build our model. As mentioned previously, in large-scale
+    machine learning, we know that all the data will not be available to us at once.
+    When we receive the data in batches, we need to use the `partial_fit` method,
+    instead of `fit`. Using the `fit` method will reinitialize the weights and we
+    will lose all the training information from the previous batch of data. Refer
+    to the following link for more information on `partial_fit`:'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们使用`fit`方法来构建我们的模型。如前所述，在大规模机器学习中，我们知道所有数据不会一次性提供给我们。当我们按批次接收数据时，需要使用`partial_fit`方法，而不是`fit`。使用`fit`方法会重新初始化权重，并且我们将失去上一批数据的所有训练信息。有关`partial_fit`的更多信息，请参考以下链接：
+- en: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html#sklearn.linear_model.SGDClassifier.partial_fit](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html#sklearn.linear_model.SGDClassifier.partial_fit).'
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html#sklearn.linear_model.SGDClassifier.partial_fit](http://scikit-learn.org/stable/modules/generated/sklearn.linear_model.SGDClassifier.html#sklearn.linear_model.SGDClassifier.partial_fit)'
+- en: See also
+  id: totrans-240
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: '*Shrinkage using Ridge Regression* recipe in [Chapter 7](ch07.xhtml "Chapter 7. Machine
+    Learning 2"), *Machine Learning II*'
+  id: totrans-241
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在[第7章](ch07.xhtml "第7章. 机器学习2")中，*使用岭回归进行收缩*的食谱，*机器学习II*
+- en: '*Using stochastic gradient descent for regression* recipe in [Chapter 9](ch09.xhtml
+    "Chapter 9. Growing Trees"), *Machine Learning III*'
+  id: totrans-242
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在[第9章](ch09.xhtml "第9章. 构建树")中，*使用随机梯度下降进行回归*的食谱，*机器学习III*

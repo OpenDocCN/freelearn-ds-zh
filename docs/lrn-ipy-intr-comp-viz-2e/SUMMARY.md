@@ -1,0 +1,8 @@
++   [IPython 交互式计算和可视化学习指南第二版](README.md)
++   [前言](lrn-ipy-intr-comp-viz-2e_0.md)
++   [第一章：开始使用 IPython](lrn-ipy-intr-comp-viz-2e_1.md)
++   [第二章：与 IPython 进行交互工作](lrn-ipy-intr-comp-viz-2e_2.md)
++   [第三章：使用 IPython 进行数值计算](lrn-ipy-intr-comp-viz-2e_3.md)
++   [第四章：交互式绘图与图形界面](lrn-ipy-intr-comp-viz-2e_4.md)
++   [第五章. 高性能与并行计算](lrn-ipy-intr-comp-viz-2e_5.md)
++   [第六章. 自定义 IPython](lrn-ipy-intr-comp-viz-2e_6.md)

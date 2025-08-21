@@ -1,0 +1,2634 @@
+- en: 6\. Gradient Boosting, XGBoost, and SHAP Values
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 6\. 梯度提升、XGBoost与SHAP值
+- en: Overview
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 概述
+- en: 'After reading this chapter, you will be able to describe the concept of gradient
+    boosting, the fundamental idea underlying the XGBoost package. You will then train
+    XGBoost models on synthetic data, while learning about early stopping as well
+    as several XGBoost hyperparameters along the way. In addition to using a similar
+    method to grow trees as we have previously (by setting `max_depth`), you''ll also
+    discover a new way of growing trees that is offered by XGBoost: loss-guided tree
+    growing. After learning about XGBoost, you''ll then be introduced to a new and
+    powerful way of explaining model predictions, called **SHAP** (**SHapley Additive
+    exPlanations**). You will see how SHAP values can be used to provide individualized
+    explanations for model predictions from any dataset, not just the training data,
+    and also understand the additive property of SHAP values.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 阅读完本章后，您将能够描述梯度提升的概念，这是XGBoost包的基本理念。然后，您将通过合成数据训练XGBoost模型，并在此过程中学习早期停止以及几个XGBoost超参数。除了使用我们之前讨论的相似方法来生成树（通过设置`max_depth`），您还将发现XGBoost提供的另一种生成树的新方式：基于损失的树生成。在学习了XGBoost之后，您将接触到一种新的、强大的模型预测解释方法，称为**SHAP**（**SHapley
+    Additive exPlanations**）。您将看到如何使用SHAP值为任何数据集的模型预测提供个性化的解释，而不仅仅是训练数据，同时也理解SHAP值的加法属性。
+- en: Introduction
+  id: totrans-3
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 介绍
+- en: As we saw in the previous chapter, decision trees and ensemble models based
+    on them provide powerful methods for creating machine learning models. While random
+    forests have been around for decades, recent work on a different kind of tree
+    ensemble, gradient boosted trees, has resulted in state-of-the-art models that
+    have come to dominate the landscape of predictive modeling with tabular data,
+    or data that is organized into a structured table, similar to the case study data.
+    The two main packages used by machine learning data scientists today to create
+    the most accurate predictive models with tabular data are XGBoost and LightGBM.
+    In this chapter, we'll become familiar with XGBoost using a synthetic dataset,
+    and then apply it to the case study data in the activity.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在上一章中看到的，基于决策树和集成模型提供了强大的方法来创建机器学习模型。尽管随机森林已经存在了几十年，但最近关于另一种树集成方法——梯度提升树的研究，已经产生了最先进的模型，这些模型在预测建模领域，尤其是在使用结构化表格数据（如案例研究数据）方面，占据了主导地位。如今，机器学习数据科学家使用的两个主要包是XGBoost和LightGBM，用于创建最准确的预测模型。在本章中，我们将使用合成数据集熟悉XGBoost，然后在活动中将其应用到案例研究数据中。
+- en: Note
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'Perhaps some of the best motivation for using XGBoost comes from the paper
+    describing this machine learning system, in the context of Kaggle, a popular online
+    forum for machine learning competitions:'
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 也许使用XGBoost的最佳动机之一，来自于描述这个机器学习系统的论文，尤其是在Kaggle这个流行的在线机器学习竞赛论坛的背景下：
+- en: '"Among the 29 challenge-winning solutions published on Kaggle''s blog during
+    2015, 17 solutions used XGBoost. Among these solutions, eight solely used XGBoost
+    to train the model, while most others combined XGBoost with neural nets in ensembles.
+    For comparison, the second most popular method, deep neural nets, was used in
+    11 solutions " (Chen and Guestrin, 2016, [https://dl.acm.org/doi/abs/10.1145/2939672.2939785](https://dl.acm.org/doi/abs/10.1145/2939672.2939785)).'
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “在2015年Kaggle博客上发布的29个挑战获胜解决方案中，有17个解决方案使用了XGBoost。在这些解决方案中，8个仅使用XGBoost来训练模型，而大多数其他解决方案则将XGBoost与神经网络结合使用在集成中。相比之下，第二受欢迎的方法——深度神经网络，在11个解决方案中得到了使用。”（陈和郭斯特林，2016，[https://dl.acm.org/doi/abs/10.1145/2939672.2939785](https://dl.acm.org/doi/abs/10.1145/2939672.2939785)）
+- en: As we'll see, XGBoost ties together a few of the different ideas we've discussed
+    so far, including decision trees and ensemble modeling as well as gradient descent.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们将看到的，XGBoost将我们迄今为止讨论的几种不同思想结合起来，包括决策树、集成建模以及梯度下降。
+- en: In addition to more performant models, recent machine learning research has
+    yielded more detailed ways to explain the predictions of models. Rather than relying
+    on interpretations that only represent the model training set in aggregate, such
+    as logistic regression coefficients or the feature importances of a random forest,
+    a new package called SHAP allows us to interpret model predictions individually,
+    and for any dataset we want, such as validation or test data. This can be very
+    helpful in enabling us, as data scientists, as well as our business partners,
+    to understand the workings of a model at a granular level, even for new data.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了性能更强的模型，近年来的机器学习研究还提供了更详细的模型预测解释方式。我们不再依赖仅仅表示模型训练集整体的解释方法，比如逻辑回归系数或随机森林的特征重要性，而是通过一个名为SHAP的新包，能够为任何我们希望的dataset（如验证集或测试集）逐个解释模型预测。这对于帮助我们数据科学家以及我们的业务合作伙伴深入理解模型的工作原理非常有帮助，即使是对于新数据也是如此。
+- en: Gradient Boosting and XGBoost
+  id: totrans-10
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 梯度提升和XGBoost
+- en: What Is Boosting?
+  id: totrans-11
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 什么是提升（Boosting）？
+- en: '**Boosting** is a procedure for creating ensembles of many machine learning
+    models, or **estimators**, similar to the bagging concept that underlies the random
+    forest model. Like bagging, while boosting can be used with any kind of machine
+    learning model, it is commonly used to build ensembles of decision trees. A key
+    difference from bagging is that in boosting, each new estimator added to the ensemble
+    depends on all the estimators added before it. Because the boosting procedure
+    proceeds in sequential stages, and the predictions of ensemble members are added
+    up to calculate the overall ensemble prediction, it is also called **stagewise
+    additive modeling**. The difference between bagging and boosting can be visualized
+    as in *Figure 6.1*:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**提升（Boosting）**是一种创建多个机器学习模型或**估计器**集成的方法，类似于随机森林模型背后的袋装（bagging）概念。像袋装方法一样，提升可以与任何类型的机器学习模型一起使用，但它通常用于构建决策树的集成模型。与袋装方法的一个主要区别是，在提升过程中，每个新加入集成的估计器都依赖于之前加入的所有估计器。由于提升过程是按顺序进行的，并且集成成员的预测结果会加总以计算整体集成预测结果，因此它也被称为**逐步加法建模（stagewise
+    additive modeling）**。袋装和提升的区别可以如*图6.1*所示：'
+- en: '![Figure 6.1: Bagging versus boosting'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.1：袋装与提升的对比](img/B16925_06_01.jpg)'
+- en: '](img/B16925_06_01.jpg)'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_01.jpg)'
+- en: 'Figure 6.1: Bagging versus boosting'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.1：袋装与提升的对比
+- en: While bagging trains many estimators using different random samples of the training
+    data, boosting trains new estimators using information about which samples were
+    incorrectly classified by the previous estimators in the ensemble. By focusing
+    new estimators on these samples, the goal is that the overall ensemble will have
+    better performance across the whole training dataset. **AdaBoost**, a precursor
+    to **XGBoost**, accomplished this goal by giving more weight to incorrectly classified
+    samples as new estimators in the ensemble are trained.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然袋装方法使用不同的训练数据随机样本训练多个估计器，但提升则通过利用上一轮估计器错误分类的样本信息来训练新估计器。通过将新的估计器集中在这些错误分类的样本上，目标是使得整体集成在整个训练数据集上的表现更好。**AdaBoost**，作为**XGBoost**的前身，通过为错误分类的样本赋予更多的权重，达到了这一目标，从而训练新的估计器加入集成。
+- en: Gradient Boosting and XGBoost
+  id: totrans-17
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 梯度提升与XGBoost
+- en: 'XGBoost is a modeling procedure and Python package that is one of the most
+    popular machine learning methods in use today, due to its superior performance
+    in many domains, from business to the natural sciences. XGBoost has also proven
+    to be one of the most successful tools in machine learning competitions. We will
+    not discuss all the details of how XGBoost is implemented, but rather get a high-level
+    idea of how it works and look at some of the most important hyperparameters. For
+    further details, the interested reader should refer to the publication *XGBoost:
+    A Scalable Tree Boosting System*, by Tianqi Chen and Carlos Guestrin ([https://dl.acm.org/doi/abs/10.1145/2939672.2939785](https://dl.acm.org/doi/abs/10.1145/2939672.2939785)).'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 'XGBoost是一种建模过程和Python包，是当今最受欢迎的机器学习方法之一，因其在许多领域（从商业到自然科学）的卓越表现而广受欢迎。XGBoost还证明是机器学习竞赛中最成功的工具之一。我们不会讨论XGBoost实现的所有细节，而是了解它如何工作的高层次概念，并查看一些最重要的超参数。有关详细信息，感兴趣的读者应参考Tianqi
+    Chen和Carlos Guestrin的论文《XGBoost: A Scalable Tree Boosting System》（[https://dl.acm.org/doi/abs/10.1145/2939672.2939785](https://dl.acm.org/doi/abs/10.1145/2939672.2939785)）。'
+- en: The XGBoost implementation of the gradient boosting procedure is a stagewise
+    additive model similar to AdaBoost. However, instead of directly giving more weight
+    to misclassified samples during model training, XGBoost uses a procedure similar
+    in nature to gradient descent. Recall from *Chapter 4,* *The Bias Variance Trade-off*,
+    that optimization with gradient descent uses information about the derivative
+    of a **loss function** (another name for the cost function) to update the estimated
+    coefficients when training a logistic regression model. The derivative of the
+    loss function contains information about which direction and how much to adjust
+    the coefficient estimates at each iteration of the procedure, so as to reduce
+    the level of error in the predictions.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: XGBoost 实现的梯度提升过程是一个逐步加法模型，类似于 AdaBoost。然而，XGBoost 并不是直接在模型训练过程中对分类错误的样本赋予更多权重，而是使用一种类似于梯度下降的过程。回想一下*第
+    4 章*，*偏差方差权衡*，梯度下降优化利用了**损失函数**（成本函数的另一种称呼）导数的信息，在训练逻辑回归模型时更新估计的系数。损失函数的导数包含了关于每次迭代中如何调整系数估计的方向和幅度的信息，从而减少预测中的误差。
+- en: XGBoost applies the gradient descent idea to stagewise additive modeling, using
+    information about the gradient (another word for derivative) of a loss function
+    to train new decision trees to add to the ensemble. In fact, XGBoost takes things
+    a step further than gradient descent as described in *Chapter 4*, *The Bias-Variance
+    Trade-Off*, and uses information about both the first and second derivatives.
+    The approach of training decision trees using error gradients is an alternative
+    to the node impurity idea introduced in *Chapter 5*, *Decision Trees and Random
+    Forests*. Conceptually, XGBoost trains new trees with the goal of moving the ensemble
+    prediction in the direction of decreasing error. How big a step to take in that
+    direction is controlled by the `learning_rate` hyperparameter, analogous to `learning_rate`
+    in *Exercise 4.01 Using Gradient Descent to Minimize a Cost Function*, from *Chapter
+    4*, *The Bias Variance Trade-off*.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: XGBoost 将梯度下降的思想应用于逐步加法建模，利用损失函数的梯度（导数的另一种说法）信息训练新的决策树，加入到集成模型中。实际上，XGBoost
+    在梯度下降的基础上更进一步，正如*第 4 章*，*偏差方差权衡*中所描述的，它同时利用了损失函数的一阶和二阶导数。使用误差梯度训练决策树的方法是*第 5 章*，*决策树与随机森林*中引入的节点不纯度思想的替代方案。从概念上讲，XGBoost
+    训练新树的目标是将集成预测朝着减少误差的方向移动。朝这个方向迈多大的步伐由 `learning_rate` 超参数控制，类似于*第 4.01 章 使用梯度下降最小化成本函数*中的
+    `learning_rate`，该内容也出现在*第 4 章*，*偏差方差权衡*中。
+- en: At this point, we should have enough knowledge about how XGBoost works to start
+    getting our hands dirty and using it. To illustrate XGBoost, we'll create a synthetic
+    dataset for binary classification, with scikit-learn's `make_classification` function.
+    This dataset will have 5,000 samples and 40 features. The rest of the options
+    here control how challenging a classification task this will be, and you should
+    consult the scikit-learn documentation to better understand them. Of particular
+    interest is the fact that we'll have multiple clusters (`n_clusters_per_class`),
+    meaning there will be several regions of points in multidimensional feature space
+    that belong to a certain class, similar to the cluster shown in the last chapter
+    in *Figure 5.3*. A tree-based model should be able to identify these clusters.
+    Also, we are specifying that there are only 3 informative features out of a total
+    of 40 (`n_informative`), as well as 2 redundant features (`n_redundant`) that
+    will contain the same information as the informative ones. So, all told, only
+    5 out of the 40 features should be useful in making predictions, and of those,
+    all the information is encoded in 3 of them.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到此为止，我们应该已经掌握了足够的知识，了解 XGBoost 如何工作，可以开始动手实践了。为了说明 XGBoost，我们将使用 scikit-learn
+    的 `make_classification` 函数创建一个用于二分类的合成数据集。该数据集包含 5,000 个样本和 40 个特征。这里的其余选项控制了分类任务的难度，你应当查阅
+    scikit-learn 文档以更好地理解它们。特别值得注意的是，我们将使用多个簇（`n_clusters_per_class`），意味着在多维特征空间中会有几个属于某一类别的点的区域，类似于上一章*图
+    5.3*中展示的簇。基于树的模型应该能够识别这些簇。此外，我们还指定在 40 个特征中只有 3 个是有信息的（`n_informative`），另外有 2
+    个冗余特征（`n_redundant`），它们包含与有信息特征相同的信息。因此，总的来说，在 40 个特征中，只有 5 个特征在做出预测时是有用的，而且这些信息都编码在其中的
+    3 个特征中。
+- en: 'If you want to follow along with the examples in this chapter on your computer,
+    please refer to the Jupyter notebook at [https://packt.link/L5oS7](https://packt.link/L5oS7):'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想在自己的电脑上跟随本章的示例进行操作，请参考Jupyter笔记本：[https://packt.link/L5oS7](https://packt.link/L5oS7)：
+- en: '[PRE0]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Note that the class fraction of the response variable `y` is about 50%:'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，响应变量`y`的类别比例大约为50%：
+- en: '[PRE1]'
+  id: totrans-25
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'This should output the following:'
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该输出以下内容：
+- en: '[PRE2]'
+  id: totrans-27
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Instead of using cross-validation, in this chapter, we will split this synthetic
+    dataset just once into a training and validation set. However, the concepts we
+    introduce here could be extended to the cross-validation scenario. We''ll split
+    this synthetic data into 80% for training and 20% for validation. In a real-world
+    data problem, we would also want to have a test set reserved for later use in
+    evaluating the final model, but we''ll forego this here:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，我们将一次性将此合成数据集划分为训练集和验证集，而不是使用交叉验证。然而，我们在这里介绍的概念可以扩展到交叉验证场景。我们将把合成数据集划分为80%的训练集和20%的验证集。在现实世界的数据问题中，我们还希望保留一个测试集，供以后评估最终模型时使用，但在这里我们不做此操作：
+- en: '[PRE3]'
+  id: totrans-29
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Now that we''ve prepared the data for modeling, we need to instantiate an object
+    of the `XGBClassifier` class. Note that we will now be using the XGBoost package,
+    and not scikit-learn, to develop a predictive model. However, XGBoost has an API
+    (application programming interface) that was designed to be similar to that of
+    scikit-learn, so using this class should be intuitive. The `XGBClassifier` class
+    can be used to create a model object with `fit` and `predict` methods and other
+    familiar functionality, and we can specify model hyperparameters when instantiating
+    the class. We''ll specify just a few hyperparameters here, which we''ve already
+    discussed: `n_estimators` is the number of boosting rounds to use for the model
+    (in other words, the number of stages for the stagewise additive modeling procedure),
+    `objective` is the loss function that will be used to calculate gradients, and
+    `learning_rate` controls how much each new estimator adds to the ensemble, or,
+    in essence, how far of a step to take to decrease prediction error. The remaining
+    hyperparameters are related to how much output we want to see during model training
+    (`verbosity`) and the soon-to-be-deprecated `label_encoder` option, which XGBoost
+    developers recommend setting to `False`:'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经为建模准备好了数据，接下来需要实例化一个`XGBClassifier`类的对象。请注意，我们现在将使用XGBoost包，而不是scikit-learn，来开发预测模型。然而，XGBoost的API（应用程序接口）设计得与scikit-learn类似，因此使用这个类应该是直观的。`XGBClassifier`类可以用来创建一个模型对象，并提供`fit`、`predict`方法以及其他常见功能，我们还可以在实例化类时指定模型的超参数。我们在此仅指定几个已经讨论过的超参数：`n_estimators`是用于模型的提升轮数（换句话说，是阶段性加法建模过程中的阶段数），`objective`是用来计算梯度的损失函数，`learning_rate`控制每个新估计器对集成模型的贡献，或者本质上控制减少预测误差的步长。剩余的超参数与在模型训练过程中希望看到的输出量（`verbosity`）以及即将被弃用的`label_encoder`选项有关，XGBoost的开发者建议将其设置为`False`：
+- en: '[PRE4]'
+  id: totrans-31
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'The hyperparameter values we''ve indicated specify that:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们所指定的超参数值表示：
+- en: We will have 1,000 estimators, or boosting rounds. We'll discuss in more detail
+    shortly how many rounds are needed; the default value is 100.
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 我们将使用1,000个估计器，或提升轮次。稍后我们会详细讨论需要多少轮次；默认值是100。
+- en: We are familiar with the objective function (also known as the cost function)
+    for binary logistic regression from *Chapter 4*, *The Bias-Variance Trade-Off*.
+    XGBoost also offers a wide variety of objective functions for a range of tasks,
+    including classification and regression.
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 我们熟悉二元逻辑回归的目标函数（也称为代价函数），这在*第4章*《偏差-方差权衡》中有所介绍。XGBoost还提供了各种目标函数，适用于分类和回归等多种任务。
+- en: The learning rate is set to `0.3`, which is the default. Different values can
+    be explored via hyperparameter search procedures, which we'll demonstrate.
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 学习率设置为`0.3`，这是默认值。可以通过超参数搜索程序探索不同的值，我们将在后续演示。
+- en: Note
+  id: totrans-36
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 注意
+- en: It is recommended to install XGBoost and SHAP using an Anaconda environment
+    as demonstrated in the *Preface*. If you install different versions than those
+    indicated, your results may be different than shown here.
+  id: totrans-37
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 推荐使用Anaconda环境安装XGBoost和SHAP，具体方法可参考*前言*。如果安装与此处所示版本不同，您的结果可能与此处展示的不同。
+- en: 'Now that we have a model object and some training data, we are ready to fit
+    the model. This looks similar to how it did in scikit-learn:'
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了模型对象和一些训练数据，可以开始拟合模型了。这与在scikit-learn中的做法类似：
+- en: '[PRE5]'
+  id: totrans-39
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Here, we are tracking how long the fitting procedure takes using the `%%time`
+    "cell magic" in the Jupyter notebook. We need to supply the features `X_train`
+    features and the response variable `y_train` of the training data. We also supply
+    `eval_metric` and set the verbosity, which we''ll explain shortly. Executing this
+    cell should give output similar to this:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们正在使用 Jupyter notebook 中的 `%%time` “单元魔法”来跟踪拟合过程所需的时间。我们需要提供训练数据的特征 `X_train`
+    和响应变量 `y_train`。我们还需要提供 `eval_metric` 并设置详细程度，我们稍后将解释。执行此单元格后，应显示类似以下的输出：
+- en: '[PRE6]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: The output tells us that this cell took 17.5 seconds to execute, called the
+    "wall time," or the elapsed time on a clock that might be on your wall. The CPU
+    times are longer than this because XGBoost efficiently uses multiple processors
+    simultaneously. XGBoost also prints out all the hyperparameters, including the
+    ones we set and the others that were left at their defaults.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出告诉我们，这个单元格执行了 17.5 秒，称为“墙时”，即你墙上的时钟上显示的经过时间。CPU 时间比这个更长，因为 XGBoost 高效地同时使用多个处理器。XGBoost
+    还打印出所有超参数，包括我们设置的和那些保留默认值的超参数。
+- en: 'Now, to examine the performance of this fitted model, we''ll evaluate the area
+    under the ROC curve on the validation set. First, we need to obtain the predicted probabilities:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，为了检查这个拟合模型的性能，我们将评估验证集上的 ROC 曲线下的面积。首先，我们需要获取预测的概率：
+- en: '[PRE7]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'The output of this cell should be as follows:'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此单元格的输出应如下所示：
+- en: '[PRE8]'
+  id: totrans-46
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: This indicates an ROC AUC of about 0.78\. This will be our model performance
+    baseline, using nearly default options for XGBoost.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这表示 ROC AUC 约为 0.78。这将是我们模型性能的基准，使用 XGBoost 的几乎默认选项。
+- en: XGBoost Hyperparameters
+  id: totrans-48
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: XGBoost 超参数
+- en: Early Stopping
+  id: totrans-49
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 早期停止
+- en: When training ensembles of decision trees with XGBoost, there are many options
+    available for reducing overfitting and leveraging the bias-variance trade-off.
+    **Early stopping** is a simple one of these and can help provide an automated
+    answer to the question "How many boosting rounds are needed?". It's important
+    to note that early stopping relies on having a separate validation set of data,
+    aside from the training set. However, this validation set will actually be used
+    during the model training process, so it does not qualify as "unseen" data that
+    was held out from model training, similar to how we used validation sets in cross-validation
+    to select model hyperparameters in *Chapter 4*, *The Bias-Variance Trade-Off*.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用 XGBoost 训练决策树集成时，有许多选项可以用于减少过拟合并利用偏差-方差权衡。**早期停止**是其中一种简单的方式，可以帮助自动回答“需要多少次提升轮次？”的问题。值得注意的是，早期停止依赖于拥有一个独立的验证集数据，而不仅仅是训练集。然而，这个验证集实际上会在模型训练过程中使用，因此它不算作“未见过”的数据，这与我们在*第
+    4 章*《偏差-方差权衡》中使用验证集来选择模型超参数的方式类似。
+- en: 'When XGBoost is training successive decision trees to reduce error on the training
+    set, it''s possible that adding more and more trees to the ensemble will provide
+    increasingly better fits to the training data, but start to cause lower performance
+    on held-out data. To avoid this, we can use a validation set, also called an evaluation
+    set or `eval_set` by XGBoost. The evaluation set will be supplied as a list of
+    tuples of features and their corresponding response variables. Whichever tuple
+    comes last in this list will be the one that is used for early stopping. We want
+    this to be the validation set since the training data will be used to fit the
+    model and can''t provide an estimate of out-of-sample generalization:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当 XGBoost 训练连续的决策树以减少训练集上的误差时，可能会出现添加越来越多的树到集成中，能够提供越来越好的拟合训练数据，但开始导致在保留数据上的性能下降。为避免这种情况，我们可以使用一个验证集，也叫做评估集或
+    XGBoost 称之为 `eval_set`。评估集将作为特征及其对应响应变量的元组列表提供。该列表中最后的元组将用于早期停止。我们希望这个验证集，因为训练数据将用于拟合模型，无法提供对样本外泛化的估计：
+- en: '[PRE9]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: Now we can fit the model again, but this time we supply the `eval_set` keyword
+    argument with the evaluation set we just created. At this point, the `eval_metric`
+    of `auc` becomes important. This means that after each boosting round, before
+    training another decision tree, the area under the ROC curve will be evaluated
+    on all the datasets supplied with `eval_set`. Since we'll indicate `verbosity=True`,
+    we'll get output printed below the cell with the ROC AUC for both the training
+    set and the validation set. This provides a nice live look at how model performance
+    changes on the training and validation data as more boosting rounds are trained.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以再次拟合模型，但这次我们提供`eval_set`关键字参数，并传入我们刚刚创建的评估集。此时，`eval_metric`中的`auc`变得非常重要。这意味着在每轮提升之后，在训练另一个决策树之前，ROC曲线下面积将在所有通过`eval_set`提供的数据集上进行评估。由于我们将`verbosity=True`，因此我们将在单元格下方看到输出，其中包含训练集和验证集的ROC
+    AUC。这提供了一个实时视图，展示随着更多提升轮次的训练，模型在训练和验证数据上的性能变化。
+- en: 'Since, in predictive modeling, we''re primarily interested in how a model performs
+    on new and unseen data, we would like to stop training additional boosting rounds
+    when it becomes clear that they are not improving model performance on out-of-sample
+    data. The `early_stopping_rounds=30` argument indicates that once 30 boosting
+    rounds have been completed without any additional improvement in the ROC AUC on
+    the validation set, XGBoost should stop model training. Once model training is
+    complete, the final fitted model will only have as many ensemble members as needed
+    to get the highest model performance on the validation set. This means that the
+    last 30 members of the ensemble will be discarded, since they didn''t provide
+    any increase in validation set performance. Let''s now fit this model and watch
+    the progress:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于在预测建模中，我们主要关心模型在新数据和未见过的数据上的表现，当我们发现进一步的提升轮次不再改善模型在样本外数据上的表现时，我们希望停止训练额外的提升轮次。`early_stopping_rounds=30`参数表示一旦完成30轮提升，且在验证集上的ROC
+    AUC没有任何进一步的提升，XGBoost就会停止模型训练。一旦模型训练完成，最终拟合的模型将只包含获得最高验证集性能所需的集成成员。这意味着最后的30个集成成员将被丢弃，因为它们没有提供验证集性能的提升。现在我们来拟合这个模型，并观察进展：
+- en: '[PRE10]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'The output should look something like this:'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应该类似于这样：
+- en: '[PRE11]'
+  id: totrans-57
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Notice that this took much less time than the previous fit. This is because,
+    due to early stopping, we only trained 37 rounds of boosting (notice boosting
+    rounds are zero indexed). This means that the boosting procedure only needed 8
+    rounds to achieve the best validation score, as opposed to the 1,000 we tried
+    previously! You can access the number of boosting rounds needed to reach the optimal
+    validation set score, as well as that score, with the `booster` attribute of the
+    model object. This attribute presents a lower-level interface to the model than
+    the scikit-learn API we have been using:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，这比之前的拟合花费了更少的时间。这是因为通过提前停止，我们只训练了37轮提升（请注意提升轮次是零索引的）。这意味着提升过程只需8轮就能达到最佳验证得分，而不是我们之前尝试的1,000轮！你可以通过模型对象的`booster`属性访问达到最佳验证集得分所需的提升轮数以及该得分。这个属性提供了比我们一直在使用的scikit-learn
+    API更底层的模型接口：
+- en: '[PRE12]'
+  id: totrans-59
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'The output should look like this, confirming the number of iterations and best
+    validation score:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出应该如下所示，确认迭代次数和最佳验证得分：
+- en: '[PRE13]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: From the training procedure, we can also see the ROC AUC after each round for
+    both the training data, `validation_0-auc`, and the validation data, `validation_1-auc`,
+    which provide insights into overfitting as the boosting procedure progresses.
+    Here we can see that the validation score increased up to round 8, after which
+    it started to decrease, indicating that further boosting would likely produce
+    an undesirably overfitted model. However, the training score continued to increase
+    up to the point the procedure was terminated, showing how powerfully XGBoost is
+    able to fit the training data.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从训练过程，我们还可以看到每一轮的ROC AUC，包括训练数据的`validation_0-auc`和验证数据的`validation_1-auc`，这些都能提供有关随着提升过程进行，模型是否过拟合的洞见。在这里，我们可以看到验证得分在第8轮之前一直在上升，但之后开始下降，表明进一步提升可能会导致模型过拟合。然而，训练得分则持续上升，直到过程被终止，这展示了XGBoost在拟合训练数据方面的强大能力。
+- en: 'We can further confirm that the fitted model object only represents seven rounds
+    of boosting, and check validation set performance, by manually calculating the
+    ROC AUC as we did previously:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还可以进一步确认拟合后的模型对象仅表示七轮提升，并通过手动计算ROC AUC（如前所述）来检查验证集的表现：
+- en: '[PRE14]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'This should output the following:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该输出如下内容：
+- en: '[PRE15]'
+  id: totrans-66
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: This matches the highest validation score achieved after seven rounds of boosting.
+    So, with one simple tweak to the model training procedure, by using a validation
+    set and early stopping, we were able to improve model performance on the validation
+    set from about 0.78 to 0.80, a substantial increase. This shows the importance
+    of early stopping in boosting.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这与经过七轮提升后获得的最高验证分数一致。因此，通过对模型训练过程进行一次简单的调整——使用验证集和提前停止，我们成功地将模型在验证集上的表现从大约 0.78
+    提升到 0.80，取得了显著的提高。这展示了提前停止在提升中的重要性。
+- en: One natural question to ask here is "How did we know that 30 rounds for early
+    stopping would be enough?". You can experiment with this number, as with any hyperparameter,
+    and different values may be appropriate for different datasets. You can look to
+    see how the validation score changes with each boosting round to get an idea for
+    this. Sometimes, the validation score can increase and decrease in a jumpy way
+    from round to round, so it's a good idea to have enough rounds to make sure you've
+    found the maximum, and boosted through any temporary decreases.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里自然会有一个问题：“我们怎么知道 30 轮提前停止就足够了？”你可以像调整任何超参数一样尝试不同的轮数，对于不同的数据集，可能需要不同的值。你可以观察验证分数在每轮提升中的变化来大致判断。有时，验证分数在每轮之间可能会出现跳跃性波动，因此最好有足够的轮数，以确保找到最大值，并且越过任何暂时的下降。
+- en: Tuning the Learning Rate
+  id: totrans-69
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 调整学习率
+- en: The learning rate is also referred to as **eta** in the XGBoost documentation,
+    as well as **step size shrinkage**. This hyperparameter controls how much of a
+    contribution each new estimator will make to the ensemble prediction. If you increase
+    the learning rate, you may reach the optimal model, defined as having the highest
+    performance on the validation set, faster. However, there is the danger that setting
+    it too high will result in boosting steps that are too large. In this case, the
+    gradient boosting procedure may not converge on the optimal model, due to similar
+    issues to those discussed in *Exercise 4.01, Using Gradient Descent to Minimize
+    a Cost Function,* from *Chapter 4, The Bias Variance Trade-off*, regarding large
+    learning rates in gradient descent. Let's explore how the learning rate affects
+    model performance on our synthetic data.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 学习率在 XGBoost 文档中也被称为**eta**，以及**步长缩减**。这个超参数控制每个新估算器对集成预测的贡献大小。如果你增加学习率，你可能会更快地达到最佳模型，即在验证集上表现最好的模型。然而，设置学习率过高的风险在于，这可能会导致提升步骤过大。在这种情况下，梯度提升过程可能无法收敛到最优模型，这与*第4章
+    偏差方差权衡*中的*练习 4.01，使用梯度下降最小化成本函数*中讨论的梯度下降中的大学习率问题类似。接下来，让我们探讨学习率如何影响我们合成数据上的模型表现。
+- en: 'The learning rate is a number between zero and 1 (inclusive of endpoints, although
+    a learning rate of zero is not useful). We make an array of 25 evenly spaced numbers
+    between 0.01 and 1 for the learning rates we''ll test:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 学习率是一个介于零和 1 之间的数字（包含端点，尽管零学习率没有实际意义）。我们创建一个包含 25 个在 0.01 和 1 之间均匀分布的数字的数组，用来测试不同的学习率：
+- en: '[PRE16]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Now we set up a `for` loop to train a model for each learning rate and save
+    the validation scores in an array. We''ll also track the number of boosting rounds
+    that it takes to reach the best iteration. The next several code blocks should
+    be run together as one cell in a Jupyter notebook. We start by measuring how long
+    this will take, creating empty lists to store results, and opening the `for` loop:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们设置一个`for`循环，为每个学习率训练一个模型，并将验证分数保存在数组中。我们还会追踪达到最佳迭代所需的提升轮数。接下来的几个代码块应该作为一个单元格在
+    Jupyter notebook 中一起运行。我们首先通过测量所需的时间，创建空列表来存储结果，并开启`for`循环：
+- en: '[PRE17]'
+  id: totrans-74
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'At each loop iteration, the `learning_rate` variable will hold successive elements
+    of the `learning_rates` array. Once inside the loop, the first step is to update
+    the hyperparameters of the model object with the new learning rate. This is accomplished
+    using the `set_params` method, which we supply with a double asterisk `**` and
+    a dictionary mapping hyperparameter names to values. The `**` function call syntax
+    in Python allows us to supply an arbitrary number of keyword arguments, also called
+    **kwargs**, as a dictionary. In this case, we are only changing one keyword argument,
+    so the dictionary only has one item:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在每次循环迭代中，`learning_rate`变量将保存`learning_rates`数组的连续元素。一旦进入循环，第一步是用新的学习率更新模型对象的超参数。这是通过`set_params`方法完成的，我们用双星号`**`和一个字典来传递超参数名称和值。Python中的`**`函数调用语法允许我们传递任意数量的关键字参数，也称为**kwargs**，以字典的形式传递。在这种情况下，我们只改变一个关键字参数，所以字典中只有一个项：
+- en: '[PRE18]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Now that we''ve set the new learning rate on the model object, we train the
+    model using early stopping as before:'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经在模型对象上设置了新的学习率，我们按照之前的方法使用早期停止来训练模型：
+- en: '[PRE19]'
+  id: totrans-78
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'After fitting, we obtain the predicted probabilities for the validation set
+    and then use them to calculate the validation ROC AUC. This is added to our list
+    of results using the `append` method:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 经过拟合后，我们获得了验证集的预测概率，并使用这些概率来计算验证集的ROC AUC。然后，我们使用`append`方法将其添加到结果列表中：
+- en: '[PRE20]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Finally, we also capture the number of rounds required for each learning rate:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们还捕捉了每个学习率所需的轮次数量：
+- en: '[PRE21]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'The previous five code snippets should all be run together in one cell. The
+    output should be similar to this:'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面提到的五个代码片段应该一起在一个单元格中运行。输出结果应该类似于以下内容：
+- en: '[PRE22]'
+  id: totrans-84
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Now that we have our results from this hyperparameter search, we can visualize
+    validation set performance and the number of iterations. Since these two metrics
+    are on different scales, we''ll want to create a dual *y* axis plot. pandas makes
+    this easy, so first we''ll put all the data into a data frame:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经得到了这个超参数搜索的结果，可以可视化验证集的性能和迭代次数。由于这两个指标的尺度不同，我们希望创建一个双* y *轴图。pandas使这变得简单，因此首先我们将所有数据放入一个数据框：
+- en: '[PRE23]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Now we can visualize performance and the number of iterations for different
+    learning rates like this, noting that:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以像这样可视化不同学习率下的性能和迭代次数，注意：
+- en: We set the index (`set_index`) so that the learning rate is plotted on the *x*
+    axis, and the other columns on the *y* axis.
+  id: totrans-88
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 我们设置了索引（`set_index`），使得学习率绘制在* x *轴上，其他列绘制在* y *轴上。
+- en: The `secondary_y` keyword argument indicates which column to plot on the right-hand
+    *y* axis.
+  id: totrans-89
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`secondary_y`关键字参数指示要绘制在右侧* y *轴上的列。'
+- en: 'The `style` argument allows us to specify different line styles for each column
+    plotted. `-o` is a solid line with dots, while `--o` is a dashed line with dots:'
+  id: totrans-90
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`style`参数允许我们为每一列指定不同的线条样式。`-o`是带点的实线，而`--o`是带点的虚线：'
+- en: '[PRE24]'
+  id: totrans-91
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'The resulting plot should look like this:'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果图应该如下所示：
+- en: '![Figure 6.2: XGBoost model performance on a validation set, with the number
+    of boosting rounds until best iteration, for different learning rates'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.2：XGBoost模型在验证集上的表现，以及不同学习率下直到最佳迭代的提升轮次'
+- en: '](img/B16925_06_02.jpg)'
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_02.jpg)'
+- en: 'Figure 6.2: XGBoost model performance on a validation set, with the number
+    of boosting rounds until best iteration, for different learning rates'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.2：XGBoost模型在验证集上的表现，以及不同学习率下直到最佳迭代的提升轮次
+- en: 'Overall, it appears that smaller learning rates result in better model performance
+    for this synthetic data. By using a learning rate smaller than the default of
+    0.3, the best performance we can obtain can be seen as follows:'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总的来说，似乎较小的学习率能够使这个合成数据集上的模型表现更好。通过使用小于默认值0.3的学习率，我们能得到的最佳表现如下所示：
+- en: '[PRE25]'
+  id: totrans-97
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'The output is as follows:'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出如下：
+- en: '[PRE26]'
+  id: totrans-99
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: By adjusting the learning rate, we were able to increase the validation AUC
+    from about 0.80 to 0.81, indicating the benefits of using an appropriate learning
+    rate.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过调整学习率，我们将验证AUC从大约0.80提高到0.81，表明使用适当的学习率是有益的。
+- en: In general, smaller learning rates will usually result in better model performance,
+    although they will require a larger number of boosting rounds, since the contribution
+    of each round is smaller. This will translate into more time required for model
+    training. We can see this in the plot of the number of rounds needed to reach
+    the best iteration in *Figure 6.2*. In this case, it looks like good performance
+    can be attained with fewer than 50 rounds, and the model training time is not
+    that long for this data in any case. For larger datasets, training time may be
+    longer. Depending on how much computational time you have, decreasing the learning
+    rate and training more rounds can be an effective way to increase model performance.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，较小的学习率通常会导致更好的模型性能，尽管它们需要更多的提升轮次，因为每轮的贡献较小。这将导致模型训练所需的时间增加。在*图6.2*的轮次与最佳迭代的关系图中，我们可以看到这一点。在这种情况下，看起来可以通过少于50轮来获得良好的性能，并且对于这组数据，模型训练时间不会很长。对于较大的数据集，训练时间可能会更长。根据你的计算时间，如果减少学习率并训练更多轮次，可能是提高模型性能的有效方法。
+- en: When exploring smaller learning rates, be sure to set the `n_estimators` hyperparameter
+    large enough to allow the training process to find the optimal model, ideally
+    in conjunction with early stopping.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在探索较小学习率时，务必将`n_estimators`超参数设置得足够大，以便训练过程能够找到最佳模型，理想情况下与早停策略结合使用。
+- en: Other Important Hyperparameters in XGBoost
+  id: totrans-103
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: XGBoost中的其他重要超参数
+- en: We've seen that overfitting in XGBoost can be compensated for by using different
+    learning rates, as well as early stopping. What are some of the other hyperparameters
+    that may be relevant? XGBoost has many hyperparameters and we won't list them
+    all here. You're encouraged to consult the documentation ([https://xgboost.readthedocs.io/en/latest/parameter.html](https://xgboost.readthedocs.io/en/latest/parameter.html))
+    for a full list.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经看到，XGBoost中的过拟合可以通过使用不同的学习率以及早停策略来进行补偿。还有哪些其他可能相关的超参数？XGBoost有很多超参数，我们不会在这里列出所有内容。建议你查阅文档（[https://xgboost.readthedocs.io/en/latest/parameter.html](https://xgboost.readthedocs.io/en/latest/parameter.html)）获取完整列表。
+- en: 'In the following exercise, we''ll do a grid search over ranges of six hyperparameters,
+    including the learning rate. We will also include `max_depth`, which should be
+    familiar from *Chapter 5*, *Decision Trees and Random Forests*, and controls the
+    depth to which trees in the ensemble are grown. Aside from these, we will also
+    consider the following:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的练习中，我们将对六个超参数的范围进行网格搜索，其中包括学习率。我们还将包含`max_depth`，该参数在*第5章*《决策树与随机森林》中应该已经熟悉，它控制集成中树的生长深度。除了这些，我们还会考虑以下内容：
+- en: '`gamma` limits the complexity of trees in the ensemble by only allowing a node
+    to be split if the reduction in the loss function value is greater than a certain amount.'
+  id: totrans-106
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`gamma`通过仅在损失函数值减少超过一定量时才允许节点分裂，从而限制集成中树的复杂性。'
+- en: '`min_child_weight` also controls the complexity of trees by only splitting
+    nodes if they have at least a certain amount of "sample weight." If all samples
+    have equal weight (as they do for our exercise), this equates to the minimum number
+    of training samples in a node. This is similar to `min_weight_fraction_leaf` and
+    `min_samples_leaf` for decision trees in scikit-learn.'
+  id: totrans-107
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`min_child_weight`也通过仅在节点的“样本权重”达到一定量时才分裂节点，从而控制树的复杂性。如果所有样本的权重相等（如我们练习中一样），这就相当于节点中的最小训练样本数。这类似于scikit-learn中决策树的`min_weight_fraction_leaf`和`min_samples_leaf`。'
+- en: '`colsample_bytree` is a randomly selected fraction of features that will be
+    used to grow each tree in the ensemble. This is similar to the `max_features`
+    parameter in scikit-learn (which does the selection at a node level as opposed
+    to the tree level here). XGBoost also makes `colsample_bylevel` and `colsample_bynode`
+    available to do the feature sampling at each level of each tree, and each node,
+    respectively.'
+  id: totrans-108
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`colsample_bytree`是一个随机选择的特征子集，用于在集成中生长每棵树。这类似于scikit-learn中的`max_features`参数（该参数在节点级别进行选择，而不是在树级别进行选择）。XGBoost还提供了`colsample_bylevel`和`colsample_bynode`，分别在每棵树的每一层和每个节点进行特征采样。'
+- en: '`subsample` controls what fraction of samples from the training data is randomly
+    selected prior to growing a new tree for the ensemble. This is similar to the
+    `bootstrap` option for random forests in scikit-learn. Both this and the `colsample`
+    parameters limit the information available during model training, increasing the
+    bias of the individual ensemble members, but hopefully also reducing the variance
+    of the overall ensemble and improving out-of-sample model performance.'
+  id: totrans-109
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`subsample`控制从训练数据中随机选择的样本比例，在为集成模型生长新树之前进行选择。这类似于scikit-learn中随机森林的`bootstrap`选项。`subsample`和`colsample`参数都限制了模型训练期间可用的信息，增加了各个集成成员的偏差，但希望也能减少整体集成的方差，从而改善样本外模型的表现。'
+- en: As you can see, gradient boosted trees in XGBoost implement several concepts
+    that are familiar from decision trees and random forests. Now, let's explore how
+    these hyperparameters affect model performance.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如你所看到的，XGBoost中的梯度提升树实现了许多来自决策树和随机森林的概念。现在，让我们探索这些超参数如何影响模型性能。
+- en: 'Exercise 6.01: Randomized Grid Search for Tuning XGBoost Hyperparameters'
+  id: totrans-111
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 练习6.01：用于调优XGBoost超参数的随机网格搜索
+- en: In this exercise, we'll use a randomized grid search to explore the space of
+    six hyperparameters. A randomized grid search is a good option when you have many
+    values of many hyperparameters you'd like to search over. We'll look at six hyperparameters
+    here. If, for example, there were five values for each of these that we'd like
+    to test, we'd need *5*6 = 15,625 searches. Even if each model fit only took a
+    second, we'd still need several hours to exhaustively search all possible combinations.
+    A randomized grid search can achieve satisfactory results by only searching a
+    random sample of all these combinations. Here, we'll show how to do this using
+    scikit-learn and XGBoost.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个练习中，我们将使用随机网格搜索来探索六个超参数的空间。当你有许多超参数值需要搜索时，随机网格搜索是一个不错的选择。在这里，我们将研究六个超参数。例如，如果每个超参数有五个值需要测试，我们就需要进行*5*6
+    = 15,625*次搜索。即使每次模型拟合只需要一秒钟，我们也仍然需要几个小时来穷举所有可能的组合。通过只搜索这些组合的随机样本，随机网格搜索也能取得令人满意的结果。这里，我们将展示如何使用scikit-learn和XGBoost来实现这一点。
+- en: 'The first step in a randomized grid search is to specify the range of values
+    you''d like to sample from, for each hyperparameter. This can be done by either
+    supplying a list of values, or a distribution object to sample from. In the case
+    of discrete hyperparameters such as `max_depth`, where there are only a few possible
+    values, it makes sense to specify them as a list. On the other hand, for continuous
+    hyperparameters, such as `subsample`, that can vary anywhere on the interval (0,
+    1], we don''t need to specify a list of values. Rather, we can ask that the grid
+    search randomly sample values in a uniform way over this interval. We will use
+    a uniform distribution to sample several of the hyperparameters we consider:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机网格搜索的第一步是为每个超参数指定你希望从中采样的值的范围。你可以通过提供值列表或分布对象来实现这一点。对于离散超参数，如`max_depth`，它只有少数几个可能的值，因此可以将其指定为列表。而对于连续超参数，如`subsample`，它可以在区间(0,
+    1]上任意变化，因此我们不需要指定一个值列表。相反，我们可以要求网格搜索在这个区间内以均匀的方式随机采样值。我们将使用均匀分布来采样我们考虑的几个超参数：
+- en: Note
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The Jupyter notebook for this exercise can be found at [https://packt.link/TOXso](https://packt.link/TOXso).
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本练习的Jupyter笔记本可以在[https://packt.link/TOXso](https://packt.link/TOXso)找到。
+- en: 'Import the `uniform` distribution class from `scipy` and specify ranges for
+    all hyperparameters to be searched, using a dictionary. `uniform` can take two
+    arguments, `loc` and `scale`, specifying the lower bound of the interval to sample
+    from and the width of the interval, respectively:'
+  id: totrans-116
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从`scipy`导入`uniform`分布类，并使用字典指定所有需要搜索的超参数的范围。`uniform`可以接受两个参数，`loc`和`scale`，分别指定采样区间的下界和区间的宽度：
+- en: '[PRE27]'
+  id: totrans-117
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: Here, we've selected parameter ranges based on experimentation and experience.
+    For example with subsample, the XGBoost documentation recommends choosing values
+    of at least 0.5, so we've indicated `uniform(loc=0.5, scale=0.5)`, which means
+    sampling from the interval [0.5, 1].
+  id: totrans-118
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在这里，我们根据实验和经验选择了参数范围。例如，对于`subsample`，XGBoost文档建议选择至少0.5的值，因此我们表示为`uniform(loc=0.5,
+    scale=0.5)`，这意味着从区间[0.5, 1]中采样。
+- en: 'Now that we''ve indicated which distributions to sample from, we need to do
+    the sampling. scikit-learn offers the `ParameterSampler` class, which will randomly
+    sample the `param_grid` parameters supplied and return as many samples as requested
+    (`n_iter`). We also set `RandomState` for repeatable results across different
+    runs of the notebook:'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们已经指明了要从哪些分布中采样，我们需要进行采样。scikit-learn提供了`ParameterSampler`类，它将随机采样提供的`param_grid`参数，并返回请求的样本数量（`n_iter`）。我们还设置了`RandomState`，以便在不同的notebook运行中得到可重复的结果：
+- en: '[PRE28]'
+  id: totrans-120
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: We have returned the results in a list of dictionaries of specific parameter
+    values, corresponding to locations in the 6-dimensional hyperparameter space.
+  id: totrans-121
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 我们已经将结果以字典列表的形式返回，字典包含特定的参数值，对应于6维超参数空间中的位置。
+- en: Note that in this exercise, we are iterating through 1,000 hyperparameter combinations,
+    which will likely take over 5 minutes. You may wish to decrease this number for
+    faster results.
+  id: totrans-122
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 请注意，在本次练习中，我们正在遍历1,000个超参数组合，这可能需要超过5分钟。您可能希望减少这个数字，以便获得更快的结果。
+- en: 'Examine the first item of `param_list`:'
+  id: totrans-123
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 检查`param_list`的第一个项目：
+- en: '[PRE29]'
+  id: totrans-124
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'This should return a combination of six parameter values, from the distributions indicated:'
+  id: totrans-125
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这应该返回一个包含六个参数值的组合，来自所指示的分布：
+- en: '[PRE30]'
+  id: totrans-126
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Observe how you can set multiple XGBoost hyperparameters simultaneously with
+    a dictionary, using the `**` syntax. First create a new XGBoost classifier object
+    for this exercise.
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 观察如何使用`**`语法，通过字典同时设置多个XGBoost超参数。首先，为本次练习创建一个新的XGBoost分类器对象。
+- en: '[PRE31]'
+  id: totrans-128
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'The output should show the indicated hyperparameters being set:'
+  id: totrans-129
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应该显示所设置的超参数：
+- en: '[PRE32]'
+  id: totrans-130
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: We will use this procedure in a loop to look at all hyperparameter values.
+  id: totrans-131
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 我们将在循环中使用此过程，以查看所有超参数值。
+- en: 'The next several steps will be contained in one cell inside a `for` loop. First,
+    measure the time it will take to do this, create an empty list to save validation
+    AUCs, and then start a counter:'
+  id: totrans-132
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来的几个步骤将包含在`for`循环的一个单元格中。首先，测量执行此操作所需的时间，创建一个空列表以保存验证AUC值，然后启动计数器：
+- en: '[PRE33]'
+  id: totrans-133
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'Open the `for` loop, set the hyperparameters, and fit the XGBoost model, similar
+    to the preceding example of tuning the learning rate:'
+  id: totrans-134
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 打开`for`循环，设置超参数，并拟合XGBoost模型，类似于调整学习率的前述示例：
+- en: '[PRE34]'
+  id: totrans-135
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'Within the `for` loop, get the predicted probability and validation set AUC:'
+  id: totrans-136
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`for`循环内，获取预测概率和验证集AUC值：
+- en: '[PRE35]'
+  id: totrans-137
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'Since this procedure will take a few minutes, it''s nice to print the progress
+    to the Jupyter notebook output. We use the Python remainder syntax, `%`, to print
+    a message every 50 iterations, in other words, when the remainder of `counter`
+    divided by 50 equals zero. Finally, we increment the counter:'
+  id: totrans-138
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 由于这个过程需要几分钟时间，最好将进度打印到Jupyter notebook输出中。我们使用Python余数语法`%`，每50次迭代打印一次信息，换句话说，当`counter`除以50的余数为零时。最后，我们增加计数器：
+- en: '[PRE36]'
+  id: totrans-139
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'Assembling steps 5-8 in one cell and running the for loop should give output
+    like this:'
+  id: totrans-140
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将步骤5-8组合在一个单元格中并运行for循环，应该得到如下输出：
+- en: '[PRE37]'
+  id: totrans-141
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Now that we have all the results from our hyperparameter exploration, we need
+    to examine them. We can easily put all the hyperparameter combinations in a data
+    frame, since they are organized as a list of dictionaries. Do this and look at
+    the first few rows:'
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们已经得到所有超参数探索的结果，我们需要对其进行检查。我们可以很容易地将所有超参数组合放入数据框中，因为它们是作为字典列表组织的。做这件事并查看前几行：
+- en: '[PRE38]'
+  id: totrans-143
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'The output should look like this:'
+  id: totrans-144
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应该像这样：
+- en: '![Figure 6.3: Hyperparameter combinations from a randomized grid search'
+  id: totrans-145
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '![图6.3：来自随机网格搜索的超参数组合'
+- en: '](img/B16925_06_03.jpg)'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_03.jpg)'
+- en: 'Figure 6.3: Hyperparameter combinations from a randomized grid search'
+  id: totrans-147
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 图6.3：来自随机网格搜索的超参数组合
+- en: 'We can also add the validation set ROC AUCs to the data frame and see what
+    the maximum is:'
+  id: totrans-148
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们还可以将验证集的ROC AUC值添加到数据框中，查看最大值：
+- en: '[PRE39]'
+  id: totrans-149
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'The output should be as follows:'
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应该如下：
+- en: '[PRE40]'
+  id: totrans-151
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: The result of searching over the hyperparameter space is that the validation
+    set AUC is about 0.815\. This is larger than the 0.812 we obtained with early
+    stopping and searching over learning rates (*Figure 6.3*), although not much.
+    This means that, for this data, the default hyperparameters (aside from the learning
+    rate) were sufficient to achieve pretty good performance. While we didn't improve
+    performance much with the hyperparameter search, it is instructive to see how
+    the changing values of the hyperparameters affect model performance. We'll examine
+    the marginal distributions of AUCs with respect to each parameter individually
+    in the following steps. This means that we'll look at how the AUCs change as one
+    hyperparameter at a time changes, keeping in mind the fact that the other hyperparameters
+    are also changing in our grid search results.
+  id: totrans-152
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在超参数空间搜索的结果是验证集 AUC 大约为 0.815。虽然这个值比我们通过提前停止和学习率搜索得到的 0.812 稍大（*图 6.3*），但差距不大。这意味着，对于这组数据，默认的超参数（除了学习率）已经足够实现相当好的性能。虽然我们没有通过超参数搜索大幅提升性能，但观察超参数变化如何影响模型表现依然具有启发性。在接下来的步骤中，我们将逐个检查
+    AUC 相对于每个参数的边际分布。这意味着我们将查看当一个超参数逐渐变化时，AUC 如何变化，并牢记在网格搜索结果中其他超参数也在变化。
+- en: 'Set up a grid of six subplots for plotting performance against each hyperparameter
+    using the following code, which also adjusts the figure resolution and starts
+    a counter we''ll use to loop through the subplots:'
+  id: totrans-153
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下代码设置一个六个子图的网格，用于绘制每个超参数与性能之间的关系，同时调整图像分辨率并启动一个计数器，我们将用它来遍历子图：
+- en: '[PRE41]'
+  id: totrans-154
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'Open a `for` loop to iterate through the hyperparameter names, which are the
+    columns of the data frame, not including the last column. Access the axes objects
+    by flattening the 3 x 2 array returned by `subplot` and indexing it with `counter`.
+    For each hyperparameter, use the `plot.scatter` method of the data frame to make
+    a scatter plot on the appropriate axis. The *x* axis will show the hyperparameter,
+    the *y* axis the validation AUC, and the other options help us get black circular
+    markers with white face colors (interiors):'
+  id: totrans-155
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 打开一个 `for` 循环来遍历超参数名称，它们是数据框的列，不包括最后一列。通过将 `subplot` 返回的 3 x 2 数组展平，并使用 `counter`
+    索引来访问轴对象。对于每个超参数，使用数据框的 `plot.scatter` 方法在适当的坐标轴上绘制散点图。*x* 轴将显示超参数，*y* 轴显示验证 AUC，其他选项帮助我们获得具有白色内部的黑色圆形标记：
+- en: '[PRE42]'
+  id: totrans-156
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'The data frame''s `plot` method will automatically create *x* and *y* axis
+    labels. However, since the *y* axis label will be the same for all of these plots,
+    we only need to include it in the first one. So we set all the others to an empty
+    string, `''''`, and increment the counter:'
+  id: totrans-157
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 数据框的 `plot` 方法会自动创建 *x* 和 *y* 轴标签。然而，由于 *y* 轴标签对于所有这些图来说是相同的，我们只需要在第一个图中包含它。因此，我们将其他所有图的标签设置为空字符串
+    `''`，并递增计数器：
+- en: '[PRE43]'
+  id: totrans-158
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: Since we will be plotting marginal distributions, as we look at how validation
+    AUC changes with a given hyperparameter, all the other hyperparameters are also
+    changing. This means that the relationship may be noisy. To get an idea of the
+    overall trend, we are also going to create line plots with the average value of
+    the validation AUC in each decile of the hyperparameter. Deciles organize data
+    into bins based on whether the values fall into the bottom 10%, the next 10%,
+    and so on, up to the top 10%. pandas offers a function called `qcut`, which cuts
+    a Series into quantiles (a quantile is one of a group of equal-size bins, for
+    example one of the deciles in the case of 10 bins), returning another series of
+    the quantiles, as well as the endpoints of the quantile bins, which you can think
+    of as histogram edges.
+  id: totrans-159
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 由于我们将绘制边际分布图，在观察验证集 AUC 随着给定超参数变化时，其他所有超参数也会发生变化。这意味着关系可能会有噪声。为了了解整体趋势，我们还将创建折线图，显示每个超参数的分位数中验证
+    AUC 的平均值。分位数将数据按值是否落入最低 10%、接下来的 10% 等，直到最高 10% 来组织成不同的箱体。pandas 提供了一个名为`qcut`的函数，可以将一个
+    Series 切分成分位数（分位数是均匀大小的箱体中的一个，例如在 10 个箱体的情况下是一个十分位数），返回另一个 Series，包含这些分位数以及分位数的边界值，您可以把它们看作是直方图的边缘。
+- en: 'Use pandas `qcut` to generate a series of deciles (10 quantiles) for each hyperparameter
+    (except `max_depth`), returning the bin edges (there will be 11 of these for 10
+    quantiles) and dropping bin edges as needed if there are not enough unique values
+    to divide into 10 quantiles (`duplicates=''drop''`). Create a list of points halfway
+    between each pair of bin edges for plotting:'
+  id: totrans-160
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 pandas 的`qcut`为每个超参数（除了`max_depth`）生成一个分位数序列（10个分位数），返回区间边界（对于10个分位数会有11个边界），如果唯一值不足以分成10个分位数，则删除不需要的区间边界（`duplicates='drop'`）。创建一个列表，包含每对区间边界之间的中点，用于绘图：
+- en: '[PRE44]'
+  id: totrans-161
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'For `max_depth`, since there are only six unique values, we can use these values
+    directly in a similar way to the deciles:'
+  id: totrans-162
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于`max_depth`，由于只有六个唯一值，我们可以像处理分位数一样直接使用这些值：
+- en: '[PRE45]'
+  id: totrans-163
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'Create a temporary data frame by copying the hyperparameter search data frame,
+    create a new column with the Series of deciles, and use this to find the average
+    value of the validation AUC within each hyperparameter decile:'
+  id: totrans-164
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 通过复制超参数搜索数据框创建一个临时数据框，创建一个包含分位数序列的新列，并利用此列查找每个超参数分位数内的验证 AUC 平均值：
+- en: '[PRE46]'
+  id: totrans-165
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'We can visualize results with a dashed line plot of the decile averages of
+    validation AUC within each grouping, on the same axis as each scatter plot. Close
+    the `for` loop and clean up the subplot formatting with `plt.tight_layout()`:'
+  id: totrans-166
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以通过在每个散点图的同一坐标轴上，绘制表示每个分位数平均值的虚线图来可视化结果。关闭`for`循环并使用`plt.tight_layout()`清理子图格式：
+- en: '[PRE47]'
+  id: totrans-167
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'After running the `for` loop, the resulting image should look like this:'
+  id: totrans-168
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 运行`for`循环后，生成的图像应如下所示：
+- en: '![Figure 6.4: Validation AUCs plotted against each hyperparameter, along with
+    the average values within hyperparameter deciles'
+  id: totrans-169
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '![图 6.4：验证集 AUC 与每个超参数的关系图，并显示每个超参数分位数内的平均值'
+- en: '](img/B16925_06_04.jpg)'
+  id: totrans-170
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_04.jpg)'
+- en: 'Figure 6.4: Validation AUCs plotted against each hyperparameter, along with
+    the average values within hyperparameter deciles'
+  id: totrans-171
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 图 6.4：验证集 AUC 与每个超参数的关系图，并显示每个超参数分位数内的平均值
+- en: While we noted that the hyperparameter search in this exercise did not result
+    in a substantial increase in validation AUC over previous efforts in this chapter,
+    the plots in *Figure 6.4* can still show us how XGBoost hyperparameters affect
+    model performance for this particular dataset. One way that XGBoost combats overfitting
+    is by limiting the data available when growing trees, either by randomly selecting
+    only a fraction of the features available to each tree (`colsample_bytree`), or
+    a fraction of the training samples (`subsample`). However, for this synthetic
+    data, it appears the model performs best when using 100% of the features and samples
+    for each tree; less than this and model performance steadily degrades. Another
+    way to control overfitting is to limit the complexity of trees in the ensemble,
+    by controlling their `max_depth`, the minimum number of training samples in the
+    leaves (`min_child_weight`), or the minimum reduction in the value of the loss
+    function reduction required to split a node (`gamma`). Neither `max_depth` nor
+    `gamma` appear to have much effect on model performance in our example here, while
+    limiting the number of samples in the leaves appears to be detrimental.
+  id: totrans-172
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 尽管我们注意到，本次练习中的超参数搜索并未显著提高验证 AUC，相较于本章之前的尝试，但*图 6.4*中的图表仍能展示 XGBoost 超参数如何影响该特定数据集的模型表现。XGBoost
+    通过在生成树时限制可用数据来对抗过拟合，一种方式是随机选择每棵树可用的特征的一部分（`colsample_bytree`），或者随机选择训练样本的一部分（`subsample`）。然而，在该合成数据中，似乎当每棵树使用
+    100% 的特征和样本时，模型表现最佳；低于此比例时，模型表现逐渐下降。另一种控制过拟合的方法是通过控制树的复杂度来限制集成中的树，方法包括限制`max_depth`、叶子节点中的最小训练样本数（`min_child_weight`）或分裂节点所需的最小损失函数减少值（`gamma`）。在我们这里的例子中，`max_depth`和`gamma`似乎对模型表现没有太大影响，而限制叶子节点中的样本数量似乎会带来负面效果。
+- en: It appears that in this case, the gradient boosting procedure is robust enough
+    on its own to achieve good model performance, without any additional tricks required
+    to reduce overfitting. Similar to what we observed above, however, having a smaller
+    `learning_rate` is beneficial.
+  id: totrans-173
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 看起来在这个案例中，梯度提升过程本身足够稳健，能够在没有额外技巧的情况下实现良好的模型表现，以减少过拟合。然而，正如我们上面所观察到的，较小的`learning_rate`是有益的。
+- en: 'We can show the optimal hyperparameter combination and the corresponding validation
+    set AUC as follows:'
+  id: totrans-174
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们可以显示最佳的超参数组合及其对应的验证集 AUC，如下所示：
+- en: '[PRE48]'
+  id: totrans-175
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'This should return a row of the data frame similar to this:'
+  id: totrans-176
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这应该返回类似于以下的数据框行：
+- en: '![Figure 6.5: Optimal hyperparameter combination and validation set AUC'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.5：最佳超参数组合与验证集AUC](img/B16925_06_06.jpg)'
+- en: '](img/B16925_06_05.jpg)'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_05.jpg)'
+- en: 'Figure 6.5: Optimal hyperparameter combination and validation set AUC'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.5：最佳超参数组合与验证集AUC
+- en: The validation set AUC is similar to what we achieved above (*step 10*) by tuning
+    only the learning rate.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 验证集AUC与我们在上一步（*步骤10*）通过仅调整学习率所达到的结果相似。
+- en: 'Another Way of Growing Trees: XGBoost''s grow_policy'
+  id: totrans-181
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另一种生长树的方式：XGBoost的grow_policy
+- en: 'In addition to limiting the maximum depth of trees using a `max_depth` hyperparameter,
+    there is another paradigm for controlling tree growth: finding the node where
+    a split would result in the greatest reduction in the loss function, and splitting
+    this node, regardless of how deep it will make the tree. This may result in a
+    tree with one or two very deep branches, while the other branches may not have
+    grown very far. XGBoost offers a hyperparameter called `grow_policy`, and setting
+    this to `lossguide` results in this kind of tree growth, while the `depthwise`
+    option is the default and grows trees to an indicated `max_depth`, as we''ve done
+    in *Chapter 5*, *Decision Trees and Random Forests*, and so far in this chapter.
+    The `lossguide` grow policy is a newer option in XGBoost and mimics the behavior
+    of LightGBM, another popular gradient boosting package.'
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了通过`max_depth`超参数限制树的最大深度外，还有一种控制树生长的范式：寻找一个节点，在这个节点上分裂将导致损失函数的最大减少，并进行分裂，而不考虑这会使树变得多深。这可能导致树有一个或两个非常深的分支，而其他分支可能不会生长得很远。XGBoost提供了一个名为`grow_policy`的超参数，设置为`lossguide`时会产生这种树的生长方式，而`depthwise`选项是默认设置，会将树生长到指定的`max_depth`，正如我们在*第5章*《决策树与随机森林》中所做的，以及在本章至今为止的操作一样。`lossguide`生长策略是XGBoost中的一个较新选项，它模拟了LightGBM（另一个流行的梯度提升包）的行为。
+- en: To use the `lossguide` policy, it is necessary to set another hyperparameter
+    we haven't discussed yet, `tree_method`, which must be set to `hist` or `gpu-hist`.
+    Without going into too much detail, the `hist` method will use a faster way of
+    searching for splits. Instead of looking between every sequential pair of sorted
+    feature values for the training samples in a node, the `hist` method builds a
+    histogram, and only considers splits on the edges of the histogram. So, for example,
+    if there are 100 samples in a node, their feature values may be binned into 10
+    groups, meaning there are only 9 possible splits to consider instead of 99.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要使用`lossguide`策略，需要设置我们尚未讨论的另一个超参数`tree_method`，它必须设置为`hist`或`gpu-hist`。不详细讲解，`hist`方法将使用更快的方式来搜索分裂。它不会在节点中对训练样本的每一对排序特征值进行逐一比较，而是构建一个直方图，仅考虑直方图边缘的分裂。例如，如果一个节点中有100个样本，它们的特征值可能被分为10组，这意味着只考虑9个可能的分裂，而不是99个。
+- en: 'We can instantiate an XGBoost model for the `lossguide` grow policy as follows,
+    using a learning rate of `0.1` based on intuition from our hyperparameter exploration
+    in the previous exercise:'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以按照如下方式实例化一个使用`lossguide`生长策略的XGBoost模型，使用学习率`0.1`，这是根据我们在前一个练习中进行的超参数探索的直觉得出的：
+- en: '[PRE49]'
+  id: totrans-185
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'Notice here that we''ve set `max_depth=0`, since this hyperparameter is not
+    relevant for the `lossguide` policy. Instead, we are going to set a hyperparameter
+    called `max_leaves`, which simply controls the maximum number of leaves in the
+    trees that will be grown. We''ll do a hyperparameter search of values ranging
+    from 5 to 100 leaves:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们已经设置了`max_depth=0`，因为该超参数与`lossguide`策略无关。相反，我们将设置一个名为`max_leaves`的超参数，它简单地控制将要生长的树的最大叶子数。我们将进行一个超参数搜索，范围从5到100个叶子：
+- en: '[PRE50]'
+  id: totrans-187
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'This should output the following:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将输出如下内容：
+- en: '[PRE51]'
+  id: totrans-189
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Now we are ready to repeatedly fit and validate the model across this range
+    of hyperparameter values, similar to what we''ve done previously:'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们准备好在这一系列超参数值范围内反复进行模型拟合和验证，类似于我们之前做过的操作：
+- en: '[PRE52]'
+  id: totrans-191
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'The output will include the wall time for all of these fits, which was about
+    24 seconds in testing. Now let''s put the results in a data frame:'
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出将包括所有这些拟合的壁钟时间，在测试中大约是24秒。现在，让我们把结果放入数据框中：
+- en: '[PRE53]'
+  id: totrans-193
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'We can visualize how the validation AUC changes with the maximum number of
+    leaves, similar to our visualization of the learning rate:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以可视化验证集AUC随最大叶子数的变化，类似于我们对学习率的可视化：
+- en: '[PRE54]'
+  id: totrans-195
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: 'This will result in a plot like this:'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将产生如下图所示的图形：
+- en: '![Figure 6.6: Validation AUC against the max_leaves hyperparameter'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.6：验证集AUC与max_leaves超参数的关系](img/B16925_06_05.jpg)'
+- en: '](img/B16925_06_06.jpg)'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_06.jpg)'
+- en: 'Figure 6.6: Validation AUC against the max_leaves hyperparameter'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.6：验证集AUC与max_leaves超参数的关系
+- en: Smaller values of `max_leaves` will limit the complexity of the trees grown
+    for the ensemble, which will ideally increase bias, but also decrease variance
+    for improved out-of-sample performance. We can see this in a higher validation
+    set AUC when the trees are limited to 15 or 20 leaves. What is the maximum validation
+    set AUC?
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 较小的`max_leaves`值会限制生成的树的复杂度，这将理想地增加偏差，但也会减少方差，从而提高样本外的表现。当树的叶子数限制在15或20时，我们可以看到验证集AUC有所提高。那么，最大验证集AUC是多少呢？
+- en: '[PRE55]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: 'This should output the following:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该输出以下内容：
+- en: '[PRE56]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'Let''s confirm that this maximum validation AUC occurs at `max_leaves=20`,
+    as indicated in *Figure 6.6*:'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们确认最大验证AUC出现在`max_leaves=20`时，如*图6.6*所示：
+- en: '[PRE57]'
+  id: totrans-205
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'This should return a row of the data frame:'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该返回数据框的一行：
+- en: '![Figure 6.7: Optimal max_leaves'
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.7：最优max_leaves'
+- en: '](img/B16925_06_07.jpg)'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_07.jpg)'
+- en: 'Figure 6.7: Optimal max_leaves'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.7：最优max_leaves
+- en: By using the `lossguide` grow policy, we can achieve performance at least as
+    good as anything else we've tried so far. One key advantage of the `lossguide`
+    policy is that, for larger datasets, it can result in training times that are
+    faster than the `depthwise` policy, especially for smaller values of `max_leaves`.
+    While the dataset here is small enough that this is not of practical importance,
+    this speed may be desirable in other applications.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用`lossguide`增长策略，我们可以实现至少与我们迄今为止尝试过的任何方法一样好的性能。`lossguide`策略的一个关键优势是，对于较大的数据集，它能够提供比`depthwise`策略更快的训练速度，特别是在`max_leaves`较小的情况下。尽管这里的数据集足够小，这一速度差异并没有实际重要性，但在其他应用中，这种速度可能是理想的。
+- en: Explaining Model Predictions with SHAP Values
+  id: totrans-211
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用SHAP值解释模型预测
+- en: Along with cutting-edge modeling techniques such as XGBoost, the practice of
+    explaining model predictions has undergone substantial development in recent years.
+    So far, we've learned that logistic regression coefficients, or feature importances
+    from random forests, can provide insight into the reasons for model predictions.
+    A more powerful technique for explaining model predictions was described in a
+    2017 paper, *A Unified Approach to Interpreting Model Predictions*, by Scott Lundberg
+    and Su-In Lee ([https://arxiv.org/abs/1705.07874](https://arxiv.org/abs/1705.07874)).
+    This technique is known as **SHAP** (**SHapley Additive exPlanations**) as it
+    is based on earlier work by mathematician Lloyd Shapley. Shapely developed an
+    area of game theory to understand how coalitions of players can contribute to
+    the overall outcome of a game. Recent machine learning research into model explanation
+    leveraged this concept to consider how groups or coalitions of features in a predictive
+    model contribute to the output model prediction. By considering the contribution
+    of different groups of features, the SHAP method can isolate the effect of individual
+    features.
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着像XGBoost这样的前沿建模技术的发展，解释模型预测的实践在近年来有了显著的进展。到目前为止，我们已经了解到，逻辑回归的系数，或者随机森林中的特征重要性，可以为模型预测的原因提供洞察。2017年，Scott
+    Lundberg和Su-In Lee在论文《*统一模型预测解释方法*》中描述了一种更强大的模型预测解释技术（[https://arxiv.org/abs/1705.07874](https://arxiv.org/abs/1705.07874)）。该技术被称为**SHAP**（**Shapley加法解释**），它基于数学家Lloyd
+    Shapley的早期工作。Shapley发展了博弈论中的一个领域，用以理解玩家联盟如何为博弈的总体结果做出贡献。近期的机器学习研究在模型解释方面借鉴了这一概念，考虑了预测模型中的特征组或联盟如何贡献于模型的最终预测输出。通过考虑不同特征组的贡献，SHAP方法能够孤立出单一特征的影响。
+- en: Note
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: At the time of writing, the SHAP library used in *Chapter 6*, *Gradient Boosting,
+    XGBoost, and SHAP Values*, is not compatible with Python 3.9\. Hence, if you are
+    using Python 3.9 as your base environment, we suggest that you set up a Python
+    3.8 environment as described in the *Preface*.
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在撰写本文时，*第6章*《*梯度提升、XGBoost和SHAP值*》中使用的SHAP库与Python 3.9不兼容。因此，如果您使用的是Python 3.9作为基础环境，我们建议您按照*前言*中所述，设置Python
+    3.8环境。
+- en: 'Some notable aspects of using SHAP values to explain model predictions include:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用SHAP值解释模型预测的一些显著特点包括：
+- en: SHAP values can be used to make **individualized** explanations of model predictions;
+    in other words, the prediction of a single sample, in terms of the contribution
+    of each feature, can be understood using SHAP. This is in contrast to the feature
+    importance method of explaining random forests that we've already seen, which
+    only considers the average importance of a feature across the model training set.
+  id: totrans-216
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: SHAP值可以用来对模型预测做**个性化**解释；换句话说，可以通过SHAP理解单个样本的预测结果，分析每个特征的贡献。这与我们之前见过的随机森林特征重要性解释方法不同，后者仅考虑特征在模型训练集中的平均重要性。
+- en: SHAP values are calculated relative to a background dataset. By default, this
+    is the training data, although other datasets can be supplied.
+  id: totrans-217
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: SHAP值是相对于背景数据集计算的。默认情况下，这是训练数据集，当然也可以提供其他数据集。
+- en: SHAP values are additive, meaning that for the prediction of an individual sample,
+    the SHAP values can be added up to recover the value of the prediction, for example,
+    a predicted probability.
+  id: totrans-218
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: SHAP值是可加的，这意味着对于单个样本的预测，SHAP值可以加起来恢复预测值，例如预测的概率。
+- en: 'There are different implementations of the SHAP method for various types of
+    models and here we will focus on SHAP for trees (Lundberg et al., 2019, [https://arxiv.org/abs/1802.03888](https://arxiv.org/abs/1802.03888))
+    to get insights into XGBoost model predictions on our validation set of synthetic
+    data. First, let''s refit `xgb_model_3` from the previous section with the optimal
+    number of `max_leaves`, `20`:'
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SHAP方法有不同的实现，适用于各种类型的模型，这里我们将专注于树模型的SHAP（Lundberg等，2019年，[https://arxiv.org/abs/1802.03888](https://arxiv.org/abs/1802.03888)），以便了解我们在验证集上的XGBoost模型预测。首先，我们将使用最优的`max_leaves`（即20）重新拟合上一节中的`xgb_model_3`：
+- en: '[PRE58]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'Now we''re ready to start calculating SHAP values for the validation dataset.
+    There are 40 features and 1,000 samples here:'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们准备开始计算验证数据集的SHAP值。这里有40个特征和1000个样本：
+- en: '[PRE59]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'This should output the following:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将输出以下内容：
+- en: '[PRE60]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'To automatically label the plots we can make with the `shap` package, we''ll
+    put the validation set features in a data frame with column names. We''ll use
+    a list comprehension to make generic feature names, for example, "Feature 0, Feature
+    1, …" and create the data frame as follows:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了自动标注我们可以使用`shap`包绘制的图，我们将把验证集特征放入一个带列名的数据框中。我们将使用列表推导来生成通用的特征名称，例如“Feature
+    0, Feature 1, …”，并按如下方式创建数据框：
+- en: '[PRE61]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'The `dataframe` head should look like this:'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`dataframe`的头部应如下所示：'
+- en: '![Figure 6.8: Data frame of the validation features'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.8：验证特征的数据框'
+- en: '](img/B16925_06_08.jpg)'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_08.jpg)'
+- en: 'Figure 6.8: Data frame of the validation features'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.8：验证特征的数据框
+- en: 'With the trained model, `xgb_model_3`, and the data frame of validation features,
+    we''re ready to create an `explainer` interface. The SHAP package has various
+    kinds of explainers and we''ll use the one specifically for tree models:'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用训练好的模型`xgb_model_3`和验证特征的数据框，我们准备创建一个`explainer`接口。SHAP包有多种类型的解释器，我们将使用专门针对树模型的解释器：
+- en: '[PRE62]'
+  id: totrans-232
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'This has created an explainer using the model validation data as the background
+    dataset. Now we are ready to use the explainer to obtain SHAP values. The SHAP
+    package makes this very simple. All we need to do is pass in the dataset we want
+    explanations for:'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这创建了一个使用模型验证数据作为背景数据集的解释器。现在我们已经准备好使用该解释器来获取SHAP值。SHAP包使这变得非常简单。我们需要做的就是传入我们想要解释的数据集：
+- en: '[PRE63]'
+  id: totrans-234
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'That''s all there is to it! What is this variable, `shap_values`, that has
+    been created? If you examine the contents of the `shap_values` variable directly,
+    you will see that it contains three attributes. The first is `values`, which contains
+    the SHAP values. Let''s examine the shape:'
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就是这样！那么，创建的这个变量`shap_values`是什么呢？如果你直接检查`shap_values`变量的内容，你会看到它包含三个属性。第一个是`values`，它包含SHAP值。让我们查看它的形状：
+- en: '[PRE64]'
+  id: totrans-236
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: 'This should return the following:'
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将返回以下结果：
+- en: '[PRE65]'
+  id: totrans-238
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: Because SHAPs provide individualized explanations, there is a row for each of
+    the 1,000 samples in the validation set. There are 40 columns because we have
+    40 features and SHAP values tell us the contribution of each feature to the prediction
+    for each sample. `shap_values` also contains a `base_values` attribute, which
+    is the naïve prediction before any feature contributions are considered, also
+    defined as the average prediction across the entire dataset. There is one of these
+    for each sample (1,000). Finally, there is also a `data` attribute, which contains
+    the feature values. All of this information can be combined in various ways to
+    explain model predictions.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因为 SHAP 提供了个性化的解释，每个验证集中的 1,000 个样本都有一行数据。总共有 40 列，因为我们有 40 个特征，SHAP 值告诉我们每个特征对每个样本预测的贡献。`shap_values`
+    还包含一个 `base_values` 属性，即在考虑任何特征贡献之前的初始预测值，也定义为整个数据集的平均预测值。每个样本（1,000 个）都有一个这样的值。最后，还有一个
+    `data` 属性，包含特征值。所有这些信息可以通过不同的方式结合起来解释模型预测。
+- en: 'Thankfully, not only does the `shap` package provide fast and convenient methods
+    for calculating SHAP values, but it also provides a rich suite of visualization
+    techniques. One of the most popular is a SHAP summary plot, which visualizes the
+    contribution of each feature to each sample. Let''s create this plot and then
+    understand what is being shown. Please note that most interesting SHAP visualizations
+    use color, so if you''re reading in black and white, please refer to the GitHub
+    repository for color figures:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，`shap` 包不仅提供了快速便捷的计算 SHAP 值的方法，还提供了一整套丰富的可视化技术。其中最受欢迎的一种是 SHAP 汇总图，它可视化每个特征对每个样本的贡献。我们来创建这个图表，然后理解其中展示的内容。请注意，大多数有趣的
+    SHAP 可视化使用了颜色，因此如果你正在阅读的是黑白版本，请参考 GitHub 仓库中的彩色图形：
+- en: '[PRE66]'
+  id: totrans-241
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: 'This should produce the following:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这应该会生成以下内容：
+- en: '![Figure 6.9: SHAP summary plot for the synthetic data validation set'
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图6.9：合成数据验证集的 SHAP 汇总图'
+- en: '](img/B16925_06_09.jpg)'
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_09.jpg)'
+- en: 'Figure 6.9: SHAP summary plot for the synthetic data validation set'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图6.9：合成数据验证集的 SHAP 汇总图
+- en: Note
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'If you''re reading the print version of this book, you can download and browse
+    the color versions of some of the images in this chapter by visiting the following
+    link: [https://packt.link/ZFiYH](https://packt.link/ZFiYH)'
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你正在阅读本书的印刷版，你可以通过访问以下链接下载并浏览本章中部分图像的彩色版本：[https://packt.link/ZFiYH](https://packt.link/ZFiYH)
+- en: '*Figure 6.9* contains a lot of information to help us explain the model. The
+    summary plot may contain up to 40,000 plotted points, one for each of the 40 features
+    and each of the 1,000 validation samples (although only the first 20 features
+    are shown by default). Let''s start by understanding the *x* axis. The SHAP value
+    indicates the additive contribution of each feature value to the prediction for
+    a sample. SHAP values are shown here relative to the expected values, which are
+    the `base_values` described earlier. So if a given feature has a small impact
+    on the prediction for a given sample, it will not tend to move the prediction
+    very far from the expected value, and the SHAP value will be close to zero. However
+    if a feature has a large effect, which, in the case of our binary classification
+    problem, means that the predicted probability will be pushed closer to 0 or 1,
+    the SHAP value will be further from 0\. Negative SHAP values indicate a feature
+    moving the prediction closer to 0, and positive SHAP values indicate closer to
+    1.'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图6.9* 包含了大量信息，帮助我们解释模型。汇总图可能包含多达40,000个绘制点，每个特征对应一个点，每个样本（1,000个验证样本）对应一个点（尽管默认情况下只显示前20个特征）。我们先从理解
+    *x* 轴开始。SHAP 值表示每个特征值对样本预测的加性贡献。这里显示的 SHAP 值是相对于预期值的，预期值即前面提到的 `base_values`。因此，如果某个特征对某个样本的预测影响较小，它将不会使预测偏离预期值太远，SHAP
+    值接近于零。然而，如果某个特征的影响较大，对于我们的二分类问题而言，这意味着预测的概率将被推向 0 或 1，SHAP 值会远离 0。负的 SHAP 值表示某个特征使得预测值更接近
+    0，正的 SHAP 值则表示更接近 1。'
+- en: Note that the SHAP values shown in *Figure 6.9* cannot be directly interpreted
+    as predicted probabilities. By default, SHAP values for the XGBoost binary classification
+    model with the `binary:logistic` objective function are calculated and plotted
+    using the log-odds representation of probability, which was introduced in *Chapter
+    3*, *Details of Logistic Regression and Feature Exploration* in the *Why Is Logistic
+    Regression Considered a Linear Model?* section. This means that they can be added
+    and subtracted, or in other words, we can perform linear transformations on them.
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，*图 6.9*中显示的 SHAP 值不能直接解释为预测概率。默认情况下，XGBoost 二分类模型的 SHAP 值，使用 `binary:logistic`
+    目标函数计算并绘制，使用的是概率的对数赔率表示法，这在*第 3 章*中的*逻辑回归细节和特征探索*部分的*为什么逻辑回归被认为是线性模型？*小节中介绍过。这意味着
+    SHAP 值可以进行加减，换句话说，我们可以对其进行线性变换。
+- en: What about the color of the dots in *Figure 6.9*? These represent the values
+    of the features for each sample, with red meaning a higher value and blue lower.
+    So, for example, we can see in the fourth row of the plot that the lowest SHAP
+    values come from high feature values (red dots) for Feature 29.
+  id: totrans-250
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，*图 6.9*中点的颜色如何解释呢？这些颜色代表了每个样本的特征值，红色表示特征值较高，蓝色表示特征值较低。因此，例如，在图的第四行，我们可以看到特征
+    29 的高特征值（红点）对应的是最低的 SHAP 值。
+- en: The vertical arrangement of the dots, in other words, the width of the band
+    of dots for each feature, indicates how many dots there are at that location on
+    the *x* axis. If there are many samples, the band of dots will be wider.
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点的垂直排列，换句话说，每个特征的点带宽度，表示在该位置上 *x* 轴上有多少个点。如果样本多，点带的宽度就会更大。
+- en: The vertical arrangement of features in the diagram is based on feature importance.
+    The most important features, in other words, those with the largest average effect
+    (mean absolute SHAP value) on model predictions, are placed at the top of the
+    list.
+  id: totrans-252
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图中特征的垂直排列是根据特征重要性进行的。最重要的特征，也就是那些对模型预测具有最大平均影响（均值绝对 SHAP 值）的特征，排在列表的顶部。
+- en: While the summary plot in *Figure 6.9* is a great way to look at all of the
+    most important features and their SHAP values at once, it may not reveal some
+    interesting relationships. For example, the most important feature, Feature 3,
+    appears to have a large clump of purple dots (middle of the range of feature values)
+    that have positive SHAP values, while the negative SHAP values for this feature
+    may result from high or low feature values.
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然*图 6.9*中的总结图是查看所有最重要特征及其 SHAP 值的好方法，但它可能无法揭示一些有趣的关系。例如，最重要的特征——特征 3，似乎在特征值范围的中间部分有一大簇紫色点，这些点的
+    SHAP 值为正，而该特征的负 SHAP 值可能来自于特征值过高或过低。
+- en: 'What is going on here? Often, when the effects of features seem unclear from
+    a SHAP summary plot, the tree-based model we are using is capturing interaction
+    effects between features. To gain additional insight into individual features
+    and their interactions with others, we can use a SHAP scatter plot. Firstly, let''s
+    make a simple scatter plot of the SHAP values of Feature 3\. Note that we can
+    index the `shap_values` object in a similar way to a data frame:'
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是什么情况呢？通常，当从 SHAP 总结图中看不出特征的影响时，我们使用的基于树的模型正在捕捉特征之间的交互效应。为了进一步了解单个特征及其与其他特征的交互作用，我们可以使用
+    SHAP 散点图。首先，我们绘制特征 3 的 SHAP 值散点图。注意，我们可以像索引数据框一样索引 `shap_values` 对象：
+- en: '[PRE67]'
+  id: totrans-255
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: 'This should produce the following plot:'
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成如下图所示：
+- en: '![Figure 6.10: Scatter plot of SHAP values for Feature 3'
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 6.10：特征 3 的 SHAP 值散点图](img/B16925_06_10.jpg)'
+- en: '](img/B16925_06_10.jpg)'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_10.jpg)'
+- en: 'Figure 6.10: Scatter plot of SHAP values for Feature 3'
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 6.10：特征 3 的 SHAP 值散点图
+- en: 'From *Figure 6.10*, we can tell pretty much the same information that we could
+    from the summary plot of *Figure 6.9*: feature values in the middle of the range
+    have high SHAP values, while those at the extremes are lower. However, the `scatter`
+    method also allows us to color the points of the scatter plot by another feature
+    value, so we can see whether there are interactions between the features. We''ll
+    color points by the second most important feature, Feature 5:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从*图 6.10*中，我们几乎可以得出与*图 6.9*总结图相同的信息：特征值在范围中间的部分对应较高的 SHAP 值，而极值部分的 SHAP 值较低。然而，`scatter`方法还允许我们通过另一个特征值来为散点图上的点上色，这样我们就可以看到特征之间是否存在交互作用。我们将使用第二重要特征——特征
+    5，为点上色：
+- en: '[PRE68]'
+  id: totrans-261
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: 'The resulting plot should look like this:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 生成的图应该像这样：
+- en: '![Figure 6.11: Scatter plot of SHAP values for Feature 3, colored by feature
+    values of Feature 5\. Arrows A and B indicated interesting interaction effects
+    between these features'
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 6.11：特征 3 的 SHAP 值散点图，按特征 5 的特征值着色。箭头 A 和 B 指示这些特征之间有趣的交互效应'
+- en: '](img/B16925_06_11.jpg)'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_11.jpg)'
+- en: 'Figure 6.11: Scatter plot of SHAP values for Feature 3, colored by feature
+    values of Feature 5\. Arrows A and B indicated interesting interaction effects
+    between these features'
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 6.11：特征 3 的 SHAP 值散点图，按特征 5 的特征值着色。箭头 A 和 B 指示这些特征之间有趣的交互效应
+- en: '*Figure 6.11* shows an interesting interaction between Feature 3 and Feature
+    5\. When samples are in the middle of the range of feature values for Feature
+    3, in other words, at the top of the hump shape in *Figure 6.11*, the color of
+    dots appears to get more red going from the bottom to the top of the cluster of
+    dots here (arrow A). This means that for feature values in the middle of the Feature
+    3 range, as the value of Feature 5 increases, so does the SHAP value for Feature
+    3\. We can also see that as feature values of Feature 3 increase along the *x*
+    axis from the middle toward the top of the range, this relationship reverses to
+    where higher feature values for Feature 5 begin to correspond to lower SHAP values
+    for Feature 3 (arrow B). So the interaction with Feature 5 appears to have a substantial
+    impact on the SHAP values for Feature 3.'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图 6.11* 显示了特征 3 和特征 5 之间的有趣交互。当样本位于特征 3 的特征值范围的中间时，也就是说，位于 *图 6.11* 中山丘形状的顶部时，从底部到顶部的点的颜色似乎变得越来越红（箭头
+    A）。这意味着，对于特征 3 范围中间的特征值，随着特征 5 的值增加，特征 3 的 SHAP 值也会增加。我们还可以看到，随着特征 3 的特征值沿 *x*
+    轴从中间向上升高，这种关系发生反转，特征 5 的较高特征值开始对应于特征 3 较低的 SHAP 值（箭头 B）。因此，与特征 5 的交互似乎对特征 3 的
+    SHAP 值有显著影响。'
+- en: 'The complex relationships depicted in *Figure 6.11* show how increasing a feature
+    value may lead to either increasing or decreasing SHAP values when interaction
+    effects are present. The specific reasons for the patterns in *Figure 6.11* relate
+    to the creation of the synthetic dataset we are modeling, where we specified multiple
+    clusters in the feature space. As discussed in *Chapter 5*, *Decision Trees and
+    Random Forests*, in the *Using Decision Trees: Advantages and Predicted Probabilities*
+    section, tree-based models such as XGBoost are able to effectively model clusters
+    of points in multi-dimensional feature space that belong to a certain class. SHAP
+    explanations can help us to understand how the model is making these representations.'
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*图 6.11* 展示了复杂的关系，说明当存在交互效应时，增加特征值可能导致 SHAP 值增加或减少。*图 6.11* 中模式的具体原因与我们建模的合成数据集的创建有关，在此数据集中，我们在特征空间中指定了多个簇。如
+    *第 5 章* 中讨论的，*决策树与随机森林*，在 *使用决策树：优势与预测概率* 部分中提到，基于树的模型，如 XGBoost，能够有效地在多维特征空间中建模属于某一类别的点簇。SHAP
+    解释有助于我们理解模型如何进行这些表示。'
+- en: Here, we've used synthetic data, and the features have no real-world interpretation,
+    so we can't assign any meaning to interactions we observe. However, with real-world
+    data, detailed exploration with SHAP values and interactions can provide insight
+    into how a model is representing complex relationships between attributes of customers
+    or users, for example. SHAP values are also useful since they can provide explanations
+    relative to any background dataset. While logistic regression coefficients and
+    feature importances of random forests are determined entirely by the model training
+    data, SHAP values can be calculated for any background dataset; so far in this
+    chapter, we've been using the validation data. This provides an opportunity, when
+    predicted models are deployed in a production environment, to understand how new
+    predictions are being made. If the SHAP values for new predictions are very different
+    from those of model training and test data, this may indicate that the nature
+    of incoming data has changed, and it may be time to consider developing a new
+    model. We'll consider these practical aspects of using models in the real world
+    in the final chapter.
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们使用了合成数据，特征没有现实世界的解释，因此我们无法为观察到的交互分配任何含义。然而，对于现实世界的数据，结合SHAP值和交互作用的详细探索可以提供有关模型如何表示客户或用户属性之间复杂关系的见解。例如，SHAP值也很有用，因为它们可以提供相对于任何背景数据集的解释。尽管逻辑回归系数和随机森林的特征重要性完全由模型训练数据决定，SHAP值可以为任何背景数据集计算；到目前为止，在本章中，我们一直使用的是验证数据。这为当预测模型部署到生产环境中时，提供了一个了解新预测是如何做出的机会。如果新预测的SHAP值与模型训练和测试数据的SHAP值非常不同，这可能表明传入数据的性质发生了变化，可能是时候考虑开发一个新模型了。在最后一章中，我们将讨论这些在实际应用中使用模型的实际问题。
+- en: 'Exercise 6.02: Plotting SHAP Interactions, Feature Importance, and Reconstructing
+    Predicted Probabilities from SHAP Values'
+  id: totrans-269
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 练习6.02：绘制SHAP交互作用、特征重要性，并从SHAP值中重构预测概率
+- en: 'In this exercise, you''ll become more familiar with using SHAP values to provide
+    visibility into the workings of a model. First, we''ll take an alternate look
+    at the interaction between Features 3 and 5, and then use SHAP values to calculate
+    feature importances similar to what we did with a random forest model in *Chapter
+    5,* *Decision Trees and Random Forests*. Finally, we''ll see how model outputs
+    can be obtained from SHAP values, taking advantage of their additive property:'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本练习中，你将更熟悉使用SHAP值来提供模型工作原理的可见性。首先，我们将再次查看特征3和特征5之间的交互作用，然后使用SHAP值计算特征重要性，类似于我们在*第5章*
+    *决策树与随机森林*中使用随机森林模型所做的那样。最后，我们将看到如何从SHAP值中获取模型输出，利用它们的加法性质：
+- en: Note
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The Jupyter notebook for this exercise can be found at [https://packt.link/JcMoA](https://packt.link/JcMoA).
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本练习的Jupyter notebook可以在[https://packt.link/JcMoA](https://packt.link/JcMoA)找到。
+- en: 'Given the preliminary steps accomplished in this section already, we can take
+    another look at the interaction between Features 3 and 5, the two most important
+    features of the synthetic dataset. Use the following code to make an alternate
+    version of *Figure 6.11*, except this time, look at the SHAP values of Feature
+    5, colored by those of Feature 3:'
+  id: totrans-273
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 由于本节已经完成了初步步骤，我们可以再次查看特征3和特征5之间的交互作用，它们是合成数据集中的两个最重要的特征。使用以下代码制作*图6.11*的另一个版本，不过这次我们关注的是特征5的SHAP值，并按照特征3的值进行着色：
+- en: '[PRE69]'
+  id: totrans-274
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: 'The resulting plot should look like this:'
+  id: totrans-275
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 结果图应如下所示：
+- en: '![Figure 6.12: Scatter plot of SHAP values for Feature 5, colored by feature
+    values of Feature 3'
+  id: totrans-276
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '![图6.12：特征5的SHAP值散点图，按特征3的特征值着色'
+- en: '](img/B16925_06_12.jpg)'
+  id: totrans-277
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_12.jpg)'
+- en: 'Figure 6.12: Scatter plot of SHAP values for Feature 5, colored by feature
+    values of Feature 3'
+  id: totrans-278
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 图6.12：特征5的SHAP值散点图，按特征3的特征值着色
+- en: 'As opposed to *Figure 6.11*, here we are seeing the SHAP values of Feature
+    5\. In general, from the scatter plot, we can see that SHAP values tend to increase
+    as feature values increase for Feature 5\. However there are certainly counterexamples
+    to that general trend, as well as an interesting interaction with Feature 3: for
+    a given value of Feature 5, which can be thought of as a vertical slice from the
+    image, the color of the dots can either become more red, going from the bottom
+    to the top, for negative feature values, or less red for positive feature values.
+    This means that for a given value of Feature 5, its SHAP value depends on the
+    value of Feature 3\. This is a further illustration of the interesting interaction
+    between Features 3 and 5\. In a real project, which plot you would choose to show
+    depends on what kind of story you want to tell with the data, relating to what
+    real-world quantities Features 3 and 5 might represent.'
+  id: totrans-279
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 与*图 6.11*不同，这里我们看到的是特征 5 的 SHAP 值。一般来说，从散点图来看，我们可以看到，随着特征 5 的特征值增加，SHAP 值也趋向增加。然而，确实有一些反例与这一普遍趋势相悖，并且与特征
+    3 有一个有趣的交互作用：对于特征 5 的给定值，可以将其视为图像中的一个垂直切片，点的颜色可以从下到上变得更红，表示负特征值，或者对于正特征值，点的颜色变得不那么红。这意味着对于特征
+    5 的给定值，它的 SHAP 值依赖于特征 3 的值。这进一步说明了特征 3 和 5 之间有趣的交互作用。在实际项目中，您选择展示哪个图表取决于您希望通过数据讲述什么样的故事，涉及特征
+    3 和 5 可能代表的实际世界中的量。
+- en: 'Create a feature importance bar plot using the following code:'
+  id: totrans-280
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用以下代码创建特征重要性条形图：
+- en: '[PRE70]'
+  id: totrans-281
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: '![Figure 6.13: Feature importance bar plot using SHAP values'
+  id: totrans-282
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '![图 6.13: 使用 SHAP 值的特征重要性条形图'
+- en: '](img/B16925_06_13.jpg)'
+  id: totrans-283
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_13.jpg)'
+- en: 'Figure 6.13: Feature importance bar plot using SHAP values'
+  id: totrans-284
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '图 6.13: 使用 SHAP 值的特征重要性条形图'
+- en: 'The feature importance bar plot gives a visual presentation of information
+    similar to that obtained in *Exercise 5.03, Fitting a Random Forest,* in *Chapter
+    5, Decision Trees and Random Forests*, with a random forest: this is a single
+    number for each feature, representing how important it is overall for a dataset.'
+  id: totrans-285
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 特征重要性条形图提供了类似于*第五章《决策树与随机森林》*中的*练习 5.03，拟合随机森林*所获得的信息的可视化呈现：这是每个特征的一个数字，表示它对数据集的总体重要性。
+- en: Do these results make sense? Recall that we created this synthetic data with
+    three informative features and two redundant ones. In *Figure 6.13*, it appears
+    that there are four features that are substantially more important than all the
+    others, so perhaps one of the redundant features was created in such a way that
+    XGBoost selected it for splitting nodes fairly often, but the other redundant
+    feature was not used as much.
+  id: totrans-286
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这些结果合理吗？回想一下，我们是通过创建包含三个有信息的特征和两个冗余特征的合成数据来实现的。在*图 6.13*中，似乎有四个特征的显著性比其他所有特征重要，因此，可能其中一个冗余特征的创建方式导致
+    XGBoost 经常选择它来进行节点分裂，而另一个冗余特征则使用较少。
+- en: 'Compared to the feature importances we found in *Chapter 5*, *Decision Trees
+    and Random Forests*, the ones here are a bit different. The feature importances
+    we can obtain from scikit-learn for a random forest model are calculated using
+    the decrease in node impurity due to the feature as well as the fraction of training
+    samples split by the feature. By contrast, feature importances using SHAP values
+    are calculated as follows: first, the absolute value of all the SHAP values (`shap_values.values`)
+    is taken, then an average of all the samples is taken for each feature, as implied
+    by the *x* axis label. The interested reader can confirm this by calculating these
+    metrics directly from `shap_values`.'
+  id: totrans-287
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 与我们在*第五章*《决策树与随机森林》中找到的特征重要性相比，这里的特征重要性有些不同。我们从 scikit-learn 中获得的随机森林模型的特征重要性是通过特征导致的节点杂质下降以及特征划分的训练样本的比例来计算的。相比之下，使用
+    SHAP 值计算的特征重要性是这样得到的：首先，取所有 SHAP 值（`shap_values.values`）的绝对值，然后对每个特征取所有样本的平均值，正如
+    *x* 轴标签所示。感兴趣的读者可以通过直接从 `shap_values` 计算这些指标来确认这一点。
+- en: Now that we've familiarized ourselves with a range of uses of SHAP values, let's
+    see how their additive property allows the reconstruction of predicted probabilities.
+  id: totrans-288
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 现在我们已经熟悉了 SHAP 值的多种用法，让我们看看它们的加法性质是如何允许重建预测概率的。
+- en: 'SHAP values are calculated relative to the expected value, or base value, of
+    a model. This can be interpreted as the average prediction over all samples in
+    the background dataset. However, the prediction will be in units of log-odds as
+    opposed to probability, as mentioned earlier, to support additivity. The expected
+    value of a model can be accessed from the explainer object as follows:'
+  id: totrans-289
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: SHAP 值是相对于模型的期望值或基准值计算的。这可以解释为背景数据集中所有样本的平均预测值。然而，正如前面提到的，为了支持可加性，预测将以对数几率单位表示，而不是概率。可以通过以下方式从解释器对象中访问模型的期望值：
+- en: '[PRE71]'
+  id: totrans-290
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: 'The output should look like this:'
+  id: totrans-291
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE72]'
+  id: totrans-292
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: This information isn't particularly useful on its own. However, it gives us
+    the baseline from which we can reconstruct predicted probabilities.
+  id: totrans-293
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这条信息本身并不特别有用。然而，它为我们提供了一个基准，我们可以用它来重构预测概率。
+- en: 'Recall that the shape of the SHAP values matrix is the number of samples by
+    the number of features. In our exercise with the validation data, here that would
+    be 1,000 by 40\. To add up all the SHAP values for each sample, we therefore want
+    to take a sum over the column axis (`axis=1`). This adds all the feature contributions,
+    effectively providing the offset from the expected value. If we add the expected
+    value to this, we then have the following predictions:'
+  id: totrans-294
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 回顾一下，SHAP 值矩阵的形状是样本数和特征数。在我们对验证数据进行的练习中，形状将是 1,000 x 40。为了将每个样本的所有 SHAP 值相加，我们需要对列轴（`axis=1`）进行求和。这将把所有特征的贡献加在一起，实际上提供了与期望值的偏移量。如果我们将期望值加到其中，就得到了以下的预测值：
+- en: '[PRE73]'
+  id: totrans-295
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: 'This should return the following:'
+  id: totrans-296
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这应该返回以下结果：
+- en: '[PRE74]'
+  id: totrans-297
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: Indicating we now have a single number for each sample. However, these predictions
+    are in log-odds space. To transform them to probability space, we need to apply
+    the logistic function introduced in *Chapter 3, Details of Logistic Regression
+    and Feature Exploration*.
+  id: totrans-298
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这意味着我们现在为每个样本有了一个单一的数值。然而，这些预测是在对数几率空间中。为了将它们转换为概率空间，我们需要应用在*第 3 章，逻辑回归细节与特征探索*中介绍的逻辑函数。
+- en: 'Apply the logistic transformation to log-odds predictions like this:'
+  id: totrans-299
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如此应用逻辑转换到对数几率预测：
+- en: '[PRE75]'
+  id: totrans-300
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: Now we'd like to compare the predicted probabilities obtained from SHAP values
+    with direct model output for confirmation.
+  id: totrans-301
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 现在，我们希望将通过 SHAP 值获得的预测概率与直接模型输出进行比较以确认。
+- en: 'Obtain predicted probabilities for the model validation set and check the shape
+    with this code:'
+  id: totrans-302
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 获取模型验证集的预测概率，并使用以下代码检查其形状：
+- en: '[PRE76]'
+  id: totrans-303
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: 'The output should be as follows:'
+  id: totrans-304
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE77]'
+  id: totrans-305
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: This is the same shape as our SHAP-derived predictions, as expected.
+  id: totrans-306
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这与我们从 SHAP 导出的预测结果形状相同，如预期的那样。
+- en: 'Put the model output and sums of SHAP values together in a data frame for side-by-side
+    comparison, and spot check a random selection of five rows:'
+  id: totrans-307
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将模型输出和 SHAP 值的总和放在数据框中进行并排比较，并随机检查五行数据：
+- en: '[PRE78]'
+  id: totrans-308
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: 'The output should confirm that the two methods have identical results:'
+  id: totrans-309
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应该确认这两种方法的结果是相同的：
+- en: '![Figure 6.14: Comparison of SHAP-derived predicted probabilities'
+  id: totrans-310
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '![图 6.14: SHAP 导出的预测概率比较'
+- en: and those obtained directly from XGBoost
+  id: totrans-311
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 和那些直接从 XGBoost 获得的结果。
+- en: '](img/B16925_06_14.jpg)'
+  id: totrans-312
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '](img/B16925_06_14.jpg)'
+- en: 'Figure 6.14: Comparison of SHAP-derived predicted probabilities and those obtained
+    directly from XGBoost'
+  id: totrans-313
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 图 6.14：SHAP 导出的预测概率与直接从 XGBoost 获得的预测概率比较
+- en: The spot check indicates that these five samples have identical values. While
+    the values may not be precisely equal due to rounding errors of machine arithmetic,
+    you could use NumPy's `allclose` function to ensure they're the same within a
+    user-configurable amount of rounding error.
+  id: totrans-314
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 随机检查表明这五个样本具有相同的值。虽然由于机器算术的四舍五入误差，这些值可能不完全相等，但你可以使用 NumPy 的 `allclose` 函数，确保它们在用户配置的四舍五入误差范围内相同。
+- en: 'Ensure that the SHAP-derived probabilities and model output probabilities are
+    all very close to each other like this:'
+  id: totrans-315
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 确保 SHAP 导出的概率和模型输出的概率非常接近，如下所示：
+- en: '[PRE79]'
+  id: totrans-316
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'The output should be as follows:'
+  id: totrans-317
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 输出应如下所示：
+- en: '[PRE80]'
+  id: totrans-318
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: This indicates that all elements of both columns are equal within rounding error.
+    `allclose` is useful for when rounding errors are present and exact equality (testable
+    with `np.array_equal`) would not hold.
+  id: totrans-319
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 这表明这两列中的所有元素在四舍五入误差范围内是相等的。`allclose` 在出现四舍五入误差时非常有用，而精确相等（可以通过 `np.array_equal`
+    进行测试）通常不成立。
+- en: By now, you should be getting an impression of the power of SHAP values to help
+    understand machine learning models. The sample-specific, individualized nature
+    of SHAP values opens up the possibility of very detailed analyses, which could
+    help answer a wide variety of potential questions from business stakeholders such
+    as "How would the model make predictions for people like this?" or "Why did the
+    model make this prediction for this specific person"? Now that we're familiar
+    with XGBoost and SHAP values, two state-of-the-art machine learning techniques,
+    we return to the case study data to apply them.
+  id: totrans-320
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，你应该对SHAP值在帮助理解机器学习模型方面的强大功能有了一些印象。SHAP值的样本特定、个性化特性开启了非常详细的分析可能性，这可以帮助回答来自业务利益相关者的各种潜在问题，比如“模型会如何对像这样的人的数据做出预测？”或“为什么模型会对这个特定人做出这样的预测？”现在，我们已经熟悉了XGBoost和SHAP值，这两种先进的机器学习技术，接下来我们将回到案例研究数据上应用它们。
+- en: Missing Data
+  id: totrans-321
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 缺失数据
+- en: As a final note on the use of both XGBoost and SHAP, one valuable trait of both
+    packages is their ability to handle missing values. Recall that in *Chapter 1*,
+    *Data Exploration and Cleaning*, we found that some samples in the case study
+    data had missing values for the `PAY_1` feature. So far, our approach has been
+    to simply remove these samples from the dataset when building models. This is
+    because, without specifically addressing the missing values in some way, the machine
+    learning models implemented by scikit-learn cannot work with the data. Ignoring
+    them is one approach, although this may not be satisfactory as it involves throwing
+    data away. If it's a very small fraction of the data, this may be fine; however,
+    in general, it's good to be able to know how to deal with missing values.
+  id: totrans-322
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于同时使用XGBoost和SHAP的最后一点说明，这两个包的一个宝贵特性是它们能够处理缺失值。回想一下在*第一章*，*数据探索与清洗*中，我们发现案例研究数据中一些样本在`PAY_1`特征上存在缺失值。到目前为止，我们的方法是，在构建模型时，简单地将这些样本从数据集中移除。这是因为，如果不以某种方式专门处理缺失值，scikit-learn实现的机器学习模型将无法处理这些数据。忽略缺失值是一种方法，尽管这可能不令人满意，因为它涉及丢弃数据。如果缺失的数据仅占很小的比例，这可能没问题；然而，一般来说，知道如何处理缺失值是很重要的。
+- en: There are several approaches for imputing missing values of features, such as
+    filling them in with the mean or mode of the non-missing values of that feature,
+    or a randomly selected value from the non-missing values. You can also build a
+    model outputting the feature in question as the response variable, with all the
+    other features acting as features for this new model, and then predict the missing
+    feature values. These approaches were explored in the first edition of this book
+    ([https://packt.link/oLb6C](https://packt.link/oLb6C)). However, since XGBoost
+    typically performs at least as well as other machine learning models for binary
+    classification tasks with tabular data like we're using here, and handles missing
+    values, we'll forego more in-depth exploration of imputing missing values and
+    let XGBoost do the work for us.
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有几种方法可以填充缺失值，例如使用该特征非缺失值的均值或众数，或者随机选择一个非缺失值。你还可以构建一个模型，将该特征作为响应变量，所有其他特征作为该新模型的特征，然后预测缺失的特征值。这些方法在本书的第一版中有所探讨（[https://packt.link/oLb6C](https://packt.link/oLb6C)）。然而，由于XGBoost通常在使用我们这里的表格数据进行二分类任务时，表现至少与其他机器学习模型一样好，并且能够处理缺失值，因此我们将不再深入探讨填充缺失值的问题，而是让XGBoost来为我们完成这项工作。
+- en: How does XGBoost handle missing data? At every opportunity to split a node,
+    XGBoost considers only the non-missing feature values. If a feature with missing
+    values is chosen to make a split, the samples with missing values for that feature
+    are then sent down the optimal path to one of the child nodes, in terms of minimizing
+    the loss function.
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: XGBoost如何处理缺失数据？在每次有机会分裂节点时，XGBoost仅考虑非缺失的特征值。如果一个特征包含缺失值且被选择用于分裂，缺失该特征值的样本会被发送到一个子节点，在最小化损失函数的基础上选择最优路径。
+- en: Saving Python Variables to a File
+  id: totrans-325
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 将Python变量保存到文件
+- en: 'In the activity for this chapter, to write to and read from files we''ll use
+    a new python statement (`with`) and the `pickle` package. `with` statements make
+    it easier to work with files since they both open and close the file, instead
+    of the user needing to do this separately. You can use code snippets like this
+    to save variables to a file:'
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章的活动中，为了进行文件读写，我们将使用新的Python语句（`with`）和`pickle`包。`with`语句使得处理文件更加方便，因为它们不仅打开文件，还会在使用完成后自动关闭文件，而无需用户单独进行这些操作。你可以使用如下代码片段将变量保存到文件中：
+- en: '[PRE81]'
+  id: totrans-327
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: 'where `filename.pkl` is your chosen file path, `''wb''` indicates the file
+    is open for writing in a binary format, and `pickle.dump` saves a list of variables
+    `var_1` and `var_2` to the file. To open this file and load these variables, possibly
+    into a separate Jupyter Notebook, the code is similar but now the file needs to
+    be opened for reading in a binary format (`''rb''`):'
+  id: totrans-328
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中`filename.pkl`是你选择的文件路径，`'wb'`表示文件以二进制格式打开以供写入，`pickle.dump`将变量`var_1`和`var_2`保存到该文件中。要打开此文件并加载这些变量，可能需要在另一个Jupyter
+    Notebook中，代码类似，但现在需要以二进制格式（`'rb'`）打开文件：
+- en: '[PRE82]'
+  id: totrans-329
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: 'Activity 6.01: Modeling the Case Study Data with XGBoost and Explaining the
+    Model with SHAP'
+  id: totrans-330
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 活动6.01：使用XGBoost建模案例研究数据并使用SHAP解释模型
+- en: In this activity, we'll take what we've learned in this chapter with a synthetic
+    dataset and apply it to the case study data. We'll see how an XGBoost model performs
+    on a validation set and explain the model predictions using SHAP values. We have
+    prepared the dataset for this activity by replacing the samples that had missing
+    values for the `PAY_1` feature, that we had previously ignored, while maintaining
+    the same train/test split for the samples with no missing values. You can see
+    how the data was prepared in the Appendix to the notebook for this activity.
+  id: totrans-331
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本活动中，我们将利用本章所学的内容，使用一个合成数据集，并将其应用于案例研究数据。我们将观察XGBoost模型在验证集上的表现，并使用SHAP值解释模型预测。我们已通过替换先前忽略的、`PAY_1`特征缺失值的样本来准备数据集，同时保持没有缺失值的样本的训练/测试划分。你可以在本活动的笔记本附录中查看数据是如何准备的。
+- en: Note
+  id: totrans-332
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: 'The Jupyter notebook containing the solution as well as the appendix can be
+    found here: [https://packt.link/YFb4r](https://packt.link/YFb4r).'
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 包含解决方案以及附录的Jupyter笔记本可以在这里找到：[https://packt.link/YFb4r](https://packt.link/YFb4r)。
+- en: 'Load the case study data that has been prepared for this exercise. The file
+    path is `../../Data/Activity_6_01_data.pkl` and the variables are: `features_response,
+    X_train_all, y_train_all, X_test_all, y_test_all`.'
+  id: totrans-334
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 加载已为此练习准备好的案例研究数据。文件路径为`../../Data/Activity_6_01_data.pkl`，变量包括：`features_response,
+    X_train_all, y_train_all, X_test_all, y_test_all`。
+- en: Define a validation set to train XGBoost with early stopping.
+  id: totrans-335
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 定义一个验证集，用于训练XGBoost并进行早期停止。
+- en: Instantiate an XGBoost model. Use the `lossguide` grow policy to enable the
+    examination of validation set performance for several values of `max_leaves`.
+  id: totrans-336
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 实例化一个XGBoost模型。使用`lossguide`增长策略，以便检查验证集在多个`max_leaves`值下的表现。
+- en: Create a list of values of `max_leaves` from 5 to 200, counting by 5's.
+  id: totrans-337
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个`max_leaves`值的列表，范围从5到200，步长为5。
+- en: Create the evaluation set for early stopping.
+  id: totrans-338
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建用于早期停止的评估集。
+- en: 'Loop through hyperparameter values and create a list of validation ROC AUCs,
+    using the same technique as in *Exercise 6.01: Randomized Grid Search for Tuning
+    XGBoost Hyperparameters*.'
+  id: totrans-339
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 遍历超参数值并创建一个验证ROC AUC的列表，使用与*练习6.01：随机网格搜索调优XGBoost超参数*相同的技术。
+- en: Create a data frame of the hyperparameter search results and plot the validation
+    AUC against `max_leaves`.
+  id: totrans-340
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个超参数搜索结果的数据框，并绘制验证AUC与`max_leaves`的关系图。
+- en: Observe the number of `max_leaves` corresponding to the highest ROC AUC on the
+    validation set.
+  id: totrans-341
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 观察对应于验证集上最高ROC AUC的`max_leaves`数量。
+- en: Refit the XGBoost model with the optimal hyperparameter. So that we can examine
+    SHAP values for the validation set, make a data frame of this data.
+  id: totrans-342
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用最佳超参数重新拟合XGBoost模型。这样我们就可以检查验证集的SHAP值，制作该数据的数据框。
+- en: Create a SHAP explainer for our new model using the validation data as the background
+    dataset, obtain the SHAP values, and make a summary plot.
+  id: totrans-343
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用验证数据作为背景数据集，为我们的新模型创建SHAP解释器，获取SHAP值，并绘制总结图。
+- en: Make a scatter plot of `LIMIT_BAL` SHAP values, colored by the feature with
+    the strongest interaction.
+  id: totrans-344
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 绘制`LIMIT_BAL` SHAP值的散点图，按与最强交互特征相关的颜色进行着色。
+- en: Save the trained model along with the training and test data to a file.
+  id: totrans-345
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将训练好的模型以及训练数据和测试数据保存到一个文件中。
+- en: Note
+  id: totrans-346
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 注意
+- en: The solution to this activity can be found via [this link](B16925_Solution_ePub.xhtml#_idTextAnchor159).
+  id: totrans-347
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 该活动的解决方案可以通过[此链接](B16925_Solution_ePub.xhtml#_idTextAnchor159)找到。
+- en: Summary
+  id: totrans-348
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, we've learned some of the most cutting-edge techniques for
+    building machine learning models with tabular data. While other types of data,
+    such as image or text data, warrant exploration with different types of models
+    such as neural networks, many standard business applications leverage tabular
+    data. XGBoost and SHAP are some of the most advanced and popular tools you can
+    use to build and understand models with this kind of data. Having gained familiarity
+    and practical experience using these tools with synthetic data, in the following
+    activity, we return to the dataset for the case study and see how we can use XGBoost
+    to model it, including the samples with missing feature values, and use SHAP values
+    to understand the model.
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们学习了一些构建机器学习模型的前沿技术，尤其是针对表格数据。虽然其他类型的数据，如图像或文本数据，需要使用不同类型的模型（如神经网络）进行探索，但许多标准的商业应用仍然依赖于表格数据。XGBoost
+    和 SHAP 是一些最先进且流行的工具，你可以用它们来构建和理解这类数据的模型。在通过这些工具与合成数据进行实践并积累经验后，在接下来的活动中，我们将回到案例研究的数据集，看看如何使用
+    XGBoost 来对其建模，包括包含缺失特征值的样本，并利用 SHAP 值来理解模型。

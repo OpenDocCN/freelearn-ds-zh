@@ -1,0 +1,886 @@
+- en: Python for Parallel Computing
+  id: totrans-0
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 用于并行计算的Python
+- en: This chapter covers parallel computing and the module `mpi4py`. Complex and
+    time-consuming computational tasks can often be divided into subtasks, which can
+    be carried out simultaneously if there is capacity for it. When these subtasks
+    are independent of each other, executing them in parallel can be especially efficient.
+    Situations where subtasks have to wait until another subtask is completed are
+    less suited for parallel computing.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章涉及并行计算和模块`mpi4py`。复杂且耗时的计算任务通常可以拆分为子任务，如果有足够的计算能力，这些子任务可以同时执行。当这些子任务彼此独立时，进行并行计算尤其高效。需要等待另一个子任务完成的情况则不太适合并行计算。
+- en: 'Consider the task of computing an integral of a function by a quadrature rule:'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑通过求积法则计算一个函数的积分任务：
+- en: '![](img/83c9cea1-a108-4274-9dd2-2e25699390c0.png)'
+  id: totrans-3
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/83c9cea1-a108-4274-9dd2-2e25699390c0.png)'
+- en: 'with [![](img/28ebd3f6-beef-4f20-b5f7-ac37ea65cc3f.png)]. If the evaluation
+    of [![](img/66a83318-be85-4810-b4d1-75b12ccc843c.png)] is time-consuming and [![](img/428d64f1-b6c7-491f-b9b4-fb7a1c4c9aaf.png)] is
+    large , it would be advantageous to split the problem into two or several subtasks
+    of smaller size:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用[![](img/28ebd3f6-beef-4f20-b5f7-ac37ea65cc3f.png)]。如果评估[![](img/66a83318-be85-4810-b4d1-75b12ccc843c.png)]非常耗时，且[![](img/428d64f1-b6c7-491f-b9b4-fb7a1c4c9aaf.png)]很大，那么将问题拆分为两个或多个较小的子任务会更有利：
+- en: '![](img/ad5c2d76-a7b7-4216-b4c2-6ac07c065871.png)'
+  id: totrans-5
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/ad5c2d76-a7b7-4216-b4c2-6ac07c065871.png)'
+- en: We can use several computers and give each of them the necessary information
+    so that they can perform their subtasks, or we can use a single computer with
+    a so-called multicore architecture.
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用几台计算机，并将必要的信息提供给每台计算机，使其能够执行各自的子任务，或者我们可以使用一台带有所谓多核架构的计算机。
+- en: Once the subtasks are accomplished the results are communicated to the computer
+    or processor that controls the entire process and performs the final additions.
+  id: totrans-7
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦子任务完成，结果会传送给控制整个过程并执行最终加法的计算机或处理器。
+- en: 'We will use this as a guiding example in this chapter while covering the following
+    topics:'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在本章中以此为指导示例，涵盖以下主题：
+- en: Multicore computers and computer clusters
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多核计算机和计算机集群
+- en: Message passing interface (MPI)
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消息传递接口（MPI）
+- en: 18.1 Multicore computers and computer clusters
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 18.1 多核计算机和计算机集群
+- en: Most of the modern computers are multicore computers. For example, the laptop
+    used when writing this book has an Intel® i7-8565U processor that has four cores
+    with two threads each.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 大多数现代计算机都是多核计算机。例如，本书写作时使用的笔记本电脑配备了Intel® i7-8565U处理器，具有四个核心，每个核心有两个线程。
+- en: What does this mean? Four cores on a processor allow performing four computational
+    tasks in parallel. Four cores with two threads each are often counted as eight
+    CPUs by system monitors. For the purposes of this chapter only the number of cores
+    matters.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这意味着什么？处理器上的四个核心允许并行执行四个计算任务。四个核心，每个核心有两个线程，通常被系统监视器计为八个CPU。在本章中，只有核心数量才是重要的。
+- en: 'These cores share a common memory—the RAM of your laptop—and have individual
+    memory in the form of cache memory:'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些核心共享一个公共内存——你的笔记本的RAM——并且每个核心有独立的缓存内存：
+- en: '![](img/01e8633e-4624-46a6-89ec-57fe13f53752.png)'
+  id: totrans-15
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/01e8633e-4624-46a6-89ec-57fe13f53752.png)'
+- en: 'Figure 18.1: A multicore architecture with shared and local cache memory'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图18.1：具有共享和本地缓存内存的多核架构
+- en: The cache memory is used optimally by its core and is accessed at high speed,
+    while the shared memory can be accessed by all cores of one CPU. On top, there
+    is the computer's RAM memory and finally, the hard disk, which is also shared
+    memory.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 缓存内存由核心最优使用，并以高速访问，而共享内存可以被一个CPU的所有核心访问。在其上方是计算机的RAM内存，最后是硬盘，也是共享内存。
+- en: In the next section, we will see how a computational task can be distributed
+    to individual cores and how results are received and further processed, for example,
+    being stored in a file.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一部分，我们将看到如何将计算任务分配到各个核心，以及如何接收结果并进一步处理，例如，存储到文件中。
+- en: A different setting for parallel computing is the use of a computer cluster.
+    Here, a task is divided into parallelizable subtasks that are sent to different
+    computers, sometimes even over long distances. Here, communication time can matter
+    substantially. The use of such a computer cluster makes sense only if the time
+    for processing subtasks is large in relation to communication time.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种并行计算的设置是使用计算机集群。在这里，一个任务被划分为可以并行化的子任务，这些子任务被发送到不同的计算机，有时甚至跨越长距离。在这种情况下，通信时间可能会非常重要。只有当处理子任务的时间相对于通信时间较长时，使用计算机集群才有意义。
+- en: 18.2 Message passing interface (MPI)
+  id: totrans-20
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 18.2 消息传递接口（MPI）
+- en: Programming for several cores or on a computer cluster with distributed memory
+    requires special techniques. We describe here *message passing* and related tools
+    standardized by the MPI standard. These tools are similar in different programming
+    languages, such as C, C++, and FORTRAN, and are realized in Python by the module
+    `mpi4py`.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在多核计算机或分布式内存的计算机集群上编程需要特殊的技术。我们在这里描述了*消息传递*以及MPI标准化的相关工具。这些工具在不同的编程语言中相似，例如C、C++和FORTRAN，并通过`mpi4py`模块在Python中实现。
+- en: 18.2.1 Prerequisites
+  id: totrans-22
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 18.2.1 前提条件
+- en: 'You need to install this module first by executing the following in a terminal
+    window:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要先通过在终端窗口执行以下命令来安装此模块：
+- en: '[PRE0]'
+  id: totrans-24
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'The module is imported by adding the following line to your Python script:'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以通过在你的Python脚本中添加以下一行来导入该模块：
+- en: '[PRE1]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'The execution of a parallelized code is done from a terminal with the command
+    `mpiexec`. Assuming that your code is stored in the file `script.py`, executing
+    this code on a computer with a four-core CPU is done in the terminal window by
+    running the following command:'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 并行化代码的执行是通过终端使用命令`mpiexec`完成的。假设你的代码存储在文件`script.py`中，在一台具有四核CPU的计算机上执行此代码，可以在终端窗口通过运行以下命令来实现：
+- en: '[PRE2]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Alternatively, to execute the same script on a cluster with two computers,
+    run the following in a terminal window:'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或者，为了在一个包含两台计算机的集群上执行相同的脚本，可以在终端窗口运行以下命令：
+- en: '[PRE3]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'You have to provide a file `hosts.txt` containing the names or IP addresses
+    of the computers with the number of their cores you want to bind to a cluster:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要提供一个文件`hosts.txt`，其中包含你想绑定到集群的计算机的名称或IP地址，以及它们的核心数：
+- en: '[PRE4]'
+  id: totrans-32
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: The Python script, here `script.py`, has to be copied to all computers in the
+    cluster.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Python 脚本（这里是`script.py`）必须被复制到集群中的所有计算机上。
+- en: 18.3 Distributing tasks to different cores
+  id: totrans-34
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 18.3 将任务分配到不同的核心
+- en: When executed on a multicore computer, we can think of it that `mpiexec` copies
+    the given Python script to the number of cores and runs each copy. As an example,
+    consider the one-liner script `print_me.py` with the command `print("Hello it's
+    me")`, that, when executed with `mpiexec -n 4 print_me.py`, generates the same
+    message on the screen four times, each sent from a different core.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当在多核计算机上执行时，我们可以认为`mpiexec`将给定的Python脚本复制到相应数量的核心上，并运行每个副本。例如，考虑一下包含命令`print("Hello
+    it's me")`的单行脚本`print_me.py`，当通过`mpiexec -n 4 print_me.py`执行时，它会在屏幕上显示相同的消息四次，每次来自不同的核心。
+- en: In order to be able to execute different tasks on different cores, we have to
+    be able to distinguish these cores in the script.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了能够在不同的核心上执行不同的任务，我们必须能够在脚本中区分这些核心。
+- en: 'To this end, we create a so-called communicator instance, which organizes the
+    communication between the *world*, that is, the input and output units like the
+    screen, the keyboard, or a file, and the individual cores. Furthermore, the individual
+    cores are given identifying numbers, called a rank:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为此，我们创建了一个所谓的通信实例，它组织了*世界*之间的通信，即输入输出单元，如屏幕、键盘或文件，与各个核心之间的通信。此外，每个核心都会被分配一个标识编号，称为rank：
+- en: '[PRE5]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: The communicator attribute size refers to the total number of processes specified
+    in the statement `mpiexec`.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通信器属性size指的是在`mpiexec`语句中指定的进程总数。
+- en: 'Now we can give every core an individual computational task, as in the next
+    script, which we might call `basicoperations.py`:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们可以为每个核心分配一个独立的计算任务，就像在下一个脚本中那样，我们可以称之为`basicoperations.py`：
+- en: '[PRE6]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'This script is executed in the terminal by entering the following command:'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个脚本可以通过在终端输入以下命令来执行：
+- en: '[PRE7]'
+  id: totrans-43
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'We obtain three messages:'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们得到三个消息：
+- en: '[PRE8]'
+  id: totrans-45
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: All three processes got their individual tasks, which were executed in parallel.
+    Clearly, printing the result to the screen is a bottleneck as the screen is shared
+    by all three processes.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所有三个进程都有各自的任务，并且是并行执行的。显然，将结果打印到屏幕上是一个瓶颈，因为屏幕是所有三个进程共享的。
+- en: In the next section, we see how communication between the processes is done.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将看到进程间是如何进行通信的。
+- en: 18.3.1 Information exchange between processes
+  id: totrans-48
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 18.3.1 进程间信息交换
+- en: 'There are different ways to send and receive information between processes:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 进程间有不同的发送和接收信息的方法：
+- en: Point-to-point communication
+  id: totrans-50
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 点对点通信
+- en: One-to-all and all-to-one
+  id: totrans-51
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 单对多和多对单
+- en: All-to-all
+  id: totrans-52
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多对多
+- en: In this section, we will introduce point-to-point, one-to-all, and all-to-one
+    communication.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将介绍点对点、单对多和多对单通信。
+- en: Speaking to a neighbor and letting information pass along a street this way
+    is an example from daily life of the first communication type from the preceding
+    list, while the second can be illustrated by the daily news, spoken by one person
+    and broadcast to a big group of listeners.One-to-all and all-to-one communication
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 向邻居讲话并让信息沿街道传递，这是前面列出的第一种通信类型的日常生活示例，而第二种可以通过新闻广播来说明，一人讲话并广播给一大群听众。单对多和多对单通信
+- en: '![](img/13f24ef2-b180-4b43-b9b3-8498ba57e23a.png)                    ![](img/1aea42da-4134-4564-beab-a2904d20fdf9.png)'
+  id: totrans-55
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/13f24ef2-b180-4b43-b9b3-8498ba57e23a.png)                    ![](img/1aea42da-4134-4564-beab-a2904d20fdf9.png)'
+- en: 'Figure 18.2: Point-to-point communication and one-to-all communication'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 18.2：点对点通信和单对多通信
+- en: In the next subsections, we will study these different communication types in
+    a computational context.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的子节中，我们将研究这些不同的通信类型在计算上下文中的应用。
+- en: 18.3.2 Point-to-point communication
+  id: totrans-58
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 18.3.2 点对点通信
+- en: Point-to-point communication directs information flow from one process to a
+    designated receiving process. We first describe the methods and features by considering
+    a ping-pong situation and a telephone-chain situation and explain the notion of
+    blocking.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点对点通信将信息流从一个进程引导到指定的接收进程。我们首先通过考虑乒乓情况和电话链情况来描述方法和特点，并解释阻塞的概念。
+- en: Point-to-point communication is applied in scientific computing, for instance
+    in random-walk or particle-tracing applications on domains that are divided into
+    a number of subdomains corresponding to the number of processes that can be carried
+    out in parallel.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 点对点通信应用于科学计算，例如在分布域上的随机游走或粒子追踪应用，这些域被划分为多个子域，每个子域对应一个可以并行执行的进程数。
+- en: The ping-pong example assumes that we have two processors sending an integer
+    back and forth to each other and increasing its value by one.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个乒乓示例中，我们假设有两个处理器相互发送一个整数，并将其值增加一。
+- en: 'We start by creating a communicator object and checking that we have two processes
+    available:'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从创建一个通信对象并检查是否有两个可用的进程开始：
+- en: '[PRE9]'
+  id: totrans-63
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Then we send information back and forth between the two processes:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们在两个进程之间来回发送信息：
+- en: '[PRE10]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: Information is sent by the method `send` of the communicator. Here, we provided
+    it with the information that we want to send, along with the destination. The
+    communicator takes care that the destination information is translated to a hardware
+    address; either one core of the CPU in your machine or that of a host machine.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 信息通过通信器的`send`方法发送。在这里，我们提供了要发送的信息以及目的地。通信器确保将目的地信息转换为硬件地址；可以是你计算机的一个CPU核心，或主机的一个CPU核心。
+- en: The other machine receives the information by the communicator method `comm.recv`.
+    It requires information on where the information is expected from. Under the hood,
+    it tells the sender that the information has been received by freeing the information
+    buffer on the data channel. The sender awaits this signal before it can proceed.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一台机器通过通信方法`comm.recv`接收信息。它需要知道信息来自哪里。在后台，它通过释放数据通道上的信息缓冲区，告诉发送方信息已经被接收。发送方在继续操作之前，需要等待此信号。
+- en: The two statements `if rank == count%2` and `elif rank == (count+1)%2` ensure
+    that the processors alternate their sending and receiving tasks.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 两个语句`if rank == count%2`和`elif rank == (count+1)%2`确保处理器交替进行发送和接收任务。
+- en: 'Here is the output of this short script that we saved in a file called `pingpong.py`
+    and executed with the following:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们保存为`pingpong.py`文件并使用以下命令执行的短脚本输出：
+- en: '[PRE11]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'In the terminal, this produces the following output:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在终端中，这会生成以下输出：
+- en: '[PRE12]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'What types of data can be sent or received? As the commands `send` and `recv` communicate
+    data in binary form, they `pickle` the data first (see [Section 14.3](f95f92d6-d8d1-46a6-bb5b-560714044c70.xhtml):
+    *Pickling*). Most of the Python objects can be pickled, but not `lambda` functions
+    for instance. It is also possible to pickle buffered data such as NumPy arrays,
+    but a direct send of buffered data is more efficient, as we''ll see in the next
+    subsection.'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以发送或接收什么类型的数据？由于命令 `send` 和 `recv` 以二进制形式传递数据，因此它们首先会将数据进行 `pickle`（参见 [第 14.3
+    节](f95f92d6-d8d1-46a6-bb5b-560714044c70.xhtml)：*Pickling*）。大多数 Python 对象都可以被 pickled，但例如
+    `lambda` 函数不能。也可以 pickle 缓冲数据，例如 NumPy 数组，但直接发送缓冲数据更高效，正如我们将在下一小节中看到的那样。
+- en: 'Note that there might be reasons for sending and receiving functions between
+    processes. As the methods `send` and `recv`  only communicate references to functions,
+    the references have to exist on the sending and receiving processors. Therefore
+    the following Python script returns an error:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，在进程之间发送和接收函数可能有其原因。由于方法 `send` 和 `recv` 仅传递对函数的引用，因此这些引用必须在发送和接收的处理器上存在。因此，以下
+    Python 脚本会返回一个错误：
+- en: '[PRE13]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'The error message thrown by the statement `recv` is `AttributeError: Can''t
+    get attribute ''func''`. This is caused by the fact that `f` refers to the function
+    `func`, which is not defined for the processor with rank 1\. The correct way is
+    to define this function for both processors:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '由语句 `recv` 抛出的错误信息是 `AttributeError: Can''t get attribute ''func''`。这是由于 `f`
+    引用了 `func` 函数，而该函数在秩为 1 的处理器上没有定义。正确的做法是为两个处理器都定义该函数：'
+- en: '[PRE14]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 18.3.3 Sending NumPy arrays
+  id: totrans-78
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 18.3.3 发送 NumPy 数组
+- en: The commands `send` and `recv` are high-level commands. That means they do under-the-hood
+    work that saves the programmer time and avoids possible errors. They allocate
+    memory after having internally deduced the datatype and the amount of buffer data
+    needed for communication. This is done internally on a lower level based on C
+    constructions.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 命令 `send` 和 `recv` 是高级命令。这意味着它们在幕后执行工作，节省了程序员的时间并避免了可能的错误。它们会在内部推导出数据类型和所需通信缓冲区数据量后分配内存。这是在较低层次上基于
+    C 结构完成的。
+- en: NumPy arrays are objects that themselves make use of these C-buffer-like objects,
+    so when sending and receiving NumPy arrays you can gain efficiency by using them
+    in the lower-level communication counterparts `Send` and `Recv` (mind the capitalization!).
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: NumPy 数组是对象，它们本身利用了类似 C 缓冲区的对象，因此在发送和接收 NumPy 数组时，可以通过在底层通信对等方 `Send` 和 `Recv`
+    中使用它们来提高效率（注意大小写！）。
+- en: 'In the following example, we send an array from one processor to another:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在以下示例中，我们从一个处理器发送数组到另一个处理器：
+- en: '[PRE15]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: It is important to note, that on both processors, memory for the buffer has
+    to be allocated. Here, this is done by creating on Processor 0 an array with the
+    data and on Processor 1 an array with the same size and datatype but arbitrary
+    data.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，在两个处理器上，必须分配缓冲区的内存。在这里，通过在处理器 0 上创建一个包含数据的数组以及在处理器 1 上创建一个具有相同大小和数据类型但包含任意数据的数组来完成这项工作。
+- en: Also, we see a difference in the command `recv` in the output. The command `Recv`
+    returns the buffer via the first argument. This is possible as NumPy arrays are
+    mutable.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，我们可以看到命令 `recv` 在输出中的区别。命令 `Recv` 通过第一个参数返回缓冲区。这是可能的，因为 NumPy 数组是可变的。
+- en: 18.3.4 Blocking and non-blocking communication
+  id: totrans-85
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 18.3.4 阻塞和非阻塞通信
+- en: The commands `send` and `recv` and their buffer counterparts `Send` and `Recv`
+    are so-called blocking commands. That means a command `send` is completed when
+    the corresponding send buffer is freed. When this will happen depends on several
+    factors such as the particular communication architecture of your system and the
+    amount of data that is to be communicated. Finally, the command `send` is considered
+    to be freed when the corresponding command `recv` has got all the information.
+    Without such a command `recv`, it will wait forever. This is called a deadlock
+    situation.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 命令 `send` 和 `recv` 及其缓冲区对应的 `Send` 和 `Recv` 是所谓的阻塞命令。这意味着，当相应的发送缓冲区被释放时，命令 `send`
+    才算完成。释放的时机取决于多个因素，例如系统的特定通信架构和要传输的数据量。最终，命令 `send` 在相应的命令 `recv` 接收到所有信息后才被认为是已释放的。如果没有这样的命令
+    `recv`，它将永远等待。这就形成了死锁情况。
+- en: The following script demonstrates a situation with the potential for deadlock.
+    Both processes send simultaneously. If the amount of data to be communicated is
+    too big to be stored the command `send` is waiting for a corresponding `recv`
+    to empty the pipe, but `recv` never is invoked due to the waiting state. That's
+    a deadlock.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下脚本演示了可能发生死锁的情况。两个进程同时发送。如果要传输的数据量太大，无法存储，命令 `send` 就会等待相应的 `recv` 来清空管道，但由于等待状态，`recv`
+    永远不会被调用。这就是死锁。
+- en: '[PRE16]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Note that executing this code might not cause a deadlock on your computer as
+    the amount of data communicated is very small.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，执行这段代码可能不会导致你的计算机死锁，因为要通信的数据量非常小。
+- en: 'The straightforward remedy to avoid a deadlock, in this case, is to swap the
+    order of the commands `recv` and `send` on *one* of the processors:'
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，避免死锁的直接解决办法是交换命令 `recv` 和 `send` 在 *一个* 处理器上的执行顺序：
+- en: '[PRE17]'
+  id: totrans-91
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 18.3.5 One-to-all and all-to-one communication
+  id: totrans-92
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 18.3.5 一对多与多对一通信
+- en: When a complex task depending on a larger amount of data is divided into subtasks,
+    the data also has to be divided into portions relevant to the related subtask
+    and the results have to be assembled and processed into a final result.
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当一个依赖于大量数据的复杂任务被分解为子任务时，数据也必须分成与相关子任务相关的部分，并且结果必须汇总并处理成最终结果。
+- en: 'Let''s consider as an example the scalar product of two vectors ![](img/386ea4fe-1822-4d43-b6e6-60222a9b9311.png) divided
+    into ![](img/4093f1e5-0763-4c6d-9c86-3d791dbe381b.png) subtasks:'
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以两个向量的标量积为例，考虑将其划分为！[](img/386ea4fe-1822-4d43-b6e6-60222a9b9311.png)的子任务：![](img/4093f1e5-0763-4c6d-9c86-3d791dbe381b.png)
+- en: '![](img/2930f29a-640b-4af9-90a7-4ce61699133f.png)'
+  id: totrans-95
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/2930f29a-640b-4af9-90a7-4ce61699133f.png)'
+- en: with ![](img/83232989-a3d1-4bce-8ab1-8c511977a52d.png) All subtasks perform
+    the same operations on portions of the initial data, the results have to be summed
+    up, and possibly any remaining operations have to be carried out.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 ![](img/83232989-a3d1-4bce-8ab1-8c511977a52d.png) 所有子任务在初始数据的各个部分上执行相同的操作，结果必须汇总，并可能执行剩余的操作。
+- en: 'We have to perform the following steps:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要执行以下步骤：
+- en: Creating the vectors `u` and `v`
+  id: totrans-98
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建向量 `u` 和 `v`
+- en: Dividing them into *m* subvectors with a balanced number of elements, that is, [![](img/dff7d037-6f3f-4a7e-91a6-866460521eb9.png)]
+    elements if `N` is divisible by `m`, otherwise some subvectors have more elements
+  id: totrans-99
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将它们分成 *m* 个子向量，且每个子向量的元素个数平衡，即当 `N` 能被 `m` 整除时，每个子向量包含 [![](img/dff7d037-6f3f-4a7e-91a6-866460521eb9.png)]
+    元素，否则一些子向量会包含更多元素。
+- en: Communicating each subvector to "its" processor
+  id: totrans-100
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将每个子向量传递给 "它的" 处理器
+- en: Performing the scalar product on the subvectors on each processor
+  id: totrans-101
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在每个处理器上执行子向量的标量积
+- en: Gathering all results
+  id: totrans-102
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 收集所有结果
+- en: Summing up the results
+  id: totrans-103
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 汇总结果
+- en: '*Steps 1*, *2*, and *6* are run on one processor, the so-called *root* processor.
+    In the following example code, we choose the processor with rank 0 for these tasks.
+    *Steps 3, 4,* and *5* are executed on all processors, including the root processor.
+    For the communication in S*tep 3*, `mpi4py` provides the command `scatter`, and
+    for recollecting the results the command `gather` is available.'
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*步骤 1*、*2* 和 *6* 在一个处理器上运行，即所谓的 *根* 处理器。在以下示例代码中，我们选择排名为 0 的处理器来执行这些任务。*步骤
+    3、4* 和 *5* 在所有处理器上执行，包括根处理器。对于步骤 *3* 中的通信，`mpi4py` 提供了命令 `scatter`，而用于收集结果的命令是
+    `gather`。'
+- en: Preparing the data for communication
+  id: totrans-105
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 准备通信数据
+- en: 'First, we will look into S*tep 2*. It is a nice exercise to write a script
+    that splits a vector into *m* pieces with a balanced number of elements. Here
+    is one suggestion for such a script, among many others:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们来看看步骤 *2*。编写一个脚本，将一个向量分成 *m* 个平衡元素的部分，是一个不错的练习。这里有一个建议的脚本实现，当然还有很多其他的实现方式：
+- en: '[PRE18]'
+  id: totrans-107
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: As this chapter is one of the last in this book we have seen a lot of tools
+    that can be used for this code. We worked with NumPy's cumulative sum, `cumsum`.
+    We used the generator `zip`, unpacking arguments by the operator `*`, and generator
+    comprehension. We also tacitly introduced the data type `slice`, which allows
+    us to do the splitting step in the last line in a very compact way.
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于本章是本书中的最后几章之一，我们已经看到很多可以用于这段代码的工具。我们使用了 NumPy 的累积和 `cumsum`。我们使用了生成器 `zip`，通过运算符
+    `*` 解包参数，以及生成器推导式。我们还默默地引入了数据类型 `slice`，它允许我们在最后一行以非常简洁的方式执行分割步骤。
+- en: The commands – scatter and gather
+  id: totrans-109
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 命令——scatter 和 gather
+- en: 'Now we are ready to look at the entire script for our demo problem, the scalar
+    product:'
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经准备好查看整个脚本，来解决我们的演示问题——标量积：
+- en: '[PRE19]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'If this script is stored in a file `parallel_dot.py` the command for execution
+    with five processors is the following:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果此脚本存储在文件`parallel_dot.py`中，使用五个处理器执行的命令如下：
+- en: '[PRE20]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'The result in this case is as follows:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，结果如下：
+- en: '[PRE21]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: This example demonstrates the use of `scatter` to send out specific information
+    to each processor. To use this command the root processor has to provide a list
+    with as many elements as available processors. Each element contains the data
+    to be communicated to one of the processors including the root processor.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本示例演示了使用`scatter`将特定信息发送到每个处理器。要使用此命令，根处理器必须提供一个包含与可用处理器数量相同元素的列表。每个元素包含要传送到某个处理器的数据，包括根处理器本身。
+- en: The reversing process is `gather`. When all processors completed this command
+    the root processor is provided with a list with as many elements as available
+    processors, each containing the resulting data of its corresponding processor.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 反向过程是`gather`。当所有处理器完成此命令时，根处理器将得到一个包含与可用处理器数量相同元素的列表，每个元素包含其对应处理器的结果数据。
+- en: In the final step, the root processor again works alone by postprocessing this
+    result list. The example above it sums all list elements and displays the result.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一步，根处理器再次独自工作，后处理此结果列表。上面的示例将所有列表元素求和并显示结果。
+- en: The art of parallel programming is to avoid bottlenecks. Ideally, all processors
+    should be busy and should start and stop simultaneously. That is why the workload
+    is distributed more or less equally to the processors by the script `splitarray`
+    that we described previously. Furthermore, the code should be organized in such
+    a way that the start and end periods with the root processor working alone are
+    short compared to the computationally intense part carried out by all processors
+    simultaneously.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 并行编程的艺术在于避免瓶颈。理想情况下，所有处理器都应保持忙碌，并且应该同时开始和结束。这就是为什么我们前面描述的脚本`splitarray`将工作负载大致平均分配给处理器的原因。此外，代码应以这样的方式组织，即根处理器独自工作的开始和结束阶段，相对于所有处理器同时执行的计算密集型部分来说是很短的。
+- en: A final data reduction operation – the command reduce
+  id: totrans-120
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 最终数据归约操作——命令reduce
+- en: 'The parallel scalar product example is typical for many other tasks in the
+    way how results are handled: the amount of data coming from all processors is
+    reduced to a single number in the last step. Here, the root processor sums up
+    all partial results from the processors. The command `reduce` can be efficiently
+    used for this task. We modify the preceding code by letting `reduce` do the gathering
+    and summation in one step. Here, the last lines of the preceding code are modified
+    in this way:'
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 并行标量积示例是许多其他任务的典型示例，展示了结果处理方式：来自所有处理器的数据量在最后一步被归约为一个单一的数字。在这里，根处理器将所有处理器的部分结果相加。命令`reduce`可以有效地用于此任务。我们通过让`reduce`在一步中完成聚集和求和来修改之前的代码。以下是修改后的前几行代码：
+- en: '[PRE22]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Other frequently applied reducing operations are:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其他常用的归约操作有：
+- en: '`MPI.MAX` or `MPI.MIN`: The maximum or minimum of the partial results'
+  id: totrans-124
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`MPI.MAX`或`MPI.MIN`：部分结果的最大值或最小值'
+- en: '`MPI.MAXLOC` or `MPI.MINLOC`: The argmax or argmin of the partial results'
+  id: totrans-125
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`MPI.MAXLOC`或`MPI.MINLOC`：部分结果的最大值位置或最小值位置'
+- en: '`MPI.PROD`: The product of the partial results'
+  id: totrans-126
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`MPI.PROD`：部分结果的乘积'
+- en: '`MPI.LAND` or `MPI.LOR`: The logical and/logical or of the partial results'
+  id: totrans-127
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`MPI.LAND`或`MPI.LOR`：部分结果的逻辑与/逻辑或'
+- en: Sending the same message to all
+  id: totrans-128
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 向所有处理器发送相同的消息
+- en: 'Another collective command is the broadcasting command `bcast`. In contrast
+    to `scatter` it is used to send the same data to all processors. Its call is similar
+    to that of `scatter`:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个集体命令是广播命令`bcast`。与`scatter`不同，它用于将相同的数据发送到所有处理器。它的调用方式与`scatter`类似：
+- en: '[PRE23]'
+  id: totrans-130
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: but it is the total data and not a list of portioned data that is sent. Again,
+    the root processor can be any processor. It is the processor that prepares the
+    data to be broadcasted.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，发送的是总数据，而不是分割数据的列表。同样，根处理器可以是任何处理器。它是准备广播数据的处理器。
+- en: Buffered data
+  id: totrans-132
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 缓冲数据
+- en: In an analogous manner, `mpi4py` provides the corresponding collective commands
+    for buffer-like data such as NumPy arrays by capitalizing the command: `scatter`/`Scatter`,
+    `gather`/`Gather`, `reduce`/`Reduce`, `bcast`/`Bcast`.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类似地，`mpi4py`为类似NumPy数组的缓冲数据提供了相应的集体命令，通过大写命令来实现：`scatter`/`Scatter`、`gather`/`Gather`、`reduce`/`Reduce`、`bcast`/`Bcast`。
+- en: 18.4 Summary
+  id: totrans-134
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 18.4 总结
+- en: In this chapter, we saw how to execute copies of the same script on different
+    processors in parallel. Message passing allows the communication between these
+    different processes. We saw *point-to-point *communication and the two different
+    distribution type collective communications *one-to-all* and *all-to-one*. The
+    commands presented in this chapter are provided by the Python module `mpi4py`,
+    which is a Python wrapper to realize the MPI standard in C.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们了解了如何在不同的处理器上并行执行相同脚本的副本。消息传递允许这些不同进程之间进行通信。我们看到了*点对点*通信，以及两种不同的分布式集体通信类型：*一对多*和*多对一*。本章中展示的命令是由Python模块`mpi4py`提供的，这是一个Python封装器，用于实现C语言中的MPI标准。
+- en: Having worked through this chapter, you are now able to work on your own scripts
+    for parallel programming and you will find that we described only the most essential
+    commands and concepts here. Grouping processes and tagging information are only
+    two of those concepts that we left out. Many of these concepts are important for
+    special and challenging applications, which are far too particular for this introduction.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 经过本章的学习后，你现在能够编写自己的并行编程脚本，并且你会发现我们这里只描述了最基本的命令和概念。进程分组和信息标记只是我们遗漏的两个概念。许多这些概念对于特殊和具有挑战性的应用非常重要，但它们对于本介绍来说过于具体。

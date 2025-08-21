@@ -1,0 +1,1891 @@
+- en: '9'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '9'
+- en: Fixing Messy Data When Aggregating
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 聚合时修复凌乱的数据
+- en: 'Earlier chapters of this book introduced techniques to generate summary statistics
+    on a whole DataFrame. We used methods such as `describe`, `mean`, and `quantile`
+    to do that. This chapter covers more complicated aggregation tasks: aggregating
+    by categorical variables and using aggregation to change the structure of DataFrames.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本书的前几章介绍了生成整个 DataFrame 汇总统计数据的技巧。我们使用了 `describe`、`mean` 和 `quantile` 等方法来实现这一点。本章讨论了更复杂的聚合任务：按类别变量聚合以及使用聚合来改变
+    DataFrame 的结构。
+- en: After the initial stages of data cleaning, analysts spend a substantial amount
+    of their time doing what Hadley Wickham has called *splitting-applying-combining*—that
+    is, we subset data by groups, apply some operation to those subsets, and then
+    draw conclusions about a dataset as a whole. In slightly more specific terms,
+    this involves generating descriptive statistics by key categorical variables.
+    For the `nls97` dataset, this might be gender, marital status, and the highest
+    degree received. For the COVID-19 data, we might segment the data by country or
+    date.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在数据清理的初始阶段之后，分析师会花费大量时间进行 Hadley Wickham 所说的 *拆分-应用-合并*——即我们按组对数据进行子集化，对这些子集应用某些操作，然后得出对整个数据集的结论。更具体一点来说，这涉及到通过关键类别变量生成描述性统计数据。对于
+    `nls97` 数据集，这可能是性别、婚姻状况以及最高学历。而对于 COVID-19 数据，我们可能会按国家或日期对数据进行分段。
+- en: Often, we need to aggregate data to prepare it for subsequent analysis. Sometimes,
+    the rows of a DataFrame are disaggregated beyond the desired unit of analysis,
+    and some aggregation has to be done before analysis can begin. For example, our
+    DataFrame might have bird sightings by species per day over the course of many
+    years. Since those values jump around, we might decide to smooth that out by working
+    only with the total sightings by species per month, or even per year. Another
+    example is household and car repair expenditures. We might need to summarize those
+    expenditures over a year.
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通常，我们需要聚合数据以为后续分析做准备。有时，DataFrame 的行被细分得比所需的分析单位更细，这时必须先进行某些聚合操作，才能开始分析。例如，我们的
+    DataFrame 可能包含多年来按物种每天记录的鸟类观察数据。由于这些数据波动较大，我们可能决定通过只处理每月甚至每年按物种统计的总观测量来平滑这些波动。另一个例子是家庭和汽车修理支出，我们可能需要按年度总结这些支出。
+- en: 'There are several ways to aggregate data using NumPy and pandas, each with
+    particular strengths. We explore the most useful approaches in this chapter: from
+    looping with `itertuples`, to navigating over NumPy arrays, to several techniques
+    using the DataFrame `groupby` method, and pivot tables. It is helpful to have
+    a good understanding of the full range of tools available in pandas and NumPy,
+    since almost all data analysis projects require some aggregation, aggregation
+    is among the most consequential steps we take in the data cleaning process, and
+    the best tool for the job is determined more by the attributes of the data than
+    by our personal preferences.'
+  id: totrans-5
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 NumPy 和 pandas 有多种聚合数据的方法，每种方法都有其特定的优点。本章将探讨最有用的方法：从使用 `itertuples` 进行循环，到在
+    NumPy 数组上进行遍历，再到使用 DataFrame 的 `groupby` 方法和透视表的多种技巧。熟悉 pandas 和 NumPy 中可用的全套工具非常有帮助，因为几乎所有的数据分析项目都需要进行某种聚合，而聚合通常是我们数据清理过程中最重要的步骤之一，选择合适的工具往往取决于数据的特征，而不是我们的个人偏好。
+- en: 'Specifically, the recipes in this chapter examine the following:'
+  id: totrans-6
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中的具体实例包括：
+- en: Looping through data with `itertuples` (an anti-pattern)
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 `itertuples` 循环遍历数据（反模式）
+- en: Calculating summaries by group with NumPy arrays
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 NumPy 数组按组计算汇总
+- en: Using `groupby` to organize data by groups
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 `groupby` 按组组织数据
+- en: Using more complicated aggregation functions with `groupby`
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用更复杂的聚合函数与 `groupby`
+- en: Using user-defined functions and apply with `groupby`
+  id: totrans-11
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用用户定义的函数和 `groupby` 中的 apply
+- en: Using `groupby` to change the unit of analysis of a DataFrame
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 `groupby` 改变 DataFrame 的分析单位
+- en: Using the pandas `pivot_table` function to change the unit of analysis
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 pandas 的 `pivot_table` 函数改变分析单位
+- en: Technical requirements
+  id: totrans-14
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: You will need pandas, NumPy, and Matplotlib to complete the recipes in this
+    chapter. I used pandas 2.1.4, but the code will run on pandas 1.5.3 or later.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的实例需要 pandas、NumPy 和 Matplotlib。我使用的是 pandas 2.1.4，但代码同样适用于 pandas 1.5.3 或更高版本。
+- en: The code in this chapter can be downloaded from the book’s GitHub repository,
+    [https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition).
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的代码可以从本书的GitHub仓库下载，[https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition](https://github.com/PacktPublishing/Python-Data-Cleaning-Cookbook-Second-Edition)。
+- en: Looping through data with itertuples (an anti-pattern)
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用`itertuples`循环遍历数据（反模式）
+- en: In this recipe, we will iterate over the rows of a DataFrame and generate our
+    own totals for a variable. In subsequent recipes in this chapter, we will use
+    NumPy arrays, and then some pandas-specific techniques, to accomplish the same
+    tasks.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们将遍历数据框的每一行，并为一个变量生成自己的总计。在本章后续的食谱中，我们将使用NumPy数组，然后是一些pandas特定技术，来完成相同的任务。
+- en: It may seem odd to begin this chapter with a technique that we are often cautioned
+    against using. But I used to do the equivalent of looping every day 35 years ago
+    in SAS, and on select occasions as recently as 10 years ago in R. That is why
+    I still find myself thinking conceptually about iterating over rows of data, sometimes
+    sorted by groups, even though I rarely implement my code in this manner. I think
+    it is good to hold onto that conceptualization, even when using other pandas methods
+    that work for us more efficiently.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 开始这一章时使用一个我们通常被警告不要使用的技术，可能看起来有些奇怪。但在35年前，我曾在SAS中做过类似的日常循环操作，甚至在10年前的R中偶尔也会使用。因此，即使我很少以这种方式实现代码，我仍然会从概念上考虑如何遍历数据行，有时会按组排序。我认为即使在使用其他对我们更有效的pandas方法时，保持这种概念化的思维是有益的。
+- en: I do not want to leave the impression that pandas-specific techniques are always
+    markedly more efficient either. pandas users probably find themselves using `apply`
+    more than they would like, an approach that is only somewhat faster than looping.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我不想给人留下pandas特定技术总是明显更高效的印象。pandas用户可能会发现自己比预期更多地使用`apply`，这种方法比循环稍微快一点。
+- en: Getting ready
+  id: totrans-21
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the COVID-19 case daily data in this recipe. It has one row
+    per day per country, each row having the number of new cases and new deaths for
+    that day. It reflects totals as of March 2024.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们将使用COVID-19每日病例数据。每行代表一天，每个国家一行，包含当天的新病例数和新死亡人数。它反映了截至2024年3月的总数。
+- en: We will also be working with land temperature data from 87 weather stations
+    in Brazil in 2023\. Most weather stations had one temperature reading for each
+    month.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还将使用来自巴西87个气象站2023年的陆地温度数据。大多数气象站每个月有一个温度读数。
+- en: '**Data note**'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: Our World in Data provides COVID-19 public use data at [https://ourworldindata.org/covid-cases](https://ourworldindata.org/covid-cases).
+    The dataset includes total cases and deaths, tests administered, hospital beds,
+    and demographic data such as median age, gross domestic product, and diabetes
+    prevalence. The dataset used in this recipe was downloaded on March 3, 2024.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据来源于[Our World in Data](https://ourworldindata.org/covid-cases)，提供COVID-19的公共数据。该数据集包括总病例数和死亡人数、施行的检测次数、医院床位，以及人口统计数据，如中位年龄、国内生产总值和糖尿病患病率。此食谱中使用的数据集是在2024年3月3日下载的。
+- en: The land temperature DataFrame has the average temperature reading (in ^°C)
+    in 2023 from over 12,000 stations across the world, although a majority of the
+    stations are in the United States. The raw data was retrieved from the Global
+    Historical Climatology Network integrated database. It is made available for public
+    use by the United States National Oceanic and Atmospheric Administration at [https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly).
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 陆地温度数据框包含了2023年来自全球超过12,000个站点的平均温度（以^°C为单位），尽管大多数站点位于美国。原始数据是从全球历史气候网整合数据库中提取的。美国国家海洋和大气管理局将其公开提供，网址为[https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly](https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-monthly)。
+- en: How to do it…
+  id: totrans-27
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作…
+- en: 'We will use the `itertuples` DataFrame method to loop over the rows of the
+    COVID-19 daily data and the monthly land temperature data for Brazil. We add logic
+    to handle missing data and unexpected changes in key variable values from one
+    period to the next:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用`itertuples`数据框方法来遍历COVID-19每日数据和巴西的月度陆地温度数据。我们将添加逻辑来处理缺失数据和关键变量值在不同时间段之间的意外变化：
+- en: 'Import `pandas` and `numpy`, and load the COVID-19 and land temperature data:'
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入 `pandas` 和 `numpy`，并加载 COVID-19 和陆地温度数据：
+- en: '[PRE0]'
+  id: totrans-30
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Sort data by location and date:'
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 按位置和日期对数据进行排序：
+- en: '[PRE1]'
+  id: totrans-32
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Iterate over rows with `itertuples`.
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `itertuples` 遍历行。
+- en: 'Use `itertuples`, which allows us to iterate over all rows as named tuples.
+    Sum new cases over all the dates for each country. With each change of country
+    (`location`), append the running total to `rowlist`, and then set the count to
+    `0` (note that `rowlist` is a list and we are appending a dictionary to `rowlist`
+    with each change of country. A list of dictionaries is a good place to temporarily
+    store data you might eventually want to convert to a DataFrame):'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 `itertuples`，它允许我们将所有行作为命名元组进行遍历。对每个国家的所有日期求新增病例的总和。每当国家（`location`）发生变化时，将当前的累计值附加到
+    `rowlist` 中，然后将计数重置为 `0`（请注意，`rowlist` 是一个列表，每次国家发生变化时，我们都会向 `rowlist` 中添加一个字典。字典列表是暂时存储数据的一个好地方，数据最终可以转为
+    DataFrame）。
+- en: '[PRE2]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '[PRE3]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: '[PRE4]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: '[PRE5]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Create a DataFrame from the list of summary values, `rowlist`.
+  id: totrans-39
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从汇总值列表 `rowlist` 创建一个 DataFrame。
+- en: 'Pass the list we created in the previous step to the pandas `DataFrame` method:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将我们在上一步创建的列表传递给 pandas 的 `DataFrame` 方法：
+- en: '[PRE6]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: '[PRE7]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Now, let’s do the same for the land temperature data. We start by sorting it
+    by `station` and `month`.
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们对陆地温度数据做同样的处理。我们首先按 `station` 和 `month` 排序。
+- en: 'Also, drop rows with missing values for temperature:'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 同时，删除温度缺失的行：
+- en: '[PRE8]'
+  id: totrans-45
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: Exclude rows where there is a large change from one period to the next.
+  id: totrans-46
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 排除每一周期之间变化较大的行。
+- en: 'Calculate the average temperature for the year, excluding values for temperature
+    more than 3°C greater than or less than the temperature for the previous month:'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 计算年度平均温度，排除比上个月的温度高出或低于 3°C 的值：
+- en: '[PRE9]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[PRE10]'
+  id: totrans-49
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: Create a DataFrame from the summary values.
+  id: totrans-50
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 根据汇总值创建一个 DataFrame。
+- en: 'Pass the list we created in the previous step to the pandas `DataFrame` method:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将我们在上一步创建的列表传递给 pandas 的 `DataFrame` 方法：
+- en: '[PRE11]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '[PRE12]'
+  id: totrans-53
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: This gives us a DataFrame with average temperatures for 2023 and the number
+    of observations for each station.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将为我们提供一个包含 2023 年平均温度和每个站点观测次数的 DataFrame。
+- en: How it works...
+  id: totrans-55
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的...
+- en: After sorting the COVID-19 daily data by `location` and `casedate` in *step
+    2*, we loop through our data one row at a time and do a running tally of new cases
+    in *step 3*. We set that tally back to `0` when we get to a new country, and then
+    resume counting. Notice that we do not actually append our summary of new cases
+    until we get to the next country. This is because there is no way to tell that
+    we are on the last row for any country until we get to the next country. That
+    is not a problem because we append the summary to `rowlist` right before we reset
+    the value to `0`. That also means that we need to do something special to output
+    the totals for the last country, since there is no next country. We do this with
+    a final append after the loop is complete. This is a fairly standard approach
+    to looping through data and outputting totals by group.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *第2步* 中通过 `location` 和 `casedate` 对 COVID-19 每日数据进行排序后，我们逐行遍历数据，并在 *第3步* 中对新增病例进行累计。每当遇到一个新国家时，我们将累计值重置为
+    `0`，然后继续计数。请注意，我们实际上并不会在遇到下一个国家之前就附加新增病例的总结。这是因为在我们遇到下一个国家之前，无法判断当前行是否是某个国家的最后一行。这不是问题，因为我们会在将累计值重置为
+    `0` 之前将总结附加到 `rowlist` 中。这也意味着我们需要采取特别的措施来输出最后一个国家的总数，因为没有下一个国家。我们通过在循环结束后执行最后一次附加操作来做到这一点。这是一种相当标准的数据遍历和按组输出总数的方法。
+- en: The summary DataFrame we create in *steps 3* and *4* can be created more efficiently,
+    both in terms of the analyst’s time and our computer’s workload, with other pandas
+    techniques that we cover in this chapter. But that becomes a more difficult call
+    when we need to do more complicated calculations, particularly those that involve
+    comparing values across rows.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在 *第3步* 和 *第4步* 中创建的汇总 `DataFrame` 可以通过本章中介绍的其他 pandas 技巧更高效地创建，无论是在分析师的时间上，还是在计算机的工作负载上。但当我们需要进行更复杂的计算时，特别是那些涉及跨行比较值的计算，这个决策就变得更加困难。
+- en: '*Steps 6* and *7* provide an example of this. We want to calculate the average
+    temperature for each station for the year. Most stations have one reading per
+    month. However, we are concerned that there might be some outlier values for temperature,
+    defined here by a change of more than 3°C from one month to the next. We want
+    to exclude those readings from the calculation of the mean for each station. It
+    is fairly straightforward to do that while iterating over the data, by storing
+    the previous value of temperature (`prevtemp`) and comparing it to the current
+    value.'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第 6 步* 和 *第 7 步* 提供了这个示例。我们想要计算每个站点一年的平均温度。大多数站点每月有一次读数。然而，我们担心可能存在一些异常值，这些异常值是指一个月与下个月之间温度变化超过
+    3°C。我们希望将这些读数排除在每个站点的均值计算之外。在遍历数据时，通过存储上一个温度值（`prevtemp`）并将其与当前值进行比较，可以相对简单地做到这一点。'
+- en: There’s more...
+  id: totrans-59
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多...
+- en: We could have used `iterrows` in *step 3* rather than `itertuples`, with almost
+    exactly the same syntax. Since we do not need the functionality of `iterrows`
+    here, we use `itertuples`. The `itertuples` method is easier on system resources
+    than `iterrows`. This is because you iterate over tuples with `itertuples`, but
+    over Series, with the associated type checking, with `iterrows`.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们本可以在*第 3 步*中使用`iterrows`，而不是`itertuples`，语法几乎完全相同。由于这里不需要`iterrows`的功能，我们使用了`itertuples`。与`iterrows`相比，`itertuples`方法对系统资源的消耗较少。因为使用`itertuples`时，你是遍历元组，而使用`iterrows`时是遍历
+    Series，并且涉及到类型检查。
+- en: 'The hardest tasks to complete when working with tabular data involve calculations
+    across rows: summing data across rows, basing a calculation on values in a different
+    row, and generating running totals. Such calculations are complicated to implement
+    and resource-intensive, regardless of language. However, it is hard to avoid having
+    to do them, particularly when working with panel data. Some values for variables
+    in a given period might be determined by values in a previous period. This is
+    often more complicated than the running totals we have done in this recipe.'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 处理表格数据时，最难完成的任务是跨行计算：在行之间求和、基于不同一行的值进行计算以及生成累计总和。无论使用何种语言，这些计算都很复杂且资源密集。然而，特别是在处理面板数据时，很难避免这些任务。某些变量在特定时期的值可能由前一时期的值决定。这通常比我们在本段中所做的累积总和更加复杂。
+- en: For decades, data analysts have tried to address these data-cleaning challenges
+    by looping through rows, carefully inspecting categorical and summary variables
+    for data problems, and then handling the summation accordingly. Although this
+    continues to be the approach that provides the most flexibility, pandas provides
+    a number of data aggregation tools that run more efficiently and are easier to
+    code. The challenge is to match the ability of looping solutions to adjust for
+    invalid, incomplete, or atypical data. We explore these tools later in this chapter.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数十年来，数据分析师们一直试图通过遍历行、仔细检查分类和汇总变量中的数据问题，然后根据情况处理求和来解决这些数据清理挑战。尽管这种方法提供了最大的灵活性，但
+    pandas 提供了许多数据聚合工具，这些工具运行更高效，编码也更简单。挑战在于如何匹配循环解决方案的能力，以应对无效、不完整或不典型的数据。我们将在本章后面探讨这些工具。
+- en: Calculating summaries by group with NumPy arrays
+  id: totrans-63
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 NumPy 数组按组计算汇总
+- en: We can accomplish much of what we did in the previous recipe with `itertuples`
+    using NumPy arrays. We can also use NumPy arrays to get summary values for subsets
+    of our data.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用 NumPy 数组完成在上一段中所做的大部分工作。我们还可以使用 NumPy 数组来获取数据子集的汇总值。
+- en: Getting ready
+  id: totrans-65
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 做好准备
+- en: We will work again with the COVID-19 daily data and the Brazil land temperature
+    data.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将再次使用 COVID-19 每日数据和巴西土地温度数据。
+- en: How to do it…
+  id: totrans-67
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做……
+- en: 'We copy DataFrame values to a NumPy array. We then navigate over the array,
+    calculating totals by group and checking for unexpected changes in values:'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将 DataFrame 的值复制到 NumPy 数组中。然后，我们遍历该数组，按组计算总和并检查值的意外变化：
+- en: 'Import `pandas` and `numpy`, and load the COVID-19 and land temperature data:'
+  id: totrans-69
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`和`numpy`，并加载 COVID-19 和土地温度数据：
+- en: '[PRE13]'
+  id: totrans-70
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'Create a list of locations:'
+  id: totrans-71
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个位置列表：
+- en: '[PRE14]'
+  id: totrans-72
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Use a NumPy array to calculate sums by location.
+  id: totrans-73
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 NumPy 数组按位置计算总和。
+- en: 'Create a NumPy array of the location and new cases data. We then can iterate
+    over the location list we created in the previous step and select all new case
+    values (`casevalues[j][1]`) for each location (`casevalues[j][0]`). We then sum
+    the new case values for that location:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 创建一个包含位置和新增病例数据的 NumPy 数组。接下来，我们可以遍历在上一步骤中创建的位置列表，并为每个位置选择所有新增病例值（`casevalues[j][1]`）（根据位置（`casevalues[j][0]`））。然后，我们为该位置求和新增病例值：
+- en: '[PRE15]'
+  id: totrans-75
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: '[PRE16]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: '[PRE17]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: '[PRE18]'
+  id: totrans-78
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: '[PRE19]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: '[PRE20]'
+  id: totrans-80
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: '[PRE21]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: '[PRE22]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Sort the land temperature data and drop rows with missing values for temperature:'
+  id: totrans-83
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对陆地温度数据进行排序，并删除温度缺失值的行：
+- en: '[PRE23]'
+  id: totrans-84
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: Use a NumPy array to calculate the average temperature for the year.
+  id: totrans-85
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 NumPy 数组来计算年度平均温度。
+- en: 'Exclude rows where there is a large change from one period to the next:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 排除两个时间段之间变化较大的行：
+- en: '[PRE24]'
+  id: totrans-87
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: '[PRE25]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Create a DataFrame of the land temperature averages:'
+  id: totrans-89
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个包含陆地温度平均值的 DataFrame：
+- en: '[PRE26]'
+  id: totrans-90
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: '[PRE27]'
+  id: totrans-91
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: This gives us a DataFrame with the average temperature and number of observations
+    per station. Notice that we get the same results as in the final step of the previous
+    recipe.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将给我们一个 DataFrame，其中包含每个站点的平均温度和观测次数。请注意，我们得到的结果与前一个示例的最后一步相同。
+- en: How it works…
+  id: totrans-93
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理…
+- en: NumPy arrays can be quite useful when we are working with tabular data but need
+    to do some calculations across rows. This is because accessing items over the
+    equivalent of rows is not really that different from accessing items over the
+    equivalent of columns in an array. For example, `casevalues[5][0]` (the sixth
+    “row” and first “column” of the array) is accessed in the same way as `casevalues[20][1]`.
+    Navigating over a NumPy array is also faster than iterating over a pandas DataFrame.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们处理表格数据，但需要在行间进行计算时，NumPy 数组非常有用。这是因为访问数组中的“行”的方式与访问“列”的方式没有太大区别。例如，`casevalues[5][0]`（数组的第六“行”和第一“列”）与
+    `casevalues[20][1]` 的访问方式是相同的。遍历 NumPy 数组也比遍历 pandas DataFrame 更快。
+- en: We take advantage of this in *step 3*. We get all of the array rows for a given
+    location (`if casevalues[j][0]==locitem`) with a list comprehension. Since we
+    also need the `location` list in the DataFrame that we will create of summary
+    values, we use `zip` to combine the two lists.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第 3 步*中利用了这一点。我们通过列表推导式获取给定位置的所有数组行（`if casevalues[j][0]==locitem`）。由于我们还需要在将要创建的汇总值
+    DataFrame 中包含 `location` 列表，我们使用 `zip` 来组合这两个列表。
+- en: We start working with the land temperature data in *step 4*, first sorting it
+    by `station` and `month`, and then dropping rows with missing values for temperature.
+    The logic in *step 5* is almost identical to the logic in *step 6* in the previous
+    recipe. The main difference is that we need to refer to the locations of station
+    (`tempvalues[j][0]`) and temperature (`tempvalues[j][1]`) in the array.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第 4 步*开始处理陆地温度数据，首先按 `station` 和 `month` 排序，然后删除温度缺失值的行。*第 5 步*中的逻辑与前一个示例中的*第
+    6 步*几乎相同。主要的区别是，我们需要引用数组中站点（`tempvalues[j][0]`）和温度（`tempvalues[j][1]`）的位置。
+- en: There’s more…
+  id: totrans-97
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: When you need to iterate over data, NumPy arrays will generally be faster than
+    iterating over a pandas DataFrame with `itertuples` or `iterrows`. Also, if you
+    tried to run the list comprehension in *step 3* using `itertuples`, which is possible,
+    you would be waiting some time for it to finish. In general, if you want to do
+    a quick summary of values for some segment of your data, using NumPy arrays is
+    a reasonable choice.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你需要遍历数据时，NumPy 数组通常比通过 `itertuples` 或 `iterrows` 遍历 pandas DataFrame 更快。此外，如果你尝试使用
+    `itertuples` 来运行*第 3 步*中的列表推导式，虽然是可行的，但你将需要等待较长时间才能完成。通常，如果你想对某一数据段做快速汇总，使用 NumPy
+    数组是一个合理的选择。
+- en: See also
+  id: totrans-99
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: The remaining recipes in this chapter rely on the powerful `groupby` method
+    of pandas DataFrames to generate group totals.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章剩余的示例依赖于 pandas DataFrame 中强大的 `groupby` 方法来生成分组总数。
+- en: Using groupby to organize data by groups
+  id: totrans-101
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 groupby 按组组织数据
+- en: At a certain point in most data analysis projects, we have to generate summary
+    statistics by groups. While this can be done using the approaches in the previous
+    recipe, in most cases the pandas DataFrame `groupby` method is a better choice.
+    If `groupby` can handle an aggregation task—and it usually can—it is likely the
+    most efficient way to accomplish that task. We make good use of `groupby` in the
+    next few recipes. We go over the basics in this recipe.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在大多数数据分析项目中，我们必须按组生成汇总统计信息。虽然可以使用前一个示例中的方法完成这项任务，但在大多数情况下，pandas DataFrame 的
+    `groupby` 方法是一个更好的选择。如果 `groupby` 能够处理聚合任务——而且通常可以——那么它很可能是完成该任务的最有效方式。我们将在接下来的几个示例中充分利用
+    `groupby`。我们将在本示例中介绍基础知识。
+- en: Getting ready
+  id: totrans-103
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the COVID-19 daily data in this recipe.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在本食谱中处理COVID-19每日数据。
+- en: How to do it…
+  id: totrans-105
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做到…
+- en: 'We will create a pandas `groupby` DataFrame and use it to generate summary
+    statistics by group:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将创建一个pandas的`groupby` DataFrame，并使用它生成按组的汇总统计：
+- en: 'Import `pandas` and `numpy`, and load the COVID-19 daily data:'
+  id: totrans-107
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入`pandas`和`numpy`，并加载COVID-19每日数据：
+- en: '[PRE28]'
+  id: totrans-108
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Create a pandas `groupby` DataFrame:'
+  id: totrans-109
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个pandas的`groupby` DataFrame：
+- en: '[PRE29]'
+  id: totrans-110
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: '[PRE30]'
+  id: totrans-111
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: Create DataFrames for the first rows of each country.
+  id: totrans-112
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为每个国家创建第一次出现的行的DataFrame。
+- en: 'To save space, we just show the first five rows and the first five columns:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了节省空间，我们只显示前五行和前五列：
+- en: '[PRE31]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: '[PRE32]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Create DataFrames for the last rows of each country:'
+  id: totrans-116
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为每个国家创建最后几行的DataFrame：
+- en: '[PRE33]'
+  id: totrans-117
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: '[PRE34]'
+  id: totrans-118
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: '[PRE35]'
+  id: totrans-119
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: '[PRE36]'
+  id: totrans-120
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'Get all the rows for a country:'
+  id: totrans-121
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 获取某个国家的所有行：
+- en: '[PRE37]'
+  id: totrans-122
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: '[PRE38]'
+  id: totrans-123
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: Loop through the groups.
+  id: totrans-124
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 遍历各组。
+- en: 'Only display rows for Malta and Kuwait:'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 仅显示马耳他和科威特的行：
+- en: '[PRE39]'
+  id: totrans-126
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: '[PRE40]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Show the number of rows for each country:'
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 显示每个国家的行数：
+- en: '[PRE41]'
+  id: totrans-129
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: '[PRE42]'
+  id: totrans-130
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'Show summary statistics by country:'
+  id: totrans-131
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 按国家显示汇总统计：
+- en: '[PRE43]'
+  id: totrans-132
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: '[PRE44]'
+  id: totrans-133
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: '[PRE45]'
+  id: totrans-134
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: '[PRE46]'
+  id: totrans-135
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: These steps demonstrate how remarkably useful the `groupby` DataFrame object
+    is when we want to generate summary statistics by categorical variables.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些步骤展示了当我们希望按分类变量生成汇总统计时，`groupby` DataFrame对象是多么有用。
+- en: How it works...
+  id: totrans-137
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的…
+- en: In *step 2*, we create a pandas DataFrame `groupby` object using the pandas
+    DataFrame `groupby` method, passing it a column or list of columns for the grouping.
+    Once we have a `groupby` DataFrame, we can generate statistics by group with the
+    same tools that we use to generate summary statistics for the whole DataFrame.
+    `describe`, `mean`, `sum`, and similar methods work on the `groupby` DataFrame—or
+    series created from it—as expected, except the summary is run for each group.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 2*中，我们使用`pandas`的`groupby`方法创建一个`groupby`对象，传入一个列或多个列进行分组。一旦我们拥有了一个`groupby`的DataFrame，我们可以使用与整个DataFrame生成汇总统计相同的工具来按组生成统计数据。`describe`、`mean`、`sum`等方法可以在`groupby`的DataFrame或由其创建的系列上按预期工作，区别在于汇总统计会针对每个组执行。
+- en: In *steps 3 and 4*, we use `first` and `last` to create DataFrames with the
+    first and last occurrence of each group. We use `get_group` to get all the rows
+    for a particular group in *step 5*. We can also loop over the groups and use `size`
+    to count the number of rows for each group.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 3和4*中，我们使用`first`和`last`来创建包含每个组的第一次和最后一次出现的DataFrame。在*步骤 5*中，我们使用`get_group`来获取某个特定组的所有行。我们还可以遍历各组，并使用`size`来统计每个组的行数。
+- en: 'In *step 8*, we create a Series `groupby` object from the DataFrame `groupby`
+    object. Using the resulting object’s aggregation methods gives us summary statistics
+    for a Series by group. One thing is clear about the distribution of `new_cases`
+    from this output: it varies quite a bit by country. For example, we can see right
+    away that the interquartile range is quite different, even for the first three
+    countries.'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*步骤 8*中，我们从DataFrame的`groupby`对象创建一个Series的`groupby`对象。使用结果对象的聚合方法，我们可以按组生成Series的汇总统计。从这个输出可以清楚地看到，`new_cases`的分布因国家而异。例如，我们可以立刻看到，即使是前三个国家，它们的四分位数间距也差异很大。
+- en: There’s more...
+  id: totrans-141
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: The output from *step 8* is quite useful. It is worth saving output such as
+    that for each important continuous variable where the distribution is meaningfully
+    different by group.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从*步骤 8*得到的输出非常有用。保存每个重要连续变量的输出是值得的，尤其是当按组的分布有显著不同的时候。
+- en: pandas `groupby` DataFrames are extraordinarily powerful and easy to use. *step
+    8* shows just how easy it is to create the summaries by group that we created
+    in the first two recipes in this chapter. Unless the DataFrame we are working
+    with is small, or the task involves very complicated calculations across rows,
+    the `groupby` method is a superior choice to looping.
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pandas的`groupby` DataFrame非常强大且易于使用。*步骤 8*展示了创建我们在本章前两篇食谱中按组生成的汇总统计有多么简单。除非我们处理的DataFrame很小，或者任务涉及非常复杂的跨行计算，否则`groupby`方法是优于循环的选择。
+- en: Using more complicated aggregation functions with groupby
+  id: totrans-144
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用更复杂的聚合函数与`groupby`
+- en: In the previous recipe, we created a `groupby` DataFrame object and used it
+    to run summary statistics by groups. We use chaining in this recipe to create
+    the groups, choose the aggregation variable(s), and select the aggregation function(s),
+    all in one line. We also take advantage of the flexibility of the `groupby` object,
+    which allows us to choose the aggregation columns and functions in a variety of
+    ways.
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一个示例中，我们创建了一个 `groupby` DataFrame 对象，并使用它来按组运行汇总统计数据。在这个示例中，我们通过链式操作一行代码创建分组、选择聚合变量和选择聚合函数。我们还利用了
+    `groupby` 对象的灵活性，允许我们以多种方式选择聚合列和函数。
+- en: Getting ready
+  id: totrans-146
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the **National Longitudinal Survey of Youth** (**NLS**) data
+    in this recipe.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本示例将使用 **国家青年纵向调查**（**National Longitudinal Survey of Youth**，简称 **NLS**）数据。
+- en: '**Data note**'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据说明**'
+- en: The **National Longitudinal Surveys**, administered by the United States Bureau
+    of Labor Statistics, are longitudinal surveys of individuals who were in high
+    school in 1997 when the surveys started. Participants were surveyed each year
+    through 2023\. The surveys are available for public use at [nlsinfo.org](https://nlsinfo.org).
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**国家纵向调查**（**National Longitudinal Surveys**），由美国劳工统计局管理，是针对1997年高中毕业生开展的纵向调查。参与者每年接受一次调查，直到2023年。这些调查数据可通过
+    [nlsinfo.org](https://nlsinfo.org) 公开访问。'
+- en: How to do it…
+  id: totrans-150
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作…
+- en: 'We do more complicated aggregations with `groupby` than we did in the previous
+    recipe, taking advantage of its flexibility:'
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这个示例中使用 `groupby` 做了比之前示例更复杂的聚合操作，利用了其灵活性：
+- en: 'Import `pandas` and load the NLS data:'
+  id: totrans-152
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入 `pandas` 并加载 NLS 数据：
+- en: '[PRE47]'
+  id: totrans-153
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Review the structure of the data:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看数据的结构：
+- en: '[PRE48]'
+  id: totrans-155
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: '[PRE49]'
+  id: totrans-156
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'Review some of the categorical data:'
+  id: totrans-157
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看一些类别数据：
+- en: '[PRE50]'
+  id: totrans-158
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: '[PRE51]'
+  id: totrans-159
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Review some descriptive statistics:'
+  id: totrans-160
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 查看一些描述性统计信息：
+- en: '[PRE52]'
+  id: totrans-161
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: '[PRE53]'
+  id: totrans-162
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: Look at **Scholastic Assessment Test** (**SAT**) math scores by gender.
+  id: totrans-163
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 按性别查看 **学术能力评估测试**（**SAT**）数学成绩。
+- en: 'We pass the column name to `groupby` to group by that column:'
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将列名传递给 `groupby`，根据该列进行分组：
+- en: '[PRE54]'
+  id: totrans-165
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: '[PRE55]'
+  id: totrans-166
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: Look at SAT math scores by gender and the highest degree earned.
+  id: totrans-167
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 按性别和最高学历查看 SAT 数学成绩。
+- en: 'We can pass a list of column names to `groupby` to group by more than one column:'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将列名列表传递给 `groupby`，以便按多个列进行分组：
+- en: '[PRE56]'
+  id: totrans-169
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: '[PRE57]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: Look at SAT math and verbal scores by gender and the highest degree earned.
+  id: totrans-171
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 按性别和最高学历查看 SAT 数学和语言成绩。
+- en: 'We can use a list to summarize values for more than one variable, in this case
+    `satmath` and `satverbal`:'
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用列表来汇总多个变量的值，在这种情况下是 `satmath` 和 `satverbal`：
+- en: '[PRE58]'
+  id: totrans-173
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: '[PRE59]'
+  id: totrans-174
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: Do multiple aggregation functions for one variable.
+  id: totrans-175
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对一个变量做多个聚合函数。
+- en: 'Use the `agg` function to return several summary statistics:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 `agg` 函数返回多个汇总统计数据：
+- en: '[PRE60]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: '[PRE61]'
+  id: totrans-178
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'Use a dictionary for more complicated aggregations:'
+  id: totrans-179
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用字典进行更复杂的聚合：
+- en: '[PRE62]'
+  id: totrans-180
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: '[PRE63]'
+  id: totrans-181
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: '[PRE64]'
+  id: totrans-182
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: '[PRE65]'
+  id: totrans-183
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: We display the same summary statistics for `weeksworked06` and `childathome`,
+    but we could have specified different aggregation functions for each using the
+    same syntax that we used in *step 9*.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们为 `weeksworked06` 和 `childathome` 显示了相同的汇总统计数据，但我们也可以为每个变量指定不同的聚合函数，使用与 *步骤9*
+    中相同的语法。
+- en: How it works…
+  id: totrans-185
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作…
+- en: We first take a look at some summary statistics for key columns in the DataFrame.
+    We get frequencies for the categorical variables in *step 3*, and some descriptives
+    for the continuous variables in *step 4*. It is a good idea to have summary values
+    for the DataFrame as a whole in front of us before generating statistics by group.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先查看 DataFrame 中关键列的汇总统计信息。在 *步骤3* 中，我们获得了类别变量的频率，在 *步骤4* 中，我们得到了连续变量的一些描述性统计信息。生成按组统计数据之前，先查看整个
+    DataFrame 的汇总值是个不错的主意。
+- en: 'We are then ready to create summary statistics using `groupby`. This involves
+    three steps:'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们准备使用 `groupby` 创建汇总统计数据。这涉及三个步骤：
+- en: Creating a `groupby` DataFrame based on one or more categorical variables.
+  id: totrans-188
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 根据一个或多个类别变量创建 `groupby` DataFrame。
+- en: Selecting the column(s) to be used for the summary statistics.
+  id: totrans-189
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择用于汇总统计数据的列。
+- en: Choosing the aggregation function(s).
+  id: totrans-190
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择聚合函数。
+- en: 'We use chaining in this recipe to do all three in one line. So, `nls97.groupby(''gender'')[''satmath''].mean()`
+    in *step 5* does three things: `nls97.groupby(''gender'')` creates the `groupby`
+    DataFrame object, `[''satmath'']` chooses the aggregation column, and `mean()`
+    is the aggregation function.'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个示例中，我们使用了链式操作，一行代码完成了三件事。因此，`nls97.groupby('gender')['satmath'].mean()` 在*步骤5*中做了三件事情：`nls97.groupby('gender')`
+    创建了一个 `groupby` DataFrame 对象，`['satmath']` 选择了聚合列，`mean()` 是聚合函数。
+- en: We can pass a column name (as in *step 5*) or a list of column names (as in
+    *step 6*) to `groupby` to create groupings by one or more columns. We can select
+    multiple variables for aggregation with a list of those variables, as we do in
+    *step 7* with `[['satmath','satverbal']]`.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以像在*步骤 5*中那样传递列名，或者像在*步骤 6*中那样传递列名列表，来通过一个或多个列进行分组。我们可以使用一个变量列表来选择多个变量进行聚合，正如在*步骤
+    7*中使用`[['satmath','satverbal']]`一样。
+- en: We can chain a specific summary function such as `mean`, `count`, or `max`.
+    Alternatively, we could pass a list to `agg` to choose multiple aggregation functions,
+    such as with `agg(['count','mean','max','std'])` in *step 8*. We can use the familiar
+    pandas and NumPy aggregation functions or a user-defined function, which we explore
+    in the next recipe.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以链式调用特定的汇总函数，例如`mean`、`count`或`max`。另外，我们也可以将一个列表传递给`agg`，选择多个聚合函数，像在*步骤
+    8*中使用`agg(['count','mean','max','std'])`。我们可以使用熟悉的pandas和NumPy聚合函数，或者使用用户定义的函数，后者我们将在下一个例子中探讨。
+- en: Another important takeaway from *step 8* is that `agg` sends the aggregation
+    columns to each function a group at a time. The calculations in each aggregation
+    function are run for each group in the `groupby` DataFrame. Another way to conceptualize
+    this is that it allows us to run the same functions we are used to running across
+    a whole DataFrame for one group at a time, accomplishing this by automating the
+    process of sending the data for each group to the aggregation functions.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从*步骤 8*中可以得出的另一个重要结论是，`agg`将每个聚合列一次只发送给一个函数。每个聚合函数中的计算会对`groupby` DataFrame中的每个组执行。另一种理解方式是，它允许我们一次对一个组执行通常在整个DataFrame上执行的相同函数，自动化地将每个组的数据传递给聚合函数。
+- en: There’s more…
+  id: totrans-195
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 更多内容…
+- en: We first get a sense of how the categorical and continuous variables in the
+    DataFrame are distributed. Often, we group data to see how a distribution of a
+    continuous variable, such as weeks worked, differs by a categorical variable,
+    such as marital status. Before doing that, it is helpful to have a good idea of
+    how those variables are distributed across the whole dataset.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先了解DataFrame中类别变量和连续变量的分布情况。通常，我们会通过分组数据，查看连续变量（例如工作周数）如何因类别变量（例如婚姻状况）而有所不同。在此之前，了解这些变量在整个数据集中的分布情况非常有帮助。
+- en: The `nls97` dataset only has SAT scores for about 1,400 of 8,984 respondents,
+    so we need to be careful when examining SAT scores by different groups. This means
+    that some of the counts by gender and highest degree, especially for PhD recipients,
+    are a little too small to be reliable. There are outliers for SAT math and verbal
+    (if we define outliers as 1.5 times the interquartile range above the third quartile
+    or below the first quartile).
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`nls97`数据集仅对约1,400个受访者中的8,984人提供SAT分数，因此在根据不同群体查看SAT分数时需要小心。这意味着按性别和最高学位（特别是博士学位获得者）统计的某些计数值可能太小，无法可靠。在SAT数学和语言类分数上有异常值（如果我们定义异常值为高于第三四分位数或低于第一四分位数的1.5倍四分位距）。'
+- en: We have acceptable counts for weeks worked and the number of children living
+    at home for all values of the highest degree, and values of marital status except
+    for widowed. The average weeks worked for folks who received a professional degree
+    is unexpected. It is lower than for any other group. A good next step would be
+    to see how persistent this is over the years. (We are just looking at 2006 weeks
+    worked here, but there are 20 years of data on weeks worked.)
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于所有的最高学位和婚姻状况（除了丧偶）值，我们都有可接受的工作周数和居住在家中的孩子数的计数值。获得专业学位的人的平均工作周数出乎意料，它低于任何其他群体。接下来的好步骤是查看这种现象在多年中的持续性。（我们这里只看的是2006年的工作周数数据，但有20年的工作周数数据可用。）
+- en: See also
+  id: totrans-199
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: The `nls97` file is panel data masquerading as individual-level data. The panel
+    data structure can be recovered, facilitating analysis over time of areas such
+    as employment and school enrollment. We do this in the recipes in *Chapter 11*,
+    *Tidying and Reshaping Data*.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`nls97`文件是伪装成个体级数据的面板数据。我们可以恢复面板数据结构，从而促进对就业和学校注册等领域的时间序列分析。我们在*第11章：数据整理与重塑*的例子中会进行相关操作。'
+- en: Using user-defined functions and apply with groupby
+  id: totrans-201
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用用户定义函数和apply与groupby
+- en: Despite the numerous aggregation functions available in pandas and NumPy, we
+    sometimes have to write our own to get the results we need. In some cases, this
+    requires the use of `apply`.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管pandas和NumPy提供了众多聚合函数，但有时我们需要编写自己的函数来获得所需的结果。在某些情况下，这需要使用`apply`。
+- en: Getting ready
+  id: totrans-203
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the NLS data in this recipe.
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本例中我们将使用NLS数据。
+- en: How to do it…
+  id: totrans-205
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作…
+- en: 'We will create our own functions to define the summary statistics we want by
+    group:'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将创建自己的函数，定义我们按组需要的汇总统计量：
+- en: 'Import `pandas` and the NLS data:'
+  id: totrans-207
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入 `pandas` 和 NLS 数据：
+- en: '[PRE66]'
+  id: totrans-208
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: 'Create a function to define the interquartile range:'
+  id: totrans-209
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个函数来定义四分位数范围：
+- en: '[PRE67]'
+  id: totrans-210
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: Run the interquartile range function.
+  id: totrans-211
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 运行四分位数范围函数。
+- en: 'Create a dictionary that specifies which aggregation functions to run on each
+    analysis variable:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 创建一个字典，指定每个分析变量运行的聚合函数：
+- en: '[PRE68]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: '[PRE69]'
+  id: totrans-214
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: 'Define a function to return selected summary statistics:'
+  id: totrans-215
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 定义一个函数来返回选定的汇总统计量：
+- en: '[PRE70]'
+  id: totrans-216
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: Use `apply` to run the function.
+  id: totrans-217
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `apply` 运行函数。
+- en: 'This will create a series with a multi-index, based on the `highestdegree`
+    values and the desired summary statistics:'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将创建一个具有多重索引的 Series，基于 `highestdegree` 值和所需的汇总统计量：
+- en: '[PRE71]'
+  id: totrans-219
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: '[PRE72]'
+  id: totrans-220
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: 'Use `reset_index` to use the default index instead of the index created from
+    the `groupby` DataFrame:'
+  id: totrans-221
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 `reset_index` 来使用默认索引，而不是由 `groupby` DataFrame 创建的索引：
+- en: '[PRE73]'
+  id: totrans-222
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: '[PRE74]'
+  id: totrans-223
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: Chain with `unstack` instead to create columns based on the summary variables.
+  id: totrans-224
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 反而用 `unstack` 链接，以基于汇总变量创建列。
+- en: 'This will create a DataFrame, with the `highestdegree` values as the index
+    and aggregation values in the columns:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将创建一个 DataFrame，`highestdegree` 值作为索引，聚合值作为列：
+- en: '[PRE75]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: '[PRE76]'
+  id: totrans-227
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: '[PRE77]'
+  id: totrans-228
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: '[PRE78]'
+  id: totrans-229
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: '`unstack` is useful when we want to rotate parts of the index to the columns’
+    axis.'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`unstack` 在我们希望将索引的某些部分旋转到列轴时非常有用。'
+- en: How it works...
+  id: totrans-231
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: We defined a very simple function to calculate interquartile ranges by group
+    in *step 2*. We then included calls to that function in our list of aggregation
+    functions in *step 3*.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在 *第2步* 中定义了一个非常简单的函数，用于按组计算四分位数范围。然后，我们在 *第3步* 中将该函数调用包含在我们的聚合函数列表中。
+- en: '*Steps 4* and *5* are a little more complicated. We define a function that
+    calculates the first and third quartiles and median and counts the number of rows.
+    It returns a Series with these values. By combining a `groupby` DataFrame with
+    `apply` in *step 5*, we get the `gettots` function to return that Series for each
+    group.'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第4步* 和 *第5步* 稍微复杂一些。我们定义了一个计算第一和第三四分位数以及中位数并统计行数的函数。它返回一个包含这些值的 Series。通过将
+    `groupby` DataFrame 与 *第5步* 中的 `apply` 结合，我们可以让 `gettots` 函数返回每个组的该 Series。'
+- en: '*Step 5* gives us the numbers we want, but maybe not in the best format. If,
+    for example, we want to use the data for another operation—say, a visualization—we
+    need to chain some additional methods. One possibility is to use `reset_index`.
+    This will replace the multi-index with the default index. Another option is to
+    use `unstack`. This will create columns from the second level of the index (having
+    `qr1`, `med`, `qr3`, and `count` values).'
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*第5步* 给出了我们想要的数字，但可能不是最好的格式。例如，如果我们想将数据用于其他操作——比如可视化——我们需要链式调用一些额外的方法。一种可能性是使用
+    `reset_index`。这将用默认索引替换多重索引。另一种选择是使用 `unstack`。这将根据索引的第二级（具有 `qr1`、`med`、`qr3`
+    和 `count` 值）创建列。'
+- en: There’s more...
+  id: totrans-235
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多……
+- en: Interestingly, the interquartile ranges for weeks worked and the number of children
+    at home drop substantially as education increases. There seems to be a higher
+    variation in those variables among groups with less education. This should be
+    examined more closely and has implications for statistical testing, which assumes
+    common variances across groups.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有趣的是，随着教育程度的提高，工作周数和家中孩子数量的四分位数范围显著下降。那些教育程度较低的群体在这些变量上似乎有更大的变异性。这应该被更仔细地检查，并且对于统计检验有影响，因为统计检验假设各组之间的方差是相同的。
+- en: See also
+  id: totrans-237
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: We do much more with `stack` and `unstack` in *Chapter 11*, *Tidying and Reshaping
+    Data*.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *第11章*《整理与重塑数据》中，我们对 `stack` 和 `unstack` 做了更多的操作。
+- en: Using groupby to change the unit of analysis of a DataFrame
+  id: totrans-239
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 groupby 改变 DataFrame 的分析单位
+- en: The DataFrame that we created in the last step of the previous recipe was something
+    of a fortunate by-product of our efforts to generate multiple summary statistics
+    by groups. There are times when we really do need to aggregate data to change
+    the unit of analysis—say, from monthly utility expenses per family to annual utility
+    expenses per family, or from students’ grades per course to students’ overall
+    **Grade Point Average** (**GPA**).
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一个步骤的最后，我们创建的 DataFrame 是我们努力按组生成多个汇总统计量时的一个意外副产品。有时我们确实需要聚合数据来改变分析的单位——例如，从每个家庭的月度公用事业费用到每个家庭的年度公用事业费用，或从学生按课程的成绩到学生的整体
+    **平均绩点** (**GPA**)。
+- en: '`groupby` is a good tool for collapsing the unit of analysis, particularly
+    when summary operations are required. When we only need to select unduplicated
+    rows—perhaps the first or last row for each individual over a given interval—then
+    the combination of `sort_values` and `drop_duplicates` will do the trick. But
+    we often need to do some calculation across the rows for each group before collapsing.
+    That is when `groupby` comes in very handy.'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`groupby` 是一个很好的工具，特别适用于折叠分析单位，特别是在需要进行汇总操作时。当我们只需要选择未重复的行时——也许是每个个体在给定间隔内的第一行或最后一行——那么
+    `sort_values` 和 `drop_duplicates` 的组合就能胜任。但是，我们经常需要在折叠之前对每组的行进行一些计算。这时 `groupby`
+    就非常方便了。'
+- en: Getting ready
+  id: totrans-242
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the COVID-19 case daily data, which has one row per country
+    per day. We will also work with the Brazil land temperature data, which has one
+    row per month per weather station.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将再次处理每日病例数据，该数据每天每个国家有一行记录。我们还将处理巴西陆地温度数据，该数据每个气象站每个月有一行记录。
+- en: How to do it...
+  id: totrans-244
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做…
+- en: 'We will use `groupby` to create a DataFrame of summary values by group:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 `groupby` 创建一个按组的汇总值的 DataFrame：
+- en: 'Import `pandas` and load the COVID-19 and land temperature data:'
+  id: totrans-246
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 导入 `pandas` 并加载 COVID-19 和陆地温度数据：
+- en: '[PRE79]'
+  id: totrans-247
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'Let’s view a sample of the data to remind ourselves of its structure. There
+    is one row per country (`location`) per date, with the number of new cases and
+    deaths for that day (we provide a seed to random state to generate the same values
+    each time):'
+  id: totrans-248
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们查看数据的样本，以便回顾其结构。每个国家（`location`）每天有一行记录，包括当天的新病例数和死亡数（我们使用随机种子以便每次生成相同的值）：
+- en: '[PRE80]'
+  id: totrans-249
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: '[PRE81]'
+  id: totrans-250
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: 'We can now convert the COVID-19 data from one country per day to summaries
+    across all countries by day. To limit the amount of data to process, we only include
+    dates between February 2023 and January 2024:'
+  id: totrans-251
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们可以将 COVID-19 数据从每天每个国家转换为每天所有国家的汇总数据。为了限制要处理的数据量，我们仅包括 2023 年 2 月至 2024
+    年 1 月之间的日期。
+- en: '[PRE82]'
+  id: totrans-252
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: '[PRE83]'
+  id: totrans-253
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE83]'
+- en: 'Let’s take a look at a couple of rows of the average temperature data for Brazil:'
+  id: totrans-254
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看一看巴西平均温度数据的一些行：
+- en: '[PRE84]'
+  id: totrans-255
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE84]'
+- en: '[PRE85]'
+  id: totrans-256
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE85]'
+- en: Create a DataFrame with average temperatures for each station in Brazil.
+  id: totrans-257
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 创建一个包含巴西每个气象站平均温度的 DataFrame。
+- en: 'Remove rows with missing temperature values first:'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先删除具有缺失温度值的行：
+- en: '[PRE86]'
+  id: totrans-259
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE86]'
+- en: '[PRE87]'
+  id: totrans-260
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE87]'
+- en: Let’s take a closer look at how the aggregation functions in these examples
+    work.
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们更详细地看一看这些示例中的聚合函数是如何工作的。
+- en: How it works…
+  id: totrans-262
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的…
+- en: In *step 3*, we first select the dates that we want. We create a DataFrame `groupby`
+    object based on `casedate`, choose `new_cases` and `new_deaths` as the aggregation
+    variables, and select `sum` for the aggregation function. This produces a sum
+    for both `new_cases` and `new_deaths` for each group (`casedate`). Depending on
+    your purposes, you may not want `casedate` to be the index, which would happen
+    if we did not set `as_index` to `False`.
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 *步骤 3* 中，首先选择我们需要的日期。我们基于 `casedate` 创建一个 DataFrame 的 `groupby` 对象，选择 `new_cases`
+    和 `new_deaths` 作为聚合变量，并选择 `sum` 作为聚合函数。这将为每个组（`casedate`）产生 `new_cases` 和 `new_deaths`
+    的总和。根据您的目的，您可能不希望 `casedate` 成为索引，如果没有将 `as_index` 设置为 `False` 将会发生这种情况。
+- en: We often need to use a different aggregation function with different aggregation
+    variables. We might want to take the first (or last) value for one variable and
+    get the mean of the values of another variable by group. This is what we do in
+    *step 5*. We do this by passing a dictionary to the `agg` function, with our aggregation
+    variables as keys and the aggregation function to use as values.
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们经常需要在不同的聚合变量上使用不同的聚合函数。我们可能想要对一个变量取第一个（或最后一个）值，并对另一个变量的值按组取平均值。这就是我们在 *步骤
+    5* 中所做的。我们通过将一个字典传递给 `agg` 函数来实现这一点，字典的键是我们的聚合变量，值是要使用的聚合函数。
+- en: Using pivot_table to change the unit of analysis of a DataFrame
+  id: totrans-265
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 pivot_table 改变 DataFrame 的分析单位
+- en: We could have used the pandas `pivot_table` function instead of `groupby` in
+    the previous recipe. `pivot_table` can be used to generate summary statistics
+    by the values of a categorical variable, just as we did with `groupby`. The `pivot_table`
+    function can also return a DataFrame, as we will see in this recipe.
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一个示例中，我们可以使用 pandas 的 `pivot_table` 函数而不是 `groupby`。`pivot_table` 可以用于根据分类变量的值生成汇总统计信息，就像我们用
+    `groupby` 做的那样。`pivot_table` 函数还可以返回一个 DataFrame，这在本示例中将会看到。
+- en: Getting ready
+  id: totrans-267
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will work with the COVID-19 case daily data and the Brazil land temperature
+    data again. The temperature data has one row per month per weather station.
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将再次处理 COVID-19 每日病例数据和巴西陆地温度数据。温度数据每个气象站每个月有一行记录。
+- en: How to do it...
+  id: totrans-269
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做…
+- en: 'Let’s create a DataFrame from the COVID-19 data that has the total number of
+    cases and deaths for each day across all countries:'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们从COVID-19数据创建一个DataFrame，显示每一天在所有国家中的总病例数和死亡人数：
+- en: 'We start by loading the COVID-19 and temperature data again:'
+  id: totrans-271
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先重新加载COVID-19和温度数据：
+- en: '[PRE88]'
+  id: totrans-272
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE88]'
+- en: 'Now, we are ready to call the `pivot_table` function. We pass a list to `values`
+    to indicate the variables for the summary calculations. We use the `index` parameter
+    to indicate that we want totals by `casedate`, and we indicate that we only want
+    sums by passing that to `aggfunc`. Notice that we get the same totals as in the
+    previous recipe when we used `groupby`:'
+  id: totrans-273
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们可以调用`pivot_table`函数了。我们将一个列表传递给`values`，以指示要进行汇总计算的变量。我们使用`index`参数来表示我们希望按`casedate`进行汇总，并通过将其传递给`aggfunc`来表示我们只希望求和。注意，我们得到的总数与之前使用`groupby`时的结果相同：
+- en: '[PRE89]'
+  id: totrans-274
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE89]'
+- en: '[PRE90]'
+  id: totrans-275
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE90]'
+- en: 'Let’s try `pivot_table` with the land temperature data and do a more complicated
+    aggregation. We want the first value for latitude (`latabs`) and elevation for
+    each station and the mean temperature. Recall that latitude and elevation values
+    do not change for a station. We pass the aggregations we want as a dictionary
+    to `aggfunc`. Again, we get the same results as in the previous recipe:'
+  id: totrans-276
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们尝试使用`pivot_table`处理土地温度数据，并进行更复杂的聚合。我们希望得到每个站点的纬度（`latabs`）和海拔高度的第一个值，以及平均温度。回想一下，纬度和海拔值对于一个站点来说是固定的。我们将所需的聚合操作作为字典传递给`aggfunc`。同样，我们得到的结果与前一个例子中的结果一致：
+- en: '[PRE91]'
+  id: totrans-277
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE91]'
+- en: '[PRE92]'
+  id: totrans-278
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE92]'
+- en: How it works...
+  id: totrans-279
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 工作原理……
+- en: As we have seen, we get the same results whether we use `groupby` or `pivot_table`.
+    Analysts should probably choose the approach that they, and members of their team,
+    find most intuitive. Since my workflow more frequently has me using `groupby`,
+    I am much more likely to use that approach when aggregating data to create a new
+    DataFrame.
+  id: totrans-280
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如我们所见，无论是使用`groupby`还是`pivot_table`，我们得到的结果是相同的。分析师应该选择他们自己和团队成员觉得最直观的方法。由于我的工作流程更常使用`groupby`，所以在聚合数据以创建新的DataFrame时，我更倾向于使用这种方法。
+- en: Summary
+  id: totrans-281
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 概述
+- en: We stepped through a wide range of strategies for aggregating data using NumPy
+    and pandas in this chapter. We also discussed advantages and disadvantages of
+    each technique, including how to select the most efficient and intuitive approach
+    given your data and the aggregation task. Since most data cleaning and manipulation
+    projects will involve some splitting-applying-combining, it is a good idea to
+    become comfortable with each of these approaches. In the next chapter, we will
+    learn how to combine DataFrames and deal with subsequent data issues.
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们探讨了使用NumPy和pandas进行数据聚合的多种策略。我们还讨论了每种技术的优缺点，包括如何根据数据和聚合任务选择最有效、最直观的方法。由于大多数数据清理和处理项目都会涉及某种分割-应用-合并的操作，因此熟悉每种方法是很有必要的。在下一章中，我们将学习如何合并DataFrame并处理后续的数据问题。
+- en: Join our community on Discord
+  id: totrans-283
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加入我们社区的Discord
+- en: 'Join our community’s Discord space for discussions with the author and other
+    readers:'
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加入我们社区的Discord空间，与作者和其他读者讨论：
+- en: '[https://discord.gg/p8uSgEAETX](https://discord.gg/p8uSgEAETX )'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://discord.gg/p8uSgEAETX](https://discord.gg/p8uSgEAETX )'
+- en: '![](img/QR_Code10336218961138498953.png)'
+  id: totrans-286
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/QR_Code10336218961138498953.png)'

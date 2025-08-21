@@ -1,0 +1,2219 @@
+- en: '7'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '7'
+- en: Target Transformations for Time Series Forecasting
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 时间序列预测的目标转换
+- en: In the previous chapter, we delved into how we can do temporal embedding and
+    time delay embedding by making use of feature engineering techniques. But that
+    was just one side of the regression equation—the features. Often, we see that
+    the other side of the equation—the target—does not behave the way we want. In
+    other words, the target doesn’t have some desirable properties that make forecasting
+    easier. One of the major culprits in this area is **stationarity**—or more specifically,
+    the lack of it. And it creates problems with the assumptions we make while developing
+    a **machine learning** (**ML**)/statistical model. In this chapter, we will look
+    at some techniques for handling such problems with the target.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们探讨了如何通过利用特征工程技术进行时间嵌入和时间延迟嵌入。但那只是回归方程的一方面——特征。通常，我们会发现方程的另一侧——目标，并没有按照我们预期的方式表现出来。换句话说，目标并没有具备一些理想的特性，这些特性能够让预测变得更加容易。这个领域的主要罪魁祸首之一是**平稳性**——或者更具体地说，缺乏平稳性。这会给我们在开发**机器学习**（**ML**）/统计模型时所做的假设带来问题。在本章中，我们将讨论一些处理目标相关问题的技术。
+- en: 'In this chapter, we will cover the following topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将覆盖以下主题：
+- en: Handling non-stationarity in time series
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 处理时间序列中的非平稳性
+- en: Detecting and correcting for unit roots
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 检测和修正单位根
+- en: Detecting and correcting for trends
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 检测和修正趋势
+- en: Detecting and correcting for seasonality
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 检测和修正季节性
+- en: Detecting and correcting for heteroscedasticity
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 检测和修正异方差性
+- en: AutoML approach to target transformation
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: AutoML方法用于目标转换
+- en: Technical requirements
+  id: totrans-10
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: You will need to set up the **Anaconda** environment following the instructions
+    in the *Preface* of the book to get a working environment with all the libraries
+    and datasets required for the code in this book. Any additional library will be
+    installed while running the notebooks.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要按照本书*前言*中的说明设置**Anaconda**环境，以便获得一个包含所有所需库和数据集的工作环境，供本书代码使用。任何额外的库将在运行笔记本时自动安装。
+- en: 'You will need to run the following notebooks before using the code in this
+    chapter:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用本章中的代码之前，你需要运行以下笔记本：
+- en: '`02-Preprocessing_London_Smart_Meter_Dataset.ipynb` in the `Chapter02` folder'
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Chapter02`文件夹中的`02-Preprocessing_London_Smart_Meter_Dataset.ipynb`'
+- en: '`01-Setting_up_Experiment_Harness.ipynb` in the `Chapter04` folder'
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Chapter04`文件夹中的`01-Setting_up_Experiment_Harness.ipynb`'
+- en: '`01-Feature_Engineering.ipynb` in the `Chapter06` folder'
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Chapter06`文件夹中的`01-Feature_Engineering.ipynb`'
+- en: The associated code for this chapter can be found at [https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter07](https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter07).
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的相关代码可以在[https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter07](https://github.com/PacktPublishing/Modern-Time-Series-Forecasting-with-Python-/tree/main/notebooks/Chapter07)找到。
+- en: Detecting non-stationarity in time series
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检测时间序列中的非平稳性
+- en: '**Stationarity** is a prevalent assumption in most econometrics models and
+    is a rigorous and mathematical concept. But without getting into a lot of math,
+    we can intuitively think about stationarity as the state where the statistical
+    properties of the distribution from which the time series is sampled remain constant
+    over time. This is relevant in time series as regression as well because we are
+    estimating a single forecasting function across time. And if the *behavior* of
+    the time series changes with time, the single function that we estimate may not
+    be relevant all the time. For instance, if we think about the number of visitors
+    to the nearby park in a day as a time series, we know that those patterns are
+    going to be very different for pre- and post-pandemic periods. In the ML world,
+    this phenomenon is called **concept drift**.'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**平稳性**是大多数计量经济学模型中普遍的假设，是一个严谨且数学化的概念。但在不涉及太多数学的情况下，我们可以直观地理解平稳性为时间序列所采样的分布的统计特性随着时间保持不变的状态。这在时间序列回归中也很相关，因为我们在跨时间估计一个单一的预测函数。如果时间序列的*行为*随时间发生变化，那么我们估计的单一函数可能并不总是适用。例如，如果我们把附近公园每日的游客数量看作一个时间序列，我们知道这些模式在疫情前后会有很大不同。在机器学习领域，这种现象被称为**概念漂移**。'
+- en: 'Intuitively, we can understand that it is easier to forecast a stationary series
+    than a non-stationary series. But here comes the punchline: in the real world,
+    almost all time series do not satisfy the stationarity assumption—more specifically,
+    the **strict stationarity** assumption. Strict stationarity is when all the statistical
+    properties such as the mean, variance, skewness, and so on do not change with
+    time. Many times, this strict stationarity assumption is relaxed in favor of **weak
+    stationarity**, where we only stipulate that the mean and the variance of the
+    time series do not change with time.'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 直观上，我们可以理解，平稳的序列比非平稳的序列更容易预测。但这里有个关键点：在现实世界中，几乎所有的时间序列都不满足平稳假设——更具体地说，**严格平稳**假设。严格平稳是指所有统计性质，如均值、方差、偏度等，都不随时间变化。很多时候，这一严格平稳假设被放宽，采用**弱平稳**，即只要求时间序列的均值和方差不随时间变化。
+- en: 'There are four main questions we can ask ourselves to check whether our time
+    series is stationary or not:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以问自己四个主要问题来检查我们的时间序列是否平稳：
+- en: Does the mean change over time? Or in other words, is there a trend in the time
+    series?
+  id: totrans-21
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 均值是否随时间变化？换句话说，时间序列中是否有趋势？
+- en: Does the variance change over time? Or in other words, is the time series heteroscedastic?
+  id: totrans-22
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 方差是否随时间变化？换句话说，时间序列是否异方差？
+- en: Does the time series exhibit periodic changes in the mean? Or in other words,
+    is there seasonality in the time series?
+  id: totrans-23
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 时间序列的均值是否表现出周期性的变化？换句话说，时间序列中是否存在季节性？
+- en: Does the time series have a unit root?
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 时间序列是否具有单位根？
+- en: 'Out of these questions, the first three can be ascertained using a simple visual
+    inspection. **Unit roots** are more difficult to understand. We will take a deeper
+    look at unit roots shortly. Let’s take a look at a few time series and check whether
+    we can tell whether they are stationary or not via visual inspection (you can
+    note your answers):'
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中前三个问题可以通过简单的视觉检查来确定。**单位根**较难理解，我们将稍后深入探讨单位根。现在，让我们看几个时间序列，检查我们是否能通过视觉检查来判断它们是否平稳（你可以记录你的答案）：
+- en: '![Figure 7.1 – Testing your understanding of stationarity ](img/B22389_07_01.png)'
+  id: totrans-26
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.1 – 测试你对平稳性的理解](img/B22389_07_01.png)'
+- en: 'Figure 7.1: Testing your understanding of stationarity'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.1：测试你对平稳性的理解
+- en: 'Now, check your responses and see how many of them you guessed correctly. If
+    you got at least four out of six, you are doing great with your intuition of stationarity:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，检查你的回答，看看你猜对了多少个。如果你答对了六个中的至少四个，你对平稳性的直觉理解就非常好：
+- en: '**Time series 1** is *stationary* as it is a white noise process that, by definition,
+    has zero mean and a constant variance. It checks our checklist for the first three
+    questions.'
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**时间序列 1**是*平稳*的，因为它是一个白噪声过程，按照定义，它的均值为零，方差恒定。它通过了我们对前三个问题的检查。'
+- en: '**Time series 2** is *non-stationary* as it has an obvious downward linear
+    trend. This means that the mean of the series at the beginning of the series is
+    not the same toward the end. So, it fails our first question in the checklist.'
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**时间序列 2**是*非平稳*的，因为它有一个明显的下降趋势。这意味着序列在开始时的均值与结束时不同。因此，它没有通过我们的第一个检查问题。'
+- en: '**Time series 3** may look stationary at first because it is essentially oscillating
+    around 0, but the oscillations are wider as we progress through time. This means
+    that it has an increasing variance—or in other words, it is heteroscedastic. So,
+    although this answers our first question, it doesn’t pass our second check of
+    having constant variance. Hence, it is *non-stationary*.'
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**时间序列 3**乍一看可能是平稳的，因为它基本上围绕0波动，但随着时间的推移，波动幅度逐渐增大。这意味着它的方差在增大——换句话说，它是异方差的。因此，尽管它回答了我们的第一个问题，但未能通过第二个检查，即方差是否恒定。所以，它是*非平稳*的。'
+- en: Now, we are coming to the problem child—**Time series 4**. At first glance,
+    we may think it is stationary because even though it had a trend in the beginning,
+    it also reversed it, making the mean almost constant. And it’s not obvious that
+    the variance is also widely varying. But this is a time series with a unit root
+    (we will talk about this in detail later, in the *Unit roots* section), and typically,
+    unit root time series are difficult to judge visually.
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 现在，我们要讨论的难题是——**时间序列 4**。乍一看，我们可能认为它是平稳的，因为尽管它一开始有趋势，但它也发生了反转，使得均值几乎保持不变。而且，方差的变化也不那么明显。但这实际上是一个含有单位根的时间序列（我们将在稍后的*单位根*部分详细讨论），通常，含单位根的时间序列很难通过视觉检查来判断。
+- en: '**Time series 5** answers the first two questions—the constant mean and constant
+    variance—but it has a very obvious seasonal pattern and hence is *non-stationary*.'
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**时间序列 5** 回答了前两个问题——常数均值和常数方差——但它有一个非常明显的季节性模式，因此是*非平稳的*。'
+- en: '**Time series 6** is another white noise process, included just to trick you.
+    This is also *stationary*.'
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**时间序列 6** 是另一个白噪声过程，仅用于迷惑你。这也是*平稳的*。'
+- en: When we have hundreds, or even millions, of time series, we can’t practically
+    do a visual inspection to ascertain whether they are stationary or not. So, now,
+    let’s look at a few ways of detecting these key properties using statistical tests
+    and also how to try and correct them.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们拥有成百上千，甚至是数百万个时间序列时，我们在实际操作中无法通过视觉检查来判断它们是否平稳。因此，现在让我们来看看使用统计测试检测这些关键特性的一些方法，以及如何尝试修正它们。
+- en: Although we are talking about correcting or making a time series stationary,
+    it is not always essential to do that in the ML paradigm because some of these
+    can be handled by using the right kind of features in the model. Whether to make
+    a series stationary or not is a decision we will have to make after experimenting
+    with the techniques. This is because, as you will see, while there are advantages
+    to making a series stationary, there are also disadvantages to using some of these
+    techniques, as we will see when we discuss each transformation in detail.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然我们讨论的是修正或使时间序列平稳，但在机器学习范式下，并不总是必须这样做，因为一些问题可以通过使用合适的特征在模型中得到处理。是否将一个序列转换为平稳序列是一个我们需要在实验技术后做出的决定。因为正如你将看到的，虽然将序列平稳化有其优点，但使用这些技术也有其缺点，我们将在详细讨论每种转换时看到这些问题。
+- en: '**Notebook alert**:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**笔记本提醒**：'
+- en: To follow along with the complete code, use the `02-Dealing_with_Non-Stationarity.ipynb`
+    notebook in the `Chapter06` folder.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 若要跟随完整的代码，请使用 `Chapter06` 文件夹中的 `02-Dealing_with_Non-Stationarity.ipynb` 笔记本。
+- en: Detecting and correcting for unit roots
+  id: totrans-39
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检测和修正单位根
+- en: Let’s talk about unit roots first since this is what is most commonly tested
+    for stationarity. Time series analysis has its roots in econometrics and statistics
+    and unit root is a concept derived directly from those fields.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们先谈谈单位根，因为这是最常见的平稳性测试。时间序列分析起源于计量经济学和统计学，而单位根是直接源于这些领域的一个概念。
+- en: Unit roots
+  id: totrans-41
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 单位根
+- en: 'Unit roots are quite complicated to understand fully but to develop some intuition,
+    we can look at a simplification. Let’s consider an autoregressive model of order
+    1(AR(1) model):'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 单位根相当复杂，但为了培养一些直觉，我们可以简化来看。让我们考虑一个一阶自回归模型（AR(1) 模型）：
+- en: '![](img/B22389_07_001.png), where ![](img/B22389_04_013.png) is the white noise
+    and ![](img/B22389_07_003.png) is the AR coefficient.'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_07_001.png)，其中 ![](img/B22389_04_013.png) 是白噪声，![](img/B22389_07_003.png)
+    是 AR 系数。'
+- en: 'If we think about the different values of ![](img/B22389_07_003.png) in the
+    equation, we can come up with three scenarios (*Figure 7.2*):'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们考虑方程中不同的 ![](img/B22389_07_003.png) 值，我们可以提出三种情境（*图 7.2*）：
+- en: '![](img/B22389_07_005.png): When ![](img/B22389_07_006.png) is greater than
+    1, every successive value in the time series is multiplied by a number greater
+    than 1, which means it will have a strong and rapidly increasing/decreasing trend
+    and thereby be non-stationary.'
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_07_005.png)：当 ![](img/B22389_07_006.png) 大于 1 时，时间序列中的每个后续值都会乘以大于
+    1 的数字，这意味着它将具有强烈且迅速增加/减少的趋势，因此是非平稳的。'
+- en: '![](img/B22389_07_007.png): When ![](img/B22389_07_006.png) is less than 1,
+    every successive value in the time series is multiplied by a number less than
+    1, which means over the long term, the mean of the series trends to zero and will
+    oscillate around it. Therefore, it is stationary.'
+  id: totrans-46
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_07_007.png)：当 ![](img/B22389_07_006.png) 小于 1 时，时间序列中的每个后续值都会乘以小于
+    1 的数字，这意味着从长远来看，序列的均值趋向于零，并围绕零振荡。因此，它是平稳的。'
+- en: '![](img/B22389_07_009.png): When ![](img/B22389_07_010.png) is equal to 1,
+    things become trickier. When ![](img/B22389_07_009.png) for an `AR(1)` model,
+    this is known as it having a unit root and the equation becomes ![](img/B22389_07_012.png).
+    This is called random walk in econometrics and is a very popular kind of time
+    series in financial and economic domains. Mathematically, we can prove that such
+    a series will have a constant mean but a non-constant variance:'
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '![](img/B22389_07_009.png)：当 ![](img/B22389_07_010.png) 等于 1 时，情况变得更加复杂。当 ![](img/B22389_07_009.png)
+    为 `AR(1)` 模型时，这被称为具有单位根，方程变为 ![](img/B22389_07_012.png)。这在计量经济学中被称为随机漫步，是金融和经济领域中一种非常流行的时间序列类型。从数学上讲，我们可以证明这样的序列将具有常数均值，但方差却是非恒定的：'
+- en: '![Figure 7.2 – Autoregressive time series with different  parameters ](img/B22389_07_02.png)'
+  id: totrans-48
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.2 – 具有不同参数的自回归时间序列](img/B22389_07_02.png)'
+- en: 'Figure 7.2: Autoregressive time series with different ![](img/B22389_07_003.png)
+    parameters. Top: Scenario 1, phi <1; Middle: Scenario 2, phi = 1; Bottom: Scenario
+    3, phi>1'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.2：具有不同 ![](img/B22389_07_003.png) 参数的自回归时间序列。顶部：情境 1，phi <1；中间：情境 2，phi
+    = 1；底部：情境 3，phi>1
+- en: While we discussed unit roots in an `AR(1)` process, we can extend the same
+    intuition to multiple lags or an `AR(p)` model. Calculating and testing unit roots
+    is more complicated there, but still possible.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然我们讨论了`AR(1)`过程中的单位根问题，但我们可以将相同的直觉扩展到多个滞后项或`AR(p)`模型。在那里，计算和检验单位根更加复杂，但仍然是可能的。
+- en: So, now that we know what a unit root is, how can we statistically test this?
+    This is where the Dickey-Fuller test comes in.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 既然我们已经知道什么是单位根，如何通过统计方法进行检验呢？这时Dickey-Fuller检验就派上用场了。
+- en: The Augmented Dickey-Fuller (ADF) test
+  id: totrans-52
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 扩展的Dickey-Fuller（ADF）检验
+- en: The null hypothesis in this test is that the ![](img/B22389_07_003.png) in an
+    `AR(1)` model of the time series is equal to 1, and by extension non-stationary.
+    The alternate hypothesis is that the ![](img/B22389_07_003.png) in the `AR(1)`
+    model is less than 1\. The ADF test takes the Dickey-Fuller test and extends it
+    to an `AR(p)` model because most time series are not defined by just one lag of
+    the time series. This is the standard and most popular statistical test to check
+    for unit roots. The core of the test involves running a regression on the lags
+    of the time series and calculating the statistic on the variance of the residuals.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个检验中的零假设是`AR(1)`模型中的 ![](img/B22389_07_003.png) 等于 1，从而使序列非平稳。备择假设是`AR(1)`模型中的
+    ![](img/B22389_07_003.png) 小于 1。ADF检验将Dickey-Fuller检验扩展到`AR(p)`模型，因为大多数时间序列不仅仅由一个滞后项定义。这个检验是检查单位根的标准且最流行的统计方法。该检验的核心是对时间序列的滞后进行回归，并计算残差方差的统计量。
+- en: 'Let’s see how we can do this in Python using `statsmodels`:'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何在Python中使用`statsmodels`来实现这一点：
+- en: '[PRE0]'
+  id: totrans-55
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: '`result` from `adfuller` is a tuple that contains the *test statistic*, *p-value*,
+    and *critical values* at different confidence levels. Here, we are most interested
+    in the p-value, which is an easy and practical way to check whether the null hypothesis
+    is rejected or not. If `p < 0.05`, there is a 95% probability that the series
+    does not have a unit root; the series is stationary from a unit root perspective.'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`adfuller`的`result`是一个元组，包含了*检验统计量*、*p值*和不同置信度下的*临界值*。在这里，我们最关注的是p值，这是一个简单实用的方法来检查零假设是否被拒绝。如果`p
+    < 0.05`，则有95%的概率表明序列没有单位根；从单位根的角度来看，序列是平稳的。'
+- en: 'To make this process even easier, we have included a method called `check_unit_root`
+    in `src.transforms.stationary_utils` that does the inference for you (comparing
+    the returned probability with the confidence and rejecting or accepting the `null`
+    hypothesis) and returns a `namedtuple` with a Boolean attribute called `stationary`,
+    and the entire results from `statsmodels` in `results`:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了让这个过程更加简便，我们在`src.transforms.stationary_utils`中包含了一个名为`check_unit_root`的方法，它会为你进行推断（通过将返回的概率与置信度进行比较并拒绝或接受`零假设`），并返回一个包含布尔属性`stationary`的`namedtuple`，以及来自`statsmodels`的完整结果在`results`中：
+- en: '[PRE1]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Now that we’ve learned how to check whether a series has a unit root or not,
+    how do we make it stationary? Let’s look at a few transforms that help us do that.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经学会了如何检查一个序列是否有单位根，那么如何使其平稳呢？我们来看看几个可以帮助我们实现这一目标的变换方法。
+- en: Differencing transform
+  id: totrans-60
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 差分变换
+- en: 'The differencing transform is a very popular transform to make a time series
+    stationary, or at least get rid of unit roots. The concept is simple: we transform
+    the time series from the domain of observation to the domain of change in observations.
+    The differencing transform subtracts subsequent observations from one another:'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 差分变换是使时间序列平稳，或至少消除单位根的非常流行的变换方法。这个概念很简单：我们将时间序列从观察领域转化为观察变化领域。差分变换通过将后续观察值相互减去来实现：
+- en: '*z*[t] = *y*[t] – *y*[t][-1]'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*z*[t] = *y*[t] – *y*[t][-1]'
+- en: Differencing helps us stabilize the mean of the time series and, with that,
+    reduce or eliminate trend and seasonality. Let’s see how differencing can make
+    a series stationary.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 差分有助于稳定时间序列的均值，并因此减少或消除趋势和季节性。让我们看看差分是如何使序列变得平稳的。
+- en: 'Let the time series in question be ![](img/B22389_07_016.png) , where ![](img/B22389_07_017.png)
+    and ![](img/B22389_07_018.png) are the coefficients and ![](img/B22389_04_015.png)
+    is white noise. From this equation, we can see that time, *t*, is part of the
+    equation, making *y*[t] a time series with a trend. So, the differenced time series
+    *z* would be as follows:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们考虑问题中的时间序列 ![](img/B22389_07_016.png) ，其中 ![](img/B22389_07_017.png) 和 ![](img/B22389_07_018.png)
+    是系数，![](img/B22389_04_015.png) 是白噪声。从这个方程中，我们可以看到时间 *t* 是方程的一部分，这使得 *y*[t] 成为一个具有趋势的时间序列。因此，差分后的时间序列
+    *z* 将如下所示：
+- en: '![](img/B22389_07_020.png)'
+  id: totrans-65
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_020.png)'
+- en: '![](img/B22389_07_021.png)'
+  id: totrans-66
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_021.png)'
+- en: '![](img/B22389_07_022.png)'
+  id: totrans-67
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_022.png)'
+- en: What we need to look for in this new equation is that there is no mention of
+    *t*. This means that the dependence on *t*, which created the trend, has been
+    removed, and now the time series has constant mean and variance at any point in
+    time.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要在这个新方程中寻找的是没有提到 *t*。这意味着，创建趋势的 *t* 依赖性已经被去除，现在时间序列在任何时间点都有恒定的均值和方差。
+- en: Differencing does not remove all kinds of non-stationarity but works for the
+    majority of time series. But there are a few drawbacks to this approach as well.
+    One of them is that we lose the scale of the time series while modeling. Many
+    times, the scale of the time series holds some information that is useful for
+    forecasting. For instance, in a supply chain, SKUs with higher sales exhibit a
+    different kind of pattern from SKUs with lower sales and when we do differencing,
+    this information about the distinction is lost.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 差分并不能去除所有种类的非平稳性，但适用于大多数时间序列。然而，这种方法也有一些缺点。其中一个缺点是我们在建模过程中会丢失时间序列的尺度。很多时候，时间序列的尺度包含一些对预测有用的信息。例如，在供应链中，高销售量的SKU表现出不同于低销售量SKU的模式，而当我们进行差分时，这种区分信息会丢失。
+- en: Another drawback is more from an operational point of view. When we use differencing
+    for forecasting, we also need to inverse the transform after we get the differenced
+    output from the model. This is an additional layer of complexity that we have
+    to manage. One way is to keep the most recent observation in memory and keep adding
+    the differences to it to inverse the transform. Another way is to have *y*[t][-1]
+    ready for every *t* that we need to inverse transform and keep adding the difference
+    to *y*[t][-1].
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个缺点更多是从操作角度来看。当我们使用差分进行预测时，我们还需要在从模型获取差分后的输出后对其进行逆变换。这是我们必须管理的一个额外复杂性。解决方法之一是将最新的观察值保存在内存中，并不断将差分添加到其中以逆变换。另一种方法是为每个需要逆变换的
+    *t* 保留 *y*[t][-1]，并将差分不断添加到 *y*[t][-1] 中。
+- en: 'We have implemented the latter using the datetime index as a key to align and
+    fetch the *y*[t][-1] observation in `src.transforms.target_transformations.py`
+    in this book’s GitHub repository. Let’s see how we can use it:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经使用datetime索引作为关键字来对齐并获取`src.transforms.target_transformations.py`中* y *[t][-1]的观察值，该文件位于本书的GitHub仓库中。让我们看看如何使用它：
+- en: '[PRE2]'
+  id: totrans-72
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: '`y_diff` will have the transformed series. To get back to the original time
+    series, we can call `inverse_transform` using `diff_transformer`. The associated
+    notebook has examples and plots to see how the differencing changes the time series.'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`y_diff`将包含变换后的序列。要返回原始时间序列，我们可以调用`inverse_transform`并使用`diff_transformer`。关联的笔记本有示例和图表，展示差分如何改变时间序列。'
+- en: Here, we saw differencing as the process of subtracting subsequent values in
+    the time series. But we can also do differencing with other operators such as
+    division (*y*[t]/ *y*[t][-1]), which is implemented in the `src.transforms.target_transformations.py`
+    file as `MultiplicativeDifferencingTransformer`. We can also experiment with these
+    transforms to check whether these work best for your dataset.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们将差分看作是从时间序列中减去后续值的过程。但我们也可以使用其他运算符进行差分，例如除法（*y*[t]/ *y*[t][-1]），这在`src.transforms.target_transformations.py`文件中实现为`MultiplicativeDifferencingTransformer`。我们还可以尝试这些变换，以检查它们是否对你的数据集最有效。
+- en: Although differencing solves the majority of stationarity issues, it’s not guaranteed
+    to take care of all kinds of trends (non-linear or piecewise trends), seasonality,
+    and so on. Sometimes, we may not want to difference the series but still handle
+    trends and seasonality. So, let’s see how we can detect and remove trends in a
+    time series.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管差分解决了大多数平稳性问题，但并不能保证解决所有类型的趋势（非线性或分段趋势）、季节性等问题。有时候，我们可能不想对序列进行差分，但仍然需要处理趋势和季节性。那么，让我们看看如何检测并去除时间序列中的趋势。
+- en: Detecting and correcting for trends
+  id: totrans-76
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检测并纠正趋势
+- en: In *Chapter 5*, *Time Series Forecasting as Regression*, we talked about forecasting
+    being a difficult problem because it is intrinsically an extrapolation problem.
+    Trends are one of the major contributors to forecasting being an extrapolation
+    problem. If we have a time series that is trending upward, any model that attempts
+    to forecast it needs to extrapolate beyond the range of values it has seen during
+    training. ARIMA handles this using autoregression, whereas exponential smoothing
+    handles it by modeling the trend explicitly. But standard regression may not be
+    naturally suited to extrapolation. However, with suitable features, such as lags,
+    it can start to do that.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第 5 章*，《作为回归的时间序列预测》中，我们讨论了预测是一个困难的问题，因为它本质上是一个外推问题。趋势是导致预测成为外推问题的主要因素之一。如果我们有一个上升趋势的时间序列，任何试图预测它的模型都需要在训练过程中所看到的值范围之外进行外推。ARIMA通过自回归来处理这个问题，而指数平滑通过显式建模趋势来处理它。但标准回归可能并不天然适合外推。然而，通过合适的特征，如滞后，它也可以开始进行外推。
+- en: But if we can confidently estimate and extract a trend in the time series, we
+    can simplify the problem we have to apply regression to by detrending the time
+    series.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，如果我们能自信地估计并提取时间序列中的趋势，我们可以通过去趋势化时间序列来简化回归问题。
+- en: But before we move ahead, it is worth learning about two major types of trends.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但在继续之前，值得了解两种主要的趋势类型。
+- en: Deterministic and stochastic trends
+  id: totrans-80
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 确定性和随机性趋势
+- en: 'Let’s take the simple *AR(1)* model we saw earlier to develop intuitions about
+    this one too. Earlier, we saw that having ![](img/B22389_07_023.png) in an *AR(1)*
+    model leads to a trend in the time series. But another way we can think about
+    a trending time series is if we include time as an ordinal variable in the equation
+    defining the time series. For instance, let’s consider two time series:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们再次使用之前看到的简单*AR(1)*模型来培养对这个问题的直觉。之前我们看到在*AR(1)*模型中有![](img/B22389_07_023.png)时，时间序列中会出现趋势。但我们也可以通过将时间作为有序变量包含在定义时间序列的方程中来考虑趋势时间序列。例如，让我们考虑两个时间序列：
+- en: '*Time series 1*:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*时间序列 1*：'
+- en: '![](img/B22389_07_024.png)'
+  id: totrans-83
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_024.png)'
+- en: '*Time series 2*:'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*时间序列 2*：'
+- en: '![](img/B22389_07_025.png)'
+  id: totrans-85
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_025.png)'
+- en: 'These can be seen in the following graphs:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些可以通过以下图表看到：
+- en: '![Figure 7.3 – Time series 1 (stochastic trend) and Time series 2 (deterministic
+    trend) ](img/B22389_07_03.png)'
+  id: totrans-87
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.3 – 时间序列 1（随机趋势）和时间序列 2（确定性趋势）](img/B22389_07_03.png)'
+- en: 'Figure 7.3: Top: Stochastic trend; Bottom: Deterministic trend'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.3：顶部：随机趋势；底部：确定性趋势
+- en: We saw both of these equations earlier; *Time series 1* is the *AR(1)* model,
+    while *Time series 2* is the time series equation we chose to illustrate differencing.
+    We already know that for ![](img/B22389_07_023.png), both *Time series 1* and
+    *Time series 2* have trends. But there is a difference between the two trends.
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前看到过这两个方程；*时间序列 1*是*AR(1)*模型，而*时间序列 2*是我们选择用来说明差分的时间序列方程。我们已经知道，对于![](img/B22389_07_023.png)，*时间序列
+    1*和*时间序列 2*都有趋势。但这两种趋势之间有差异。
+- en: In *Time series 2*, the trend is constant and can be perfectly modeled. In this
+    case, just a linear fit would explain the trend perfectly. But in *Time series
+    1*, the trend is not something that can be explained by a simple linear fit. It
+    is inherently dependent on the previous value of the time series that has ![](img/B22389_07_027.png)
+    and hence is stochastic. Therefore, *Time series 2* has a deterministic trend
+    and *Time series 1* has a stochastic trend.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*时间序列 2*中，趋势是恒定的，可以完美地建模。在这种情况下，简单的线性拟合就能完美地解释趋势。但在*时间序列 1*中，趋势并不是可以通过简单的线性拟合来解释的。它本质上依赖于时间序列的前一个值，因此是随机的。因此，*时间序列
+    2*具有确定性趋势，而*时间序列 1*具有随机性趋势。
+- en: 'We can use the same ADF test we saw earlier in this chapter to check whether
+    a time series has deterministic or stochastic trends. Without going into the math
+    of the statistical test, we know that it tests for a unit root by fitting an `AR(p)`
+    model to the time series. There are a few variants of this test that we can specify
+    using the `regression` parameter in the `statsmodels` implementation. This parameter
+    takes in the following values:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用本章中早些时候看到的相同ADF检验来检查时间序列是否具有确定性或随机性趋势。在不深入讨论统计检验的数学原理的情况下，我们知道它通过将`AR(p)`模型拟合到时间序列上来检验单位根。我们可以通过`statsmodels`实现中的`regression`参数指定该检验的几种变体。该参数接受以下值：
+- en: '`c`: This means we are including a constant intercept in the `AR(p)` model.
+    Practically, this means that we will be considering a time series as stationary
+    even if the series is not around zero. This is the default setting in `statsmodels`.'
+  id: totrans-92
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`c`：这意味着我们在`AR(p)`模型中包括了常数截距项。实际上，这意味着即使序列不以零为中心，我们也会认为时间序列是平稳的。这是`statsmodels`中的默认设置。'
+- en: '`n`: This means we do not even include a constant intercept in the `AR(p)`
+    model.'
+  id: totrans-93
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`n`：这意味着我们在`AR(p)`模型中甚至不包括常数截距项。'
+- en: '`ct`: If we supply this option, the `AR(p)` model will also have a constant
+    intercept and a linear, deterministic trend component. What this means is that
+    even if there is a deterministic trend in the time series, it will be ignored
+    and the series will be tested as stationary.'
+  id: totrans-94
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`ct`：如果我们提供此选项，则`AR(p)`模型将包含常数截距项和线性、确定性趋势分量。这意味着即使时间序列中存在确定性趋势，它也会被忽略，并且该序列将被测试为平稳序列。'
+- en: '`ctt`: This is when we include a constant intercept—that is, a linear and quadratic
+    trend.'
+  id: totrans-95
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`ctt`：这是当我们包括常数截距项，即线性和二次趋势时。'
+- en: So, if we run an ADF test with `regression="c"`, it will be non-stationary.
+    Now, if we run the ADF test with `regression="ct"`, it will come out as stationary.
+    This means that when we removed a deterministic trend from the time series, it
+    became stationary. This test is what we can use to determine whether a trend that
+    we observe in a time series is deterministic or stochastic. In the *Further reading*
+    section, we have provided a link to a blog post by *Fabian Kostadinov*, where
+    he experiments with a few time series to make the distinction between the different
+    variants of ADF tests clear.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，如果我们使用`regression="c"`运行ADF检验，它将显示为非平稳序列。而如果我们使用`regression="ct"`运行ADF检验，它将显示为平稳序列。这意味着，当我们从时间序列中移除确定性趋势后，它变得平稳。这项测试可以帮助我们判断时间序列中观察到的趋势是确定性趋势还是随机趋势。在*进一步阅读*部分，我们提供了一个由*Fabian
+    Kostadinov*撰写的博客链接，他通过对一些时间序列进行实验，清楚地说明了不同ADF检验变种的区别。
+- en: 'We have implemented this test in `src.transforms.stationary_utils` as `check_deterministic_trend`,
+    which does the inference for you and returns a `namedtuple` with a Boolean attribute
+    of `deterministic_trend`. The `namedtuple` also includes the raw results from
+    the two `adfuller` tests we did under `adf_res` and `adf_ct_res` if you want to
+    investigate further. Let’s see how we can use this test:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经在`src.transforms.stationary_utils`中实现了这个测试，命名为`check_deterministic_trend`，它会为您进行推断，并返回一个包含布尔属性`deterministic_trend`的`namedtuple`。如果您想进一步调查，`namedtuple`还包含我们在`adf_res`和`adf_ct_res`中进行的两个`adfuller`检验的原始结果。让我们看看如何使用这个测试：
+- en: '[PRE3]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: This will tell us whether the trend is stationary or deterministic. Now, let’s
+    look at a couple of ways to identify and statistically test trends (irrespective
+    of whether it is deterministic or not) in a time series.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将告诉我们趋势是平稳的还是确定性的。接下来，让我们看看几种方法，如何识别并对时间序列中的趋势（无论是否为确定性趋势）进行统计检验。
+- en: Kendall’s Tau
+  id: totrans-100
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Kendall的Tau
+- en: Kendall’s Tau is a measure of correlation but is carried out on the ranks of
+    the data. Kendall’s Tau is a non-parametric test and therefore does not make assumptions
+    about the data. The correlation coefficient, Tau, returns a value between -1 and
+    1, where 0 shows no relationship and 1 or -1 is a perfect relationship. We will
+    not dive into the details of how Kendall’s Tau is calculated or how the significance
+    test is done as this is outside the scope of this book. The *Further reading*
+    section contains a link that explains this well.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Kendall的Tau是相关性的一种衡量方式，但它是在数据的等级上进行的。Kendall的Tau是一个非参数检验，因此不对数据做任何假设。相关系数Tau的值介于-1和1之间，其中0表示无关系，1或-1表示完全关系。我们不会深入探讨Kendall的Tau是如何计算的，也不会讨论其显著性检验，因为这超出了本书的范围。*进一步阅读*部分包含了一个很好的链接来解释这一点。
+- en: In this section, we will see how we can use Kendall’s Tau to measure the trend
+    in our time series. As mentioned earlier, Kendall’s Tau calculates a rank correlation
+    between two variables. If we chose one of those variables as the time series and
+    set the other as the ordinal representation of time, the resulting Kendall’s Tau
+    would represent the trend in the time series. An additional benefit is that the
+    higher the value of Kendall’s Tau is, the stronger we expect the trend to be.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将看到如何使用Kendall的Tau来衡量我们时间序列中的趋势。如前所述，Kendall的Tau计算两个变量之间的等级相关性。如果我们选择其中一个变量作为时间序列，并将另一个变量设置为时间的序数表示，则得到的Kendall的Tau将表示时间序列中的趋势。另一个好处是，Kendall的Tau值越高，我们预计趋势越强。
+- en: '`scipy` has an implementation of Kendall’s Tau that we can use as follows:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`scipy` 提供了一个 Kendall’s Tau 的实现，我们可以如下使用：'
+- en: '[PRE4]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: We can compare the returned p-value to our required confidence (typically, this
+    is `0.05`) and say that if `p_value` < `confidence`, we conclude that the trend
+    is statistically significant. The sign of `tau` tells us whether this is an increasing
+    trend or a decreasing one.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将返回的 p 值与所需的置信度（通常为 `0.05`）进行比较，并得出结论：如果 `p_value` < `confidence`，我们可以认为趋势在统计上是显著的。`tau`
+    的符号告诉我们这是一个上升趋势还是下降趋势。
+- en: 'We have made an implementation of Kendall’s Tau in `src.transforms.stationary_utils`
+    as `check_trend`, which checks for the presence of a trend for you. The only parameters
+    we need to provide are as follows:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在 `src.transforms.stationary_utils` 中实现了 Kendall’s Tau，命名为 `check_trend`，它会帮助你检查是否存在趋势。我们只需要提供以下参数：
+- en: '`y`: The time series to check'
+  id: totrans-107
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`y`：需要检查的时间序列'
+- en: '`confidence`: The confidence level against which the resulting p-value will
+    be checked'
+  id: totrans-108
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`confidence`：对结果 p 值进行检查的置信度水平'
+- en: A few more parameters are there, but those are for the **Mann-Kendall** (**M-K**)
+    test, which will be explained next.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 还有一些参数，但它们是用于 **Mann-Kendall**（**M-K**）检验的，接下来会做详细解释。
+- en: 'Let’s see how we can use this test:'
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何使用这个检验：
+- en: '[PRE5]'
+  id: totrans-111
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'This method also checks whether the trend that has been identified is deterministic
+    or stochastic and calculates the direction of the trend. The result is returned
+    as a `namedtuple` with the following parameters:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此方法还检查已识别的趋势是确定性还是随机性，并计算趋势的方向。结果会作为 `namedtuple` 返回，包含以下参数：
+- en: '`trend`: This is a Boolean flag signifying the presence of a trend.'
+  id: totrans-113
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`trend`：这是一个布尔标志，表示是否存在趋势。'
+- en: '`direction`: This will be either `increasing` or `decreasing`.'
+  id: totrans-114
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`direction`：这将是 `increasing` 或 `decreasing`。'
+- en: '`slope`: This is the slope of the estimated trend line. For Kendall’s Tau,
+    it will be the Tau.'
+  id: totrans-115
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`slope`：这是估算趋势线的斜率。对于 Kendall’s Tau，它将是 Tau 值。'
+- en: '`p`: This is the p-value of the statistical test.'
+  id: totrans-116
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`p`：这是统计检验的 p 值。'
+- en: '`deterministic`: This is a Boolean flag signifying the deterministic trend.'
+  id: totrans-117
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`deterministic`：这是一个布尔标志，表示确定性趋势。'
+- en: Now, let’s look at the Mann-Kendall test.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们来看看 Mann-Kendall 检验。
+- en: Mann-Kendall test (M-K test)
+  id: totrans-119
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Mann-Kendall 检验（M-K 检验）
+- en: The Mann-Kendall test is used to check for the presence of a monotonic upward
+    or downward trend. And since the M-K test is a non-parametric test, like Kendall’s
+    Tau, there is no assumption of normality or linearity. The test is done by analyzing
+    the signs between consecutive points in the time series. The crux of the test
+    is the idea that in the presence of a trend, the sign values, if summed up, increase
+    or decrease constantly.
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Mann-Kendall 检验用于检查是否存在单调上升或下降的趋势。由于 M-K 检验是非参数检验，就像 Kendall’s Tau 一样，不需要假设数据的正态性或线性。检验通过分析时间序列中连续点之间的符号来进行。检验的核心思想是，在存在趋势的情况下，如果将符号值求和，它会不断增加或减少。
+- en: 'Although non-parametric, there were a few assumptions in the original test:'
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管是非参数检验，但原始检验中有几个假设：
+- en: There is no auto-correlation in the time series
+  id: totrans-122
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 时间序列中没有自相关
+- en: There is no seasonality in the time series
+  id: totrans-123
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 时间序列中没有季节性
+- en: Numerous alterations have been made to the original tests to tackle these problems
+    over the years and a lot of such alterations, along with the original test, have
+    been implemented at [https://github.com/mmhs013/pyMannKendall](https://github.com/mmhs013/pyMannKendall).
+    They are available in `pypi` as `pymannkendall`.
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多年来，已经对原始检验进行了许多修改，以解决这些问题，很多这种修改，包括原始检验，已在 [https://github.com/mmhs013/pyMannKendall](https://github.com/mmhs013/pyMannKendall)
+    上实现。它们也作为 `pymannkendall` 在 `pypi` 上提供。
+- en: '**Pre-whitening** is a common technique used to remove the autocorrelation
+    in a time series. In a nutshell, the idea is as follows:'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**预白化** 是一种常用的技术，用于去除时间序列中的自相关。简而言之，基本思路如下：'
+- en: Identify ![](img/B22389_07_003.png) with an AR(1) model
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 AR(1) 模型识别 ![](img/B22389_07_003.png)
+- en: '![](img/B22389_07_029.png)'
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_029.png)'
+- en: M. Bayazit and B. Önöz (2007) suggested not using pre-whitening before doing
+    the M-K test if the sample size is larger than 50 and if the trend is strong enough
+    (`slope>0.01`). For seasonal data, a seasonal variant of the M-K test has also
+    been implemented in `pymannkendall`.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: M. Bayazit 和 B. Önöz（2007）建议，如果样本量大于 50 且趋势足够强（`slope>0.01`），在进行 M-K 检验时不需要使用预白化。对于季节性数据，`pymannkendall`
+    也实现了 M-K 检验的季节性变体。
+- en: '**Reference check**:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考检查**：'
+- en: The research paper by M. Bayazit and B. Önöz is cited in the *References* section
+    under reference *1*.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: M. Bayazit 和 B. Önöz 的研究论文在 *参考文献* 部分被引用，引用号为 *1*。
+- en: 'The same method we discussed earlier, `check_trend`, also implements M-K tests
+    that can be enabled by setting `mann_kendall=True`. However, one thing we need
+    to keep in mind is that the M-K test is considerably slower than Kendall’s Tau,
+    especially for long time series. There are a couple more parameters specific to
+    the M-K test:'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前讨论过的相同方法`check_trend`，也实现了M-K检验，可以通过设置`mann_kendall=True`来启用。然而，我们需要记住的一点是，M-K检验比Kendall’s
+    Tau要慢得多，特别是对于长时间序列。M-K检验还有一些特定的参数：
+- en: '`seasonal_period`: The default value is `None`. But if there is seasonality,
+    we can provide `seasonal_period` here and the seasonal variant of the M-K test
+    will be retrieved.'
+  id: totrans-132
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonal_period`：默认值为`None`。但如果存在季节性，我们可以在此提供`seasonal_period`，并且会检索到M-K检验的季节性变体。'
+- en: '`prewhiten`: This is a Boolean flag that’s used to pre-whiten the time series
+    before applying the M-K test. The default value is `None`. In that case, using
+    the condition we discussed earlier (`N>50`), we decide whether to pre-whiten or
+    not. If we explicitly pass `True` or `False` here, it will be respected.'
+  id: totrans-133
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`prewhiten`：这是一个布尔标志，用于在应用M-K检验之前对时间序列进行预白化处理。默认值为`None`。在这种情况下，我们会根据之前讨论的条件（`N>50`）来决定是否进行预白化处理。如果我们在此明确传递`True`或`False`，将会尊重此设置。'
+- en: 'Let’s see how we can use this test:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何使用这个检验：
+- en: '[PRE6]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'The result is returned as a `namedtuple` with the following parameters:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结果将作为一个`namedtuple`返回，包含以下参数：
+- en: '`trend`: This is a Boolean flag signifying the presence of a trend.'
+  id: totrans-137
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`trend`：这是一个布尔标志，表示是否存在趋势。'
+- en: '`direction`: This will be either `increasing` or `decreasing`.'
+  id: totrans-138
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`direction`：这将是`increasing`（增加）或`decreasing`（减少）。'
+- en: '`slope`: This is the slope of the estimated trend line. For the M-K test, it
+    will be the slope estimated using the Theil-Sen estimator.'
+  id: totrans-139
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`slope`：这是估算趋势线的斜率。对于M-K检验，它将是使用Theil-Sen估算器估算的斜率。'
+- en: '`p`: This is the p-value of the statistical test.'
+  id: totrans-140
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`p`：这是统计检验的p值。'
+- en: '`deterministic`: This is a Boolean flag signifying the deterministic trend.'
+  id: totrans-141
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`deterministic`：这是一个布尔标志，表示确定性趋势。'
+- en: 'Let’s see an example where we applied both these tests on a time series (see
+    `02-Dealing_with_Non-Stationarity.ipynb` for the full code):'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一个示例，在其中我们对一个时间序列应用了这两个检验（完整代码请参见`02-Dealing_with_Non-Stationarity.ipynb`）：
+- en: '[PRE7]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: '![](img/B22389_07_04.png)'
+  id: totrans-144
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_04.png)'
+- en: 'Figure 7.4: M-K test'
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.4：M-K 检验
+- en: '[PRE8]'
+  id: totrans-146
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[PRE9]'
+  id: totrans-147
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: It would benefit you if you can generate some time series, or even pick a few
+    time series you have come across and use these functions to see how it works and
+    how the results help you. The associated notebook has some examples to get you
+    started. You can observe how the direction and slope are different for different
+    types of trends.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你能生成一些时间序列，甚至选择一些你遇到的时间序列，使用这些函数来看它是如何工作的，以及结果如何帮助你，那将对你有很大帮助。相关的笔记本中有一些示例可以帮助你入门。你可以观察不同类型趋势下方向和斜率的不同。
+- en: Now that we know how to detect a trend, let’s look at detrending.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们知道如何检测趋势，让我们来看一下去趋势化。
+- en: Detrending transform
+  id: totrans-150
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 去趋势转换
+- en: If the trend is deterministic, removing the trend would add some value to the
+    modeling procedure. In *Chapter 3*, *Analyzing and Visualizing Time Series Data*,
+    we discussed detrending as it was an integral part of the decomposition we were
+    doing. But techniques such as moving average or LOESS regression have one drawback—they
+    can’t extrapolate. But if we are considering a deterministic linear (or even polynomial)
+    trend, it can be easily estimated by using linear regression. The added advantage
+    here is that the trend that is identified can easily be extrapolated.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果趋势是确定性的，去除趋势将为建模过程增添一些价值。在*第3章*，*分析与可视化时间序列数据*中，我们讨论了去趋势化，因为它是我们进行分解时的一个重要部分。但像移动平均或LOESS回归这类技术有一个缺点——它们无法进行外推。然而，如果我们考虑的是确定性的线性（甚至是多项式）趋势，那么可以通过线性回归轻松估算。这里的一个额外优点是，识别出的趋势可以轻松进行外推。
+- en: 'The procedure is simple: we regress the time series on the ordinal representation
+    of time and extract the parameters. Once we have these parameters, using the dates,
+    we can extrapolate the trend to any point in the future. The core logic in Python
+    is shown below:'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个过程很简单：我们将时间序列对时间的序数表示进行回归，并提取参数。一旦我们获得这些参数，就可以利用日期将趋势外推到未来的任何一点。Python中的核心逻辑如下：
+- en: '[PRE10]'
+  id: totrans-153
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'We have made and implemented this detrender as a transformer in `src.transforms.target_transformations.py`
+    as `DetrendingTransformer`. You can see how we have implemented it in the GitHub
+    repository. Now, let’s see how we can use it:'
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经将这个去趋势器作为一个变换器实现，并且放在`src.transforms.target_transformations.py`中，名为`DetrendingTransformer`。你可以在GitHub仓库中查看我们是如何实现的。现在，让我们看看如何使用它：
+- en: '[PRE11]'
+  id: totrans-155
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '`y_detrended` will contain the detrended series. To get the original time series
+    back, we can call `inverse_transform` using `detrending_transformer`. The associated
+    notebook has examples and plots to see how the detrending changes the time series.'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`y_detrended`将包含去趋势后的时间序列。要恢复原始时间序列，我们可以使用`detrending_transformer`调用`inverse_transform`。相关的笔记本中有示例和图表，展示去趋势如何改变时间序列。'
+- en: '**Best practice**:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践**：'
+- en: We have to be careful with the trend assumptions, especially if we are forecasting
+    for the long term. Even a linear trend assumption can lead to an unrealistic forecast
+    because trends don’t continue the same way forever in the real world. It is always
+    advisable to dampen the trend by some factor, ![](img/B22389_07_030.png), to be
+    conservative in our extrapolation of the trend. This dampening can be as simple
+    as ![](img/B22389_07_031.png).
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们必须小心趋势假设，特别是当我们进行长期预测时。即使是线性趋势假设，也可能导致不现实的预测，因为现实世界中的趋势不会永远以相同的方式延续。通常建议通过某种因子来减弱趋势，![](img/B22389_07_030.png)，以便在趋势外推时保持保守。这种减弱可以像![](img/B22389_07_031.png)一样简单。
+- en: Another key aspect that makes a time series non-stationary is seasonality. Let’s
+    look at how to identify seasonality and remove it.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使时间序列非平稳的另一个关键因素是季节性。让我们来看一下如何识别季节性并将其去除。
+- en: Detecting and correcting for seasonality
+  id: totrans-160
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检测和修正季节性
+- en: A vast majority of real-world time series have seasonality such as retail sales,
+    energy consumption, and so on. And generally, the presence or absence of seasonality
+    comes as part of the domain knowledge. But when we are working with a time series
+    dataset, the domain knowledge becomes slightly diluted. The majority of time series
+    may exhibit seasonality, but that doesn’t mean every time series in the dataset
+    is seasonal. For instance, within a retail dataset, there might be items that
+    are seasonal and some items that are not. Therefore, when working with a time
+    series dataset, being able to determine whether a particular time series is seasonal
+    or not has some value.
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 绝大多数现实世界的时间序列具有季节性，比如零售销售、能源消耗等。通常，季节性的存在与否是领域知识的一部分。但是，当我们处理时间序列数据集时，领域知识会有所稀释。大多数时间序列可能表现出季节性，但这并不意味着数据集中的每个时间序列都有季节性。例如，在一个零售数据集中，可能有季节性商品，也可能有非季节性商品。因此，当处理时间序列数据集时，能够判断某个特定时间序列是否具有季节性是有价值的。
+- en: Detecting seasonality
+  id: totrans-162
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 检测季节性
+- en: 'There are two popular ways to check for seasonality, apart from just eyeballing
+    it: autocorrelation and fast Fourier transform. Either is equally capable of identifying
+    the seasonality period automatically. For our discussion, we’ll cover the autocorrelation
+    method and examine how we can use that to determine seasonality.'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了肉眼观察，还有两种常见的检测季节性的方法：自相关和快速傅里叶变换。两者都能自动识别季节性周期。为了讨论的方便，我们将介绍自相关方法，并探讨如何使用该方法来确定季节性。
+- en: Autocorrelation, as explained in *Chapter 3*, *Analyzing and Visualizing Time
+    Series Data*, is the correlation of a time series to its lagged values. Typically,
+    we expect the correlation to be higher in the immediate lags (`lag 1`, `lag 2`,
+    and so on) and gradually die down as we move farther into the past. But for time
+    series with seasonality, we will also see a spike in the seasonal periods.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自相关，如*第3章*《时间序列数据的分析与可视化》中所解释的，是时间序列与其滞后值之间的相关性。通常，我们期望在立即的滞后期（`lag 1`，`lag
+    2`等）中相关性较高，随着时间推移，相关性逐渐减弱。但对于具有季节性的时间序列，我们也会看到在季节性周期中出现相关性峰值。
+- en: 'Let’s understand this by looking at an example. Consider a synthetic time series
+    that is just white noise combined with a sinusoidal signal with a seasonality
+    cycle of 25 (identical to the seasonal time series we saw earlier, in *Figure
+    7.1*):'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过一个例子来理解这一点。考虑一个合成时间序列，它只是白噪声与一个具有25周期季节性信号的正弦波组合（与我们之前在*图7.1*中看到的季节性时间序列相同）：
+- en: '[PRE12]'
+  id: totrans-166
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'If we plot the **autocorrelation function** (**ACF**) for this time series,
+    it will look as follows (the code to calculate and plot this can be found in the
+    `02-Dealing_with_Non-Stationarity.ipynb` notebook):'
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们绘制这个时间序列的**自相关函数**（**ACF**），它将如下所示（计算和绘制此图的代码可以在`02-Dealing_with_Non-Stationarity.ipynb`笔记本中找到）：
+- en: '![Figure 7.4 – Autocorrelation plot of the synthetic time series with a seasonality
+    cycle of 25 ](img/B22389_07_05.png)'
+  id: totrans-168
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图7.4 – 具有25周期季节性信号的合成时间序列自相关图](img/B22389_07_05.png)'
+- en: 'Figure 7.5: Autocorrelation plot of the synthetic time series with a seasonality
+    cycle of 25'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图7.5：具有25周期季节性信号的合成时间序列自相关图
+- en: We can see that apart from the first few lags, the autocorrelation increases
+    as we approach the seasonal cycle and peaks at the exact seasonality. We can use
+    this property of the ACF to detect seasonality. `darts`, a time series forecasting
+    library, has an implementation of this technique that identifies seasonality.
+    But since it was designed to work for the time series data structure of `darts`,
+    we have adapted the same logic to work on regular `pandas` series in `src.transforms.stationary_utils.py`
+    under the name `check_seasonality`. The implementation can do two kinds of seasonality
+    checks. It can take a `seasonality_period` as input and verify whether a seasonality
+    corresponding to that `seasonality_period` exists in the data or not. If we do
+    not give a `seasonality_period` ahead of time, it will return to you the shortest
+    `seasonality_period` that is statistically significant.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以看到，除了前几个滞后期外，自相关在接近季节周期时增加，并在季节性达到峰值时达到最高。我们可以利用自相关函数（ACF）这一特性来检测季节性。`darts`
+    是一个时间序列预测库，它实现了这种检测季节性的技术。但由于它是为 `darts` 的时间序列数据结构设计的，因此我们已将相同的逻辑改编为适用于常规的 `pandas`
+    序列，代码位于 `src.transforms.stationary_utils.py`，命名为 `check_seasonality`。该实现可以执行两种季节性检查。它可以接受一个
+    `seasonality_period` 作为输入，并验证数据中是否存在与该 `seasonality_period` 对应的季节性。如果我们没有提前提供
+    `seasonality_period`，它将返回一个统计学上显著的最短 `seasonality_period`。
+- en: 'The procedure, at a high level, does the following:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个过程从高层次上来说，执行以下操作：
+- en: It calculates the ACF.
+  id: totrans-172
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 它计算 ACF。
+- en: It finds all the relative maxima in the ACF. A relative maximum is a point where
+    the function changes direction from increasing to decreasing.
+  id: totrans-173
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 它会在 ACF 中找到所有的相对最大值。相对最大值是指函数从增加变为减少的转折点。
+- en: It checks whether the provided `seasonal_period` is a relative maximum. If not,
+    we conclude there is no seasonality associated with `seasonality_period`.
+  id: totrans-174
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 它检查提供的 `seasonal_period` 是否为相对最大值。如果不是，我们就得出结论，表示该 `seasonal_period` 没有相关的季节性。
+- en: 'Now, we take the assumption that the ACF is normally distributed and compute
+    the upper limit at the specified confidence level. The upper bound is given by:'
+  id: totrans-175
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们假设 ACF 服从正态分布，并计算指定置信度下的上限。上限由以下公式给出：
+- en: '![](img/B22389_07_032.png)'
+  id: totrans-176
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_032.png)'
+- en: where *r*[h] is the estimated autocorrelation at lag *h*, *SE* is the standard
+    error, and ![](img/B22389_07_033.png) is the quantile of the normal distribution
+    based on the required confidence, ![](img/B22389_04_009.png). The SE is approximated
+    using Bartlett’s formula (for the math behind this, head over to the *Further
+    reading* section).
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中 *r*[h] 是滞后 *h* 时的估计自相关，*SE* 是标准误差，而 ![](img/B22389_07_033.png) 是基于所需置信度的正态分布分位数，![](img/B22389_04_009.png)。SE
+    使用 Bartlett 公式近似（有关数学原理，请参考 *进一步阅读* 部分）。
+- en: Each of our candidates for `seasonality_period` is checked against this upper
+    limit and the ones that are above this limit are deemed statistically significant.
+  id: totrans-178
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 每一个 `seasonality_period` 的候选值都会与这个上限进行比较，超过该上限的值被认为是统计上显著的。
+- en: 'There are only three parameters for this function, apart from the time series
+    itself:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了时间序列本身，这个函数只有三个参数：
+- en: '`max_lag`: This specifies the maximum lag that should be included in the ACF
+    and subsequent search for seasonality. This should be at least one more than the
+    expected seasonality period.'
+  id: totrans-180
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`max_lag`：指定应该包含在 ACF 中的最大滞后期，并在随后的季节性搜索中使用。这个值应该至少比预期的季节性周期多一个。'
+- en: '`seasonal_period`: This is where we give our intuition of the seasonality period
+    from domain knowledge and the function verifies that assumption for us.'
+  id: totrans-181
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonal_period`：这是我们从领域知识中给出的季节性周期的直觉，函数会验证这一假设。'
+- en: '`confidence`: This is the standard statistical confidence level. The default
+    value is `0.05`.'
+  id: totrans-182
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`confidence`：这是标准的统计置信度水平，默认值为 `0.05`。'
+- en: 'Let’s see how we can use this function on the same data we saw in *Figure 7.4*
+    (with a seasonal period of 25). This will give you a `namedtuple` with `seasonal`,
+    a Boolean flag to indicate seasonality, and `seasonal_periods`, the seasonal periods
+    with significant seasonality, as parameters:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看如何在我们之前在*图 7.4*中看到的相同数据上使用这个函数（季节周期为 25）。这将返回一个包含`seasonal`（表示季节性的布尔标志）和`seasonal_periods`（具有显著季节性的季节周期）的`namedtuple`：
+- en: '[PRE13]'
+  id: totrans-184
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: '[PRE14]'
+  id: totrans-185
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: '[PRE15]'
+  id: totrans-186
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: '[PRE16]'
+  id: totrans-187
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: Now that we know how to identify and test for seasonality, let’s talk about
+    deseasonalizing.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 既然我们已经知道如何识别和检测季节性，接下来我们来谈谈去季节化。
+- en: Deseasonalizing transform
+  id: totrans-189
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 去季节化转换
+- en: In *Chapter 3*, *Analyzing and Visualizing Time Series Data*, we reviewed techniques
+    for seasonal decomposition. We can use the same techniques here as well, but with
+    just one tweak. Earlier, we were not concerned with projecting the seasonality
+    into the future. But when we are using deseasonalizing in forecasting, it is essential
+    to be able to project it into the future as well. We are in luck since projecting
+    the seasonal cycle forward is trivial. This is because we are looking at a fixed
+    seasonality profile that will always keep repeating in the seasonal cycle. For
+    instance, if we identified a seasonality profile for the 12 months of a year (yearly
+    seasonality at monthly frequency data), the seasonality that’s extracted for these
+    12 months will just repeat itself in chunks of 12 months.
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*第三章*，*时间序列数据的分析与可视化*中，我们回顾了季节性分解的技术。我们可以在这里使用相同的技术，但只需稍作调整。之前，我们并不关心将季节性投射到未来。但在进行预测时，去季节化处理是至关重要的，必须能够将季节性投射到未来。幸运的是，季节性周期的前向投射是非常简单的。这是因为我们正在处理一个固定的季节性配置，它将在季节性周期中不断重复。例如，如果我们为一年的12个月份（按月频率的数据）识别了季节性配置，那么为这12个月提取的季节性将会在每12个月的周期中重复出现。
+- en: 'Using this property, we have implemented a transformer in `src.transforms.target_transformations.py`
+    as `DeseasonalizingTransformer`. There are a few parameters and properties that
+    we need to be aware of:'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用这一特性，我们在`src.transforms.target_transformations.py`中实现了一个转换器，命名为`DeseasonalizingTransformer`。我们需要注意一些参数和属性：
+- en: '`seasonality_extraction`: This transformer supports two ways of extracting
+    seasonality—`"period_averages"`, where the seasonality profile is estimated using
+    seasonal averaging, and `"fourier_terms"`, where we regress on Fourier terms to
+    extract the seasonality.'
+  id: totrans-192
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonality_extraction`：此转换器支持两种提取季节性的方法——`"period_averages"`，即通过季节性平均来估计季节性配置，以及`"fourier_terms"`，即通过对傅里叶项进行回归来提取季节性。'
+- en: '`seasonality_period`: Depending on the technique we use for seasonality extraction,
+    this can either be an integer or a string. If `"period_averages"`, this parameter
+    denotes the number of periods after which the seasonal cycle repeats. If `"fourier_terms"`,
+    this denotes the seasonality to be extracted from the datetime index. `pandas
+    datetime` properties such as `week_of_day`, `month`, and so on can be used to
+    specify the most prominent seasonality. Similar to `FourierDecomposition`, which
+    we saw earlier, we can also omit this parameter and provide custom seasonality
+    in the `fit/transform` methods in the implementation.'
+  id: totrans-193
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonality_period`：根据我们用于提取季节性的方法，这个参数可以是整数或字符串。如果是`"period_averages"`，此参数表示季节性周期重复的周期数。如果是`"fourier_terms"`，则表示从日期时间索引中提取的季节性。可以使用`pandas
+    datetime`的属性，如`week_of_day`、`month`等来指定最显著的季节性。类似于我们之前看到的`FourierDecomposition`，我们也可以省略此参数，并在`fit/transform`方法中提供自定义季节性。'
+- en: '`n_fourier_terms`: This parameter specifies the number of Fourier terms to
+    be included in the regression. Increasing this parameter makes the fitted seasonality
+    more complex.'
+  id: totrans-194
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`n_fourier_terms`：此参数指定在回归中要包含的傅里叶项的数量。增加此参数会使拟合的季节性变得更加复杂。'
+- en: There is no detrending in this implementation because we already saw a `DetrendingTransformer`.
+    This implementation expects any trend to be removed before using the `fit` function.
+  id: totrans-195
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 该实现中没有去趋势处理，因为我们之前已经看到过`DetrendingTransformer`。该实现假设在使用`fit`函数之前，任何趋势都已经被去除。
+- en: 'Let’s see how we can use it:'
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下如何使用它：
+- en: '[PRE17]'
+  id: totrans-197
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: '`y_deseasonalized` will have the deseasonalized time series. To get back to
+    the original time series, we can use the `inverse_transform` function. Typically,
+    this can be used to add the seasonality back after making predictions.'
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`y_deseasonalized`将包含去季节化的时间序列。为了恢复到原始时间序列，我们可以使用`inverse_transform`函数。通常，这可以在做出预测后用于将季节性加回。'
+- en: '**Best practice**:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践**：'
+- en: Modeling seasonality can be done either separately, as discussed here, or by
+    using the seasonal features that we discussed earlier in this chapter. Although
+    the final evaluation on which one works better has to be found out empirically
+    for each dataset, we can have a few rules of thumb/guidelines to decide on priority.
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 季节性建模可以单独进行，如这里所讨论的，或者使用我们在本章前面讨论的季节性特征。尽管最终的评估需要通过实证方法找到哪个方法更有效，但我们可以遵循一些经验法则/指导方针来决定优先级。
+- en: When we have enough data, letting the model learn seasonality as part of the
+    main forecasting problem seems to work better. But in cases where data is not
+    that rich, extracting seasonality separately before feeding it to an ML model
+    works well.
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们有足够的数据时，让模型将季节性作为主要预测问题的一部分来学习似乎效果更好。但在数据不丰富的情况下，单独提取季节性然后再输入到机器学习模型中也能取得良好的效果。
+- en: When the dataset has varied seasonality (different seasonal cycles for different
+    time series), then it should be treated accordingly. Either deseasonalize each
+    time series separately or split the global ML model into different local models,
+    each with its own seasonality pattern.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当数据集具有不同的季节性（即不同时间序列有不同的季节性周期）时，应该根据情况进行处理。可以分别去季节化每个时间序列，或将全局机器学习模型拆分为多个本地模型，每个本地模型都有其独特的季节性模式。
+- en: The last aspect that we talked about earlier is heteroscedasticity. Let’s quickly
+    take a look at that as well.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前讨论的最后一个方面是异方差性。让我们也快速看一下这个内容。
+- en: Detecting and correcting for heteroscedasticity
+  id: totrans-204
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 检测并修正异方差性
+- en: Despite having a scary name, heteroscedasticity is a simple enough concept.
+    It is derived from ancient Greek, where *hetero* means *different* and *skedasis*
+    means *dispersion*. True to its name, heteroscedasticity is defined when the variability
+    of a variable is different across another variable. In the context of a time series,
+    we say a time series is heteroscedastic when the variability or dispersion of
+    the time series varies with time. For instance, let’s think about the spending
+    of a household over a number of years. In these years, this particular household
+    went from being poor to middle class and finally upper middle class. When the
+    household was poor, the spending was less and only on essentials, and because
+    of that, the variability in spending was less. But as they approached the upper
+    middle class, the household could afford luxuries, which created spikes in the
+    time series and therefore higher variability. If we refer back to *Figure 7.1*,
+    we can see what a heteroscedastic time series looks like.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管这个名字听起来有些吓人，异方差性其实是一个足够简单的概念。它源自古希腊，*hetero* 意为 *不同*，*skedasis* 意为 *离散*。正如它的名字所示，当一个变量的变异性在另一个变量中不同时，我们就定义为异方差性。在时间序列的背景下，当时间序列的变异性或离散度随着时间变化时，我们就说时间序列是异方差的。例如，让我们想象一个家庭在若干年的支出情况。在这些年里，这个家庭经历了从贫困到中产阶级，再到上层中产阶级的变化。当家庭贫困时，支出较少，仅限于必需品，因此支出的变异性也较小。但当他们接近上层中产阶级时，家庭有能力购买奢侈品，这在时间序列中造成了波动，从而导致了更高的变异性。如果我们回顾*图7.1*，可以看到异方差时间序列的表现。
+- en: But in addition to visual inspection, it would be neat if we could carry out
+    an automated statistical test to ascertain heteroscedasticity.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是，除了视觉检查外，如果我们能够进行自动化的统计测试来验证异方差性，那就更好了。
+- en: Detecting heteroscedasticity
+  id: totrans-207
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 检测异方差性
+- en: There are many ways to detect heteroscedasticity, but we will be using one of
+    the most popular techniques, known as the **White test**, proposed by Halbert
+    White in 1980\. The White test uses an auxiliary regression task to check for
+    constant variance. We run an initial regression using some covariates and calculate
+    the residuals of this regression. Then, we fit another regression model with these
+    residuals as the target and the covariates used in the first regression, and their
+    squares and cross-products. The final statistic is estimated by using the *R*²
+    value of this auxiliary regression. For a detailed account of the test, head over
+    to the *Further reading* section; for the rigorous mathematical procedure, the
+    research paper is cited in the *References* section.
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 检测异方差性有很多方法，但我们将使用其中最流行的技术之一，即1980年由Halbert White提出的**White检验**。White检验通过辅助回归任务来检查方差是否恒定。我们先使用一些协变量进行初步回归，并计算该回归的残差。然后，我们用这些残差作为目标，协变量、协变量的平方以及协变量的交叉乘积作为特征，再进行一次回归。最终的统计量是通过这个辅助回归的*R*²值来估计的。要了解更详细的测试过程，请参考*进一步阅读*部分；对于严格的数学过程，相关研究论文已在*参考文献*部分中引用。
+- en: '**Reference check**:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考检查**：'
+- en: To learn more about the rigorous mathematical procedure of the White test, take
+    a look at the research paper cited in the *References* section under reference
+    *2*.
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要了解White检验的严格数学过程，请查看*参考文献*部分中标注为*2*的研究论文。
+- en: In the context of a time series, we adapt this formulation by using a deterministic
+    trend model. The initial regression is done by using time as an ordinal variable
+    and the residuals are used to carry out the White test. The White test has an
+    implementation in `statsmodels` of `het_white`, which we will be using to carry
+    out this test. The `het_white` test returns two statistics and p-values—Lagrangian
+    Multiplier and F-Statistic. Lagrangian Multiplier tests if there is any relationship
+    between the variance of the residuals and the independent variables in the regression
+    model. F-Statistic compares the fit of your original model to a model allowing
+    for varying error variance. A p-value less than confidence in either of these
+    tests indicates heteroscedasticity. But to be conservative, we can also use both
+    tests and mark something as heteroscedastic only when both of the p-values are
+    less than confidence.
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在时间序列的背景下，我们通过使用一个确定性趋势模型来调整这种公式。初步回归是通过将时间作为序数变量进行的，残差用于进行White检验。White检验在`statsmodels`的`het_white`中有实现，我们将使用它来执行这个检验。`het_white`检验返回两个统计量和p值——拉格朗日乘数（Lagrangian
+    Multiplier）和F统计量。拉格朗日乘数检验残差的方差与回归模型中的自变量之间是否存在关系。F统计量比较原始模型与允许误差方差变化的模型的拟合优度。任何一个检验的p值小于置信度都表示存在异方差性。为了更保守起见，我们也可以使用两个检验，只有当两个p值都小于置信度时，才标记为异方差性。
+- en: 'We have wrapped all of this in a helpful function in `src.transforms.stationary_utils`
+    as `check_heteroscedasticity`, which has only one additional parameter—`confidence`.
+    Let’s see the core implementation of the method in Python:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经将这一切封装到`src.transforms.stationary_utils`中的一个有用函数`check_heteroscedasticity`里，该函数只有一个附加参数——`confidence`。让我们来看一下该方法的核心实现（Python代码）：
+- en: '[PRE18]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'Now, let’s see how we can use this function:'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用这个函数：
+- en: '[PRE19]'
+  id: totrans-215
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'This returns a `namedtuple` with the following parameters:'
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它返回一个`namedtuple`，包含以下参数：
+- en: '`Heteroscedastic`: A Boolean flag indicating the presence of heteroscedasticity'
+  id: totrans-217
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Heteroscedastic`: 一个布尔值标志，指示是否存在异方差性'
+- en: '`lm_statistic`: The **Lagrangian Multiplier** (**LM**) statistic'
+  id: totrans-218
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`lm_statistic`: **拉格朗日乘数**（**LM**）统计量'
+- en: '`lm_p_value`: The p-value associated with the LM statistic'
+  id: totrans-219
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`lm_p_value`: 与LM统计量相关的p值'
+- en: '**Best practice**:'
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践**：'
+- en: The heteroscedasticity test we are doing only considers a trend in the regression
+    and therefore, in the presence of seasonality, may not work very well. It is advised
+    to deseasonalize the data before applying the function.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们正在进行的异方差性检验仅考虑回归中的趋势，因此在季节性存在的情况下，可能效果不佳。建议在应用该函数之前先去季节性化数据。
+- en: Detecting heteroscedasticity was the easier part. There are a few transforms
+    that attempt to remove heteroscedasticity but with advantages and disadvantages.
+    Let’s take a look at a few such transforms.
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 检测异方差性是较为简单的部分。有一些变换方法试图去除异方差性，但每种方法都有其优缺点。我们来看看几种这样的变换。
+- en: Log transform
+  id: totrans-223
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 对数变换
+- en: Log transform, as the name suggests, is about applying a logarithm to the time
+    series. There are two main properties of a log transform—variance stabilization
+    and reducing skewness—thereby making the data distribution more *normal*. And
+    out of these, we are more interested in the first property because that is what
+    combats heteroscedasticity.
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如其名称所示，对数变换是指对时间序列应用对数变换。对数变换有两个主要特性——方差稳定性和减少偏态——从而使数据分布更*接近正态分布*。在这两点中，我们更关注第一个特性，因为它有助于对抗异方差性。
+- en: Log transforms are typically known to reduce the variance of the data and thereby
+    remove heteroscedasticity in the data. Intuitively, we can think of a log transform
+    as something that *pulls in* the extreme values on the right of the histogram,
+    at the same time stretching back the very low values on the left of the histogram.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对数变换通常被认为能减少数据的方差，从而消除数据中的异方差性。直观地看，我们可以将对数变换视为将直方图右侧的极端值*拉回*，同时拉伸直方图左侧的极低值。
+- en: But it has been shown that the log transform does not always stabilize the variance.
+    In addition to that, the log transform poses another challenge in ML. The optimization
+    of loss now happens on the log scale. Since the log transformation compresses
+    the lower end of the value range more than the higher one, the learned model can
+    be less sensitive to errors in the lower range as compared to the higher one.
+    Another key disadvantage is that the log transform can only be applied to strictly
+    positive data. And if any of your data is zero or less than zero, then you will
+    need to offset the whole distribution by adding some constant, *M*, and then applying
+    the transform. This will also create some disturbance in the data, which can have
+    adverse effects.
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 但是已经证明，对数变换并不总是能稳定方差。除此之外，对数变换在机器学习中还带来了另一个挑战。现在，损失的优化发生在对数尺度上。由于对数变换在值范围的较低端压缩得比高端更多，因此学到的模型可能对较低范围的错误不如对较高范围的错误敏感。另一个主要缺点是，对数变换只能应用于严格正的数据。如果你的数据中有零或负值，你将需要通过加上某个常数
+    *M* 来偏移整个分布，然后应用变换。这也会在数据中引入一些扰动，可能会产生不利影响。
+- en: 'The bottom line is that we should be careful when applying a log transform.
+    We have implemented a transformer in `src.transforms.target_transformations.py`
+    as `LogTransformer` with just one parameter, `add_one`, which adds one before
+    the transform and subtracts one after the inverse. The key logic in Python is
+    as simple as applying an `np.log1p` or `np.log` function in the transform and
+    reversing it with `np.expm1` or `np.exp`, respectively:'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关键是我们在应用对数变换时需要小心。我们在 `src.transforms.target_transformations.py` 中实现了一个名为 `LogTransformer`
+    的变换器，它只有一个参数 `add_one`，该参数在变换之前加一，在逆变换后减一。Python 中的关键逻辑就像在变换中应用 `np.log1p` 或 `np.log`
+    函数，分别用 `np.expm1` 或 `np.exp` 进行逆变换：
+- en: '[PRE20]'
+  id: totrans-228
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'All we have done is wrap this into a nice and easy-to-use transformer. Let’s
+    see how we can use it:'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们所做的就是将它封装成一个漂亮且易于使用的变换器。让我们看看如何使用它：
+- en: '[PRE21]'
+  id: totrans-230
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: '`y_log` is the log-transformed time series. We can call `inverse_transform`
+    to get the original time series back.'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`y_log` 是对数变换后的时间序列。我们可以调用 `inverse_transform` 来恢复原始时间序列。'
+- en: Box-Cox transformation
+  id: totrans-232
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Box-Cox 变换
+- en: 'The log transform, although effective and common, is very *strong*. But the
+    log is not the only monotonic transform that we can use. There are many other
+    transforms, such as *y*², ![](img/B22389_07_035.png), ![](img/B22389_07_036.png)
+    and so on, which are collectively part of the family of power transforms. One
+    set of transforms that is very famous and widely used in this family is the Box-Cox
+    transformations:'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管对数变换有效且常见，但它是非常 *强* 的。但对数变换并不是我们能使用的唯一单调变换。还有许多其他的变换，如 *y*²，![](img/B22389_07_035.png)，![](img/B22389_07_036.png)
+    等等，它们统称为幂变换家族。这个家族中非常著名且广泛使用的一类变换就是 Box-Cox 变换：
+- en: '![](img/B22389_07_037.png)'
+  id: totrans-234
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_037.png)'
+- en: and , ![](img/B22389_07_038.png)
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 和，![](img/B22389_07_038.png)
+- en: '**Reference check**:'
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考检查**：'
+- en: The original research paper by Box and Cox is cited in the *References* section
+    under reference *3*.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Box 和 Cox 的原始研究论文在 *参考文献* 部分被引用，作为参考文献 *3*。
+- en: Intuitively, we can see that the Box-Cox transformation is a generalized logarithm
+    transform. The log transform is just a special case of the Box-Cox transformation
+    (when ![](img/B22389_07_039.png)). At different values of ![](img/B22389_05_008.png),
+    it approximates other transforms such as *y*² when ![](img/B22389_07_041.png),
+    ![](img/B22389_07_042.png) when ![](img/B22389_07_043.png), ![](img/B22389_07_044.png)
+    when ![](img/B22389_07_045.png), and so on. When ![](img/B22389_07_046.png), there
+    is no major transformation.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 直观地，我们可以看到 Box-Cox 变换是一个广义的对数变换。对数变换只是 Box-Cox 变换的特例（当 ![](img/B22389_07_039.png)
+    时）。在不同的 ![](img/B22389_05_008.png) 值下，它近似其他变换，如当 ![](img/B22389_07_041.png) 时为
+    *y*²，当 ![](img/B22389_07_042.png) 时为 ![](img/B22389_07_043.png)，当 ![](img/B22389_07_044.png)
+    时为 ![](img/B22389_07_045.png)，依此类推。当 ![](img/B22389_07_046.png) 时，没有重大变换。
+- en: A lot of the disadvantages that we mentioned for log transforms apply here as
+    well, but the degree to which those effects are there varies, and we have a parameter,
+    ![](img/B22389_05_008.png), to help us decide on the right level of those effects.
+    Like log transforms, Box-Cox transformations also only use strictly positive data.
+    The same addition of a constant to offset the data distribution has to be done
+    here as well. The flip side of the parameter is that there is one more hyperparameter
+    to tune.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前提到的对数变换的许多缺点在这里也适用，但这些效果的程度有所不同，我们有一个参数，![](img/B22389_05_008.png)，可以帮助我们决定这些效果的合适程度。像对数变换一样，Box-Cox变换也仅适用于严格正值的数据。同样，必须对数据分布加上一个常数来进行偏移。该参数的另一面是，它增加了一个需要调节的超参数。
+- en: There are a few automated methods to find the optimum ![](img/B22389_05_008.png)
+    for any data distribution. One of them is by minimizing the log-likelihood of
+    the data distribution, assuming normality. So, essentially, what we will be doing
+    is finding the optimal ![](img/B22389_05_008.png) that makes the data distribution
+    most *normal*. This optimization is already implemented in popular implementations
+    such as the `boxcox` function in the `scipy.special` module in `scipy`.
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有一些自动化方法可以找到任何数据分布的最佳![](img/B22389_05_008.png)。其中之一是通过最小化数据分布的对数似然，假设数据服从正态分布。因此，基本上，我们将做的事情是找到最佳的![](img/B22389_05_008.png)，使数据分布尽可能*接近正态分布*。这种优化已经在流行的实现中实现，例如`scipy`中的`scipy.special`模块中的`boxcox`函数。
+- en: Another way to find the optimal ![](img/B22389_05_008.png) is to use Guerrero’s
+    method, which is typically suited for a time series. In this method, instead of
+    trying to conform the data distribution to a normal distribution, we try to minimize
+    the variability of the time series across different sub-series in the time series
+    that are homogenous. The definition of this sub-series is slightly subjective
+    but, usually, we can safely assume the sub-series as the seasonal length. Therefore,
+    what we will be trying to minimize is the variability of the time series across
+    different seasonality cycles.
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一种找到最佳![](img/B22389_05_008.png)的方法是使用Guerrero方法，这种方法通常适用于时间序列。在此方法中，我们不是试图将数据分布调整为正态分布，而是尝试最小化时间序列中不同子序列之间的变异性，这些子序列在时间序列中是同质的。子序列的定义有些主观，但通常我们可以安全地认为子序列是季节性长度。因此，我们将要做的是最小化时间序列在不同季节性周期之间的变异性。
+- en: '**Reference check**:'
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**参考文献检查**：'
+- en: The research paper proposing Guerrero’s method is cited in the *References*
+    section under reference *4*.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提出Guerrero方法的研究论文已在*参考文献*部分的参考文献*4*中引用。
+- en: There are stark differences in the way both these optimization methods work
+    and we need to be careful when using them. If our main concern is to remove the
+    heteroscedastic behavior of the time series, Guerrero’s method is what we can
+    use.
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这两种优化方法的工作方式有显著差异，我们在使用它们时需要小心。如果我们的主要关注点是去除时间序列的异方差行为，Guerrero方法是我们可以使用的方法。
+- en: 'We have made a transformer available in `src.transforms.target_transformations.py`
+    called `BoxCoxTransformer`. There are a few parameters and properties that we
+    need to be aware of:'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在`src.transforms.target_transformations.py`中提供了一个名为`BoxCoxTransformer`的转换器。我们需要注意一些参数和属性：
+- en: '`box_cox_lambda`: This is the ![](img/B22389_05_008.png) parameter to be used
+    for the Box-Cox transform. If left set to `None`, the implementation will find
+    an optimal ![](img/B22389_05_008.png).'
+  id: totrans-246
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`box_cox_lambda`：这是Box-Cox变换中使用的![](img/B22389_05_008.png)参数。如果设置为`None`，实现将自动找到最佳的![](img/B22389_05_008.png)。'
+- en: '`optimization`: This can either be `guerrero`, which is the default setting,
+    or `loglikelihood`. This determines how the ![](img/B22389_05_008.png) parameter
+    is estimated.'
+  id: totrans-247
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`optimization`：可以是`guerrero`（默认设置）或`loglikelihood`。这决定了![](img/B22389_05_008.png)参数的估计方式。'
+- en: '`seasonal_period`: This is an input for finding the optimal ![](img/B22389_05_008.png)
+    parameter using Guerrero’s method. Technically, this is the length of the sub-series,
+    usually taken as the seasonality period.'
+  id: totrans-248
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonal_period`：这是使用Guerrero方法寻找最佳![](img/B22389_05_008.png)参数的输入。严格来说，这是子序列的长度，通常取为季节性周期。'
+- en: '`bounds`: This is another parameter that controls the optimization using Guerrero’s
+    method. This is a tuple with lower and upper bounds in the search for the optimal
+    ![](img/B22389_05_008.png) parameter.'
+  id: totrans-249
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`bounds`：这是另一个参数，用于通过Guerrero方法控制优化。这是一个包含下界和上界的元组，用于搜索最佳的![](img/B22389_05_008.png)参数。'
+- en: '`add_one`: This is a flag that adds one to the series before applying a log
+    transform to avoid log 0.'
+  id: totrans-250
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_one`：这是一个标志，在应用对数变换之前将一加到序列中，以避免对数为零。'
+- en: 'The core logic implemented in the Transformer is as follows:'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Transformer 中实现的核心逻辑如下：
+- en: '[PRE22]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Now, let’s see how we can use it:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看如何使用它：
+- en: '[PRE23]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: '`y_boxcox` will contain the Box-Cox transformed time series. To get back to
+    the original time series, we can use the `inverse_transform` function.'
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`y_boxcox` 将包含经过 Box-Cox 变换的时间序列。若要恢复到原始时间序列，可以使用 `inverse_transform` 函数。'
+- en: Both Box-Cox and Log Transform can be used for correcting heteroscedasticity.
+    But, as mentioned before, log transform is a strong transformation and Box-Cox
+    gives us another lever to tweak and tune the transformation to suit our data.
+    We can look at Box-Cox as a flexible log transform, which can be tuned to make
+    the right transformation for our data. Do check out the notebook, where you can
+    see and play around with these different transformations and get a feel of what
+    it will do to your data.
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Box-Cox 变换和对数变换都可以用于修正异方差性。但是，如前所述，对数变换是一种强烈的变换，而 Box-Cox 变换则为我们提供了另一种手段，允许我们调整和优化变换，以适应我们的数据。我们可以将
+    Box-Cox 看作是一种灵活的对数变换，可以根据需要调整，以实现适合我们数据的正确变换。请查看笔记本，在其中你可以查看并尝试这些不同的变换，感受它们对数据的影响。
+- en: When we approach the forecasting problem at scale, we will have hundreds, thousands,
+    or millions of time series that we will need to analyze before forecasting. In
+    such scenarios, an AutoML approach is needed to be practical.
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们面对大规模的预测问题时，我们将需要分析成百上千甚至数百万个时间序列，才能进行预测。在这种情况下，AutoML 方法显得尤为重要，才能保持实用性。
+- en: AutoML approach to target transformation
+  id: totrans-258
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: AutoML 方法用于目标变换
+- en: So far, we have discussed many ways to make a series *more* stationary (we are
+    using the word stationary here in the non-mathematical sense), such as detrending,
+    deseasonalizing, differencing, and monotonic transformations. We’ve also looked
+    at statistical tests to check whether trends, seasonality, and so on are present
+    in a time series. So, the natural next step is to put it all together to carry
+    out these transforms in an automated way while choosing good defaults wherever
+    possible. This is exactly what we did and implemented an `AutoStationaryTransformer`
+    in `src.transforms.target_transformations`.
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们已经讨论了许多使序列 *更* 稳定的方法（这里我们使用稳定的非数学意义），例如去趋势、去季节性、差分和单调变换。我们还查看了统计测试，以检查时间序列中是否存在趋势、季节性等。因此，下一步自然是将这些方法整合起来，以自动化的方式执行这些变换，并在可能的情况下选择合适的默认值。这正是我们所做的，并在
+    `src.transforms.target_transformations` 中实现了一个 `AutoStationaryTransformer`。
+- en: 'The following flow chart explains the logic of this in an automated way:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下流程图以自动化方式解释了这一逻辑：
+- en: '![Figure 7.5 – Flow chart for AutoStationaryTransformer ](img/B22389_07_06.png)'
+  id: totrans-261
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.5 – AutoStationaryTransformer 的流程图](img/B22389_07_06.png)'
+- en: 'Figure 7.6: Flow chart for AutoStationaryTransformer'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.6：AutoStationaryTransformer 的流程图
+- en: 'We have excluded differencing from this implementation for two reasons:'
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这个实现中排除了差分，原因有两个：
+- en: Differencing, in the context of predictions, comes with considerable baggage
+    of technical debt. If you do differencing, you are inherently making it difficult
+    to carry out multi-step forecasting. It is possible, but just more difficult and
+    less flexible.
+  id: totrans-264
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在预测的背景下，差分带来了相当大的技术债务。如果进行差分，你本质上会使得进行多步预测变得更加困难。虽然可以做到，但它更加困难且灵活性较差。
+- en: Differencing can be looked at as a different way of doing what we have done
+    here. This is because differencing removes linear trends and seasonal differencing
+    removes seasonality as well. So, for autoregressive time series, differencing
+    can do a lot and deserves to be a standalone transformation.
+  id: totrans-265
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 差分可以看作是我们所做的事情的另一种方式。因为差分去除了线性趋势，而季节性差分也去除了季节性。因此，对于自回归时间序列来说，差分可以做很多事情，值得作为独立的变换来使用。
+- en: 'Now, let’s see what parameters we can use to tweak `AutoStationaryTransformer`:'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看可以使用哪些参数来调整 `AutoStationaryTransformer`：
+- en: '`confidence`: This is the confidence level for the statistical tests. It defaults
+    to `0.05`.'
+  id: totrans-267
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`confidence`：这是统计测试的置信水平，默认值为 `0.05`。'
+- en: '`seasonal_period`: This is the number of periods after which the seasonality
+    cycle repeats itself. If it is set to `None`, `seasonal_period` will be inferred
+    from the data. It defaults to `None`.'
+  id: totrans-268
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonal_period`：这是季节性周期重复的周期数。如果设置为 `None`，则 `seasonal_period` 将从数据中推断出来，默认值为
+    `None`。'
+- en: '`seasonality_max_lags`: This is only used if `seasonality_period` is not given.
+    This sets the maximum lags within which we search for seasonality. It defaults
+    to `None`.'
+  id: totrans-269
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`seasonality_max_lags`: 仅在未提供`seasonality_period`时使用。这设置了我们搜索季节性的最大滞后。默认为`None`。'
+- en: '`trend_check_params`: These are the parameters that are used in the statistical
+    tests for trends. `check_trend` defaults to `{"mann_kendall": False}`.'
+  id: totrans-270
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`trend_check_params`: 这些是用于趋势统计检验的参数。`check_trend`默认为`{"mann_kendall": False}`。'
+- en: '`detrender_params`: These are the parameters passed to `DetrendingTransformer`.
+    This defaults to `{"degree":1}`.'
+  id: totrans-271
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`detrender_params`: 这些是传递给`DetrendingTransformer`的参数。默认为`{"degree":1}`。'
+- en: '`deseasonalizer_params`: The parameters passed to `DeseasonalizingTransformer`.
+    `seasonality_extraction` are fixed as `period_averages`.'
+  id: totrans-272
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`deseasonalizer_params`: 传递给`DeseasonalizingTransformer`的参数。`seasonality_extraction`被固定为`period_averages`。'
+- en: '`box_cox_params`: These are the parameters that are passed to `BoxCoxTransformer`.
+    They default to `{"optimization": "guerrero"}`.'
+  id: totrans-273
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`box_cox_params`: 这些是传递给`BoxCoxTransformer`的参数。它们默认为`{"optimization": "guerrero"}`。'
+- en: 'Let’s apply this `AutoStationaryTransformer` to a synthetic time series and
+    see how well it works (full code in the associated notebook):'
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们将这个`AutoStationaryTransformer`应用于一个合成时间序列，看看它的效果如何（完整代码在相关笔记本中）：
+- en: '[PRE24]'
+  id: totrans-275
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: '![](img/B22389_07_07.png)'
+  id: totrans-276
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/B22389_07_07.png)'
+- en: 'Fig 7.7: AutoStationaryTransformer—Before and after'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.7：AutoStationaryTransformer—之前和之后
+- en: We can see that the `AutoStationaryTransformer` has deseasonalized and de-trended
+    the time series. In this particular example, Detrending, Deseasonalizing, and
+    Box-Cox Transformation were applied by the `AutoStationaryTransformer`.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以看到`AutoStationaryTransformer`已经对时间序列进行了去季节化和去趋势化处理。在这个特定的例子中，`AutoStationaryTransformer`应用了去趋势化、去季节化和Box-Cox转换。
+- en: 'Now, let’s apply this automatic transformation to the dataset we have been
+    working with:'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们将这种自动转换应用于我们一直在处理的数据集：
+- en: '[PRE25]'
+  id: totrans-280
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: The code to execute this is split into two notebooks called `02-Dealing_with_Non-Stationarity.ipynb`
+    and `02a-Dealing_with_Non-Stationarity-Train+Val.ipynb` in the `Chapter06` folder.
+    The former does the auto-stationary transformation on the train data, while the
+    latter does it on train and validation data combined. This is to simulate how
+    we would predict for validation data (by just using train data for training) and
+    for test data (where we use the train and validation data for training).
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 执行此操作的代码分为两个笔记本，分别为`02-Dealing_with_Non-Stationarity.ipynb`和`02a-Dealing_with_Non-Stationarity-Train+Val.ipynb`，位于`Chapter06`文件夹中。前者对训练数据进行自动稳态转换，而后者对训练和验证数据合并进行转换。这是为了模拟我们如何对验证数据进行预测（仅使用训练数据进行训练），以及对测试数据进行预测（在训练中使用训练和验证数据）。
+- en: 'This process is slightly time-consuming. I suggest that you run the notebook,
+    grab lunch or a snack, and come back. Once it’s done, the `02-Dealing_with_Non-Stationarity.ipynb`
+    notebook will save a couple of files:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个过程稍微耗时。我建议您运行笔记本，吃午餐或小吃，然后回来。一旦完成，`02-Dealing_with_Non-Stationarity.ipynb`笔记本将保存一些文件：
+- en: '`selected_blocks_train_auto_stat_target.parquet`: A DataFrame that has `LCLid`
+    and `timestamp` as indices and the transformed target'
+  id: totrans-283
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`selected_blocks_train_auto_stat_target.parquet`: 一个DataFrame，其索引为`LCLid`和`timestamp`，而转换后的目标'
+- en: '`auto_transformer_pipelines_train.pkl`: A Python dictionary of `AutoStationaryTransformer`
+    for each `LCLid` so that we can reverse the transformations in the future'
+  id: totrans-284
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`auto_transformer_pipelines_train.pkl`: 一个Python字典，包含每个`LCLid`的`AutoStationaryTransformer`，以便我们将来可以反转转换'
+- en: The `02a-Dealing_with_Non-Stationarity-Train+Val.ipynb` notebook also saves
+    the corresponding files for the train and validation datasets.
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`02a-Dealing_with_Non-Stationarity-Train+Val.ipynb`笔记本还保存了用于训练和验证数据集的相应文件。'
+- en: The dataset we are working on has almost negligible trends and is pretty stationary
+    throughout. The impact of these transformations will be more evident in time series
+    with strong trends and heteroscedasticity.
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们正在处理的数据集几乎没有趋势，并且在整个过程中非常稳定。这些转换的影响将在具有强趋势和异方差性的时间序列中更为明显。
+- en: '**Best practice**:'
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**最佳实践**：'
+- en: This kind of explicit detrending and deseasonalizing before modeling can also
+    be seen as a form of **boosting**. This should be considered as just another alternative
+    to modeling all of this together. There can be situations where letting the model
+    learn from end to end in a data-driven manner performs better than injecting these
+    strong inductive biases using explicit detrending and deseasonalization and vice
+    versa. Cross-validated test scores should always have the last word.
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种在建模之前进行的显式去趋势和去季节性化也可以视为一种**增强**方法。这应该被视为另一种将所有这些因素一起建模的替代方法。在某些情况下，让模型通过数据驱动的方式从头到尾学习，可能比通过显式去趋势和去季节性化注入这些强烈的归纳偏见效果更好，反之亦然。交叉验证的测试得分应该始终拥有最终的发言权。
+- en: Congratulations on making it through a heavy chapter full of new concepts, some
+    statistics, and mathematics. From the point of view of applying ML models for
+    time series, the concepts in this chapter will be really helpful in taking your
+    models to the next level.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 恭喜你顺利完成了这一章，里面充满了新概念、一些统计学内容和数学内容。从应用机器学习模型于时间序列的角度来看，本章的概念将对提升你的模型水平非常有帮助。
+- en: Summary
+  id: totrans-290
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 小结
+- en: After getting down to a practical level in the previous chapter, we stayed there
+    and plowed on to review concepts such as stationarity and how to deal with such
+    non-stationary time series. We learned about techniques we can use to explicitly
+    handle non-stationary time series, such as differencing, detrending, deseasonalizing,
+    and so on. To put this all together, we saw an automatic way of transforming the
+    target, learned how to use the implementation provided, and applied it to our
+    dataset. Now that we have the necessary skills to effectively transform a time
+    series into an ML dataset, in the next chapter, we will start applying a few ML
+    models to the dataset using the features we’ve created.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章深入实践后，我们停留在那儿，继续回顾了像平稳性这样的概念，以及如何处理这些非平稳的时间序列。我们学习了可以显式处理非平稳时间序列的技术，例如差分、去趋势、去季节性等。为了将这些内容结合起来，我们看到了自动转换目标的方式，学习了如何使用提供的实现，并将其应用于我们的数据集。现在我们掌握了将时间序列有效转换为机器学习数据集所需的技能，在下一章中，我们将开始使用我们创建的特征对数据集应用一些机器学习模型。
+- en: References
+  id: totrans-292
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 参考文献
+- en: 'The following are the references for this chapter:'
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下是本章的参考文献：
+- en: Bayazit, M. and Önöz, B. (2007), *To prewhiten or not to prewhiten in trend
+    analysis?*, Hydrological Sciences Journal, 52:4, 611–624\. [https://doi.org/10.1623/hysj.52.4.611](https://doi.org/10.1623/hysj.52.4.611).
+  id: totrans-294
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Bayazit, M. 和 Önöz, B. (2007)，*在趋势分析中是否需要预处理？*，《水文学科学期刊》，52:4，611–624。 [https://doi.org/10.1623/hysj.52.4.611](https://doi.org/10.1623/hysj.52.4.611).
+- en: White, H. (1980), *A Heteroskedasticity-Consistent Covariance Matrix Estimator
+    and a Direct Test for Heteroskedasticity*. Econometrica Vol. 48, No. 4 (May 1980),
+    pp. 817–838 (22 pages). [https://doi.org/10.2307/1912934](https://doi.org/10.2307/1912934).
+  id: totrans-295
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: White, H. (1980)，*异方差一致的协方差矩阵估计量及异方差性的直接检验*。《计量经济学》 第48卷，第4期（1980年5月），817–838页（22页）。
+    [https://doi.org/10.2307/1912934](https://doi.org/10.2307/1912934).
+- en: Box, G. E. P. and Cox, D. R. (1964), *An analysis of transformations*. Journal
+    of the Royal Statistical Society, Series B, 26, 211–252\. [http://www.ime.usp.br/~abe/lista/pdfQWaCMboK68.pdf](http://www.ime.usp.br/~abe/lista/pdfQWaCMboK68.pdf).
+  id: totrans-296
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Box, G. E. P. 和 Cox, D. R. (1964)，*变换分析*。《皇家统计学会学报》B系列，26，211–252。 [http://www.ime.usp.br/~abe/lista/pdfQWaCMboK68.pdf](http://www.ime.usp.br/~abe/lista/pdfQWaCMboK68.pdf).
+- en: Guerrero, Victor M. (1993), *Time-series analysis supported by power transformations*.
+    Journal of Forecasting, Volume 12, Issue 1, 37–48\. [https://onlinelibrary.wiley.com/doi/10.1002/for.3980120104](https://onlinelibrary.wiley.com/doi/10.1002/for.3980120104).
+  id: totrans-297
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Guerrero, Victor M. (1993), *通过幂变换支持的时间序列分析*。《预测学期刊》，第12卷，第1期，37–48。 [https://onlinelibrary.wiley.com/doi/10.1002/for.3980120104](https://onlinelibrary.wiley.com/doi/10.1002/for.3980120104).
+- en: Further reading
+  id: totrans-298
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 进一步阅读
+- en: 'To learn more about the topics that were covered in this chapter, take a look
+    at the following resources:'
+  id: totrans-299
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要了解本章所涉及的更多主题，请参考以下资源：
+- en: '*Stationarity in time series analysis*, by Shay Palachy: [https://towardsdatascience.com/stationarity-in-time-series-analysis-90c94f27322](https://towardsdatascience.com/stationarity-in-time-series-analysis-90c94f27322)'
+  id: totrans-300
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*时间序列分析中的平稳性*，作者：Shay Palachy：[https://towardsdatascience.com/stationarity-in-time-series-analysis-90c94f27322](https://towardsdatascience.com/stationarity-in-time-series-analysis-90c94f27322)'
+- en: '*Comparing ADF Test Functions in R*, by Fabian Kostadinov (the same concepts
+    can be implemented in Python as well): [https://fabian-kostadinov.github.io/2015/01/27/comparing-adf-test-functions-in-r/](https://fabian-kostadinov.github.io/2015/01/27/comparing-adf-test-functions-in-r/)'
+  id: totrans-301
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*比较 R 中的 ADF 检验函数*，作者 Fabian Kostadinov（相同的概念也可以在 Python 中实现）：[https://fabian-kostadinov.github.io/2015/01/27/comparing-adf-test-functions-in-r/](https://fabian-kostadinov.github.io/2015/01/27/comparing-adf-test-functions-in-r/)'
+- en: '*Kendall’s Tau*: [https://www.statisticshowto.com/kendalls-tau/](https://www.statisticshowto.com/kendalls-tau/)'
+  id: totrans-302
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*肯达尔的 tau 值*：[https://www.statisticshowto.com/kendalls-tau/](https://www.statisticshowto.com/kendalls-tau/)'
+- en: 'Mann-Kendall trend test: [https://www.statisticshowto.com/wp-content/uploads/2016/08/Mann-Kendall-Analysis-1.pdf](https://www.statisticshowto.com/wp-content/uploads/2016/08/Mann-Kendall-Analysis-1.pdf)'
+  id: totrans-303
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Mann-Kendall 趋势检验：[https://www.statisticshowto.com/wp-content/uploads/2016/08/Mann-Kendall-Analysis-1.pdf](https://www.statisticshowto.com/wp-content/uploads/2016/08/Mann-Kendall-Analysis-1.pdf)
+- en: '*Theil-Sen estimator*: [https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator)'
+  id: totrans-304
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*Theil-Sen 估计器*：[https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator)'
+- en: '*Statistical inference with correlograms*—Wikipedia: [https://en.wikipedia.org/wiki/Correlogram#Statistical_inference_with_correlograms](https://en.wikipedia.org/wiki/Correlogram#Statistical_inference_with_correlograms
+    )'
+  id: totrans-305
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*使用自相关图进行统计推断*—维基百科：[https://en.wikipedia.org/wiki/Correlogram#Statistical_inference_with_correlograms](https://en.wikipedia.org/wiki/Correlogram#Statistical_inference_with_correlograms)'
+- en: '*White test for Heteroscedasticity Detection*: [https://itfeature.com/hetero/white-test-of-heteroscedasticity/](https://itfeature.com/hetero/white-test-of-heteroscedasticity/)'
+  id: totrans-306
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*白检验用于异方差性检测*：[https://itfeature.com/hetero/white-test-of-heteroscedasticity/](https://itfeature.com/hetero/white-test-of-heteroscedasticity/)'
+- en: Join our community on Discord
+  id: totrans-307
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 加入我们的 Discord 社区
+- en: 'Join our community’s Discord space for discussions with authors and other readers:'
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加入我们社区的 Discord 空间，与作者和其他读者进行讨论：
+- en: '[https://packt.link/mts](https://packt.link/mts)'
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://packt.link/mts](https://packt.link/mts)'
+- en: '![](img/QR_Code15080603222089750.png)'
+  id: totrans-310
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/QR_Code15080603222089750.png)'

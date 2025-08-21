@@ -1,0 +1,1529 @@
+- en: 'Chapter 4: Real-Time Data Analytics'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第四章：实时数据分析
+- en: In the modern big data world, data is being generated at a tremendous pace,
+    that is, faster than any of the past decade's technologies can handle, such as
+    batch processing ETL tools, data warehouses, or business analytics systems. It
+    is essential to process data and draw insights in real time for businesses to
+    make tactical decisions that help them to stay competitive. Therefore, there is
+    a need for real-time analytics systems that can process data in real or near real-time
+    and help end users get to the latest data as quickly as possible.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在现代大数据世界中，数据生成的速度非常快，快到过去十年中的任何技术都无法处理，例如批处理 ETL 工具、数据仓库或商业分析系统。因此，实时处理数据并从中提取洞察力对于企业做出战术决策至关重要，以帮助他们保持竞争力。因此，迫切需要能够实时或近实时处理数据的实时分析系统，帮助最终用户尽可能快地获取最新数据。
+- en: In this chapter, you will explore the architecture and components of a real-time
+    big data analytics processing system, including message queues as data sources,
+    Delta as the data sink, and Spark's Structured Streaming as the stream processing
+    engine. You will learn techniques to handle late-arriving data using stateful
+    processing Structured Streaming. The techniques for maintaining an exact replica
+    of source systems in a data lake using **Change Data Capture** (**CDC**) will
+    also be presented. You will learn how to build multi-hop stream processing pipelines
+    to progressively improve data quality from raw data to cleansed and enriched data
+    that is ready for data analytics. You will gain the essential skills to implement
+    a scalable, fault-tolerant, and near real-time analytics system using Apache Spark.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，您将探索实时大数据分析处理系统的架构和组件，包括作为数据源的消息队列、作为数据汇聚点的 Delta 和作为流处理引擎的 Spark Structured
+    Streaming。您将学习使用有状态处理的 Structured Streaming 处理迟到数据的技巧。还将介绍使用 **变更数据捕获**（**CDC**）技术，在数据湖中保持源系统的精确副本。您将学习如何构建多跳流处理管道，逐步改进从原始数据到已清洗和丰富数据的质量，这些数据已准备好进行数据分析。您将掌握使用
+    Apache Spark 实现可扩展、容错且近实时的分析系统的基本技能。
+- en: 'In this chapter, we will cover the following main topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下主要主题：
+- en: Real-time analytics systems architecture
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实时分析系统架构
+- en: Stream processing engines
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 流处理引擎
+- en: Real-time analytics industry use cases
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实时分析行业应用案例
+- en: Simplifying the Lambda Architecture using Delta Lake
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 Delta Lake 简化 Lambda 架构
+- en: CDC
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: CDC
+- en: Multi-hop streaming pipelines
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多跳流处理管道
+- en: Technical requirements
+  id: totrans-10
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'In this chapter, you will be using the Databricks Community Edition to run
+    your code. This can be found at [https://community.cloud.databricks.com](https://community.cloud.databricks.com):'
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，您将使用 Databricks Community Edition 来运行您的代码。可以通过以下链接找到：[https://community.cloud.databricks.com](https://community.cloud.databricks.com)：
+- en: Sign-up instructions can be found at [https://databricks.com/try-databricks](https://databricks.com/try-databricks).
+  id: totrans-12
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 注册说明请参见：[https://databricks.com/try-databricks](https://databricks.com/try-databricks)。
+- en: The code and data used in this chapter can be downloaded from [https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter04](https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter04).
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 本章中使用的代码和数据可以从以下链接下载：[https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter04](https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter04)。
+- en: Before we dive deeper into implementing real-time stream processing data pipelines
+    with Apache Spark, first, we need to understand the general architecture of a
+    real-time analytics pipeline and its various components, as described in the following
+    section.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们深入探讨如何使用 Apache Spark 实现实时流处理数据管道之前，首先，我们需要了解实时分析管道的一般架构及其各个组件，具体内容将在以下部分中描述。
+- en: Real-time analytics systems architecture
+  id: totrans-15
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实时分析系统架构
+- en: 'A real-time data analytics system, as the name suggests, processes data in
+    real time. This is because it is generated at the source, making it available
+    for business users with the minimal latency possible. It consists of several important
+    components, namely, streaming data sources, a stream processing engine, streaming
+    data sinks, and the actual real-time data consumers, as illustrated in the following
+    diagram:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实时数据分析系统，顾名思义，是实时处理数据的系统。由于数据在源头生成，使其可以以最小的延迟提供给业务用户。它由几个重要组件组成，即流数据源、流处理引擎、流数据汇聚点以及实际的实时数据消费者，如下图所示：
+- en: '![Figure 4.1 – Real-time data analytics'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 4.1 – 实时数据分析'
+- en: '](img/B16736_04_01.jpg)'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16736_04_01.jpg)'
+- en: Figure 4.1 – Real-time data analytics
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.1 – 实时数据分析
+- en: The preceding diagram depicts a typical real-time data analytics systems architecture.
+    In the following sections, we will explore each of the components in more detail.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上图展示了一个典型的实时数据分析系统架构。在接下来的部分，我们将更详细地探讨各个组件。
+- en: Streaming data sources
+  id: totrans-21
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 流数据源
+- en: 'Similar to any of the other **enterprise decision support Systems**, a **real-time
+    data analytics system** also starts with data sources. Businesses generate data
+    continuously in real time; therefore, any data source used by a batch processing
+    system is also a streaming data source. The only difference is in how often you
+    ingest data from the data source. In batch processing mode, data is ingested periodically,
+    whereas, in a real-time streaming system, data is continuously ingested from the
+    same data source. However, there are a few considerations to bear in mind before
+    continuously ingesting data from a data source. These can be described as follows:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 类似于其他**企业决策支持系统**，**实时数据分析系统**也从数据源开始。企业在实时中持续生成数据；因此，任何被批处理系统使用的数据源也是流数据源。唯一的区别在于你从数据源摄取数据的频率。在批处理模式下，数据是周期性摄取的，而在实时流式系统中，数据是持续不断地从同一数据源摄取的。然而，在持续摄取数据之前，有几个需要注意的事项。这些可以描述如下：
+- en: Can the data source keep up with the demands of a real-time streaming analytics
+    engine? Or will the streaming engine end up taxing the data source?
+  id: totrans-23
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据源能否跟上实时流式分析引擎的需求？否则，流引擎是否会给数据源带来压力？
+- en: Can the data source communicate with the streaming engine asynchronously and
+    replay events in any arbitrary order that the streaming engine requires?
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据源能否异步与流引擎进行通信，并按流引擎要求的任意顺序重放事件？
+- en: Can the data source replay events in the exact order that they occurred at the
+    source?
+  id: totrans-25
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据源能否以它们在源端发生的精确顺序重放事件？
+- en: The preceding three points bring up some important requirements regarding streaming
+    data sources. A streaming data source should be distributed and scalable in order
+    to keep up with the demands of a real-time streaming analytics system. Note that
+    it must be able to replay events in any arbitrary order. This is so that the streaming
+    engine has the flexibility to process events in any order or restart the process
+    in the case of any failures. For certain real-time use cases, such as CDC, it
+    is important that you replay events in the exact same order they occurred at the
+    source in order to maintain data integrity.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述三点提出了关于流数据源的一些重要要求。流数据源应该是分布式且可扩展的，以便跟上实时流式分析系统的需求。需要注意的是，它必须能够以任何任意顺序重放事件。这样，流引擎可以灵活地按任何顺序处理事件，或者在发生故障时重新启动处理。对于某些实时使用场景，如
+    CDC，必须按事件发生的精确顺序重放事件，以保持数据完整性。
+- en: Due to the previously mentioned reasons, no operating system is fit to be a
+    streaming data source. In the cloud and big data works, it is recommended that
+    you use a scalable, fault-tolerant, and asynchronous message queue such as Apache
+    Kafka, AWS Kinesis, Google Pub/Sub, or Azure Event Hub. Cloud-based data lakes
+    such as AWS S3, Azure Blob, and ADLS storage or Google Cloud Storage are also
+    suitable as streaming data sources to a certain extent for certain use cases.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于前述原因，没有操作系统适合做流数据源。在云和大数据领域，建议使用可扩展、容错且异步的消息队列，如 Apache Kafka、AWS Kinesis、Google
+    Pub/Sub 或 Azure Event Hub。云端数据湖如 AWS S3、Azure Blob 和 ADLS 存储，或者 Google Cloud Storage
+    在某些使用场景下也适合作为流数据源。
+- en: 'Now that we have an understanding of streaming data sources, let''s take a
+    look at how to ingest data from a data source such as a data lake in a streaming
+    fashion, as shown in the flowing code snippet:'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经了解了流数据源，让我们来看一下如何以流的方式从数据源（如数据湖）摄取数据，如以下代码片段所示：
+- en: '[PRE0]'
+  id: totrans-29
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: In the previous code, we define a streaming DataFrame that reads one file at
+    a time from a data lake location. The `readStream()` method of the `DataStreamReader`
+    object is used to create the streaming DataFrame. The data format is specified
+    as CSV, and the schema information is defined using the `eventSchema` object.
+    Finally, the location of the CSV files within the data lake is specified using
+    the `load()` function. The `maxFilesPerTrigger` option specifies that only one
+    file must be read by the stream at a time. This is useful for throttling the rate
+    of stream processing, if required, because of the compute resource constraints.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在之前的代码中，我们定义了一个流式数据框架，该框架一次从数据湖位置读取一个文件。`DataStreamReader`对象的`readStream()`方法用于创建流式数据框架。数据格式指定为
+    CSV，并且使用`eventSchema`对象定义了模式信息。最后，通过`load()`函数指定了数据湖中 CSV 文件的位置。`maxFilesPerTrigger`选项指定流每次只能读取一个文件。这对于控制流处理速率非常有用，尤其是在计算资源有限的情况下。
+- en: Once we have the streaming DataFrame created, it can be further processed using
+    any of the available functions in the DataFrame API and persisted to a streaming
+    data sink, such as a data lake. We will cover this in the following section.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们创建了流式数据框架，它可以使用数据框架 API 中的任何可用函数进行进一步处理，并持久化到流式数据接收器中，例如数据湖。我们将在接下来的章节中介绍这一部分内容。
+- en: Streaming data sinks
+  id: totrans-32
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 流式数据接收器
+- en: 'Once data streams are read from their respective streaming sources and processed,
+    they need to be stored onto some form of persistent storage for further downstream
+    consumption. Although any regular data sink could act as a streaming data sink,
+    a number of considerations apply when choosing a streaming data sink. Some of
+    these considerations include the following:'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦数据流从各自的流式数据源中读取并处理完毕，它们需要存储到某种持久存储中，以供下游进一步消费。尽管任何常规的数据接收器都可以作为流式数据接收器，但在选择流式数据接收器时需要考虑许多因素。以下是一些考虑因素：
+- en: What are the latency requirements for data consumption?
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据消费的延迟要求是什么？
+- en: What kind of data will consumers be consuming in the data stream?
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 消费者将消费数据流中的哪种类型的数据？
+- en: 'Latency is an important factor when choosing the streaming data source, the
+    data sink, and the actual streaming engine. Depending on the latency requirements,
+    you might need to choose an entirely different end-to-end streaming architecture.
+    Streaming use cases can be classified into two broad categories, depending on
+    the latency requirements:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 延迟是选择流式数据源、数据接收器和实际流式引擎时的重要因素。根据延迟要求，您可能需要选择完全不同的端到端流式架构。根据延迟要求，流式用例可以分为两大类：
+- en: Real-time transactional systems
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实时事务系统
+- en: Near real-time analytics systems
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 接近实时的分析系统
+- en: Real-time transactional systems
+  id: totrans-39
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 实时事务系统
+- en: Real-time transactional systems are operational systems that are, typically,
+    interested in processing events pertaining to a single entity or transaction at
+    a time. Let's consider an example of an online retail business where a customer
+    visits an e-tailer's and browses through a few product categories in a given session.
+    An operational system would be focused on capturing all of the events of that
+    particular session and maybe display a discount coupon or make a specific recommendation
+    to that user in real time. In this kind of scenario, the latency requirement is
+    ultra-low and, usually, ranges in sub-seconds. These kinds of use cases require
+    an ultra-low latency streaming engine along with an ultra-low latency streaming
+    sink such as an in-memory database, such as **Redis** or **Memcached**, for instance.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实时事务系统是操作系统，通常关注于一次处理与单个实体或事务相关的事件。让我们考虑一个在线零售业务的例子，其中一个顾客访问了一个电商网站并在某个会话中浏览了几个产品类别。一个操作系统将专注于捕捉该会话的所有事件，并可能实时向该用户展示折扣券或进行特定推荐。在这种场景下，延迟要求是超低的，通常在亚秒级范围内。这类用例需要一个超低延迟的流式引擎，以及一个超低延迟的流式接收器，例如内存数据库，如**Redis**或**Memcached**。
+- en: Another example of a real-time transactional use case would be a CRM system
+    where a customer service representative is trying to make an upsell or cross-sell
+    recommendation to a live customer online. Here, the streaming engine needs to
+    fetch certain precalculated metrics for a specific customer from a data store,
+    which contains information about millions of customers. It also needs to fetch
+    some real-time data points from the CRM system itself in order to generate a personalized
+    recommendation for that specific customer. All of this needs to happen in a matter
+    of seconds. A `CustomerID`.
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个实时事务型用例的例子是CRM系统，其中客户服务代表试图向在线客户进行追加销售或交叉销售推荐。在这种情况下，流处理引擎需要从数据存储中获取针对特定客户的某些预先计算好的指标，而数据存储包含关于数百万客户的信息。它还需要从CRM系统本身获取一些实时数据点，以生成针对该客户的个性化推荐。所有这些操作都需要在几秒钟内完成。一个`CustomerID`。
+- en: Important note
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: Spark's Structured Streaming, with its micro-batch style of stream processing
+    model, isn't well suited for real-time stream processing use cases where there
+    is an ultra-low latency requirement to process events as they happen at the source.
+    Structured Streaming has been designed for maximum throughput and scalability
+    rather than for ultra-low latency. Apache Flink or another streaming engine that
+    was purpose-built would be a good fit for real-time transactional use cases.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark的结构化流处理（Structured Streaming）采用微批次的流处理模型，这对于实时流处理用例并不理想，尤其是在需要超低延迟来处理源头发生的事件时。结构化流处理的设计目标是最大化吞吐量和可扩展性，而非追求超低延迟。Apache
+    Flink或其他为此目的专门设计的流处理引擎更适合实时事务型用例。
+- en: Now that you have gained an understanding of real-time analytics engines along
+    with an example of a real-time analytics use case, in the following section, we
+    will take a look at a more prominent and practical way of processing analytics
+    in near real time.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，您已经了解了实时分析引擎，并且掌握了一个实时分析用例的示例，在接下来的部分，我们将深入探讨一种处理接近实时分析的更突出的、实际可行的方式。
+- en: Near real-time analytics systems
+  id: totrans-45
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 接近实时分析系统
+- en: Near real-time analytics systems are analytics systems that process an aggregate
+    of records in near real time and have a latency requirement ranging from a few
+    seconds to a few minutes. These systems are not interested in processing events
+    for a single entity or transaction but generate metrics or KPIs for an aggregate
+    of transactions to depict the state of business in real time. Sometimes, these
+    systems might also generate sessions of events for a single transaction or entity
+    but for later offline consumption.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接近实时的分析系统是那些在接近实时的状态下处理大量记录并具有从几秒钟到几分钟的延迟要求的分析系统。这些系统并不关注单个实体或交易的事件处理，而是为一组交易生成指标或关键绩效指标（KPI），以实时展示业务状态。有时，这些系统也可能为单个交易或实体生成事件会话，但供后续离线使用。
+- en: Since this type of real-time analytics system processes a very large volume
+    of data, throughput and scalability are of key importance here. Additionally,
+    since the processed output is either being fed into a Business Intelligence system
+    for real-time reporting or into persistent storage for consumption in an asynchronous
+    manner, a data lake or a data warehouse is an ideal streaming data sink for this
+    kind of use case. Examples of near real-time analytics use cases are presented,
+    in detail, in the *Real-time analytics industry use cases* section. Apache Spark
+    was designed to handle near real-time analytics use cases that require maximum
+    throughput for large volumes of data with scalability.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于这种类型的实时分析系统处理的数据量非常庞大，因此吞吐量和可扩展性至关重要。此外，由于处理后的输出要么被输入到商业智能系统中进行实时报告，要么被存储到持久化存储中以供异步消费，数据湖或数据仓库是此类用例的理想数据接收端。在*实时分析行业用例*部分，详细介绍了接近实时分析的用例。Apache
+    Spark的设计旨在处理需要最大吞吐量的大量数据的接近实时分析用例，并具有良好的可扩展性。
+- en: Now that you have an understanding of streaming data sources, data sinks, and
+    the kind of real-time use cases that Spark's Structured Streaming is better suited
+    to solve, let's take a deeper dive into the actual streaming engines.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，您已经理解了流数据源、数据接收端以及Spark的结构化流处理更适合解决的实时用例，让我们进一步深入了解实际的流处理引擎。
+- en: Stream processing engines
+  id: totrans-49
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 流处理引擎
+- en: A stream processing engine is the most critical component of any real-time data
+    analytics system. The role of the stream processing engine is to continuously
+    process events from a streaming data source and ingest them into a streaming data
+    sink. The stream processing engine can process events as they arrive in a real
+    real-time fashion or group a subset of events into a small batch and process one
+    micro-batch at a time in
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 流处理引擎是任何实时数据分析系统中最关键的组件。流处理引擎的作用是持续处理来自流数据源的事件，并将其摄取到流数据接收端。流处理引擎可以实时处理传入的事件，或者将事件分组为一个小批量，每次处理一个微批量。
+- en: a near real-time manner. The choice of the engine greatly depends on the type
+    of use case and the processing latency requirements. Some examples of modern streaming
+    engines include Apache Storm, Apache Spark, Apache Flink, and Kafka Streams.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以接近实时的方式进行处理。引擎的选择在很大程度上取决于使用案例的类型和处理延迟的要求。现代流处理引擎的一些例子包括 Apache Storm、Apache
+    Spark、Apache Flink 和 Kafka Streams。
+- en: 'Apache Spark comes with a stream processing engine called **Structured Streaming**,
+    which is based on Spark''s SQL engine and DataFrame APIs. Structured Streaming
+    uses the micro-batch style of processing and treats each incoming micro-batch
+    as a small Spark DataFrame. It applies DataFrame operations to each micro-batch
+    just like any other Spark DataFrame. The programming model for Structured Streaming
+    treats the output dataset as an unbounded table and processes incoming events
+    as a stream of continuous micro-batches. Structured Streaming generates a query
+    plan for each micro-batch, processes them, and then appends them to the output
+    dataset, treating it just like an unbounded table, as illustrated in the following
+    diagram:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Spark 配备了一个流处理引擎，叫做**结构化流处理**，该引擎基于 Spark 的 SQL 引擎和 DataFrame API。结构化流处理采用微批量处理方式，将每个传入的小批量数据视为一个小的
+    Spark DataFrame。它对每个微批量应用 DataFrame 操作，就像对待任何其他 Spark DataFrame 一样。结构化流处理的编程模型将输出数据集视为一个无限制的表，并将传入的事件作为连续微批流进行处理。结构化流处理为每个微批生成查询计划，处理它们，然后将其附加到输出数据集，就像处理一个无限制的表一样，具体请参见下图：
+- en: '![Figure 4.2 – The Structured Streaming programming model'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 4.2 – 结构化流处理编程模型'
+- en: '](img/B16736_04_02.jpg)'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16736_04_02.jpg)'
+- en: Figure 4.2 – The Structured Streaming programming model
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.2 – 结构化流处理编程模型
+- en: As shown in the preceding diagram, Structured Streaming treats each incoming
+    micro-batch of data like a small Spark DataFrame and appends it to the end of
+    an existing Streaming DataFrame. An elaboration of Structured Streaming's programming
+    model, with examples, was presented in the *Ingesting data in real time using
+    Structured Streaming* section of [*Chapter 2*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032),
+    *Data Ingestion*.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前面的图所示，结构化流处理将每个传入的小批量数据视为一个小的 Spark DataFrame，并将其附加到现有的流处理 DataFrame 末尾。关于结构化流处理编程模型的详细解释，并附带示例，已在[*第二章*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032)的*实时数据摄取*部分中介绍。
+- en: Structured Streaming can simply process streaming events as they arrive in micro-batches
+    and persist the output to a streaming data sink. However, in real-world scenarios,
+    the simple model of stream processing might not be practical because of **Late-Arriving
+    Data**. Structured Streaming also supports a stateful processing model to deal
+    with data that is either arriving late or is out of order. You will learn more
+    about handling late-arriving data in the *Handling late-arriving data* section.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 结构化流处理可以简单地处理传入的小批量流事件，并将输出持久化到流数据接收端。然而，在实际应用中，由于**数据延迟到达**，流处理的简单模型可能不太实用。结构化流处理还支持有状态的处理模型，以应对延迟到达或无序的数据。关于如何处理延迟到达数据，您将在*处理延迟到达数据*部分中学习更多内容。
+- en: Real-time data consumers
+  id: totrans-58
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 实时数据消费者
+- en: The final component of a real-time data analytics system is the actual data
+    consumer. Data consumers can be actual business users that consume real-time data
+    by the means of ad hoc Spark SQL queries, via interactive operational dashboards
+    or other systems that take the output of a streaming engine and further process
+    it. Real-time business dashboards are consumed by business users, and typically,
+    these have slightly higher latency requirements as a human mind can only comprehend
+    data at a given rate. Structured Streaming is a good fit for these use cases and
+    can write the streaming output to a database where it can be further fed into
+    a Business Intelligence system.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实时数据分析系统的最终组件是实际的数据消费者。数据消费者可以是通过临时的Spark SQL查询、交互式操作仪表板或其他系统来消费实时数据的实际业务用户，这些系统会接收流引擎的输出并进一步处理。实时业务仪表板由业务用户使用，通常这些仪表板对延迟的要求较高，因为人类大脑只能在一定的速率下理解数据。结构化流处理（Structured
+    Streaming）非常适合这些用例，可以将流输出写入数据库，并进一步将其提供给商业智能系统。
+- en: The output of a streaming engine can also be consumed by other business applications
+    such as a mobile app or a web app. Here, the use case could be something such
+    as hyper-personalized user recommendations, where the processed output of a streaming
+    engine could be further passed on to something such as an online inference engine
+    for generating personalized user recommendations. Structured Streaming can be
+    used for these use cases as long as the latency requirements are in the range
+    of a few seconds to a few minutes.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 流引擎的输出还可以被其他业务应用程序消费，例如移动应用或Web应用。在这种情况下，使用场景可能是超个性化的用户推荐，其中流引擎的处理输出可以进一步传递给在线推理引擎，用于生成个性化的用户推荐。只要延迟要求在几秒钟到几分钟的范围内，结构化流处理也可以用于这些用例。
+- en: In summary, real-time data analytics has a few important components such as
+    the streaming data sources and sinks, the actual streaming engine, and the final
+    real-time data consumers. The choice of data source, data sink, and the actual
+    engine in your architecture depends on your actual real-time data consumers, the
+    use case that is being solved, the processing latency, and the throughput requirements.
+    Now, in the following section, we'll take a look at some examples of real-world
+    industry use cases that leverage real-time data analytics.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结来说，实时数据分析包含几个重要的组件，比如流数据源和数据接收端、实际的流处理引擎以及最终的实时数据消费者。在架构中，数据源、数据接收端和实际引擎的选择依赖于你的实际实时数据消费者、要解决的用例、处理延迟以及吞吐量要求。接下来，在以下章节中，我们将通过一些现实世界的行业用例来了解如何利用实时数据分析。
+- en: Real-time analytics industry use cases
+  id: totrans-62
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实时数据分析行业用例
+- en: There is an actual need for and an advantage to processing data in real time,
+    so companies are quickly shifting from batch processing to real-time data processing.
+    In this section, let's take a look at a few examples of real-time data analytics
+    by industry verticals.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 实时处理数据确实有需求，并且具有优势，因此公司正在迅速从批处理转向实时数据处理。在本节中，我们将通过行业垂直的几个示例来了解实时数据分析。
+- en: Real-time predictive analytics in manufacturing
+  id: totrans-64
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 制造业中的实时预测分析
+- en: With the advent of the **Internet of Things** (**IoT**), manufacturing and other
+    industries are generating a high volume of IoT data from their machines and heavy
+    equipment. This data can be leveraged in few different ways to improve the way
+    industries work and help them to save costs. One such example is predictive maintenance,
+    where IoT data is continuously ingested from industrial equipment and machinery,
+    data science, and machine learning techniques that have been applied to the data
+    to identify patterns that can predict equipment or part failures. When this process
+    is performed in real time, it can help to predict equipment and part failures
+    before they actually happen. In this way, maintenance can be performed proactively,
+    preventing downtime and thus preventing any lost revenue or missed manufacturing
+    targets.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着**物联网**（**IoT**）的到来，制造业及其他行业从其机器和重型设备中产生了大量的物联网数据。这些数据可以通过几种不同的方式来提升行业的工作方式，帮助它们节省成本。一个这样的例子是预测性维护，其中物联网数据不断从工业设备和机械中获取，应用数据科学和机器学习技术对数据进行分析，以识别可以预测设备或部件故障的模式。当这一过程在实时情况下执行时，可以在故障发生之前预测设备和部件的故障。通过这种方式，可以主动进行维护，防止停机，从而避免任何损失的收入或错过的生产目标。
+- en: Another example is the construction industry where IoT data, such as equipment
+    uptime, fuel consumption, and more, can be analyzed to identify any underutilized
+    equipment and any equipment that can be redirected in real time for optimal utilization.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个例子是建筑行业，其中 IoT 数据（如设备正常运行时间、燃料消耗等）可以被分析，以识别任何使用不足的设备，并实时调整设备以实现最佳利用率。
+- en: Connected vehicles in the automotive sector
+  id: totrans-67
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 汽车行业中的联网车辆
+- en: Modern vehicles come with a plethora of connected features that definitely make
+    the life of a consumer much easier and more convenient. Vehicle telematics, as
+    well as user data generated by such vehicles, can be used for a variety of use
+    cases or to further provide convenience features for the end user, such as real-time
+    personalized in-vehicle content and services, advanced navigation and route guidance,
+    and remote monitoring. Telematics data can be used by the manufacturer to unlock
+    use cases such as predicting a vehicle's maintenance window or part failure and
+    proactively alerting ancillary vendors and dealerships. Predicting part failures
+    and better managing vehicle recalls helps automotive manufacturers with huge costs.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现代车辆配备了大量的联网功能，显著提高了消费者的生活便利性。车辆遥感技术，以及由这些车辆生成的用户数据，可用于多种应用场景，或进一步为终端用户提供便利功能，如实时个性化车载内容和服务、先进的导航与路线指引以及远程监控。制造商可以利用遥感数据解锁诸如预测车辆维修时间窗或零部件故障，并主动提醒附属供应商和经销商等应用场景。预测零部件故障并更好地管理车辆召回，能帮助汽车制造商节省巨额成本。
+- en: Financial fraud detection
+  id: totrans-69
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 财务欺诈检测
+- en: Modern-day personal finance is rapidly moving from physical to digital, and
+    with that comes the novel threat of digital financial threats such as fraud and
+    identity theft. Therefore, there is a need for financial institutions to proactively
+    assess millions of transactions in real time for fraud and to alert and protect
+    the individual consumer of such fraud. Highly scalable, fault-tolerant real-time
+    analytics systems are required to detect and prevent financial fraud at such a
+    scale.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现代个人财务正迅速从传统的物理方式转向数字化，并由此带来了诸如欺诈和身份盗窃等数字金融威胁。因此，金融机构需要主动评估数百万笔交易的实时欺诈行为，并向个人消费者发出警告并保护其免受此类欺诈。为了在如此大规模下检测和防止金融欺诈，要求具备高度可扩展、容错性强的实时分析系统。
+- en: IT security threat detection
+  id: totrans-71
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: IT安全威胁检测
+- en: Consumer electronics manufactures of online connected devices, as well as corporations,
+    have to continuously monitor their end users' devices for any malicious activity
+    to safeguard the identity and assets of their end users. Monitoring petabytes
+    of data requires real-time analytics systems that can process millions of records
+    per second in real time.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 消费电子产品制造商和在线联网设备的公司必须不断监控其终端用户设备中的任何恶意活动，以保障用户身份和资产的安全。监控 PB 级别的数据需要实时分析系统，能够每秒处理数百万条记录。
+- en: Based on the previously described industry use cases, you might observe that
+    real-time data analytics is becoming more and more prominent by the day. However,
+    real-time data analytics systems don't necessarily negate the need for the batch
+    processing of data. It is very much required for enriching real-time data streams
+    with static data, generating lookups that add context to real-time data, and generating
+    features that are required for real-time data science and machine learning use
+    cases. In [*Chapter 2*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032), *Data
+    Ingestion*, you learned about an architecture that could efficiently unify batch
+    and real-time processing, called the **Lambda Architecture**. In the following
+    section, you will learn how to further simplify the Lambda Architecture using
+    Structured Streaming in combination with Delta Lake.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据前述的行业应用案例，你可能会注意到实时数据分析日益显得尤为重要。然而，实时数据分析系统并不一定意味着可以完全代替批处理数据的需求。批处理依然是非常必要的，特别是在用静态数据丰富实时数据流、生成为实时数据提供上下文的查找表，以及为实时数据科学和机器学习应用场景生成特征方面。在[*第2章*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032)，《数据摄取》中，你学习了一个可以高效统一批处理和实时处理的架构，称为**Lambda架构**。在接下来的部分，你将学习如何结合
+    Delta Lake 使用结构化流处理进一步简化 Lambda 架构。
+- en: Simplifying the Lambda Architecture using Delta Lake
+  id: totrans-74
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Delta Lake 简化 Lambda 架构
+- en: 'A typical Lambda Architecture has three major components: a batch layer, a
+    streaming layer, and a serving layer. In [*Chapter 2*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032),
+    *Data Ingestion*, you were able to view an implementation of the Lambda Architecture
+    using Apache Spark''s unified data processing framework. The Spark DataFrames
+    API, Structured Streaming, and SQL engine help to make Lambda Architecture simpler.
+    However, multiple data storage layers are still required to handle batch data
+    and streaming data separately. These separate data storage layers could be easily
+    consolidated by using the Spark SQL engine as the service layer. However, that
+    might still lead to multiple copies of data and might require further consolidation
+    of data using additional batch jobs in order to present the user with a single
+    consistent and integrated view of data. This issue can be overcome by making use
+    of Delta Lake as a persistent data storage layer for the Lambda Architecture.'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个典型的 Lambda 架构有三个主要组件：批处理层、流处理层和服务层。在 [*第二章*](B16736_02_Final_JM_ePub.xhtml#_idTextAnchor032)，*数据摄取*
+    中，你已经查看了使用 Apache Spark 的统一数据处理框架来实现 Lambda 架构的例子。Spark DataFrames API、Structured
+    Streaming 和 SQL 引擎有助于简化 Lambda 架构。然而，仍然需要多个数据存储层来分别处理批量数据和流数据。这些单独的数据存储层可以通过使用
+    Spark SQL 引擎作为服务层轻松合并。但这可能仍然会导致数据的多重副本，并且可能需要通过额外的批处理作业进一步整合数据，以便为用户呈现一个一致的集成视图。这个问题可以通过将
+    Delta Lake 作为 Lambda 架构的持久数据存储层来解决。
+- en: 'Since Delta Lake comes built with ACID transactional and isolation properties
+    for write operations, it can provide the seamless unification of batch and streaming
+    data, further simplifying the Lambda Architecture. This is illustrated in the
+    following diagram:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于 Delta Lake 内建了 ACID 事务和写操作隔离特性，它能够提供批量数据和流数据的无缝统一，从而进一步简化 Lambda 架构。如下图所示：
+- en: '![Figure 4.3 – A Lambda Architecture with Apache Spark and Delta Lake'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 4.3 – 带有 Apache Spark 和 Delta Lake 的 Lambda 架构](img/B16736_04_03.jpg)'
+- en: '](img/B16736_04_03.jpg)'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16736_04_03.jpg)'
+- en: Figure 4.3 – A Lambda Architecture with Apache Spark and Delta Lake
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.3 – 带有 Apache Spark 和 Delta Lake 的 Lambda 架构
+- en: 'In the preceding diagram, a simplified Lambda Architecture is presented. Here,
+    batch data, as well as streaming data, is simultaneously ingested using batch
+    processing with Apache Spark and Structured Streaming, respectively. Ingesting
+    both batch and streaming data into a single Delta Lake table greatly simplifies
+    the Lambda Architecture. Once the data has been ingested into Delta Lake, it is
+    instantly available for further downstream use cases such as ad hoc data exploration
+    via Spark SQL queries, near real-time Business Intelligence reports and dashboards,
+    and data science and machine learning use cases. Since processed data is continuously
+    streamed into Delta Lake, it can be consumed in both a streaming and batch manner:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的图中，展示了一个简化的 Lambda 架构。在这里，批量数据和流数据分别通过 Apache Spark 的批处理和 Structured Streaming
+    进行同时处理。将批量数据和流数据同时注入到一个 Delta Lake 表中，大大简化了 Lambda 架构。一旦数据被注入到 Delta Lake 中，它便可以立即用于进一步的下游用例，如通过
+    Spark SQL 查询进行的临时数据探索、近实时的商业智能报告和仪表盘，以及数据科学和机器学习的用例。由于处理后的数据是持续流入 Delta Lake 的，因此可以以流式和批量方式进行消费：
+- en: 'Let''s take a look at how this simplified Lambda Architecture can be implemented
+    using Apache Spark and Delta Lake, as illustrated in the following block of code:'
+  id: totrans-81
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们看看如何使用 Apache Spark 和 Delta Lake 来实现这个简化的 Lambda 架构，如以下代码块所示：
+- en: '[PRE1]'
+  id: totrans-82
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: In the preceding code snippet, we create a Spark DataFrame by reading a CSV
+    file stored on the data lake using the `read()` function. We specify the options
+    to infer the headers and schema from the semi-structured CSV file itself. The
+    result of this is a Spark DataFrame, named `retail_batch_df`, that is a pointer
+    to the data and structure of the retail data stored in the CSV files.
+  id: totrans-83
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们通过使用 `read()` 函数从数据湖中读取存储的 CSV 文件来创建一个 Spark DataFrame。我们指定选项，从半结构化的
+    CSV 文件中推断出头部和模式。结果是一个名为 `retail_batch_df` 的 Spark DataFrame，它指向存储在 CSV 文件中的零售数据的内容和结构。
+- en: 'Now, let''s convert this CSV data into Delta Lake format and store it as a
+    Delta table on the data lake, as shown in the following block of code:'
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，让我们将这些 CSV 数据转换为 Delta Lake 格式，并将其作为 Delta 表存储在数据湖中，如以下代码块所示：
+- en: '[PRE2]'
+  id: totrans-85
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: In the preceding code snippet, we save the `retail_batch_df` Spark DataFrame
+    to the data lake as a Delta table using the `write()` function along with the
+    `saveAsTable()` function. The format is specified as `delta`, and a location for
+    the table is specified using the `path` option. The result is a Delta table named
+    `online_retail` with its data stored, in Delta Lake format, on the data lake.
+  id: totrans-86
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们使用 `write()` 函数和 `saveAsTable()` 函数将 `retail_batch_df` Spark DataFrame
+    保存为数据湖中的 Delta 表。格式指定为 `delta`，并通过 `path` 选项指定表的位置。结果是一个名为 `online_retail` 的 Delta
+    表，其数据以 Delta Lake 格式存储在数据湖中。
+- en: Tip
+  id: totrans-87
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 提示
+- en: When a Spark DataFrame is saved as a table, with a location specified, the table
+    is called an external table. As a best practice, it is recommended that you always
+    create external tables because the data of an external table is preserved even
+    if the table definition is deleted.
+  id: totrans-88
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 当一个 Spark DataFrame 作为表保存时，指定了位置，则该表被称为外部表。作为最佳实践，建议始终创建外部表，因为即使删除表定义，外部表的数据仍然会被保留。
+- en: 'In the preceding block of code, we performed an initial load of the data using
+    Spark''s batch processing:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，我们使用 Spark 的批处理进行了数据的初始加载：
+- en: 'Now, let''s load some incremental data into the same Delta table defined previously,
+    named `online_retail`, using Spark''s Structured Streaming. This is illustrated
+    in the following block of code:'
+  id: totrans-90
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 现在，让我们使用 Spark 的结构化流处理将一些增量数据加载到之前定义的同一个 Delta 表中，名为 `online_retail`。这一过程在以下代码块中有所展示：
+- en: '[PRE3]'
+  id: totrans-91
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: In the preceding code snippet, we read a set of CSV files stored on the data
+    lake in a streaming fashion using the `readStream()` function. Structured Streaming
+    requires the schema of data being read to be specified upfront, which we supply
+    using the `schema` option. The result is a Structured Streaming DataFrame named
+    `retail_stream_df`.
+  id: totrans-92
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们使用 `readStream()` 函数以流的方式读取存储在数据湖中的一组 CSV 文件。结构化流处理要求在读取数据时必须提前指定数据的模式，这可以通过
+    `schema` 选项来提供。结果是一个名为 `retail_stream_df` 的结构化流处理 DataFrame。
+- en: 'Now, let''s ingest this stream of data into the same Delta table, named `online_retail`,
+    which was created earlier during the initial load. This is shown in the following
+    block of code:'
+  id: totrans-93
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 现在，让我们将这一数据流注入到之前在初始加载时创建的同一个 Delta 表中，名为 `online_retail`。这个过程展示在以下代码块中：
+- en: '[PRE4]'
+  id: totrans-94
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: In the preceding code block, the streaming `retail_stream_df` DataFrame is being
+    ingested into the existing Delta table named `online_retail` using Structured
+    Streaming's `writeStream()` function. The `outputMode` option is specified as
+    `append`. This is because we want to continuously append new data to the existing
+    Delta table. Since Structured Streaming guarantees `checkpointLocation` needs
+    to be specified. This is so that Structured Streaming can track the progress of
+    the processed data and restart exactly from the point where it left in the case
+    of failures or if the streaming process restarts.
+  id: totrans-95
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，结构化流处理的 `retail_stream_df` DataFrame 被加载到名为 `online_retail` 的现有 Delta
+    表中，使用的是结构化流的 `writeStream()` 函数。`outputMode` 选项指定为 `append`。这是因为我们希望将新数据持续追加到现有的
+    Delta 表中。由于结构化流处理保证必须指定 `checkpointLocation`，以便在发生故障或流处理重新启动时，能够跟踪处理数据的进度，并从中断点精确恢复。
+- en: Note
+  id: totrans-96
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 注意
+- en: A Delta table stores all the required schema information in the Delta Transaction
+    Log. This makes registering Delta tables with a metastore completely optional,
+    and it is only required while accessing Delta tables via external tools or via
+    Spark SQL.
+  id: totrans-97
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: Delta 表将所有必需的模式信息存储在 Delta 事务日志中。这使得将 Delta 表注册到元数据存储（metastore）成为完全可选的，只有在通过外部工具或
+    Spark SQL 访问 Delta 表时，才需要进行注册。
+- en: You can now observe from the previous blocks of code that the combination of
+    Spark's unified batch and stream processing already simplifies Lambda Architecture
+    by using a single unified analytics engine. With the addition of Delta Lake's
+    transactional and isolation properties and batch and streaming unification, your
+    Lambda Architecture can be further simplified, giving you a powerful and scalable
+    platform that allows you to get to your freshest data in just a few seconds to
+    a few minutes. One prominent use case of streaming data ingestion is maintaining
+    a replica of the source transactional system data in the data lake. This replica
+    should include all the delete, update, and insert operations that take place in
+    the source system. Generally, this use case is termed CDC and follows a pattern
+    similar to the one described in this section. In the following section, we will
+    dive deeper into implementing CDC using Apache Spark and Delta Lake.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从之前的代码块中，你可以看到，Spark 的统一批处理和流处理的结合，已经通过使用单一的统一分析引擎简化了 Lambda 架构。随着 Delta Lake
+    事务和隔离特性以及批处理和流处理统一性的加入，你的 Lambda 架构可以进一步简化，提供一个强大且可扩展的平台，让你能够在几秒钟到几分钟内访问最新的数据。一个流数据摄取的显著用例是，在数据湖中维护源事务系统数据的副本。该副本应包括源系统中发生的所有删除、更新和插入操作。通常，这个用例被称为
+    CDC，并遵循类似本节描述的模式。在接下来的部分，我们将深入探讨如何使用 Apache Spark 和 Delta Lake 实现 CDC。
+- en: Change Data Capture
+  id: totrans-99
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 数据变更捕捉（Change Data Capture）
+- en: Generally, operational systems do not maintain historical data for extended
+    periods of time. Therefore, it is essential that an exact replica of the transactional
+    system data be maintained in the data lake along with its history. This has a
+    few advantages, including providing you with a historical audit log of all your
+    transactional data. Additionally, this huge wealth of data can help you to unlock
+    novel business use cases and data patterns that could take your business to the
+    next level.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一般来说，操作系统不会长期保留历史数据。因此，必须在数据湖中维护事务系统数据的精确副本，并保留其历史记录。这有几个优点，包括为你提供所有事务数据的历史审计日志。此外，这一大量的数据可以帮助你解锁新的商业用例和数据模式，推动业务迈向更高的水平。
+- en: Maintaining an exact replica of a transactional system in the data lake means
+    capturing all of the changes to every transaction that takes place in the source
+    system and replicating it in the data lake. This process is generally called CDC.
+    CDC requires you to not only capture all the new transactions and append them
+    to the data lake but also capture any deletes or updates to the transactions that
+    happen in the source system. This is not an ordinary feat to achieve on data lakes,
+    as data lakes have meager to no support at all for updating or deleting arbitrary
+    records. However, CDC on data lakes is made possible with Delta Lake's full support
+    to insert, update, and delete any number of arbitrary records. Additionally, the
+    combination of Apache Spark and Delta Lake makes the architecture simple.
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在数据湖中维护事务系统的精确副本意味着捕获源系统中发生的每一笔交易的所有变更，并将其复制到数据湖中。这个过程通常被称为 CDC。CDC 不仅要求你捕获所有的新交易并将其追加到数据湖中，还要捕获源系统中对交易的任何删除或更新。这在数据湖中并非易事，因为数据湖通常不支持更新或删除任意记录。然而，通过
+    Delta Lake 完全支持插入、更新和删除任意数量的记录，CDC 在数据湖上成为可能。此外，Apache Spark 和 Delta Lake 的结合使得架构变得简单。
+- en: 'Let''s implement a CDC process using Apache Spark and Delta Lake, as illustrated
+    in the following block of code:'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们实现一个使用 Apache Spark 和 Delta Lake 的 CDC 过程，如下一个代码块所示：
+- en: '[PRE5]'
+  id: totrans-103
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: In the preceding code snippet, we perform an initial load of a static set of
+    data into a Delta table using batch processing with Spark. We simply use Spark
+    DataFrame's `read()` function to read a set of static CSV files and save them
+    into a Delta table using the `saveAsTable()` function. Here, we use the `path`
+    option to define the table as an external table. The result is a delta table with
+    a static set of initial data from the source table.
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们使用 Spark 的批处理处理初始加载一组静态数据到 Delta 表中。我们简单地使用 Spark DataFrame 的 `read()`
+    函数读取一组静态的 CSV 文件，并使用 `saveAsTable()` 函数将其保存到 Delta 表中。这里，我们使用 `path` 选项将表定义为外部表。结果是一个包含源表初始静态数据的
+    Delta 表。
+- en: Here, the question is how did we end up with transactional data from an operational
+    system, which typically happens to be RDBMS, in the form of a set of text files
+    in the data lake? The answer is a specialist set of tools that are purpose-built
+    for reading CDC data from operational systems and converting and staging them
+    onto either a data lake or a message queue or another database of choice. Some
+    examples of such CDC tools include Oracle's Golden Gate and AWS Database Migration
+    Service.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里的问题是，如何将来自操作系统（通常是关系型数据库管理系统 RDBMS）的事务数据最终转化为数据湖中的一组文本文件？答案是使用专门的工具集，这些工具专门用于从操作系统读取
+    CDC 数据，并将其转换并暂存到数据湖、消息队列或其他数据库中。像 Oracle 的 Golden Gate 和 AWS 数据库迁移服务就是此类 CDC 工具的一些示例。
+- en: Note
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Apache Spark can handle CDC data and ingest it seamlessly into Delta Lake; however,
+    it is not suited for building end-to-end CDC pipelines, including ingesting from
+    operational sources. There are open source and proprietary tools specifically
+    built for this purpose, such as StreamSets, Fivetran, Apache Nifi, and more.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Spark 可以处理 CDC 数据并将其无缝地导入 Delta Lake；然而，它不适合构建端到端的 CDC 流水线，包括从操作源加载数据。专门为此目的构建的开源和专有工具，如
+    StreamSets、Fivetran、Apache Nifi 等，可以帮助完成这一工作。
+- en: 'Now that we have an initial set of static transactional data loaded into a
+    Delta table,let''s ingest some real-time data into the same Delta table, as shown
+    in the following block of code:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们已经将一组静态的事务数据加载到 Delta 表中，让我们将一些实时数据加载到同一个 Delta 表中，代码如下所示：
+- en: '[PRE6]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: In the preceding code snippet, we define a streaming DataFrame from a location
+    on the data lake. Here, the assumption is that a third-party CDC tool is constantly
+    adding new files to the location on the data lake with the latest transactional
+    data.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们从数据湖中的一个位置定义了一个流式 DataFrame。这里的假设是一个第三方 CDC 工具正在不断地将包含最新事务数据的新文件添加到数据湖中的该位置。
+- en: 'Now, we can merge the change data into the existing Delta table, as shown in
+    the following block of code:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们可以将变更数据合并到现有的 Delta 表中，如下代码所示：
+- en: '[PRE7]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'In the preceding code block, the following happens:'
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，发生了以下操作：
+- en: We recreate a definition for the existing Delta table using the Delta Lake location
+    and the `DeltaTable.forPath()` function. The result is a pointer to the Delta
+    table in Spark's memory, named `deltaTable`.
+  id: totrans-114
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们使用 Delta Lake 位置和`DeltaTable.forPath()`函数重新定义现有 Delta 表的定义。结果是指向 Spark 内存中
+    Delta 表的指针，命名为`deltaTable`。
+- en: Then, we define a function named `upsertToDelta()` that performs the actual
+    `merge` or `upsert` operation into the existing Delta table.
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们定义了一个名为`upsertToDelta()`的函数，它执行实际的`merge`或`upsert`操作，将数据合并到现有的 Delta 表中。
+- en: The existing Delta table is aliased using the letter of `a`, and the Spark DataFrame
+    containing new updates from each streaming micro-batch is aliased as letter `b`.
+  id: totrans-116
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现有的 Delta 表被使用字母`a`作为别名，包含来自每个流式微批的最新更新的 Spark DataFrame 被别名为字母`b`。
+- en: The incoming updates from the streaming micro-batch might actually contain duplicates.
+    The reason for the duplicates is that a given transaction might have undergone
+    multiple updates by the time its data reaches Structured Streaming. Therefore,
+    there is a need to deduplicate the streaming micro-batch prior to merging into
+    the Delta table. This is achieved by applying the `dropDuplicates()` function
+    on the streaming micro-batch DataFrame.
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从流式微批处理传入的更新可能实际上包含重复数据。重复的原因是，在数据到达结构化流处理（Structured Streaming）时，某个给定的事务可能已经经历了多次更新。因此，在将数据合并到
+    Delta 表之前，需要对流式微批处理数据进行去重。通过在流式微批处理 DataFrame 上应用`dropDuplicates()`函数来实现去重。
+- en: The streaming updates are then merged into the Delta table by applying the `merge()`
+    function on the existing Delta table. An equality condition is applied to the
+    key columns of both the DataFrames, and all matching records from the streaming
+    micro-batch updates are updated in the existing Delta table using the `whenMatchedUpdateAll()`
+    function.
+  id: totrans-118
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，流式更新通过在现有 Delta 表上应用`merge()`函数将其合并到 Delta 表中。对两个 DataFrame 的关键列应用相等条件，并使用`whenMatchedUpdateAll()`函数将所有与流式微批更新匹配的记录更新到现有的
+    Delta 表中。
+- en: Any records from the streaming micro-batch that don't already exist in the target
+    Delta table are inserted using the `whenNotMatchedInsertAll()` function.
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 来自流式微批处理的任何记录，如果尚未存在于目标 Delta 表中，将通过`whenNotMatchedInsertAll()`函数进行插入。
+- en: Note
+  id: totrans-120
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 注意
+- en: It is necessary to deduplicate the streaming updates coming in the form of micro-batches
+    as a given transaction might have undergone multiple updates by the time our streaming
+    job actually gets to process it. It is a common industry practice to select the
+    latest update per transaction based on the key column and the latest timestamp.
+    In the absence of such a timestamp column in the source table, most CDC tools
+    have the functionality to scan records in the correct order that they were created
+    or updated and insert their own timestamp column.
+  id: totrans-121
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 需要对以微批次形式到达的流式更新进行去重，因为在我们的流处理任务实际处理数据时，某个事务可能已经经历了多次更新。业界的常见做法是基于键列和最新时间戳选择每个事务的最新更新。如果源表中没有这样的时间戳列，大多数CDC工具具备扫描记录的功能，按创建或更新的正确顺序插入它们自己的时间戳列。
+- en: In this way, using a simple `merge()` function, change data can be easily merged
+    into an existing Delta table stored on any data lake. This functionality greatly
+    simplifies the architectural complexity of CDC use cases that are implemented
+    in real-time analytics systems.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用一个简单的`merge()`函数，可以轻松地将变更数据合并到存储在任何数据湖中的现有Delta表中。这一功能大大简化了实时分析系统中实现CDC场景的架构复杂性。
+- en: Important note
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: It is imperative that events arrive in the exact same order they were created
+    at the source for CDC use cases. For instance, a delete operation cannot be applied
+    prior to an insert operation. This would lead to incorrect data outright. Certain
+    message queues do not preserve the order of events as they arrive in the queue,
+    and care should be taken to preserve event ordering.
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于CDC场景，确保事件按其在源端创建的准确顺序到达至关重要。例如，删除操作不能在插入操作之前执行，否则会导致数据错误。某些消息队列无法保持事件到达队列时的顺序，因此在处理时应特别注意保持事件的顺序。
+- en: Behind the scenes, Spark automatically scales the merge process, making it scalable
+    to even petabytes of data. In this way, Delta Lake brings data warehouse-like
+    functionality to cloud-based data lakes that weren't actually designed to handle
+    analytics types of use cases.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在幕后，Spark会自动扩展合并过程，使其能够处理PB级别的数据。通过这种方式，Delta Lake将类似数据仓库的功能引入到本来并未设计用于处理分析类用例的基于云的数据湖中。
+- en: Tip
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: A Delta merge might progressively get slower as the data size in the target
+    Delta table increases. A Delta merge's performance can be improved by using an
+    appropriate data partitioning scheme and specifying data partition column(s) in
+    the merge clause. In this way, a Delta merge will only select those partitions
+    that actually need to be updated, thus greatly improving merge performance.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着目标Delta表中数据量的增加，Delta合并可能会逐渐变慢。通过使用合适的数据分区方案，并在合并子句中指定数据分区列，可以提高Delta合并的性能。这样，Delta合并只会选择那些确实需要更新的分区，从而大大提高合并性能。
+- en: Another phenomenon that is unique to a real-time streaming analytics use case
+    is late-arriving data. When an event or an update to an event arrives at the streaming
+    engine a little later than expected, it is called late-arriving data. A capable
+    streaming engine needs to be able to handle late-arriving data or data arriving
+    out of order. In the following section, we will explore handling late-arriving
+    data in more detail.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一个在实时流分析场景中独特的现象是延迟到达的数据。当某个事件或事件更新比预期稍晚到达流处理引擎时，就称为延迟到达的数据。一个强大的流处理引擎需要能够处理延迟到达的数据或乱序到达的数据。在接下来的部分，我们将更详细地探讨如何处理延迟到达的数据。
+- en: Handling late-arriving data
+  id: totrans-129
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 处理延迟到达的数据
+- en: Late-arriving data is a situation that is unique to real-time streaming analytics,
+    where events related to the same transaction do not arrive in time to be processed
+    together, or they arrive out of order at the time of processing. Structured Streaming
+    supports stateful stream processing to handle such scenarios. We will explore
+    these concepts further next.
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 延迟到达的数据是实时流分析中的一种特殊情况，其中与同一事务相关的事件未能及时到达以便一起处理，或者它们在处理时是乱序到达的。结构化流处理支持有状态流处理来处理此类场景。我们接下来将进一步探讨这些概念。
+- en: Stateful stream processing using windowing and watermarking
+  id: totrans-131
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用窗口和水印的有状态流处理
+- en: 'Let''s consider the example of an online retail transaction where a user is
+    browsing through the e-tailer''s website. We would like to calculate the user
+    session based on one of the two following events taking place: either the users
+    exit the e-tailer''s portal or a timeout occurs. Another example is that a user
+    places an order and then subsequently updates the order, and due to the network
+    or some other delay, we receive the update first and then the original order creation
+    event. Here, we would want to wait to receive any late or out-of-order data before
+    we go ahead and save the data to the final storage location.'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们考虑一个在线零售交易的例子，用户正在浏览电子零售商网站。我们希望根据以下两种事件之一计算用户会话：用户退出电子零售商门户或发生超时。另一个例子是用户下订单后又更新订单，由于网络或其他延迟，我们首先接收到更新事件，然后才接收到原始订单创建事件。在这种情况下，我们希望等待接收任何迟到或乱序的数据，然后再将数据保存到最终存储位置。
+- en: In both of the previously mentioned scenarios, the streaming engine needs to
+    be able to store and manage certain state information pertaining to each transaction
+    in order to account for late-arriving data. Spark's Structured Streaming can automatically
+    handle late-arriving data by implementing stateful processing using the concept
+    of **Windowing**.
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面提到的两种场景中，流引擎需要能够存储和管理与每个事务相关的某些状态信息，以便处理迟到的数据。Spark的结构化流处理可以通过使用**窗口化**概念实现有状态处理，从而自动处理迟到的数据。
+- en: Before we dive deeper into the concept of windowing in Structured Screaming,
+    you need to understand the concept of event time. **Event time** is the timestamp
+    at which an event of a transaction is generated at the source. For instance, the
+    timestamp at which an order is placed becomes the event time for the order creation
+    event. Similarly, if the same transaction is updated at the source, then the update
+    timestamp becomes the event time for the update event of the transaction. Event
+    time is an important parameter for any stateful processing engine in order to
+    determine which event took place first.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在深入探讨结构化流处理中的窗口化概念之前，您需要理解事件时间（event time）的概念。**事件时间**是指事务事件在源端生成时的时间戳。例如，订单创建事件的事件时间就是订单下单的时间戳。同样，如果同一事务在源端进行了更新，则更新的时间戳成为该事务更新事件的事件时间。事件时间是任何有状态处理引擎中的一个重要参数，用于确定哪个事件先发生。
+- en: 'Using windowing, Structured Steaming maintains a state for each key and updates
+    the state for a given key if a new event for the same key arrives, as illustrated
+    in the following diagram:'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用窗口化（windowing）时，结构化流处理（Structured Streaming）会为每个键维护一个状态，并在相同键的新的事件到达时更新该键的状态，如下图所示：
+- en: '![Figure 4.4 – Stateful stream processing'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图4.4 – 有状态流处理'
+- en: '](img/B16736_04_04.jpg)'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16736_04_04.jpg)'
+- en: Figure 4.4 – Stateful stream processing
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图4.4 – 有状态流处理
+- en: In the preceding illustration, we have a stream of transactional events of orders
+    being placed. Each of **O1**, **O2**, and **O3**, indicates the order numbers,
+    and **T**, **T+03**, and so on, indicates timestamps at which orders were created.
+    The input stream has a steady stream of order-related events being generated.
+    We define a stateful window of **10** minutes with a sliding interval of every
+    **5** minutes. What we are trying to achieve here in the window is to update the
+    count of each unique order placed. As you can see, at each **5**-minute interval,
+    any new events of the same order get an updated count. This simple illustration
+    depicts how stateful processing works in a stream processing scenario.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上面的示意图中，我们有一个订单放置的事务事件流。**O1**、**O2**和**O3**分别表示订单号，而**T**、**T+03**等则表示订单创建的时间戳。输入流有一个稳定的订单相关事件生成流。我们定义了一个持续**10**分钟的有状态窗口，并且每**5**分钟滑动一次窗口。我们在窗口中想要实现的是更新每个唯一订单的计数。如你所见，在每个**5**分钟的间隔内，同一订单的任何新事件都会更新计数。这个简单的示意图描述了有状态处理在流处理场景中的工作原理。
+- en: However, there is one problem with this type of stateful processing; that is,
+    the state seems to be perpetually maintained, and over a period of time, the state
+    data itself might grow to be too huge to fit into the cluster memory. It is also
+    not practical to maintain the state perpetually. This is because real-world scenarios
+    rarely ever require the state to be maintained for extended periods of time. Therefore,
+    we need a mechanism to expire the state after a certain time interval. Structured
+    Streaming has the ability to define a watermark that governs for how long the
+    individual state is maintained per key, and it drops the state as soon as the
+    watermark expires for a given key.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，这种类型的状态处理有一个问题；即状态似乎被永久维护，随着时间的推移，状态数据本身可能变得过大，无法适应集群内存。永久维护状态也不现实，因为实际场景中很少需要长期维护状态。因此，我们需要一种机制来在一定时间后使状态过期。结构化流处理具有定义水印的能力，水印控制每个键的状态维护时间，一旦水印过期，系统将删除该键的状态。
+- en: Note
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '注意  '
+- en: In spite of defining a watermark, the state could still grow to be quite large,
+    and Structured Streaming has the ability to spill the state data onto the executor's
+    local disk when needed. Structured Streaming can also be configured to use an
+    external state store such as RocksDB in order to maintain state data for a very
+    large number of keys ranging in the millions.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '尽管定义了水印，状态可能仍然会变得非常大，并且结构化流处理有能力在需要时将状态数据溢出到执行器的本地磁盘。结构化流处理还可以配置使用外部状态存储，例如RocksDB，以维护数百万个键的状态数据。  '
+- en: 'The following code blocks show the implementation details of arbitrary stateful
+    processing with Spark''s Structured Streaming using the event time, windowing,
+    and watermarking:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '以下代码块展示了使用Spark的结构化流式处理，通过事件时间、窗口函数和水印函数进行任意状态处理的实现细节：  '
+- en: Let's implement the concepts of `InvoiceTime` by converting the `InvoiceDate`
+    column from `StringType` into `TimestampType`.
+  id: totrans-144
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '让我们通过将`InvoiceDate`列从`StringType`转换为`TimestampType`来实现`InvoiceTime`的概念。  '
+- en: 'Next, we will perform some stateful processing on the `raw_stream_df` Streaming
+    DataFrame by defining windowing and watermarking functions on it, as shown in
+    the following block of code:'
+  id: totrans-145
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '接下来，我们将在`raw_stream_df`流式数据框上执行一些状态处理操作，通过在其上定义窗口函数和水印函数，如下所示的代码块：  '
+- en: '[PRE8]'
+  id: totrans-146
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'The following observations can be drawn from the preceding code snippet:'
+  id: totrans-147
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '从前面的代码片段可以得出以下观察结论：  '
+- en: We define a watermark on the `raw_stream_df` streaming DataFrame for `1` minute.
+    This specifies that Structured Streaming should accumulate a state for each key
+    for only a duration of `1` minute. The watermark duration depends entirely on
+    your use case and how late your data is expected to arrive.
+  id: totrans-148
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '我们在`raw_stream_df`流式数据框上定义了一个水印，持续时间为`1`分钟。这意味着结构化流处理应当为每个键维护一个状态，仅持续`1`分钟。水印的持续时间完全取决于你的用例以及数据预期到达的延迟时间。  '
+- en: We define a group by function on the key column, named `InvoiceNo`, and define
+    the desired window for our stateful operation as `30` seconds with a sliding window
+    of every `10` seconds. This means that our keys will be aggregated every `10`
+    seconds after the initial `30`-second window.
+  id: totrans-149
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '我们在键列`InvoiceNo`上定义了一个分组函数，并为我们的状态操作定义了所需的窗口，窗口大小为`30`秒，滑动窗口为每`10`秒一次。这意味着我们的键将在初始的`30`秒窗口后，每`10`秒进行一次聚合。  '
+- en: We define the aggregation functions to be `max` on the timestamp column and
+    `count` on the key column.
+  id: totrans-150
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '我们定义了聚合函数，其中对时间戳列使用`max`函数，对键列使用`count`函数。  '
+- en: The streaming process will write data to the streaming sink as soon as the watermark
+    expires for each key.
+  id: totrans-151
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '一旦水印过期，流处理过程会立即将数据写入流式接收器。  '
+- en: 'Once the stateful stream has been defined using windowing and watermarking
+    functions, we can quickly verify whether the stream is working as expected, as
+    shown in the following code snippet:'
+  id: totrans-152
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '一旦使用窗口函数和水印函数定义了状态流，我们可以快速验证流是否按预期工作，如下所示的代码片段所示：  '
+- en: '[PRE9]'
+  id: totrans-153
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: The previous code block writes the output of the stateful processing streaming
+    DataFrame to a memory sink and specifies a `queryName` property. The stream gets
+    registered as an in-memory table with the specified query name, and it can be
+    easily queried using Spark SQL to quickly verify the correctness of the code.
+  id: totrans-154
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '上述代码块将状态处理流式数据框的输出写入内存接收器，并指定了一个`queryName`属性。该流被注册为一个内存表，使用指定的查询名称，可以通过Spark
+    SQL轻松查询，以便快速验证代码的正确性。  '
+- en: In this way, making use of windowing and watermarking functionalities provided
+    by Structured Streaming, stateful stream processing can be implemented using Structured
+    Streaming and late-arriving data can be easily handled. Another aspect to pay
+    attention to in all of the previous code examples presented in this chapter, so
+    far, is how the streaming data progressively gets transformed from its raw state
+    into a processed state and further into an aggregated state. This methodology
+    of progressively transforming data using multiple streaming processes is generally
+    called a **multi-hop architecture**. In the following section, we will explore
+    this methodology further.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过利用结构化流式处理提供的窗口功能和水印功能，可以实现有状态的流处理，并且可以轻松处理迟到的数据。在本章之前所有的代码示例中，另一个需要注意的方面是流数据如何逐步从原始状态转化为处理后的状态，再进一步转化为聚合后的状态。这种使用多个流式过程逐步转化数据的方法通常被称为**多跳架构**。在接下来的部分，我们将进一步探讨这种方法。
+- en: Multi-hop pipelines
+  id: totrans-156
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 多跳管道
+- en: A multi-hop pipeline is an architecture for building a series of streaming jobs
+    chained together so that each job in the pipeline processes the data and improves
+    the quality of the data progressively. A typical data analytics pipeline consists
+    of multiple stages, including data ingestion, data cleansing and integration,
+    and data aggregation. Later on, it consists of data science and machine learning-related
+    steps, including feature engineering and machine learning training and scoring.
+    This process progressively improves the quality of data until it is finally ready
+    for end user consumption.
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多跳管道是一种架构，用于构建一系列链式连接的流式作业，使得管道中的每个作业处理数据并逐步提升数据的质量。一个典型的数据分析管道包括多个阶段，包括数据摄取、数据清洗与整合、数据聚合等。随后，它还包括数据科学和机器学习相关的步骤，如特征工程、机器学习训练和评分。这个过程逐步提高数据质量，直到它最终准备好供终端用户使用。
+- en: 'With Structured Streaming, all these stages of the data analytics pipelines
+    can be chained together into a **Directed Acyclic Graph** (**DAG**) of streaming
+    jobs. In this way, new raw data continuously enters one end of the pipeline and
+    gets progressively processed by each stage of the pipeline. Finally, end user
+    ready data exits from the tail end of the pipeline. A typical multi-hop architecture
+    is presented in the following diagram:'
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用结构化流式处理，所有这些数据分析管道的阶段可以被链式连接成一个**有向无环图**（**DAG**）的流式作业。通过这种方式，新的原始数据持续进入管道的一端，并通过管道的每个阶段逐步处理。最终，经过处理的数据从管道的尾端输出，准备供终端用户使用。以下是一个典型的多跳架构：
+- en: '![Figure 4.5 – The Multi-hop pipeline architecture'
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 4.5 – 多跳管道架构'
+- en: '](img/B16736_04_05.jpg)'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/B16736_04_05.jpg)'
+- en: Figure 4.5 – The Multi-hop pipeline architecture
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 4.5 – 多跳管道架构
+- en: The previous diagram represents a multi-hop pipeline architecture, where raw
+    data is ingested into the data lake and is processed in order to improve its quality
+    through each stage of the data analytics pipeline until it is finally ready for
+    end user use cases. End user use cases could be Business Intelligence and reporting,
+    or they can be for further processing into predictive analytics use cases using
+    data science and machine learning techniques.
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上面的图示代表了一个多跳管道架构，其中原始数据被摄取到数据湖中，并通过数据分析管道的每个阶段进行处理，从而逐步提高数据的质量，直到最终准备好供终端用户使用。终端用户的使用场景可能是商业智能与报告，或者进一步处理为预测分析的使用场景，利用数据科学和机器学习技术。
+- en: 'Although it seems like a simple architecture to implement, a few key prerequisites
+    have to be met for the seamless implementation of multi-hop pipelines, without
+    frequent developer intervention. The prerequisites are as follows:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然这看起来是一个简单的架构实现，但为了无缝实现多跳管道，必须满足一些关键的前提条件，以避免频繁的开发者干预。前提条件如下：
+- en: For the stages of the pipelines to be chained together seamlessly, the data
+    processing engine needs to support exactly-once data processing guarantees resiliency
+    to data loss upon failures.
+  id: totrans-164
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为了使管道的各个阶段能够无缝连接，数据处理引擎需要支持“恰好一次”数据处理保证，并且能够在故障发生时对数据丢失具有恢复能力。
+- en: The data processing engine needs to have capabilities to maintain watermark
+    data. This is so that it is aware of the progress of data processed at a given
+    point in time and can seamlessly pick up new data arriving in a streaming manner
+    and process it.
+  id: totrans-165
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 数据处理引擎需要具备维护水印数据的能力。这样可以确保它能够在给定的时间点了解数据处理的进度，并且能够无缝地接收以流式方式到达的新数据并进行处理。
+- en: The underlying data storage layer needs to support transactional and isolation
+    guarantees so that there is no need for any developer intervention of any bad
+    or incorrect data clean-up upon job failures.
+  id: totrans-166
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 底层数据存储层需要支持事务性和隔离性保障，以便在作业失败时，无需开发人员干预处理任何错误或不正确的数据清理。
+- en: Apache Spark's Structured Streaming solves the previously mentioned points,
+    *1* and *2*, as it guarantees exactly-once data processing semantics and has built-in
+    support for checkpointing. This is to keep track of the data processing progress
+    and also to help with restarting a failed job exactly at the point where it left
+    off. Point *3* is supported by Delta Lake with its ACID transactional guarantees
+    and support for simultaneous batch and streaming jobs.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Spark 的结构化流式处理解决了前面提到的*1*和*2*问题，因为它保证了精确一次的数据处理语义，并且内建支持检查点。这是为了跟踪数据处理进度，并帮助在作业失败后从停止的地方重新启动。*3*问题由
+    Delta Lake 提供支持，其提供 ACID 事务保障，并支持同时进行批处理和流式作业。
+- en: 'Let''s implement an example multi-hop pipeline using Structured Streaming and
+    Delta Lake, as shown in the following blocks of code:'
+  id: totrans-168
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们实现一个多跳管道示例，使用结构化流式处理和 Delta Lake，如下面的代码块所示：
+- en: '[PRE10]'
+  id: totrans-169
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: In the preceding code block, we create a raw streaming DataFrame by ingesting
+    source data from its raw format into the data lake in Delta Lake format. The `checkpointLocation`
+    provides the streaming job with resiliency to failures whereas Delta Lake for
+    the target location provides transactional and isolation guarantees for `write`
+    operations.
+  id: totrans-170
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，我们通过将源数据从其原始格式摄取到 Delta Lake 格式的数据湖中，创建了一个原始流式 DataFrame。`checkpointLocation`
+    为流式作业提供了容错性，而 Delta Lake 作为目标位置则为 `write` 操作提供了事务性和隔离性保障。
+- en: 'Now we can further process the raw ingested data using another job to further
+    improve the quality of data, as shown in the following code block:'
+  id: totrans-171
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们可以使用另一个作业进一步处理原始摄取的数据，进一步提高数据质量，如下面的代码块所示：
+- en: '[PRE11]'
+  id: totrans-172
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: In the preceding block of code, we convert a string column into a timestamp
+    column and persist the cleansed data into Delta Lake. This is the second stage
+    of our multi-hop pipeline, and typically, this stage reads from the Delta table
+    generated by the previous raw data ingestion stage. Again, the use of a checkpoint
+    location here helps to perform the incremental processing of data, processing
+    any new records added to the raw Delta table as they arrive.
+  id: totrans-173
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，我们将一个字符串列转换为时间戳列，并将清理后的数据持久化到 Delta Lake。这是我们多跳管道的第二阶段，通常，这个阶段从前一阶段的原始数据摄取所生成的
+    Delta 表中读取数据。同样，这里使用的检查点位置有助于执行数据的增量处理，并在新的记录到达时处理添加到原始 Delta 表中的数据。
+- en: 'Now we can define the final stage of the pipeline where we aggregate the data
+    to create highly summarized data that is ready for end user consumption, as shown
+    in the following code snippet:'
+  id: totrans-174
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们可以定义管道的最终阶段，在这个阶段，我们将数据汇总为高度摘要的数据，准备供最终用户消费，如下面的代码片段所示：
+- en: '[PRE12]'
+  id: totrans-175
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: In the preceding code block, integrated and cleansed data is aggregated into
+    the highest level of summary data. This can be further consumed by Business Intelligence
+    or data science and machine learning use cases. This stage of the pipeline also
+    makes use of the checkpoint location and Delta table for resiliency to job failures
+    and keep the tracking of new data that needs to be processed when it arrives.
+  id: totrans-176
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 在前面的代码块中，已集成并清理过的数据被汇总成最高级别的摘要数据。这个数据可以进一步供商业智能或数据科学与机器学习使用。管道的这一阶段也使用了检查点位置和
+    Delta 表，以确保作业失败时的容错性，并跟踪到达时需要处理的新数据。
+- en: Therefore, with the combination of Apache Spark's Structured Streaming and Delta
+    Lake, implementing multi-hop architecture becomes seamless and efficient. The
+    different stages of a multi-hop could be implemented as a single monolithic job
+    containing multiple streaming processes. As a best practice, the individual streaming
+    processes for each stage of the pipeline are broken down into multiple independent
+    streaming jobs, which can be further chained together into a DAG using an external
+    orchestrator such as Apache Airflow. The advantage of the latter is easier maintenance
+    of the individual streaming jobs and the minimized downtime of the overall pipeline
+    when an individual stage of the pipeline needs to be updated or upgraded.
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，通过结合 Apache Spark 的结构化流和 Delta Lake，实现多跳架构变得无缝且高效。多跳架构的不同阶段可以实现为一个包含多个流处理过程的单一整体作业。作为最佳实践，管道中每个阶段的单独流处理过程被拆分为多个独立的流作业，这些作业可以通过外部调度器（如
+    Apache Airflow）进一步链接成一个 DAG。后者的优点在于更易于维护各个流作业，并且在需要更新或升级管道的某个阶段时，可以最大限度地减少整个管道的停机时间。
+- en: Summary
+  id: totrans-178
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, you were introduced to the need for real-time data analytics
+    systems and the advantages they have to offer in terms of getting the freshest
+    data to business users, helping businesses improve their time to market, and minimizing
+    any lost opportunity costs. The architecture of a typical real-time analytics
+    system was presented, and the major components were described. A real-time analytics
+    architecture using Apache Spark's Structured Streaming was also depicted. A few
+    examples of prominent industry use cases of real-time data analytics were described.
+    Also, you were introduced to a simplified Lambda Architecture using the combination
+    of Structured Streaming and Delta Lake. The use case for CDC, including its requirements
+    and benefits, was presented, and techniques for ingesting CDC data into Delta
+    Lake were presented along with working examples leveraging Structured Streaming
+    for implementing a CDC use case.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章介绍了实时数据分析系统的需求以及它们在向业务用户提供最新数据、帮助企业提高市场响应速度并最小化任何机会损失方面的优势。展示了典型实时分析系统的架构，并描述了主要组件。还展示了一个使用
+    Apache Spark 结构化流的实时分析架构。描述了实时数据分析的几个突出行业应用案例。此外，还介绍了一个简化的 Lambda 架构，使用结构化流和 Delta
+    Lake 的组合。介绍了 CDC 的应用案例，包括其要求和好处，并展示了如何利用结构化流实现 CDC 用例的技术。
+- en: Finally, you learned a technique for progressively improving data quality from
+    data ingestion into highly aggregated and summarized data, in near real time,
+    called multi-hop pipelines. You also examined a simple implementation of multi-hop
+    pipelines using the powerful combination of Structured Streaming and Delta Lake.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，你学习了一种通过多跳管道逐步改善数据质量的技术，从数据摄取到高度聚合和汇总的数据，几乎实时完成。你还研究了使用结构化流和 Delta Lake 强大组合实现的多跳管道的简单实现。
+- en: This concludes the data engineering section of this book. The skills you have
+    learned so far will help you to embark on a data analytics journey starting with
+    raw transactional data from operational source systems, ingesting it into data
+    lakes, cleansing the data, and integrating the data. Also, you should be familiar
+    with building end-to-end data analytics pipelines that progressively improve the
+    quality of data in a real-time streaming fashion and result in pristine, highest-level
+    aggregated data that can be readily consumed by Business Intelligence and reporting
+    use cases.
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本书的数据工程部分到此结束。你迄今为止学到的技能将帮助你开始数据分析之旅，从操作源系统的原始事务数据开始，摄取到数据湖中，进行数据清洗和整合。此外，你应该熟悉构建端到端的数据分析管道，这些管道能够以实时流的方式逐步提高数据质量，并最终生成可以供商业智能和报告使用的、清晰且高度聚合的数据。
+- en: In the following chapters, you will build on the data engineering concepts learned
+    thus far and delve into the realm of predictive analytics using Apache Spark's
+    data science and machine learning capabilities. In the next chapter, we will begin
+    with the concepts of exploratory data analysis and feature engineering.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的章节中，你将基于迄今为止学到的数据工程概念，深入探索利用 Apache Spark 的数据科学和机器学习功能进行预测分析的领域。在下一章中，我们将从探索性数据分析和特征工程的概念开始。

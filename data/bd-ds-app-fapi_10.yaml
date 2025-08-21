@@ -1,0 +1,1005 @@
+- en: '8'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '8'
+- en: Defining WebSockets for Two-Way Interactive Communication in FastAPI
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在FastAPI中定义WebSocket以实现双向交互通信
+- en: 'HTTP is a simple yet powerful technique for sending data to and receiving data
+    from a server. As we’ve seen, the principles of request and response are at the
+    core of this protocol: when developing our API, our goal is to process the incoming
+    request and build a response for the client. Thus, in order to get data from the
+    server, the client always has to initiate a request first. In some contexts, however,
+    this may not be very convenient. Imagine a typical chat application: when a user
+    receives a new message, we would like them to be notified immediately by the server.
+    Working only with HTTP, we would have to make requests every second to check whether
+    new messages had arrived, which would be a massive waste of resources. This is
+    why a new protocol has emerged: **WebSocket**. The goal of this protocol is to
+    open a communication channel between a client and a server so that they can exchange
+    data in real time, in both directions.'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: HTTP是一种简单而强大的技术，用于从服务器发送数据以及接收数据。如我们所见，请求和响应的原理是该协议的核心：在开发API时，我们的目标是处理传入的请求，并为客户端构建响应。因此，为了从服务器获取数据，客户端总是需要先发起请求。然而，在某些情况下，这可能不是很方便。想象一下一个典型的聊天应用程序：当用户收到新消息时，我们希望他们能够立即通过服务器收到通知。如果仅使用HTTP，我们必须每秒发出请求，检查是否有新消息到达，这会浪费大量资源。这就是为什么一种新协议应运而生：**WebSocket**。该协议的目标是打开一个客户端和服务器之间的通信通道，以便它们可以实时地双向交换数据。
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要主题：
+- en: Understanding the principles of two-way communication with WebSockets
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 理解WebSocket双向通信的原理
+- en: Creating a WebSocket with FastAPI
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用FastAPI创建WebSocket
+- en: Handling multiple WebSocket connections and broadcasting messages
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 处理多个WebSocket连接和广播消息
+- en: Technical requirements
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: For this chapter, you’ll require a Python virtual environment, just as we set
+    up in [*Chapter 1*](B19528_01.xhtml#_idTextAnchor024), *Python Development* *Environment
+    Setup*.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章你需要一个Python虚拟环境，正如我们在[*第1章*](B19528_01.xhtml#_idTextAnchor024)中所设置的那样，*Python开发*
+    *环境配置*。
+- en: 'For the *Handling multiple WebSocket connections and broadcasting messages*
+    section, you’ll need a running Redis server on your local computer. The easiest
+    way is to run it as a Docker container. If you’ve never used Docker before, we
+    recommend you read the *Getting started* tutorial in the official documentation
+    at [https://docs.docker.com/get-started/](https://docs.docker.com/get-started/).
+    Once done, you’ll be able to run a Redis server with this simple command:'
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在*处理多个WebSocket连接和广播消息*这一部分，你需要在本地计算机上运行一个Redis服务器。最简单的方法是将其作为Docker容器运行。如果你之前从未使用过Docker，建议你阅读官方文档中的*入门*教程，链接为[https://docs.docker.com/get-started/](https://docs.docker.com/get-started/)。完成后，你就可以通过以下简单命令启动一个Redis服务器：
+- en: '[PRE0]'
+  id: totrans-10
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: You’ll find all the code examples for this chapter in the dedicated GitHub repository
+    at [https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter08](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter08).
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在专门的GitHub仓库中找到本章的所有代码示例，链接地址为[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter08](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/tree/main/chapter08)。
+- en: Understanding the principles of two-way communication with WebSockets
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 理解WebSocket双向通信的原理
+- en: 'You have probably noticed that the name WebSockets is a direct reference to
+    the traditional concept of **sockets** in Unix systems. While technically unrelated,
+    they achieve the same goal: to open a *communication channel between two applications*.
+    As we said in the introduction, HTTP works only on a request-response principle,
+    which makes the implementation of applications that need real-time communication
+    between the client and the server difficult and inefficient.'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能已经注意到，WebSocket这个名字直接指代的是Unix系统中传统的**套接字**概念。虽然从技术上看它们没有直接关系，但它们达成了同样的目标：为两个应用程序之间开启一个*通信通道*。正如我们在介绍中所说，HTTP仅基于请求-响应原理，这使得需要客户端与服务器之间实时通信的应用程序的实现既困难又低效。
+- en: WebSockets try to solve that by opening a full-duplex communication channel,
+    meaning that messages can be sent in both directions and possibly at the same
+    time. Once the channel is opened, the server can send messages to the client without
+    having to wait for a request from the client.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: WebSocket试图通过打开一个全双工通信通道来解决这个问题，这意味着消息可以在两个方向上同时发送。通道一旦打开，服务器就可以向客户端发送消息，而无需等待客户端的请求。
+- en: Even if HTTP and WebSocket are different protocols, WebSockets have been designed
+    to work with HTTP. Indeed, when opening a WebSocket, the connection is first initiated
+    using an HTTP request and then upgraded to a WebSocket tunnel. This makes it compatible
+    out of the box with the traditional ports `80` and `443`, which is extremely convenient
+    because we can easily add this feature over existing web servers without the need
+    for an extra process.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 即使HTTP和WebSocket是不同的协议，WebSocket的设计仍然是为了与HTTP配合使用。实际上，在打开WebSocket时，连接首先通过HTTP请求发起，然后升级为WebSocket通道。这使得它能够直接兼容传统的端口`80`和`443`，这非常方便，因为我们可以轻松地将这个功能添加到现有的Web服务器中，而无需额外的进程。
+- en: 'WebSockets also share another similarity with HTTP: URIs. As with HTTP, WebSockets
+    are identified through classic URIs, with a host, a path, and query parameters.
+    Furthermore, we also have two schemes: `ws` (WebSocket) for insecure connections
+    and `wss` (WebSocket Secure) for SSL-/TLS-encrypted connections.'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: WebSocket与HTTP还有另一个相似之处：URI。与HTTP一样，WebSocket通过经典的URI进行标识，包括主机、路径和查询参数。此外，我们还有两种方案：`ws`（WebSocket）用于不安全的连接，`wss`（WebSocket
+    Secure）用于SSL/TLS加密连接。
+- en: Finally, this protocol is well supported in browsers nowadays, and opening a
+    connection with a server involves just a few lines of JavaScript, as we’ll see
+    in this chapter.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，这个协议现在在浏览器中得到了很好的支持，打开与服务器的连接只需要几行JavaScript代码，正如我们将在本章中看到的那样。
+- en: However, handling this two-way communication channel is quite different from
+    handling traditional HTTP requests. Since things happen in real time and in both
+    directions, we’ll see that we have to think differently from what we are used
+    to. In FastAPI, the asynchronous nature of the WebSocket implementation will greatly
+    help us in finding our way through that.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，处理这个双向通信通道与处理传统的HTTP请求是完全不同的。由于事情是实时发生的，并且是双向的，我们将看到，我们必须以不同于常规的方式进行思考。在FastAPI中，WebSocket的异步特性将大大帮助我们在这方面找到方向。
+- en: Creating a WebSocket with FastAPI
+  id: totrans-19
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用FastAPI创建WebSocket
+- en: Thanks to Starlette, FastAPI has built-in support for WebSockets. As we’ll see,
+    defining a WebSocket endpoint is quick and easy, and we’ll be able to get started
+    in minutes. However, things will get more complex as we try to add more features
+    to our endpoint logic. Let’s start simple, with a WebSocket that waits for messages
+    and simply echoes them back.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 多亏了Starlette，FastAPI内置了对WebSocket的支持。正如我们将看到的，定义WebSocket端点非常快速且简单，我们可以在几分钟内开始使用。不过，随着我们尝试为端点逻辑添加更多功能，事情会变得更加复杂。我们从简单的开始，创建一个等待消息并将其简单回显的WebSocket。
+- en: 'In the following example, you’ll see the implementation of such a simple case:'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下面的示例中，你将看到这样一个简单案例的实现：
+- en: app.py
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE1]'
+  id: totrans-23
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/app.py)'
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/app.py)'
+- en: The code is quite understandable by itself, but let’s focus on the important
+    parts that differ from classic HTTP endpoints.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码本身非常易于理解，但让我们关注一些与经典HTTP端点不同的重要部分。
+- en: First of all, you see that FastAPI provides a special `websocket` decorator
+    to create a WebSocket endpoint. As with regular endpoints, it takes the path at
+    which it’ll be available as an argument. However, other arguments that don’t make
+    sense in this context, such as the status code or response model, are not available.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，你会看到FastAPI提供了一个特殊的`websocket`装饰器来创建WebSocket端点。与常规端点一样，它需要作为参数提供其可用的路径。然而，其他在此上下文中没有意义的参数，例如状态码或响应模型，是不可用的。
+- en: Then, in the path operation function, we can inject a `WebSocket` object, which
+    will provide us with all the methods to work with the WebSocket, as we’ll see.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，在路径操作函数中，我们可以注入一个`WebSocket`对象，它将提供所有与WebSocket交互的方法，正如我们将看到的那样。
+- en: The first method we are calling in the implementation is `accept`. This method
+    should be called first as it tells the client that we agree to open the tunnel.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在实现中调用的第一个方法是`accept`。这个方法应该首先被调用，因为它告诉客户端我们同意打开隧道。
+- en: 'After that, you can see that we start an infinite loop. That’s the main difference
+    with an HTTP endpoint: since we are opening a communication channel, it’ll remain
+    open until the client or the server decides to close it. While it’s open, they
+    can exchange as many messages as they need; hence, the infinite loop is here to
+    remain open and repeat the logic until the tunnel is closed.'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之后，你可以看到我们启动了一个无限循环。这是与 HTTP 端点的主要区别：因为我们正在打开一个通信通道，它将保持打开状态，直到客户端或服务器决定关闭它。在通道打开期间，它们可以交换尽可能多的消息；因此，无限循环的作用是保持通道开放并重复逻辑，直到隧道关闭。
+- en: Inside the loop, we make the first call to the `receive_text` method. As you
+    may have guessed, this returns the data sent by the client in plain text format.
+    It’s important here to understand that *this method will block until data is received
+    from the client*. Until that event, we won’t proceed with the rest of the logic.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在循环内部，我们首先调用`receive_text`方法。正如你可能猜到的，它会返回客户端发送的纯文本数据。这里需要理解的是，*该方法会阻塞，直到从客户端接收到数据*。在这个事件发生之前，我们不会继续执行剩余的逻辑。
+- en: We can see here the importance of asynchronous input/output, as we presented
+    in [*Chapter 2*](B19528_02.xhtml#_idTextAnchor032), *Python Programming Specificities*.
+    By creating an infinite loop waiting for incoming data, we could have blocked
+    the whole server process in a traditional blocking paradigm. Here, thanks to the
+    event loop, the process is able to answer other requests made by other clients
+    while we are waiting for this one.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以在这里看到异步输入/输出的重要性，正如我们在[*第二章*](B19528_02.xhtml#_idTextAnchor032)《Python 编程特性》中展示的那样。通过创建一个无限循环来等待传入的数据，如果采用传统的阻塞模式，整个服务器进程可能会被阻塞。在这里，得益于事件循环，进程能够在等待当前数据时，响应其他客户端的请求。
+- en: When data is received, the method returns the text data and we can proceed with
+    the next line. Here, we simply send back the message to the client thanks to the
+    `send_text` method. Once done, we are going back to the beginning of the loop
+    to wait for another message.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当接收到数据时，方法会返回文本数据，我们可以继续执行下一行代码。这里，我们只是通过`send_text`方法将消息返回给客户端。一旦完成，我们将回到循环的开始，等待另一个消息。
+- en: You probably noticed that the whole loop is wrapped inside a `try...except`
+    statement. This is necessary to *handle client disconnection*. Indeed, most of
+    the time, our server will be blocked at the `receive_text` line, waiting for client
+    data. If the client decides to disconnect, the tunnel will be closed and the `receive_text`
+    call will fail, with a `WebSocketDisconnect` exception. That’s why it’s important
+    to catch it to break the loop and properly finish the function.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能注意到，整个循环被包裹在一个 `try...except` 语句中。这是为了*处理客户端断开连接*。实际上，大多数时候，我们的服务器会在`receive_text`那一行被阻塞，等待客户端数据。如果客户端决定断开连接，隧道将被关闭，`receive_text`
+    调用将失败，并抛出 `WebSocketDisconnect` 异常。因此，捕捉该异常非常重要，以便能够跳出循环并正确结束函数。
+- en: 'Let’s try it! You can run the FastAPI application, as usual, thanks to the
+    Uvicorn server. Here’s the command you’ll need:'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来试试吧！你可以像往常一样通过 Uvicorn 服务器运行 FastAPI 应用程序。你需要的命令如下：
+- en: '[PRE2]'
+  id: totrans-35
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Our client will be a simple HTML page with some JavaScript code to interact
+    with the WebSocket. We’ll quickly go through this code after the demonstration.
+    To run it, we can simply serve it with the built-in Python server, as follows:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的客户端将是一个简单的 HTML 页面，包含一些与 WebSocket 交互的 JavaScript 代码。演示之后，我们将快速介绍这段代码。要运行它，我们可以像下面这样通过内置的
+    Python 服务器提供服务：
+- en: '[PRE3]'
+  id: totrans-37
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: Starting several terminals
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 启动多个终端
+- en: 'On Linux and macOS, you should be able to simply start a new Terminal by creating
+    a new window or tab. On Windows and WSL, you can also have several tabs if you’re
+    using the Windows terminal application: [https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701).'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Linux 和 macOS 上，你应该能够通过创建一个新窗口或标签页来简单地启动一个新的终端。在 Windows 和 WSL 上，如果你使用的是 Windows
+    终端应用程序，你也可以有多个标签页：[https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701)。
+- en: Otherwise, you can simply click on the Ubuntu shortcut in your **Start** menu
+    to start another terminal.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 否则，你也可以简单地点击 **开始** 菜单中的 Ubuntu 快捷方式来启动另一个终端。
+- en: 'This will serve our HTML page on port `9000` of your local machine. If you
+    open the `http://localhost:9000` address, you’ll see a simple interface like the
+    one shown here:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将在你本地机器的 `9000` 端口上提供我们的 HTML 页面。如果你打开 `http://localhost:9000` 地址，你将看到一个像这里展示的简单界面：
+- en: '![Figure 8.1 – Simple application for trying the WebSocket](img/Figure_8.1_B19528.jpg)'
+  id: totrans-42
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.1 – 尝试 WebSocket 的简单应用](img/Figure_8.1_B19528.jpg)'
+- en: Figure 8.1 – Simple application for trying the WebSocket
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.1 – 尝试 WebSocket 的简单应用
+- en: You have a simple input form, allowing you to send messages to the server through
+    the WebSocket. They appear in green in the list, as seen in the screenshot. The
+    server echoes back your messages, which then appear in yellow in the list.
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你有一个简单的输入表单，允许你通过 WebSocket 向服务器发送消息。它们会以绿色显示在列表中，如截图所示。服务器会回显你的消息，这些消息会以黄色显示在列表中。
+- en: You can see what’s happening under the hood by opening the **Network** tab in
+    the developer tools of your browser. Reload the page to force the WebSocket to
+    reconnect. You should then see a row for the WebSocket connection. If you click
+    on it, you’ll see a **Messages** tab where you can see all the messages passing
+    through the WebSocket. You can see this interface in *Figure 8**.2*.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以通过打开浏览器开发者工具中的**网络**标签页，查看背后发生了什么。重新加载页面以强制 WebSocket 重新连接。此时你应该能看到 WebSocket
+    连接的行。如果点击该行，你会看到一个**消息**标签页，在那里可以查看通过 WebSocket 传输的所有消息。你可以在*图 8.2*中看到这个界面。
+- en: '![Figure 8.2 – WebSocket messages visualization within the browser developer
+    tools](img/Figure_8.2_B19528.jpg)'
+  id: totrans-46
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.2 – 浏览器开发者工具中的 WebSocket 消息可视化](img/Figure_8.2_B19528.jpg)'
+- en: Figure 8.2 – WebSocket messages visualization within the browser developer tools
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.2 – 浏览器开发者工具中的 WebSocket 消息可视化
+- en: 'In the following example, you’ll see the JavaScript code used to open the WebSocket
+    connection and to send and receive messages:'
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下面的示例中，你将看到用于打开 WebSocket 连接并发送和接收消息的 JavaScript 代码：
+- en: script.js
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: script.js
+- en: '[PRE4]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/script.js](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/script.js)'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/script.js](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/echo/script.js)'
+- en: 'As you can see, modern browsers provide a very simple API to interact with
+    WebSockets. You just have to instantiate a new `WebSocket` object with the URL
+    of your endpoint and wire some event listeners: `open` when the connection is
+    ready and `message` when data is received from the server. Finally, the `send`
+    method allows you to send data to the server. You can view more details on the
+    WebSocket API in the MDN documentation:'
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，现代浏览器提供了一个非常简单的 API 来与 WebSocket 进行交互。你只需使用你端点的 URL 实例化一个新的 `WebSocket`
+    对象，并为一些事件添加监听器：当连接就绪时监听 `open`，当从服务器接收到数据时监听 `message`。最后，`send` 方法允许你向服务器发送数据。你可以在
+    MDN 文档中查看 WebSocket API 的更多细节：
+- en: '[https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API).'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)。'
+- en: Handling concurrency
+  id: totrans-54
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 处理并发
+- en: 'In the previous example, we assumed that the client was always sending a message
+    first: we wait for its message before sending it back. Once again, it’s the client
+    that takes the initiative in the conversation.'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的示例中，我们假设客户端总是先发送消息：我们在发送回消息之前会等待客户端的消息。再次强调，是客户端在对话中采取主动。
+- en: 'However, in usual scenarios, the server can have data to send to the client
+    without being at the initiative. In a chat application, another user can typically
+    send one or several messages that we want to forward to the first user immediately.
+    In this context, the blocking call to `receive_text` we showed in the previous
+    example is a problem: while we are waiting, the server could have messages to
+    forward to the client.'
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在通常的场景中，服务器可以在不主动的情况下向客户端发送数据。在聊天应用中，另一位用户通常会发送一个或多个消息，我们希望立即转发给第一个用户。在这种情况下，我们在前一个示例中展示的
+    `receive_text` 阻塞调用就是一个问题：在我们等待时，服务器可能已经有消息需要转发给客户端。
+- en: To solve this, we’ll rely on more advanced tools of the `asyncio` module. Indeed,
+    it provides functions that allow us to schedule several coroutines concurrently
+    and wait until one of them is complete. In our context, we can have a coroutine
+    that waits for client messages and another one that sends data to it when it arrives.
+    The first one that is fulfilled wins and we can start again with another loop
+    iteration.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了解决这个问题，我们将依赖`asyncio`模块中的更高级工具。事实上，它提供了允许我们并发调度多个协程并等待其中一个完成的函数。在我们的上下文中，我们可以有一个协程等待客户端消息，另一个协程在消息到达时将数据发送给它。第一个完成的协程会“胜出”，我们可以再次开始另一个循环迭代。
+- en: 'To make this clearer, let’s build another example, in which the server will
+    once again echo the message of the client. Besides that, it’ll regularly send
+    the current time to the client. You can see the implementation in the following
+    code snippet:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了让这个更清晰，我们来构建另一个示例，在这个示例中，服务器将再次回显客户端的消息。除此之外，它还将定期向客户端发送当前时间。你可以在下面的代码片段中看到实现：
+- en: app.py
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE5]'
+  id: totrans-60
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/concurrency/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/concurrency/app.py)'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/concurrency/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/concurrency/app.py)'
+- en: 'As you can see, we defined two coroutines: the first one, `echo_message`, waits
+    for text messages from the client and sends them back, while the second one, `send_time`,
+    waits for 10 seconds before sending the current time to the client. Both of them
+    expect a WebSocket instance in the argument.'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，我们定义了两个协程：第一个，`echo_message`，等待客户端的文本消息并将其发送回去；第二个，`send_time`，等待10秒钟后将当前时间发送给客户端。它们都期望在参数中传入一个WebSocket实例。
+- en: 'The most interesting part lives under the infinite loop: as you can see, we
+    call our two functions, wrapped by the `create_task` function of `asyncio`. This
+    transforms the coroutine into a `task` object. Under the hood, a task is how the
+    event loop manages the execution of the coroutine. Put more simply, it gives us
+    full control over the execution of the coroutine – we can retrieve its result
+    or even cancel it.'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最有趣的部分出现在无限循环下面：如你所见，我们调用了我们的两个函数，并通过`asyncio`的`create_task`函数将它们包装起来。这将协程转变为`task`对象。从底层实现来看，任务就是事件循环管理协程执行的方式。简单来说，它使我们完全控制协程的执行——我们可以检索它的结果，甚至取消它。
+- en: 'Those `task` objects are necessary to work with `asyncio.wait`. This function
+    is especially useful for running tasks concurrently. It expects a set of tasks
+    to run in the first argument. By default, this function will block until all given
+    tasks are completed. However, we can control that thanks to the `return_when`
+    argument: in our case, we want it to block until one of the tasks is completed,
+    which corresponds to the `FIRST_COMPLETED` value. The effect is the following:
+    our server will launch the coroutines concurrently. The first one will block waiting
+    for a client message, while the other one will block for 10 seconds. If the client
+    sends a message before 10 seconds have passed, it’ll send the message back and
+    complete. Otherwise, the `send_time` coroutine will send the current time and
+    complete.'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些`task`对象对于使用`asyncio.wait`是必要的。这个函数对于并发运行任务特别有用。它期望第一个参数是一个要运行的任务集合。默认情况下，这个函数会阻塞，直到所有给定的任务完成。然而，我们可以通过`return_when`参数来控制这一点：在我们的例子中，我们希望它阻塞直到其中一个任务完成，这对应于`FIRST_COMPLETED`值。其效果如下：我们的服务器将并发启动协程，第一个将阻塞等待客户端消息，而另一个将阻塞10秒。如果客户端在10秒内发送消息，它会把消息返回并完成。否则，`send_time`协程会发送当前时间并完成。
+- en: 'At that point, `asyncio.wait` will return us two sets: the first one, `done`,
+    contains a set of completed tasks, while the other one, `pending`, contains a
+    set of tasks not yet completed.'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这一点上，`asyncio.wait`将返回我们两个集合：第一个，`done`，包含已完成任务的集合；另一个，`pending`，包含尚未完成任务的集合。
+- en: We want to now go back to the start of the loop to start again. However, we
+    need to first cancel all the tasks that have not been completed; otherwise, they
+    would pile up at each iteration, hence the iteration over the `pending` set to
+    `cancel` those tasks.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在想回到循环的起始点重新开始。然而，我们需要先取消所有未完成的任务；否则，它们会在每次迭代时堆积，因此我们需要迭代`pending`集合并取消那些任务。
+- en: 'Finally, we also make an iteration over the `done` tasks and call the `result`
+    method on them. This method returns the result of the coroutine but also re-raises
+    an exception that could have been raised inside. This is especially useful for
+    once again handling the disconnection of the client: when waiting for client data,
+    if the tunnel is closed, an exception is raised. Thus, our `try...except` statement
+    can catch it to properly terminate the function.'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们还对`done`任务进行了迭代，并调用了它们的`result`方法。此方法返回协程的结果，同时还会重新引发可能在内部抛出的异常。这对于再次处理客户端断开连接尤其有用：当等待客户端数据时，如果隧道关闭，将引发异常。因此，我们的`try...except`语句可以捕获它，以便正确地终止函数。
+- en: If you try this example as we did previously, you’ll see that the server will
+    regularly send you the current time but is also able to echo the messages you
+    send.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你像我们之前一样尝试这个示例，你会看到服务器会定期向你发送当前时间，同时也能回显你发送的消息。
+- en: 'This `send_time` example shows you how you can implement a process to send
+    data to the client when an event happens on the server: new data is available
+    in the database, an external process has finished a long computation, and so on.
+    In the next section, we’ll see how we can properly handle the case of multiple
+    clients sending messages to the server, which then broadcasts them to all the
+    clients.'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个`send_time`示例展示了如何实现一个过程，在服务器上发生事件时将数据发送给客户端：例如数据库中有新数据，外部进程完成了长时间的计算等等。在下一部分，我们将看到如何正确处理多个客户端向服务器发送消息的情况，然后服务器将其广播到所有客户端。
+- en: That’s basically how you can handle concurrency with `asyncio`’s tools. So far,
+    everyone is able to connect to those WebSocket endpoints without any restriction.
+    Of course, as with classic HTTP endpoints, you’ll likely need to authenticate
+    a user before opening the connection.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这基本上就是你如何使用`asyncio`的工具来处理并发。到目前为止，每个人都可以毫无任何限制地连接到这些WebSocket端点。当然，像经典的HTTP端点一样，你可能需要在打开连接之前进行用户认证。
+- en: Using dependencies
+  id: totrans-71
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用依赖项
+- en: Just as with regular endpoints, you can use dependencies in WebSocket endpoints.
+    They basically work the same way, as FastAPI is able to adapt its behavior to
+    a WebSocket context.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像常规端点一样，你可以在WebSocket端点中使用依赖项。它们的工作方式基本相同，因为FastAPI能够根据WebSocket上下文调整其行为。
+- en: The only drawback is that can’t use security dependencies, as we showed in [*Chapter
+    7*](B19528_07.xhtml#_idTextAnchor448), *Managing Authentication and Security in
+    FastAPI*. Indeed, under the hood, most of them work by injecting the `Request`
+    object, which only works for HTTP requests (we saw that WebSockets are injected
+    in a `WebSocket` object instead). Trying to inject those dependencies in a WebSocket
+    context will result in an error.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 唯一的缺点是无法使用安全依赖项，正如我们在[*第7章*](B19528_07.xhtml#_idTextAnchor448)中展示的那样，*在FastAPI中管理认证和安全性*。事实上，在底层，大多数安全依赖项是通过注入`Request`对象来工作的，而该对象仅适用于HTTP请求（我们看到WebSocket是通过`WebSocket`对象注入的）。在WebSocket上下文中尝试注入这些依赖项会导致错误。
+- en: 'However, basic dependencies such as `Query`, `Header`, or `Cookie` work transparently.
+    Let’s try them in our next example. In this one, we’ll inject two dependencies,
+    as follows:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，像`Query`、`Header`或`Cookie`这样的基本依赖项可以透明地工作。让我们在下一个示例中尝试它们。在这个例子中，我们将注入两个依赖项，如下所示：
+- en: A `username` query parameter, which we’ll use to greet the user on connection.
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个`username`查询参数，我们将用它来在连接时向用户打招呼。
+- en: A `token` cookie, which we’ll compare with a static value to keep the example
+    simple. Of course, a proper strategy would be to have a proper user lookup, as
+    we implemented in [*Chapter 7*](B19528_07.xhtml#_idTextAnchor448), *Managing Authentication
+    and Security in FastAPI*. If this cookie doesn’t have the required value, we’ll
+    raise an error.
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个`token` Cookie，我们将与静态值进行比较，以保持示例的简洁性。当然，一个合适的策略是进行适当的用户查找，正如我们在[*第7章*](B19528_07.xhtml#_idTextAnchor448)中实现的那样，*在FastAPI中管理认证和安全性*。如果该Cookie没有所需的值，我们将抛出一个错误。
+- en: 'Let’s see the implementation in the following sample:'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看下面示例中的实现：
+- en: app.py
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE6]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/dependencies/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/dependencies/app.py)'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/dependencies/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/dependencies/app.py)'
+- en: As you can see, injecting dependencies is no different from standard HTTP endpoints.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，注入依赖项与标准的HTTP端点没有区别。
+- en: 'Then, we can have our dummy authentication logic. If it fails, we can raise
+    a `WebSocketException`. It’s the WebSocket equivalent of `HTTPException,` which
+    we saw in previous sections. Under the hood, FastAPI will handle this exception
+    by closing the WebSocket with the specified status code. WebSockets have their
+    own set of status codes. You can view a complete list of these on this MDN documentation
+    page: [https://developer.mozilla.org/fr/docs/Web/API/CloseEvent](https://developer.mozilla.org/fr/docs/Web/API/CloseEvent).
+    The most generic one when an error occurs is `1008`.'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们可以有我们的虚拟身份验证逻辑。如果验证失败，我们可以抛出一个 `WebSocketException`。它是 WebSocket 版本的 `HTTPException`，我们在前面的章节中见过。在后台，FastAPI
+    会通过关闭 WebSocket 并使用指定的状态码来处理这个异常。WebSocket 有自己的一套状态码。你可以在这个 MDN 文档页面查看完整的列表：[https://developer.mozilla.org/fr/docs/Web/API/CloseEvent](https://developer.mozilla.org/fr/docs/Web/API/CloseEvent)。出现错误时最常见的状态码是
+    `1008`。
+- en: 'If it passes, we can start our classic echo server. Notice that we can use
+    the `username` value as we wish in our logic. Here, we send a first message to
+    greet the user on connection. If you try this with the HTML application, you’ll
+    see this message first, as shown in the following screenshot:'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果验证通过，我们可以启动经典的回声服务器。请注意，我们可以在逻辑中随意使用 `username` 值。在这里，我们在连接时发送第一条消息来问候用户。如果你在
+    HTML 应用程序中尝试这一操作，你将首先看到此消息，如下图所示：
+- en: '![Figure 8.3 – Greeting message on connection](img/Figure_8.3_B19528.jpg)'
+  id: totrans-84
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.3 – 连接时的问候消息](img/Figure_8.3_B19528.jpg)'
+- en: Figure 8.3 – Greeting message on connection
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.3 – 连接时的问候消息
+- en: With the browser WebSocket API, query parameters can be passed into the URL
+    and the browser automatically forwards the cookies. However, there is *no way
+    to pass custom headers*. This means that if you rely on headers for authentication,
+    you’ll have to either add one using cookies or implement an authentication message
+    mechanism in the WebSocket logic itself. However, if you don’t plan to use your
+    WebSocket with a browser, you can still rely on headers since most WebSocket clients
+    support them.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用浏览器的 WebSocket API，可以将查询参数传递到 URL 中，浏览器会自动转发 cookies。然而，*无法传递自定义头部*。这意味着，如果你依赖头部进行身份验证，你将不得不通过
+    cookies 添加一个头部，或者在 WebSocket 逻辑中实现一个身份验证消息机制。然而，如果你不打算将 WebSocket 与浏览器一起使用，你仍然可以依赖头部，因为大多数
+    WebSocket 客户端都支持它们。
+- en: You now have a good overview of how to add WebSockets to your FastAPI application.
+    As we said, they are generally useful when several users are involved in real
+    time and we need to broadcast messages to all of them. We’ll see in the next section
+    how to implement this pattern reliably.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，你已经对如何将 WebSocket 添加到 FastAPI 应用程序中有了一个很好的概览。如我们所说，它们在涉及多个用户并需要实时广播消息的情况下非常有用。接下来的章节中，我们将看到如何可靠地实现这一模式。
+- en: Handling multiple WebSocket connections and broadcasting messages
+  id: totrans-88
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 处理多个 WebSocket 连接并广播消息
+- en: 'As we said in the introduction to this chapter, a typical use case for WebSockets
+    is to implement real-time communication across multiple clients, such as a chat
+    application. In this configuration, several clients have an open WebSocket tunnel
+    with the server. Thus, the role of the server is to *manage all the client connections
+    and broadcast messages to all of them*: when a user sends a message, the server
+    has to send it to all other clients in their WebSockets. We show you a schema
+    of this principle here:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们在本章介绍中所说，WebSocket 的一个典型用例是实现多个客户端之间的实时通信，例如聊天应用程序。在这种配置中，多个客户端与服务器保持一个开放的
+    WebSocket 通道。因此，服务器的作用是*管理所有客户端连接并广播消息到所有客户端*：当一个用户发送消息时，服务器必须将该消息发送到所有其他客户端的
+    WebSocket 中。我们在这里展示了这一原理的示意图：
+- en: '![Figure 8.4 – Multiple clients connected through a WebSocket to a server](img/Figure_8.4_B19528.jpg)'
+  id: totrans-90
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.4 – 通过 WebSocket 连接多个客户端到服务器](img/Figure_8.4_B19528.jpg)'
+- en: Figure 8.4 – Multiple clients connected through a WebSocket to a server
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.4 – 通过 WebSocket 连接多个客户端到服务器
+- en: A first approach could be simply to keep a list of all WebSocket connections
+    and iterate through them to broadcast messages. This would work but would quickly
+    become problematic in a production environment. Indeed, most of the time, server
+    processes run multiple workers when deployed. This means that instead of having
+    only one process serving requests, we can have several ones so that we can answer
+    more requests concurrently. We could also think of deployments on multiple servers
+    spread over several data centers.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一种初步的做法可能是简单地保持所有 WebSocket 连接的列表，并通过它们遍历来广播消息。这是可行的，但在生产环境中会迅速变得问题重重。实际上，大多数情况下，服务器进程在部署时会运行多个工作进程。这意味着我们不仅仅有一个进程来处理请求，我们可以有多个进程来并发地响应更多的请求。我们也可以考虑将其部署在多个数据中心的多个服务器上。
+- en: 'Hence, nothing guarantees you that two clients opening a WebSocket are served
+    by the same process. Our simple approach would fail in this configuration: since
+    connections are kept in the process memory, the process receiving the message
+    would not be able to broadcast the message to clients served by another process.
+    We schematize this problem in the following diagram:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，不能保证两个客户端打开 WebSocket 时会由同一个进程提供服务。在这种配置下，我们的简单方法将会失败：由于连接保存在进程内存中，接收消息的进程将无法将消息广播给由其他进程提供服务的客户端。我们在下面的图表中示意了这个问题：
+- en: '![Figure 8.5 – Multiple server workers without a message broker](img/Figure_8.5_B19528.jpg)'
+  id: totrans-94
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.5 – 没有消息代理的多个服务器工作进程](img/Figure_8.5_B19528.jpg)'
+- en: Figure 8.5 – Multiple server workers without a message broker
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.5 – 没有消息代理的多个服务器工作进程
+- en: 'To solve this, we generally rely on **message brokers**. Message brokers are
+    pieces of software whose role is to receive messages published by a first program
+    and broadcast them to programs that are subscribed to it. Usually, this **publish-subscribe**
+    (**pub-sub**) pattern is organized into different channels so that messages are
+    clearly organized following their topic or usage. Some of the best-known message
+    broker software includes Apache Kafka, RabbitMQ, and cloud-based implementations
+    from **Amazon Web Services** (**AWS**), **Google Cloud Platform** (**GCP**), and
+    Microsoft Azure: Amazon MQ, Cloud Pub/Sub, and Service Bus, respectively.'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了解决这个问题，我们通常依赖于**消息代理**。消息代理是一个软件组件，其作用是接收由第一个程序发布的消息，并将其广播给订阅该消息的程序。通常，这种**发布-订阅**（**pub-sub**）模式被组织成不同的频道，以便根据主题或用途清晰地组织消息。一些最著名的消息代理软件包括
+    Apache Kafka、RabbitMQ，以及来自**亚马逊网络服务**（**AWS**）、**谷歌云平台**（**GCP**）和微软 Azure 的云实现：分别是
+    Amazon MQ、Cloud Pub/Sub 和 Service Bus。
+- en: 'Hence, our message broker will be unique in our architecture, and several server
+    processes will connect to it to either publish or subscribe to messages. This
+    architecture is schematized in the following diagram:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们的消息代理将在我们的架构中是唯一的，多个服务器进程将连接到它，进行消息的发布或订阅。这个架构在下面的图表中进行了示意：
+- en: '![Figure 8.6 – Multiple server workers with a message broker](img/Figure_8.6_B19528.jpg)'
+  id: totrans-98
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.6 – 带有消息代理的多个服务器工作进程](img/Figure_8.6_B19528.jpg)'
+- en: Figure 8.6 – Multiple server workers with a message broker
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.6 – 带有消息代理的多个服务器工作进程
+- en: In this chapter, we’ll see how to set up a simple system using the `broadcaster`
+    library from Encode (the creators of Starlette) and *Redis*, which will act as
+    a message broker.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将看到如何使用来自 Encode（Starlette 的创建者）和 *Redis* 的 `broadcaster` 库来搭建一个简单的系统，Redis
+    将充当消息代理。
+- en: A word on Redis
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于 Redis
+- en: 'At its core, Redis is a data store designed to achieve maximum performance.
+    It’s widely used in the industry for storing temporary data that we want to access
+    very quickly, such as caches or distributed locks. It also supports a basic pub/sub
+    paradigm, which makes it a good candidate to be used as a message broker. You
+    can learn more about this technology at its official website: [https://redis.io](https://redis.io).'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本质上，Redis 是一个旨在实现最大性能的数据存储。它在行业中广泛用于存储我们希望快速访问的临时数据，比如缓存或分布式锁。它还支持基本的发布/订阅（**pub/sub**）范式，使其成为作为消息代理使用的良好候选者。你可以在其官方网站了解更多信息：[https://redis.io](https://redis.io)。
+- en: 'First of all, let’s install the library with the following command:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们通过以下命令安装这个库：
+- en: '[PRE7]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: This library will abstract away all the complexities of publishing and subscribing
+    with Redis for us.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个库将为我们抽象掉发布和订阅 Redis 的所有复杂性。
+- en: 'Let’s see the details of the implementation. In the following example, you’ll
+    see the instantiation of the `Broadcaster` object:'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看看实现的细节。在下面的示例中，你将看到 `Broadcaster` 对象的实例化：
+- en: app.py
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE8]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+- en: As you can see, it only expects a URL to our Redis server. Notice also that
+    we define a `CHANNEL` constant. This will be the name of the channel to publish
+    and subscribe to messages. We choose a static value here for the sake of the example,
+    but you could have dynamic channel names in a real-world application—to support
+    several chat rooms, for example.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，它只需要一个 Redis 服务器的 URL。还要注意，我们定义了一个 `CHANNEL` 常量，这将是发布和订阅消息的频道名称。我们在这里选择了一个静态值作为示例，但在实际应用中，你可以使用动态的频道名称——例如支持多个聊天室。
+- en: 'Then, we define two functions: one to subscribe to new messages and send them
+    to the client and another one to publish messages received in the WebSocket. You
+    can see these functions in the following sample:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们定义了两个函数：一个用于订阅新消息并将其发送给客户端，另一个用于发布在 WebSocket 中接收到的消息。你可以在以下示例中看到这些函数：
+- en: app.py
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE9]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+- en: First of all, notice that we defined a Pydantic model, `MessageEvent`, to help
+    us structure the data contained in a message. Instead of just passing raw strings
+    as we’ve been doing up to now, we have an object bearing both the message and
+    the username.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，请注意，我们定义了一个 Pydantic 模型 `MessageEvent`，以帮助我们构建消息中包含的数据。我们不再像之前那样只是传递原始字符串，而是有一个对象，其中包含消息和用户名。
+- en: The first function, `receive_message`, subscribes to the broadcast channel and
+    waits for messages called `event`. The data of the message contains serialized
+    JSON that we deserialize to instantiate a `MessageEvent` object. Notice that we
+    use the `parse_raw` method of the Pydantic model, allowing us to parse the JSON
+    string into an object in one operation.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个函数 `receive_message` 订阅广播频道并等待名为 `event` 的消息。消息数据包含已序列化的 JSON，我们将其反序列化以实例化一个
+    `MessageEvent` 对象。请注意，我们使用了 Pydantic 模型的 `parse_raw` 方法，这使得我们可以通过一次操作将 JSON 字符串解析为对象。
+- en: Then, we check whether the message username is different from the current username.
+    Indeed, since all users are subscribed to the channel, they will also receive
+    the messages they sent themselves. That’s why we discard them based on the username
+    to avoid this. Of course, in a real-world application, you’ll likely want to rely
+    on a unique user ID rather than a simple username.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们检查消息中的用户名是否与当前用户名不同。事实上，由于所有用户都订阅了该频道，他们也会收到自己发送的消息。这就是为什么我们基于用户名丢弃这些消息以避免这种情况。当然，在实际应用中，你可能更希望依赖一个唯一的用户
+    ID，而不是简单的用户名。
+- en: Finally, we can send the message through the WebSocket thanks to the `send_json`
+    method, which takes care of serializing the dictionary automatically.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们可以通过 `send_json` 方法通过 WebSocket 发送消息，该方法会自动处理字典的序列化。
+- en: The second function, `send_message`, is there to publish a message to the broker.
+    Quite simply, it waits for new data in the socket, structures it into a `MessageEvent`
+    object, and then publishes it.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二个函数 `send_message` 用于将消息发布到消息代理。简单来说，它等待套接字中的新数据，将其结构化为 `MessageEvent` 对象，然后发布该消息。
+- en: 'That’s about it for the `broadcaster` part. We then have the WebSocket implementation
+    in itself, which is very similar to what we saw in the previous sections. You
+    can see it in the following sample:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是 `broadcaster` 部分的全部内容。接下来是 WebSocket 的实现，实际上与我们在之前的章节中看到的非常相似。你可以在以下示例中看到它：
+- en: app.py
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE10]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+- en: 'Finally, we need to tell FastAPI to open the connection with the broker when
+    it starts the application and to close it when exiting, as you can see in the
+    following extract:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们需要告诉 FastAPI 在启动应用程序时打开与中介的连接，并在退出时关闭它，如下所示：
+- en: app.py
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: app.py
+- en: '[PRE11]'
+  id: totrans-126
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py](https://github.com/PacktPublishing/Building-Data-Science-Applications-with-FastAPI-Second-Edition/blob/main/chapter08/broadcast/app.py)'
+- en: 'Let’s now try this application! First, we’ll run the Uvicorn server. Be sure
+    that your Redis container is running before starting, as we explained in the *Technical
+    requirements* section. Here’s the command you’ll need:'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们尝试一下这个应用程序！首先，我们将运行 Uvicorn 服务器。启动之前，请确保你的 Redis 容器正在运行，正如我们在*技术要求*部分中所解释的那样。以下是你需要的命令：
+- en: '[PRE12]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'We also provided a simple HTML client in the examples. To run it, we can simply
+    serve it with the built-in Python server, as follows:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还在示例中提供了一个简单的 HTML 客户端。要运行它，我们可以通过内置的 Python 服务器提供服务，方法如下：
+- en: '[PRE13]'
+  id: totrans-131
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'You can now access it through `http://localhost:9000`. If you open it twice
+    in your browser, in two different windows, you can see whether the broadcasting
+    is working. Input a username in the first window and click on **Connect**. Do
+    the same in the second window with a different username. You can now send messages
+    and see that they are broadcast to the other client, as depicted in the following
+    screenshot:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在你可以通过`http://localhost:9000`访问它。如果你在浏览器中分别打开两个窗口，你可以看到广播是否正常工作。在第一个窗口中输入一个用户名并点击**连接**。在第二个窗口中做相同的操作，使用不同的用户名。你现在可以发送消息，并看到它们被广播到另一个客户端，如下图所示：
+- en: '![Figure 8.7 – Multiple WebSockets clients broadcasting messages](img/Figure_8.7_B19528.jpg)'
+  id: totrans-133
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 8.7 – 多个 WebSocket 客户端广播消息](img/Figure_8.7_B19528.jpg)'
+- en: Figure 8.7 – Multiple WebSockets clients broadcasting messages
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 8.7 – 多个 WebSocket 客户端广播消息
+- en: 'That was a very quick overview of how you can implement broadcasting systems
+    involving message brokers. Of course, we only covered the basics here, and much
+    more complex things can be done with those powerful technologies. Once again,
+    we see that FastAPI gives us access to powerful building bricks without locking
+    us inside specific technologies or patterns: it’s very easy to include new libraries
+    to expand our possibilities.'
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这只是一个非常简要的概述，介绍了如何实现涉及消息中介的广播系统。当然，我们这里只覆盖了基础内容，使用这些强大技术可以做更多复杂的事情。再次强调，FastAPI
+    为我们提供了强大的构建模块，而不会将我们锁定在特定的技术或模式中：我们可以轻松地引入新的库来扩展我们的可能性。
+- en: Summary
+  id: totrans-136
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 概述
+- en: 'In this chapter, you learned how to work with one of the latest web technologies
+    available: WebSockets. You are now able to open a two-way communication channel
+    between a client and a server, allowing you to implement applications with real-time
+    constraints. As you’ve seen, FastAPI makes it very easy to add such endpoints.
+    Still, the way of thinking inside WebSockets logic is quite different from traditional
+    HTTP endpoints: managing an infinite loop and handling several tasks at a time
+    are completely new challenges. Fortunately, the asynchronous nature of the framework
+    makes our life easier in this matter and helps us write concurrent code that is
+    easily understandable.'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，你学习了如何使用最新的 Web 技术之一：WebSocket。你现在能够在客户端和服务器之间打开一个双向通信通道，从而实现具有实时约束的应用程序。如你所见，FastAPI
+    让我们非常容易地添加这样的端点。尽管如此，WebSocket 的思维方式与传统的 HTTP 端点完全不同：管理无限循环并同时处理多个任务是全新的挑战。幸运的是，框架的异步特性让我们在这方面的工作更加轻松，帮助我们编写易于理解的并发代码。
+- en: Finally, we also had a quick overview of the challenges to solve when handling
+    multiple clients that share messages between them. You saw that message broker
+    software such as Redis is necessary to make this use case reliable across several
+    server processes.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们还简要概述了处理多个客户端共享消息时需要解决的挑战。你已经看到，像 Redis 这样的消息中介软件是使此用例在多个服务器进程间可靠工作的必要条件。
+- en: You are now acquainted with all the features of FastAPI. Up to now, we’ve shown
+    very simple examples focused on a specific point. In the real world, however,
+    you’ll likely develop big applications that can do a lot of things and grow larger
+    over time. To make them reliable and maintainable and keep high-quality code,
+    it’s necessary to test them to make sure they behave as intended and that you
+    don’t introduce bugs when adding new things.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你现在已经了解了 FastAPI 的所有特性。到目前为止，我们展示了专注于某一特定点的非常简单的示例。然而，在现实世界中，你很可能会开发出能够做很多事情的大型应用程序，并且随着时间的推移，它们会不断增长。为了使这些应用程序可靠、可维护，并保持高质量的代码，进行测试是必要的，这样可以确保它们按预期运行，并且在添加新功能时不会引入漏洞。
+- en: In the next chapter, you’ll see how to set up an efficient test environment
+    for FastAPI.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章，你将看到如何为 FastAPI 设置一个高效的测试环境。

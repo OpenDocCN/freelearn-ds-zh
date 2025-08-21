@@ -1,0 +1,1001 @@
+- en: '6'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '6'
+- en: Exploratory Data Analysis
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 探索性数据分析
+- en: After loading and preparing data (covered in the previous chapter), we will
+    now go through exploratory data analysis to uncover patterns and insights in time
+    series data. We will use statistical analysis techniques, including those specific
+    to temporal patterns. The outcomes of these steps are crucial for identifying
+    trends and seasonality, informing subsequent modeling decisions. Robust exploratory
+    data analysis using Apache Spark ensures a comprehensive grasp of the dataset’s
+    characteristics, enhancing the accuracy and relevance of subsequent time series
+    models and analyses.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在加载和准备数据（在前一章已经介绍过）之后，我们将进行探索性数据分析，以揭示时间序列数据中的模式和见解。我们将使用统计分析技术，包括那些特定于时间模式的技术。这些步骤的结果对于识别趋势和季节性非常关键，并且为后续建模决策提供信息。使用
+    Apache Spark 进行强大的探索性数据分析确保全面掌握数据集的特征，增强后续时间序列模型和分析的准确性和相关性。
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要内容：
+- en: Statistical analysis
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 统计分析
+- en: Resampling, decomposition, and stationarity
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重采样、分解和稳定性
+- en: Correlation analysis
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 相关性分析
+- en: Technical requirements
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'The hands-on coding predominant in this chapter covers the frequently used
+    data exploration techniques for a time series analysis project. The code for this
+    chapter can be found in the `ch6` folder of the book’s GitHub repository at this
+    URL: [https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch6](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch6).'
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章主要涵盖了时间序列分析项目中常用的数据探索技术，以实际操作为主。本章的代码可以在书籍的 GitHub 仓库的 `ch6` 文件夹中找到，网址为：[https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch6](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/tree/main/ch6)。
+- en: Note
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意
+- en: We will use Spark DataFrames in the code examples and convert them to pandas
+    DataFrames for libraries supporting pandas. This shows how to interchangeably
+    use both. The use of pandas will be mentioned when this is the case.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在代码示例中使用 Spark DataFrames，并将其转换为支持 pandas 的库的 DataFrames。这显示了如何可以互换使用两者。在使用
+    pandas 时将会提及。
+- en: Statistical analysis
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 统计分析
+- en: This section starts with the statistical analysis of time series data and covers
+    data profiling to gather these statistics, distribution analysis, and visualizations.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节从时间序列数据的统计分析开始，涵盖数据概要分析以收集这些统计信息，分布分析和可视化。
+- en: The examples in this chapter are based on the code in `ts-spark_ch6_1.dbc`,
+    which we can import from the GitHub location for [*Chapter 6*](B18568_06.xhtml#_idTextAnchor116),
+    mentioned in the *Technical requirements* section, into Databricks Community Edition,
+    as per the approach explained in [*Chapter 1*](B18568_01.xhtml#_idTextAnchor016).
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '本章的示例基于 `ts-spark_ch6_1.dbc` 中的代码，我们可以从 GitHub 上导入到 Databricks Community Edition，如[*第
+    1 章*](B18568_01.xhtml#_idTextAnchor016)所述的方法，在*技术要求*部分提到。 '
+- en: 'The code URL is as follows: [https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch6/ts-spark_ch6_1.dbc](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch6/ts-spark_ch6_1.dbc)'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 代码网址如下：[https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch6/ts-spark_ch6_1.dbc](https://github.com/PacktPublishing/Time-Series-Analysis-with-Spark/raw/main/ch6/ts-spark_ch6_1.dbc)
+- en: 'We will start the hands-on examples with the household energy consumption dataset,
+    which we also used in [*Chapter 2*](B18568_02.xhtml#_idTextAnchor044) and [*Chapter
+    5*](B18568_05.xhtml#_idTextAnchor103). After loading the dataset with `spark.read`,
+    as per the following code extract, we cache the DataFrame in memory with `df.cache()`
+    to accelerate subsequent processing. Due to lazy evaluation, the caching will
+    happen on the next action and not immediately. As we want the caching to happen,
+    we have added an `df.count()` action to force this. We then create a `timestamp`
+    column combining the `Date` and `Time` columns. As the numerical columns have
+    been loaded as strings, we must convert them to the numerical `double` data type
+    to be able to do calculations. Note that we have coded the operations on the `df`
+    DataFrame in separate lines for readability. We could alternatively chain the
+    multiple operations in a single line:'
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从家庭能源消耗数据集开始实际操作示例，这个数据集也在[*第2章*](B18568_02.xhtml#_idTextAnchor044)和[*第5章*](B18568_05.xhtml#_idTextAnchor103)中使用过。在用`
+    spark.read`加载数据集后，如下代码片段所示，我们通过`df.cache()`将DataFrame缓存到内存中，以加速后续的处理。由于懒加载，缓存操作将在下一个动作时进行，而不是立即进行。为了强制进行缓存，我们添加了一个`df.count()`操作。然后，我们创建了一个`timestamp`列，将`Date`和`Time`列合并在一起。由于数值列已作为字符串加载，因此我们必须将它们转换为数值型的`double`数据类型才能进行计算。请注意，为了提高可读性，我们将对`df`
+    DataFrame的操作分成了多行代码，当然，也可以将这些操作链式调用写在一行代码中：
+- en: '[PRE0]'
+  id: totrans-16
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Summary Statistics
+  id: totrans-17
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 汇总统计
+- en: Code in cell 10
+  id: totrans-18
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第10号单元格的代码
+- en: df.summary().display()
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df.summary().display()
+- en: '[PRE1]'
+  id: totrans-20
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Code in cell 12
+  id: totrans-21
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第12号单元格的代码
+- en: …
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: profile = ProfileReport(
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: profile = ProfileReport(
+- en: pdf,
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pdf,
+- en: title='Time Series Data Profiling',
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: title='时间序列数据分析',
+- en: tsmode=True,
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: tsmode=True,
+- en: sortby='timestamp',
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: sortby='timestamp',
+- en: infer_dtypes=False,
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: infer_dtypes=False,
+- en: interactions=None,
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: interactions=None,
+- en: missing_diagrams=None,
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: missing_diagrams=None,
+- en: correlations={
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: correlations={
+- en: '"auto": {"calculate": False},'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"auto": {"calculate": False},'
+- en: '"pearson": {"calculate": True},'
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"pearson": {"calculate": True},'
+- en: '"spearman": {"calculate": True}})'
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"spearman": {"calculate": True}})'
+- en: Save the profiling report to an HTML file
+  id: totrans-35
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将分析报告保存为HTML文件
+- en: profile.to_file("time_series_data_profiling_report.html")
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: profile.to_file("time_series_data_profiling_report.html")
+- en: Show the profiling report in the notebook
+  id: totrans-37
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在笔记本中展示分析报告
+- en: report_html = profile.to_html()
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: report_html = profile.to_html()
+- en: displayHTML(report_html)
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: displayHTML(report_html)
+- en: '[PRE2]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: test for gaps
+  id: totrans-41
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试间隙
+- en: Code in cell 15
+  id: totrans-42
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第15号单元格的代码
+- en: test for gaps
+  id: totrans-43
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试间隙
+- en: pdf['gap_val'] = pdf['timestamp'].sort_values().diff()
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pdf['gap_val'] = pdf['timestamp'].sort_values().diff()
+- en: pdf['gap'] = pdf['gap_val'] > ps.to_timedelta('1 minute')
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pdf['gap'] = pdf['gap_val'] > ps.to_timedelta('1 minute')
+- en: pdf[pdf.gap]
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pdf[pdf.gap]
+- en: '[PRE3]'
+  id: totrans-47
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: Distribution Analysis
+  id: totrans-48
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 分布分析
+- en: Code in cell 17
+  id: totrans-49
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第17号单元格的代码
+- en: …
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Extract day and hour
+  id: totrans-51
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 提取日期和小时
+- en: df = df.withColumn("dayOfWeek", F.dayofweek(F.col("timestamp")))
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = df.withColumn("dayOfWeek", F.dayofweek(F.col("timestamp")))
+- en: df = df.withColumn("hour", F.hour(F.col("timestamp")))
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df = df.withColumn("hour", F.hour(F.col("timestamp")))
+- en: …
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Distribution analysis using Seaborn and Matplotlib
+  id: totrans-55
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用Seaborn和Matplotlib进行分布分析
+- en: …
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: sns.histplot(pdf['Global_active_power'], kde=True, bins=30)
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: sns.histplot(pdf['Global_active_power'], kde=True, bins=30)
+- en: plt.title(
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title(
+- en: '''Distribution of Global_active_power in Time Series Data'''
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '''时间序列数据中Global_active_power的分布'''
+- en: )
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: …
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Boxplot to visualize the distribution per dayOfWeek
+  id: totrans-62
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 用箱线图可视化按星期几分布
+- en: …
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: sns.boxplot(x='dayOfWeek', y='Global_active_power', data=pdf)
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: sns.boxplot(x='dayOfWeek', y='Global_active_power', data=pdf)
+- en: plt.title(
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title(
+- en: '''Daily Distribution of Global_active_power in Time Series Data'''
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '''时间序列数据中Global_active_power的日分布'''
+- en: )
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: …
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Boxplot to visualize the distribution per hour
+  id: totrans-69
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 用箱线图可视化按小时分布
+- en: …
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: sns.boxplot(x='hour', y='Global_active_power', data=pdf)
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: sns.boxplot(x='hour', y='Global_active_power', data=pdf)
+- en: plt.title(
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title(
+- en: '''Hourly Distribution of Global_active_power in Time Series Data'''
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '''时间序列数据中Global_active_power的小时分布'''
+- en: )
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: )
+- en: …
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE4]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: Resampling and Aggregation
+  id: totrans-77
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 重采样与聚合
+- en: Code in cell 22
+  id: totrans-78
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第22号单元格的代码
+- en: …
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: 'Resample data to hourly, daily and weekly frequency and aggregate by # mean'
+  id: totrans-80
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将数据重采样为小时、天和周的频率，并按#均值聚合
+- en: hourly_resampled = pdf.resample('h').mean()
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_resampled = pdf.resample('h').mean()
+- en: hourly_resampled_s = pdf.resample('h').std()
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_resampled_s = pdf.resample('h').std()
+- en: daily_resampled = pdf.resample('d').mean()
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: daily_resampled = pdf.resample('d').mean()
+- en: daily_resampled_s = pdf.resample('d').std()
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: daily_resampled_s = pdf.resample('d').std()
+- en: weekly_resampled = pdf.resample('w').mean()
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: weekly_resampled = pdf.resample('w').mean()
+- en: weekly_resampled_s = pdf.resample('w').std()
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: weekly_resampled_s = pdf.resample('w').std()
+- en: …
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE5]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: Code in cell 30
+  id: totrans-89
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第30号单元格的代码
+- en: …
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: from statsmodels.tsa.seasonal import seasonal_decompose
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from statsmodels.tsa.seasonal import seasonal_decompose
+- en: Perform seasonal decomposition
+  id: totrans-92
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 执行季节性分解
+- en: hourly_result = seasonal_decompose(
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_result = seasonal_decompose(
+- en: hourly_resampled['Global_active_power'])
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_resampled['Global_active_power'])
+- en: daily_result = seasonal_decompose(
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: daily_result = seasonal_decompose(
+- en: daily_resampled['Global_active_power'])
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: daily_resampled['Global_active_power'])
+- en: …
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE6]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Stationarity
+  id: totrans-99
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 平稳性
+- en: Code in cell 33
+  id: totrans-100
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第33行
+- en: …
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: from statsmodels.tsa.stattools import adfuller
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from statsmodels.tsa.stattools import adfuller
+- en: Perform Augmented Dickey-Fuller test
+  id: totrans-103
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 执行扩展的Dickey-Fuller检验
+- en: result = adfuller(hourly_resampled)
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: result = adfuller(hourly_resampled)
+- en: if Test statistic < Critical Value and p-value < 0.05
+  id: totrans-105
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: if Test statistic < Critical Value and p-value < 0.05
+- en: '#   reject the Null hypothesis, time series does not have a unit root'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '#   拒绝原假设，时间序列没有单位根'
+- en: '#   series is stationary'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '#   序列是平稳的'
+- en: …
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE7]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: Differencing
+  id: totrans-110
+  prefs:
+  - PREF_H6
+  type: TYPE_NORMAL
+  zh: 差分
+- en: Code in cell 41
+  id: totrans-111
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第41行
+- en: …
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: from pyspark.sql.window import Window
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from pyspark.sql.window import Window
+- en: Calculate the difference (differencing)
+  id: totrans-114
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算差分（差分处理）
+- en: window = Window.orderBy("year")
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: window = Window.orderBy("year")
+- en: df2_ = df2.withColumn(
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df2_ = df2.withColumn(
+- en: '"annual_mean_diff",'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"annual_mean_diff",'
+- en: F.col("annual_mean") - F.lag(
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F.col("annual_mean") - F.lag(
+- en: F.col("annual_mean"), 1
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: F.col("annual_mean"), 1
+- en: ).over(window))
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ).over(window))
+- en: …
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE8]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: Autocorrelation
+  id: totrans-123
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 自相关
+- en: Code in cell 45
+  id: totrans-124
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第45行
+- en: from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+- en: Plot Autocorrelation Function (ACF)
+  id: totrans-126
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 绘制自相关函数 (ACF)
+- en: plt.figure(figsize=(12, 6))
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.figure(figsize=(12, 6))
+- en: plot_acf(hourly_resampled['Global_active_power'], lags=3*24)
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plot_acf(hourly_resampled['Global_active_power'], lags=3*24)
+- en: plt.title('Autocorrelation Function (ACF)')
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title('自相关函数 (ACF)')
+- en: plt.show()
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.show()
+- en: Plot Partial Autocorrelation Function (PACF)
+  id: totrans-131
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 绘制偏自相关函数 (PACF)
+- en: plt.figure(figsize=(12, 6))
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.figure(figsize=(12, 6))
+- en: plot_pacf(hourly_resampled['Global_active_power'], lags=3*24)
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plot_pacf(hourly_resampled['Global_active_power'], lags=3*24)
+- en: plt.title('Partial Autocorrelation Function (PACF)')
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title('偏自相关函数 (PACF)')
+- en: plt.show()
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.show()
+- en: …
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE9]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: Lag Analysis
+  id: totrans-138
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 滞后分析
+- en: Code in cell 49
+  id: totrans-139
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第49行
+- en: …
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: window = Window.orderBy("timestamp")
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: window = Window.orderBy("timestamp")
+- en: Create lagged features
+  id: totrans-142
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 创建滞后特征
+- en: hourly_df = hourly_df.withColumn(
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_df = hourly_df.withColumn(
+- en: '"lag1", F.lag(F.col("Global_active_power"), 1).over(window))'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"lag1", F.lag(F.col("Global_active_power"), 1).over(window))'
+- en: hourly_df = hourly_df.withColumn(
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_df = hourly_df.withColumn(
+- en: '"lag2", F.lag(F.col("Global_active_power"), 2).over(window))'
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"lag2", F.lag(F.col("Global_active_power"), 2).over(window))'
+- en: hourly_df = hourly_df.withColumn(
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_df = hourly_df.withColumn(
+- en: '"lag12", F.lag(F.col("Global_active_power"), 12).over(window))'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"lag12", F.lag(F.col("Global_active_power"), 12).over(window))'
+- en: hourly_df = hourly_df.withColumn(
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_df = hourly_df.withColumn(
+- en: '"lag24", F.lag(F.col("Global_active_power"), 24).over(window))'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '"lag24", F.lag(F.col("Global_active_power"), 24).over(window))'
+- en: …
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE10]'
+  id: totrans-152
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: Code in cell 50
+  id: totrans-153
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第50行
+- en: …
+  id: totrans-154
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Calculate autocorrelation for lag 1
+  id: totrans-155
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算滞后1的自相关
+- en: df_lag1 = hourly_df.dropna(subset=["lag1"])
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df_lag1 = hourly_df.dropna(subset=["lag1"])
+- en: autocorr_lag1 = df_lag1.stat.corr("Global_active_power", "lag1")
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: autocorr_lag1 = df_lag1.stat.corr("Global_active_power", "lag1")
+- en: …
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Calculate autocorrelation for lag 24
+  id: totrans-159
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算滞后24的自相关
+- en: df_lag24 = hourly_df.dropna(subset=["lag24"])
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: df_lag24 = hourly_df.dropna(subset=["lag24"])
+- en: autocorr_lag24 = df_lag24.stat.corr("Global_active_power", "lag24")
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: autocorr_lag24 = df_lag24.stat.corr("Global_active_power", "lag24")
+- en: …
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE11]'
+  id: totrans-163
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: Cross-correlation
+  id: totrans-164
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+  zh: 互相关
+- en: Code in cell 53
+  id: totrans-165
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第53行
+- en: …
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: Compute cross-correlation between value1 and value2
+  id: totrans-167
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算value1和value2之间的互相关
+- en: cross_corr = hourly_df.stat.corr("Global_active_power", "Voltage")
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: cross_corr = hourly_df.stat.corr("Global_active_power", "Voltage")
+- en: …
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE12]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: Code in cell 54
+  id: totrans-171
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 代码位于第54行
+- en: …
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: from statsmodels.tsa.stattools import ccf
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: from statsmodels.tsa.stattools import ccf
+- en: hourly_ = hourly_resampled.iloc[:36]
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: hourly_ = hourly_resampled.iloc[:36]
+- en: Calculate cross-correlation function
+  id: totrans-175
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 计算互相关函数
+- en: ccf_values = ccf(hourly_['Global_active_power'], hourly_['Voltage'])
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ccf_values = ccf(hourly_['Global_active_power'], hourly_['Voltage'])
+- en: Plot cross-correlation function
+  id: totrans-177
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 绘制互相关函数
+- en: plt.figure(figsize=(12, 6))
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.figure(figsize=(12, 6))
+- en: plt.stem(range(len(ccf_values)),
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.stem(range(len(ccf_values)),
+- en: ccf_values, use_line_collection=True, markerfmt="-")
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ccf_values, use_line_collection=True, markerfmt="-")
+- en: plt.title('Cross-Correlation Function (CCF)')
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: plt.title('互相关函数 (CCF)')
+- en: …
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: …
+- en: '[PRE13]'
+  id: totrans-183
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'

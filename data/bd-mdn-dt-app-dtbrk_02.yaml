@@ -1,0 +1,1427 @@
+- en: '2'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '2'
+- en: Applying Data Transformations Using Delta Live Tables
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Delta Live Tables 应用数据转换
+- en: In this chapter, we’ll dive straight into how **Delta Live Tables** ( **DLT**
+    ) makes ingesting data from a variety of input sources simple and straightforward,
+    whether it’s files landing in cloud storage or connecting to an external storage
+    system, such as a **relational database management system** ( **RDBMS** ). Then,
+    we’ll take a look at how we can efficiently and accurately apply changes from
+    our input data sources to downstream datasets, using the **APPLY CHANGES** command.
+    Lastly, we’ll conclude the chapter with a deep dive into the advanced data pipeline
+    settings.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将深入探讨 **Delta Live Tables**（**DLT**）如何简化从各种输入源获取数据的过程，无论是落在云存储中的文件，还是连接到外部存储系统，如**关系数据库管理系统**（**RDBMS**）。接着，我们将探讨如何使用**APPLY
+    CHANGES**命令高效且准确地将输入数据源的更改应用到下游数据集。最后，本章将以深入了解高级数据流水线设置作为结尾。
+- en: 'To summarize, in this chapter, we’re going to cover the following main topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结一下，在本章中，我们将涵盖以下主要内容：
+- en: Ingesting data from input sources
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从输入源获取数据
+- en: Applying changes to downstream tables
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 应用下游表的更改
+- en: Publishing datasets to Unity Catalog
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 将数据集发布到 Unity Catalog
+- en: Data pipeline settings
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据流水线设置
+- en: Hands-on exercise – applying SCD Type 2 changes
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实践操作——应用 SCD 类型 2 更改
+- en: Technical requirements
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: To follow along in this chapter, it’s recommended to have Databricks workspace
+    permissions to create an all-purpose cluster and a DLT pipeline, using a cluster
+    policy. It’s also recommended to have Unity Catalog permissions to create and
+    use catalogs, schemas, and tables. All code samples can be downloaded from the
+    chapter’s GitHub repository, located at https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02.
+    This chapter will create and run several new notebooks and a DLT pipeline using
+    the **Core** product edition. As a result, the pipelines are estimated to consume
+    around 10–15 **Databricks** **Units** ( **DBUs** ).
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了跟随本章内容，建议拥有 Databricks 工作区权限，以创建通用集群和 DLT 流水线，并使用集群策略。还建议拥有 Unity Catalog
+    权限，以创建和使用目录、模式和表。所有代码示例可以从本章的 GitHub 仓库下载，网址为 https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02。本章将使用**Core**产品版本创建并运行多个新的笔记本和
+    DLT 流水线。预计这些流水线将消耗约 10–15 **Databricks** **Units**（**DBUs**）。
+- en: Ingesting data from input sources
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 从输入源获取数据
+- en: DLT makes ingesting data from a variety of input sources simple. For example,
+    DLT can efficiently process new files landing in a cloud storage location throughout
+    the day, ingest structured data by connecting to an external storage system, such
+    as a relational database, or read static reference tables that can be cached into
+    memory. Let’s look at how we can use DLT to incrementally ingest new data that
+    arrives in a cloud storage location.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT 简化了从各种输入源获取数据的过程。例如，DLT 可以高效处理全天候落入云存储位置的新文件，通过连接到外部存储系统（如关系数据库）摄取结构化数据，或读取可以缓存到内存中的静态参考表。让我们看看如何使用
+    DLT 持续摄取云存储位置中到达的新数据。
+- en: Ingesting data using Databricks Auto Loader
+  id: totrans-13
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 Databricks Auto Loader 获取数据
+- en: 'One of the key features of the Databricks Data Intelligence Platform is a feature
+    called **Auto Loader** , which is a simple yet powerful ingestion mechanism for
+    efficiently reading input files from cloud storage. Auto Loader can be referenced
+    in a DataFrame definition by using the **cloudFiles** data source. For example,
+    the following code snippet will use the Databricks Auto Loader feature to ingest
+    newly arriving JSON files from a storage container:'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Databricks 数据智能平台的一个关键特性是名为**Auto Loader**的功能，它是一个简单而强大的数据摄取机制，用于高效地从云存储中读取输入文件。可以通过使用**cloudFiles**数据源，在
+    DataFrame 定义中引用 Auto Loader。例如，以下代码片段将使用 Databricks Auto Loader 功能，从存储容器中获取新到的
+    JSON 文件：
+- en: '[PRE0]'
+  id: totrans-15
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Auto Loader can scale to process billions of files in cloud storage efficiently.
+    Databricks Auto Loader supports ingesting files stored in the CSV, JSON, XML,
+    Apache Parquet, Apache Avro, and Apache Orc file formats, as well as text and
+    binary files. Furthermore, one thing that you may have noticed in the preceding
+    code snippet is that a schema definition was not specified for the input stream
+    but, rather, a target schema location. That is because Auto Loader will automatically
+    infer the data source schema and keep track of the changes to the schema definition
+    in a separate storage location. Behind the scenes, Auto Loader will sample up
+    to the first 1,000 cloud file objects to infer the schema structure for a cloud
+    file source. For semi-structured formats such as JSON, where the schema can change
+    over time, this can alleviate a huge burden on data engineering teams by them
+    not having to maintain an up-to-date definition of the latest schema definition.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自动加载器可以扩展到高效处理云存储中的数十亿文件。Databricks自动加载器支持摄取存储在CSV、JSON、XML、Apache Parquet、Apache
+    Avro和Apache Orc文件格式中的文件，以及文本和二进制文件。此外，在前面的代码片段中您可能注意到的一点是，并没有为输入流指定模式定义，而是指定了目标模式位置。这是因为自动加载器将自动推断数据源模式，并在单独的存储位置跟踪模式定义的更改。在幕后，自动加载器将对最多前1000个云文件对象进行采样，以推断云文件源的模式结构。对于诸如JSON这样的半结构化格式，其中模式可以随时间变化，这可以通过不需要维护最新模式定义的数据工程团队来减轻巨大负担。
+- en: Scalability challenge in structured streaming
+  id: totrans-17
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 结构化流中的可扩展性挑战
+- en: Traditionally, data pipelines that used Spark Structured Streaming to ingest
+    new files, where files were appended to a cloud storage location, struggled to
+    scale as data volumes grew into GB or even TB. As new files were written to the
+    cloud storage container, Structured Streaming would perform a directory listing.
+    For large datasets, (i.e., datasets comprised of millions of files or more), the
+    directory listing process alone would take a lengthy amount of time. In addition,
+    the cloud provider would assess API fees for these directory listing calls, adding
+    to the overall cloud provider fees. For files that have already been processed,
+    this directory listing was both expensive and inefficient.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 传统上，使用Spark结构化流来摄取新文件的数据管道，在数据量增长到GB甚至TB时很难扩展。当新文件被写入云存储容器时，结构化流将执行目录列表。对于大型数据集（即由数百万个或更多文件组成的数据集），仅目录列表过程就将耗费大量时间。此外，云提供商还会对这些目录列表调用评估API费用，增加总体云提供商费用。对于已经处理过的文件，这种目录列表既昂贵又低效。
+- en: Databricks Auto Loader supports two types of cloud file detection modes – notification
+    mode and legacy directory listing mode. In notification mode, Auto Loader bypasses
+    this expensive directory listing process entirely by automatically deploying a
+    more scalable architecture under the hood. With just a few lines of Python code,
+    Databricks pre-provisions backend cloud services that will automatically keep
+    track of new files that have landed in cloud storage, as well as files that have
+    already been processed.
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Databricks自动加载器支持两种云文件检测模式 – 通知模式和传统目录列表模式。在通知模式下，自动加载器通过在幕后自动部署更可扩展的架构完全避开了这种昂贵的目录列表过程。仅需几行Python代码，Databricks预先配置了后端云服务，这些服务将自动跟踪新落地在云存储中的文件，以及已经处理过的文件。
+- en: '![Figure 2.1 – In notification mode, Databricks Auto Loader uses an event stream
+    to keep track of new, unprocessed files in cloud storage](img/B22011_02_001.jpg)'
+  id: totrans-20
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图2.1 – 在通知模式下，Databricks自动加载器使用事件流来跟踪云存储中新的未处理文件](img/B22011_02_001.jpg)'
+- en: Figure 2.1 – In notification mode, Databricks Auto Loader uses an event stream
+    to keep track of new, unprocessed files in cloud storage
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图2.1 – 在通知模式下，Databricks自动加载器使用事件流来跟踪云存储中新的未处理文件
+- en: 'Let’s walk through an example of how the Auto Loader feature, configured in
+    notification mode, will efficiently process newly arriving cloud file objects
+    together:'
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过一个示例来演示自动加载器功能的工作方式，配置为通知模式，它将有效地一起处理新到达的云文件对象：
+- en: The process begins with the Databricks Auto Loader listening to a particular
+    cloud storage path for new file object creation events, also referred to as **PUT**
+    events, named after the HTTP verb used to create the object.
+  id: totrans-23
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 过程始于Databricks自动加载器监听特定云存储路径，以获取新文件对象创建事件，也称为**PUT**事件，名称源自用于创建对象的HTTP动词。
+- en: When a new file object has been created, the metadata about this new file is
+    persisted to a key-value store, which serves as a checkpoint location if there
+    are system failures.
+  id: totrans-24
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当创建一个新文件对象时，关于该新文件的元数据将持久化到键值存储中，该存储作为检查点位置，以防系统故障。
+- en: Next, the information pertaining to the file object, or file objects, will then
+    be published to an event stream that the **cloudFiles** data source reads from.
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，关于文件对象的信息将发布到事件流，**cloudFiles**数据源将从中读取。
+- en: Upon reading from the event stream, the Auto Loader process in Databricks will
+    fetch the data pertaining only to those new, unprocessed file objects in cloud
+    storage.
+  id: totrans-26
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在从事件流读取时，Databricks中的Auto Loader进程将仅获取与云存储中新未处理文件对象相关的数据。
+- en: Lastly, the Auto Loader process will update the key-value store, marking the
+    new files as processed in the system.
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，Auto Loader进程将更新键值存储，标记新文件在系统中已被处理。
+- en: This implementation of notification-based file processing avoids the expensive
+    and inefficient directory listing process, ensuring that the process can recover
+    from failures and that files are processed exactly once.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种基于通知的文件处理实现避免了昂贵且低效的目录列出过程，确保该过程能够从故障中恢复，并且文件被精确处理一次。
+- en: Using Auto Loader with DLT
+  id: totrans-29
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 在DLT中使用Auto Loader
+- en: 'Databricks Auto Loader can be used to create a streaming table in a DLT pipeline.
+    Now that we know what’s going on behind the scenes, building a robust, scalable
+    streaming table that can scale to billions of files can be done with just a few
+    lines of Python code. In fact, for data sources that append new files to cloud
+    storage, it’s recommended to always use Auto Loader to ingest data. Let’s take
+    a streaming DataFrame definition from the preceding section and combine it with
+    the DLT dataset annotation to define a new data stream in our pipeline:'
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Databricks Auto Loader可用于在DLT管道中创建流式表。现在我们了解了幕后发生的事情，构建一个能够扩展到数十亿个文件的强大且可扩展的流式表，只需要几行Python代码。事实上，对于那些向云存储中追加新文件的数据源，建议始终使用Auto
+    Loader来摄取数据。让我们从前面部分获取一个流式DataFrame定义，并将其与DLT数据集注解结合起来，在我们的管道中定义一个新的数据流：
+- en: '[PRE1]'
+  id: totrans-31
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: One thing to note is that in the preceding code snippet, we’ve provided two
+    cloud storage paths. The first storage path, **schema_path** , refers to the cloud
+    storage path where schema information and the key-value store will be written.
+    The second storage location, **raw_landing_zone_path** , points to the location
+    where new, unprocessed files will be written by the external data source.
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，在前面的代码片段中，我们提供了两个云存储路径。第一个存储路径，**schema_path**，指的是云存储路径，在该路径中将写入架构信息和键值存储。第二个存储路径，**raw_landing_zone_path**，指向外部数据源将写入的新未处理文件的位置。
+- en: Important note
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: It’s recommended to use an external location governed by Unity Catalog so that
+    you can enforce fine-grained data access across different users and groups within
+    your Databricks workspace.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 推荐使用由Unity Catalog管理的外部位置，以便在Databricks工作区内的不同用户和组之间强制执行精细的数据访问控制。
+- en: Now that we have a reliable and efficient way of ingesting raw data from cloud
+    storage input sources, we’ll want to transform the data and apply the output to
+    downstream datasets in our data pipeline. Let’s look at how the DLT framework
+    makes applying downstream changes simple and straightforward.
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了一个可靠高效的方式从云存储输入源中摄取原始数据，我们需要将数据进行转换，并将输出应用到数据管道中的下游数据集。让我们看看DLT框架如何使得应用下游变更变得简单直接。
+- en: Applying changes to downstream tables
+  id: totrans-36
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将变更应用到下游表
+- en: Traditionally, Delta Lake offered a **MERGE INTO** command, allowing change
+    data capture to be merged into target tables by matching on a particular condition.
+    However, if the new data happened to be out of order, the merged changes would
+    result in incorrect results, leading to an inaccurate and misleading output. To
+    remediate this problem, data engineering teams would need to build complex reconciliation
+    processes to handle out-of-order data, adding yet another layer to a data pipeline
+    to manage and maintain.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 传统上，Delta Lake提供了一个**MERGE INTO**命令，允许变更数据捕获通过在特定条件下匹配来合并到目标表中。然而，如果新数据恰好是无序的，合并后的变更会导致错误的结果，进而产生不准确和误导的输出。为了解决这个问题，数据工程团队需要构建复杂的对账过程来处理无序数据，这为数据管道增加了额外的管理和维护层。
+- en: APPLY CHANGES command
+  id: totrans-38
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: APPLY CHANGES命令
+- en: DLT offers a new API to automatically apply changes to downstream tables, even
+    handling out-of-order data based on a set of one or more sequence columns. **Slowly**
+    **c** **hanging** **d** **imensions** ( **SCDs** ) are dimensions in traditional
+    data warehousing that allow the current and historical snapshot of data to be
+    tracked over time. DLT allows data engineering teams to update downstream datasets
+    in a data pipeline with changes in the upstream data source. For example, DLT
+    allows users to capture SCD Type 1 (which does not preserve previous row history)
+    and SCD Type 2 (which preserves historical versions of rows).
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT 提供了一个新的 API，可以自动将变更应用到下游表格，甚至可以基于一个或多个序列列处理乱序数据。**慢变维**（**SCDs**）是传统数据仓库中的维度，允许追踪数据的当前和历史快照。DLT
+    使数据工程团队能够在数据管道中更新下游数据集，以反映上游数据源中的变更。例如，DLT 允许用户捕获 SCD 类型 1（不保留先前行历史）和 SCD 类型 2（保留行的历史版本）。
+- en: 'DLT offers a Python API as well as SQL syntax to apply change data captures:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT 提供了 Python API 和 SQL 语法来应用变更数据捕获：
+- en: '**APPLY CHANGES** – for pipelines written using SQL syntax'
+  id: totrans-41
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**APPLY CHANGES** – 用于使用 SQL 语法编写的数据管道'
+- en: '**apply_changes()** – for pipelines written using Python'
+  id: totrans-42
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**apply_changes()** – 用于使用 Python 编写的数据管道'
+- en: 'Let’s imagine that we have a table that will record room temperatures published
+    from smart thermostats throughout the day, and it’s important to preserve a history
+    of temperature updates. The following code snippet will apply SCD Type 2 changes
+    to an output table in our data pipeline, using the **apply_changes()** API:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们有一个表格，用来记录来自智能温控器的室内温度，且需要保留温度更新的历史记录。以下代码片段将使用 **apply_changes()** API
+    将 SCD 类型 2 变更应用到我们的数据管道输出表格：
+- en: '[PRE2]'
+  id: totrans-44
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Furthermore, DLT will capture high-level operational metrics about the data
+    changes that are applied during the completion of an **apply_changes()** command.
+    For instance, the DLT system will track the number of rows that were updated,
+    inserted, or deleted for each execution of the **apply_changes()** command.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，DLT 将捕捉在完成 **apply_changes()** 命令时应用的数据变更的高级操作指标。例如，DLT 系统将跟踪每次执行 **apply_changes()**
+    命令时更新、插入或删除的行数。
+- en: The DLT reconciliation process
+  id: totrans-46
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: DLT 对账过程
+- en: Behind the scenes, DLT will create two dataset objects to accurately apply table
+    changes to pipeline datasets. The first data object is a hidden, backend Delta
+    table that contains the full history of changes. This dataset is used to perform
+    a reconciliation process that is capable of handling out-of-order row updates
+    that are processed. Furthermore, this backend table will be named using the provided
+    name parameter in the **APPLY CHANGES** or **apply_changes()** function call,
+    concatenated with the **__apply_changes_storage_** string.
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在后台，DLT 将创建两个数据集对象，以便准确地将表格变更应用到数据管道数据集中。第一个数据对象是一个隐藏的、后端的 Delta 表，它包含了所有变更的完整历史记录。这个数据集用于执行一个对已处理的乱序行更新能够进行处理的对账过程。此外，这个后端表的名称将使用
+    **APPLY CHANGES** 或 **apply_changes()** 函数调用中提供的名称参数，并与 **__apply_changes_storage_**
+    字符串进行连接。
+- en: For example, if the name of the table was **iot_readings** , it would result
+    in a backend table being created with the name **__apply_changes_storage_iot_readings**
+    .
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，如果表格的名称是 **iot_readings**，则会创建一个名为 **__apply_changes_storage_iot_readings**
+    的后端表。
+- en: This particular table will only be visible if the DLT pipeline publishes the
+    dataset to the legacy Hive Metastore. However, Unity Catalog will abstract these
+    low-level details away from end users, and the dataset will not be visible from
+    the Catalog Explorer UI. However, the table can *still* be queried using a notebook
+    or from a query executed on a SQL warehouse.
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个特定的表只有在 DLT 管道将数据集发布到传统的 Hive Metastore 时才会可见。然而，Unity Catalog 会将这些低级细节抽象化，最终用户无法通过
+    Catalog Explorer UI 查看该数据集。不过，该表可以通过笔记本或在 SQL 仓库上执行的查询进行 *查询*。
+- en: Secondly, the DLT system will create another dataset – a view using the name
+    provided for the **apply_changes()** function. This view will contain the latest
+    snapshot of a table with all the changes applied. The view will use a column,
+    or combination of columns, specified as table keys to uniquely identify each row
+    within the backend table. Then, DLT uses the column or sequence of columns specified
+    in the **sequence_by** parameter of the **apply_changes()** function to order
+    the table changes for each unique row, picking out the latest row change to calculate
+    the result set for the view.
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其次，DLT 系统将使用 **apply_changes()** 函数提供的名称创建另一个数据集 – 视图。该视图将包含应用所有变更后表格的最新快照。视图将使用表键指定的列或列组合来唯一标识后端表格中的每一行。然后，DLT
+    使用 **apply_changes()** 函数中 **sequence_by** 参数指定的列或列序列来为每个唯一行排序表格变更，选择出最新的行变更以计算视图的结果集。
+- en: '![Figure 2.2 – DLT creates a backend table to apply table changes, as well
+    as a view to query the latest data](img/B22011_02_002.jpg)'
+  id: totrans-51
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.2 – DLT 创建后端表格来应用表格变更，并创建一个视图来查询最新数据](img/B22011_02_002.jpg)'
+- en: Figure 2.2 – DLT creates a backend table to apply table changes, as well as
+    a view to query the latest data
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.2 – DLT 创建后端表格来应用表格变更，并创建一个视图来查询最新数据。
+- en: As you can see, DLT makes it extremely simple to keep downstream data sources
+    in line with the data changes occurring in the source. With just a few parameter
+    changes, you can use the powerful **apply_changes()** API to apply SCD data.
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如您所看到的，DLT 使得在源中发生的数据更改保持与下游数据源一致非常简单。只需进行几个参数更改，您就可以使用强大的 **apply_changes()**
+    API 来应用 SCD 数据。
+- en: Now that we understand how we can leverage the DLT framework to define data
+    transformations and apply changes to downstream tables, let’s turn our attention
+    to how we can add strong data governance on top of our pipeline datasets.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们了解了如何利用 DLT 框架来定义数据转换并将更改应用于下游表格，让我们把注意力转向如何在我们的管道数据集上加强数据治理。
+- en: Publishing datasets to Unity Catalog
+  id: totrans-55
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将数据集发布到 Unity Catalog
+- en: DLT offers two methods for storing datasets in the Databricks Data Intelligence
+    Platform – the legacy Hive Metastore and Unity Catalog.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT 提供两种存储数据集的方法在 Databricks 数据智能平台上 – 传统的 Hive Metastore 和 Unity Catalog。
+- en: As described in [*Chapter 1*](B22011_01.xhtml#_idTextAnchor014) , Unity Catalog
+    is a centralized governance store that spans all of your Databricks workspaces
+    within a particular global region. As a result, data access policies can be defined
+    once in a centralized location and will be consistently applied across your organization.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如 [*第 1 章*](B22011_01.xhtml#_idTextAnchor014) 所述，Unity Catalog 是一个集中式管理存储库，跨所有特定全球区域内的您的
+    Databricks 工作区。因此，数据访问策略可以在一个集中位置定义一次，并且将一致地应用于整个组织。
+- en: However, within the context of a DLT pipeline, these two methods of storing
+    the output datasets are mutually exclusive to one another – that is, a particular
+    DLT pipeline cannot store some datasets in the Unity Catalog and others in the
+    Hive Metastore. You must choose a single metastore location for the entire data
+    pipeline output.
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在 DLT 管道的上下文中，这两种存储输出数据集的方法是彼此互斥的 – 也就是说，特定的 DLT 管道不能将某些数据集存储在 Unity Catalog
+    中，而将其他数据集存储在 Hive Metastore 中。您必须为整个数据管道输出选择单一的元数据存储位置。
+- en: Why store datasets in Unity Catalog?
+  id: totrans-59
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 为什么要将数据集存储在 Unity Catalog 中？
+- en: 'Unity Catalog is the new best-of-breed method for storing data and querying
+    datasets in the lakehouse. You might choose landing data in a data pipeline into
+    Unity Catalog over the Hive Metastore for several reasons, including the following:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Unity Catalog 是在湖屋中存储数据和查询数据集的新的最佳方法。您可能会选择在数据管道中将数据着陆到 Unity Catalog 而不是 Hive
+    Metastore，原因包括以下几点：
+- en: The data is secured by default .
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 数据默认受到保护。
+- en: There is a consistent definition of access policies across groups and users
+    versus defining data access policies for every individual workspace .
+  id: totrans-62
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 有一套与定义数据访问策略的组和用户相一致的访问策略的一致定义，而不是为每个单独的工作区定义数据访问策略。
+- en: Open source technology with no risk of vendor lock-in .
+  id: totrans-63
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 开源技术，无供应商锁定风险。
+- en: Furthermore, Unity Catalog offers a Hive-compatible API, allowing third-party
+    tools to integrate with a Unity Catalog metastore as if it were the Hive Metastore.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，Unity Catalog 提供了与 Hive 兼容的 API，允许第三方工具与 Unity Catalog 元数据存储集成，就像它是 Hive
+    Metastore 一样。
+- en: Creating a new catalog
+  id: totrans-65
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建一个新的目录
+- en: One major difference between Unity Catalog and the Hive Metastore is that the
+    former introduces a three-level namespace when defining tables. The parent namespace
+    will refer to the catalog object. A catalog is a logical container that will hold
+    one to many schemas, or databases.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Unity Catalog 和 Hive Metastore 之间的一个主要区别在于，前者在定义表时引入了三层命名空间。父命名空间将指向目录对象。目录是一个逻辑容器，用于存储一个或多个模式，或数据库。
+- en: One of the first steps in building a new DLT pipeline is to define a centralized
+    location to store the output datasets. Creating a new catalog in Unity Catalog
+    is simple. It can be done using a variety of methods, such as through the Catalog
+    Explorer UI, using SQL statements executed from within a notebook, or using the
+    Databricks REST API.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 构建新的 DLT 流水线的第一步是定义一个集中的位置来存储输出数据集。在 Unity Catalog 中创建一个新的目录非常简单。可以通过多种方式完成，例如通过
+    Catalog Explorer UI、使用在笔记本中执行的 SQL 语句，或者使用 Databricks REST API。
+- en: 'We’ll use the Databricks Catalog Explorer UI to create a new Catalog:'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用 Databricks Catalog Explorer UI 来创建一个新的目录：
+- en: First, navigate to the Catalog Explorer by clicking on the **Catalog Explorer**
+    tab in the navigation sidebar.
+  id: totrans-69
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，通过点击导航侧边栏中的 **Catalog Explorer** 标签，导航到 Catalog Explorer。
+- en: Next, click the **Create** **Catalog** button.
+  id: totrans-70
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，点击 **创建** **目录** 按钮。
+- en: Give the catalog a meaningful name.
+  id: totrans-71
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 给目录起个有意义的名字。
+- en: Select **Standard** as the catalog type.
+  id: totrans-72
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择 **标准** 作为目录类型。
+- en: Finally, click on the **Create** button to create the new catalog.
+  id: totrans-73
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，点击 **创建** 按钮来创建新的目录。
+- en: Assigning catalog permissions
+  id: totrans-74
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 分配目录权限
+- en: As previously mentioned, one of the benefits of using Unity Catalog is that
+    your data is secured by default. In other words, access to data stored in the
+    Unity Catalog is denied by default unless explicitly permitted. To create new
+    tables in the newly created catalog, we’ll need to grant permission to create
+    and manipulate new tables.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前所述，使用 Unity Catalog 的一个好处是，默认情况下你的数据是受到保护的。换句话说，除非明确允许，否则默认情况下拒绝访问存储在 Unity
+    Catalog 中的数据。要在新创建的目录中创建新表，我们需要授予创建和操作新表的权限。
+- en: Important note
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: If you are the creator and owner of a target catalog and schema objects, as
+    well as the creator and owner of a DLT pipeline, then you do not need to execute
+    the following **GRANT** statements. The **GRANT** statements are meant to demonstrate
+    the types of permissions needed to share data assets across multiple groups and
+    users in a typical Unity Catalog metastore.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你是目标目录和模式对象的创建者和所有者，并且是 DLT 流水线的创建者和所有者，那么你不需要执行以下 **GRANT** 语句。**GRANT**
+    语句旨在展示在典型的 Unity Catalog 元存储中跨多个小组和用户共享数据资产时所需的权限类型。
+- en: 'First, let’s grant access to use the catalog. From a new notebook, execute
+    the following SQL syntax to grant access to use the newly created catalog, where
+    **my_user** is the name of a Databricks user and **chp2_transforming_data** is
+    the name of the catalog created in the previous example:'
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们授予使用目录的权限。在一个新的笔记本中，执行以下 SQL 语法来授予使用新创建的目录的权限，其中 **my_user** 是 Databricks
+    用户的名字，**chp2_transforming_data** 是在前面的示例中创建的目录名称：
+- en: '[PRE3]'
+  id: totrans-79
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Next, we’ll need to create a schema that will hold the output datasets from
+    our DLT pipeline. From the same notebook, execute the following SQL statement
+    to create a new schema:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们需要创建一个模式，用来存储来自 DLT 流水线的输出数据集。在相同的笔记本中，执行以下 SQL 语句来创建一个新的模式：
+- en: '[PRE4]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Execute the following statement to grant permission to create materialized
+    views within the newly created schema:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 执行以下语句来授予在新创建的模式中创建物化视图的权限：
+- en: '[PRE5]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: By now, you should see how simple yet powerful Unity Catalog makes applying
+    consistent data security to your data pipeline datasets, providing data stewards
+    with a variety of options to enforce dataset permissions across their organization.
+    Let’s turn our attention to how we can configure some of the advanced features
+    and settings of a DLT pipeline.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到现在为止，你应该能够看到 Unity Catalog 如何简单而强大地将一致的数据安全性应用到你的数据流水线数据集，提供数据管理员多种选项来强制执行组织内的数据集权限。接下来，让我们关注如何配置
+    DLT 流水线的一些高级功能和设置。
+- en: Data pipeline settings
+  id: totrans-85
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 数据流水线设置
+- en: Up until now, we’ve only discussed how to use the DLT framework to declare tables,
+    views, and transformations on the arriving data. However, the computational resources
+    that execute a particular data pipeline also play a major role in landing the
+    latest data in a l akehouse.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们只讨论了如何使用 DLT 框架声明表、视图和对到达数据的转换。然而，执行特定数据流水线的计算资源在将最新数据加载到湖仓中也起着重要作用。
+- en: In this section, we’re going to discuss the different data pipeline settings
+    and how you can control computational resources, such as the cluster, at runtime.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节将讨论不同的数据管道设置，以及如何在运行时控制计算资源，例如集群。
+- en: The following pipeline settings can be configured directly from the DLT UI or
+    using the Databricks REST API.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下管道设置可以通过DLT UI或Databricks REST API直接配置。
+- en: The DLT product edition
+  id: totrans-89
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: DLT产品版本
+- en: The data pipeline product edition tells the DLT framework what set of features
+    your data pipeline will utilize. Higher product editions will contain more features,
+    and as a result, Databricks will assess a higher price ( a DBU).
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据管道产品版本告诉DLT框架你的数据管道将使用哪些功能集。更高版本的产品包含更多功能，因此，Databricks会评估更高的价格（以DBU计费）。
+- en: 'Databricks offers three types of product editions for DLT pipelines, ranked
+    in order of feature set, from the least features to the most:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Databricks为DLT管道提供了三种类型的产品版本，按功能集的多少从少到多排列：
+- en: '**Core** : **Core** is the base product edition. This product edition is meant
+    for streaming workloads that only append new data to streaming tables. Data expectations
+    (data quality enforcement is discussed in the next chapter) and utilities to apply
+    change data capture are not available in this product edition.'
+  id: totrans-92
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**基础版**：**基础版**是最基本的产品版本。此产品版本仅适用于将新数据追加到流表的流式工作负载。数据期望（数据质量执行将在下一章讨论）和应用变更数据捕获的工具在此版本中不可用。'
+- en: '**Pro** : The **Pro** product edition is the next edition above Core. This
+    production edition is designed for streaming workloads that append new data to
+    streaming tables and apply updates and deletes using **APPLY** **CHANGES** command.
+    However, data quality expectations are not available in this product edition.'
+  id: totrans-93
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**专业版**：**专业版**产品版本是比Core版本更高的版本。此产品版本专为流式工作负载设计，能够向流表中追加新数据，并使用**APPLY** **CHANGES**命令应用更新和删除操作。然而，该产品版本不提供数据质量期望。'
+- en: '**Advanced** : The **Advanced** product edition is the most feature-rich product
+    edition. Data quality expectations are available in this production edition, as
+    well as support for appending new data to streaming tables and applying inserts,
+    updates, and deletes that have occurred in the upstream data sources.'
+  id: totrans-94
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**高级版**：**高级版**产品版本是功能最为丰富的版本。此产品版本支持数据质量期望，同时支持向流表中追加新数据，并对上游数据源中发生的插入、更新和删除操作进行处理。'
+- en: There may be times when your requirements change over time. For example, you
+    might require strict data quality enforcement to prevent downstream failures in
+    third-party **business intelligence** ( **BI** ) reporting tools. In scenarios
+    like these, you can update the product edition of an existing DLT pipeline at
+    any time, allowing your data pipeline to adapt to changes in your feature requirements
+    and budget.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时你的需求可能会随着时间的推移发生变化。例如，你可能需要严格的数据质量执行，以防止第三方**商业智能**（**BI**）报告工具在下游发生故障。在这种情况下，你可以随时更新现有DLT管道的产品版本，使你的数据管道能够根据功能需求和预算的变化进行调整。
+- en: Pipeline execution mode
+  id: totrans-96
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 管道执行模式
+- en: DLT offers a way to inform a system that the changes to a data pipeline are
+    experimental. This feature is called data pipeline environment mode. There are
+    two available environment modes – **development** and **production** . The main
+    difference is the behavior of the computational resource.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT提供了一种方式，通知系统数据管道的更改是实验性的。这个功能被称为数据管道环境模式。共有两种环境模式——**开发**和**生产**。它们的主要区别在于计算资源的行为。
+- en: In development environment mode, a data flow task will not be automatically
+    retried if a failure is encountered. This allows a data engineer to intervene
+    and correct any programmatic errors during ad hoc development cycles.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在开发环境模式下，如果遇到故障，数据流任务不会自动重试。这允许数据工程师在临时开发周期中干预并修正任何程序性错误。
+- en: Furthermore, during a failure in development mode, the cluster executing the
+    data pipeline updates will remain up. This allows a data engineer to view the
+    driver logs and cluster metrics of the cluster, and it also prevents a lengthy
+    cluster re-provisioning and re-initialization of the cluster runtime for each
+    pipeline execution, which, depending upon the cloud provider, could take 10 to
+    15 minutes to complete. It’s expected to have short and iterative development
+    and testing cycles, which assist data engineers in their development life cycle
+    by keeping the cluster up and running.
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，在开发模式下发生故障时，执行数据管道更新的集群将保持运行。这允许数据工程师查看集群的驱动日志和集群指标，同时防止每次管道执行时集群的重新配置和重新初始化运行时，这个过程在不同云服务商中可能需要
+    10 到 15 分钟才能完成。预计会有较短且迭代的开发和测试周期，通过保持集群的持续运行，帮助数据工程师更顺利地完成开发生命周期。
+- en: The data pipeline environment mode can be set from the DLT UI by clicking the
+    environment mode toggle switch at the very top navigation bar of a data pipeline
+    in the DLT UI.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据管道环境模式可以通过点击 DLT UI 中数据管道最顶部导航栏的环境模式切换开关来设置。
+- en: '![Figure 2.3 – DLT pipeline execution mode can be set using the toggle switch
+    from the UI](img/B22011_02_003.jpg)'
+  id: totrans-101
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.3 – DLT 管道执行模式可以通过 UI 中的切换开关进行设置](img/B22011_02_003.jpg)'
+- en: Figure 2.3 – DLT pipeline execution mode can be set using the toggle switch
+    from the UI
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.3 – DLT 管道执行模式可以通过 UI 中的切换开关进行设置
+- en: 'Alternatively, the environment mode can also be set using the Databricks REST
+    API. In the following code snippet, we’ll use the Python **requests** library
+    to send a **PUT** request to the Databricks DLT pipelines REST API that will set
+    the development mode of a DLT pipeline. Note that the endpoint URL will change,
+    depending on your Databricks workspace deployment, and the code snippet is just
+    an example:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 或者，环境模式也可以通过 Databricks REST API 来设置。在下面的代码示例中，我们将使用 Python **requests** 库发送一个
+    **PUT** 请求到 Databricks DLT 管道 REST API，设置 DLT 管道的开发模式。请注意，终端 URL 会根据你的 Databricks
+    工作区部署而有所不同，下面的代码只是一个示例：
+- en: '[PRE6]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Databricks runtime
+  id: totrans-105
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: Databricks 运行时
+- en: DLT is a version-less product feature on the Databricks Data Intelligence Platform.
+    In other words, Databricks manages the underlying **Databricks Runtime** ( **DBR**
+    ) that a data pipeline uses for its cluster.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: DLT 是 Databricks 数据智能平台上的一个无版本产品功能。换句话说，Databricks 管理数据管道所使用的集群底层**Databricks
+    运行时**（**DBR**）。
+- en: Furthermore, Databricks will automatically upgrade a data pipeline cluster to
+    use the latest stable runtime release. Runtime upgrades are important because
+    they introduce bug fixes, new performance features, and other enhancements. This
+    can mean that your data pipelines will execute faster, translating to less time
+    and money spent to transform the latest data in your l akehouse.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，Databricks 会自动升级数据管道集群，以使用最新的稳定运行时版本。运行时升级非常重要，因为它们引入了错误修复、新的性能特性和其他增强功能。这意味着你的数据管道将执行得更快，从而节省更多时间和金钱，帮助你更高效地转换最新的数据到湖仓中。
+- en: You might even be eager to test out the latest performance features. Each DLT
+    pipeline has a **Channel** setting that allows data engineers to select one of
+    two channel options – **Current** and **Preview** . The Preview channel allows
+    data engineers to configure a data pipeline to execute using the latest, experimental
+    runtime that contains the new performance features and other enhancements. However,
+    since this is an experimental runtime, it’s not recommended that data pipelines
+    running in production should use a Preview channel of the Databricks runtime.
+    Instead, it’s recommended to use the former option, Current, which selects the
+    latest stable release of the Databricks runtime.
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你甚至可能迫不及待地想要测试最新的性能特性。每个 DLT 管道都有一个**通道**设置，允许数据工程师选择两种通道选项之一——**当前**和**预览**。预览通道允许数据工程师配置数据管道，使用包含新性能特性和其他增强功能的最新实验性运行时进行执行。然而，由于这是一个实验性运行时，不建议在生产环境中使用
+    Databricks 运行时的预览通道。相反，建议使用“当前”选项，选择 Databricks 运行时的最新稳定版本。
+- en: Furthermore, the DLT system will proactively catch runtime exceptions for data
+    pipelines deployed in production mode. For example, if a new runtime release introduces
+    a runtime bug, also referred to as a runtime regression, or a library version
+    conflict, DLT will attempt to downgrade the cluster to a lower runtime that was
+    known to execute data pipelines successfully, and it will retry executing the
+    pipeline update.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，DLT 系统将主动捕获在生产模式中部署的数据管道的运行时异常。例如，如果新的运行时版本引入了运行时错误（也称为运行时回归）或库版本冲突，DLT 将尝试将集群降级到一个已知能够成功执行数据管道的较低版本，并将重试执行管道更新。
+- en: The following diagram illustrates the automatic runtime upgrade exception handling.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表展示了自动运行时升级异常处理。
+- en: '![Figure 2.4 – In production mode, DLT will attempt to rerun a failed data
+    pipeline execution using a lower Databricks runtime release](img/B22011_02_004.jpg)'
+  id: totrans-111
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.4 – 在生产模式下，DLT 将尝试使用较低版本的 Databricks 运行时重新运行失败的数据管道执行](img/B22011_02_004.jpg)'
+- en: Figure 2.4 – In production mode, DLT will attempt to rerun a failed data pipeline
+    execution using a lower Databricks runtime release
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.4 – 在生产模式下，DLT 将尝试使用较低版本的 Databricks 运行时重新运行失败的数据管道执行。
+- en: Pipeline cluster types
+  id: totrans-113
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 管道集群类型
+- en: Each data pipeline will have two associated clusters – one to perform the dataset
+    updates and one to perform the table maintenance tasks.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 每个数据管道将有两个相关的集群——一个用于执行数据集更新，一个用于执行表维护任务。
+- en: The settings for these two types of clusters are expressed in the pipeline settings
+    of a pipeline, using a JSON cluster configuration definition. There are three
+    types of cluster configurations that can be expressed in the pipeline settings
+    – the update cluster configuration, the maintenance cluster configuration, and
+    a third option that acts as a default cluster configuration, applying generalized
+    settings to both update and maintenance clusters. The schema for this JSON configuration
+    closely follows that of the Databricks Clusters REST API.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这两种类型的集群的设置在管道的管道设置中通过 JSON 集群配置定义表达。可以在管道设置中表达三种类型的集群配置——更新集群配置、维护集群配置，以及作为默认集群配置的第三种选择，适用于更新和维护集群的通用设置。该
+    JSON 配置的架构与 Databricks 集群 REST API 的架构非常相似。
+- en: In addition to configuring the physical attributes of a cluster, such as the
+    number of worker nodes and virtual machine instance types, the cluster configuration
+    can also contain advanced Spark configurations. Let’s walk through a sample cluster
+    configuration together.
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了配置集群的物理属性，如工作节点数量和虚拟机实例类型外，集群配置还可以包含高级的 Spark 配置。让我们一起浏览一个示例集群配置。
+- en: The following example contains two separate cluster configurations – a default
+    cluster configuration that will be applied to both update and maintenance DLT
+    clusters, as well as another cluster configuration that will be applied only to
+    the update DLT cluster.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下示例包含两个独立的集群配置——一个默认集群配置，将应用于更新和维护 DLT 集群；另一个集群配置，仅应用于更新 DLT 集群。
+- en: In the first cluster configuration, we’ll specify that the cluster configuration
+    will be the default cluster configuration using the **label** attribute. This
+    means that the cluster configuration will be applied to DLT clusters used to update
+    the datasets and for clusters created to run table maintenance tasks. Then, we’ll
+    enable autoscaling for our DLT clusters, specifying that all clusters will begin
+    provisioning a cluster with a single virtual machine but can grow up to five virtual
+    machines in total as processing demands increase. We’ll also specify that an enhanced
+    version of the cluster autoscaling algorithm should be used.
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在第一个集群配置中，我们将使用**标签**属性指定集群配置为默认集群配置。这意味着该集群配置将应用于用于更新数据集的 DLT 集群以及用于运行表维护任务的集群。接下来，我们将为
+    DLT 集群启用自动扩展，指定所有集群将从一个虚拟机开始部署，但随着处理需求的增加，可以扩展到最多五个虚拟机。我们还将指定使用增强版的集群自动扩展算法。
+- en: In the second set of cluster configurations, we’ll specify that the cluster
+    configuration should be applied only to DLT update clusters using the **label**
+    attribute again. Then, we’ll specify which instance types to provision for the
+    update cluster driver and worker nodes. For the driver node, which orchestrates
+    tasks, we’ll specify that the **i4i.2xlarge** EC2 instance type should be used,
+    while all worker nodes should use the **i4i.xlarge** EC2 instances. Lastly, we’ll
+    also enable a Databricks Runtime performance feature, called **Auto-Optimized
+    Shuffle** ( **AOS** ). AOS will automatically size the number of Spark shuffle
+    partitions at runtime, which can improve performance during wide Spark transformations
+    such as joins, aggregations, and merge operations.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在第二组集群配置中，我们将指定集群配置应仅应用于 DLT 更新集群，仍然使用**标签**属性。接着，我们将指定为更新集群的驱动节点和工作节点配置哪些实例类型。对于负责协调任务的驱动节点，我们将指定使用
+    **i4i.2xlarge** EC2 实例类型，而所有工作节点将使用 **i4i.xlarge** EC2 实例类型。最后，我们还将启用 Databricks
+    Runtime 性能特性，称为 **自动优化 Shuffle**（**AOS**）。AOS 将在运行时自动调整 Spark shuffle 分区的数量，从而在广泛的
+    Spark 转换操作（如连接、聚合和合并操作）期间提高性能。
+- en: Important note
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: 'In the following example, we’ve chosen to illustrate the cluster configuration
+    settings using virtual machine instances for the AWS cloud. However, if your workspace
+    is in a different cloud provider, we’d suggest using Delta cache accelerated VM
+    instances of similar sizes – eight cores for the driver node and four cores for
+    the worker nodes ( [https://docs.databricks.com/en/optimizations/disk-cache.html](https://docs.databricks.com/en/optimizations/disk-cache.html)
+    ):'
+  id: totrans-121
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在以下示例中，我们选择使用虚拟机实例来说明 AWS 云的集群配置设置。 然而，如果您的工作空间位于不同的云服务提供商上，我们建议使用类似大小的 Delta
+    缓存加速 VM 实例——驱动节点为八个核心，工作节点为四个核心（[https://docs.databricks.com/en/optimizations/disk-cache.html](https://docs.databricks.com/en/optimizations/disk-cache.html)）：
+- en: '[PRE7]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: As you can see, cluster configurations are a powerful tool that provides data
+    engineers with the ability to apply either generalized cluster settings, target
+    specific cluster settings, or do a combination of both. This is a great way to
+    tune clusters for specific workloads and yield additional performance for your
+    DLT pipelines.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，集群配置是一个强大的工具，提供了数据工程师应用通用集群设置、针对特定集群设置或两者结合的能力。这是为特定工作负载调整集群并为 DLT 管道提供额外性能的绝佳方式。
+- en: A serverless compute versus a traditional compute
+  id: totrans-124
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 无服务器计算与传统计算
+- en: Data pipelines can be executed using clusters configured with a traditional
+    compute or a serverless compute.
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据管道可以使用配置了传统计算或无服务器计算的集群来执行。
+- en: 'A traditional compute gives a user the most control over computational resources.
+    However, with a traditional compute, the user will need to manage several aspects
+    of the underlying cluster. For example, data engineering teams will need to configure
+    cluster attributes such as the auto-scaling behavior, whether the pipeline should
+    be executed using the Photon engine or the legacy Catalyst engine in Spark, as
+    well as optional c luster tagging. Furthermore, traditional compute allows the
+    user to have full control over the VM instance types that are selected for the
+    driver and worker nodes of the cluster. As we saw in the previous section, the
+    VM instance types can be specified under the pipeline settings by listing specific
+    instance types within the JSON configuration. For example, the following cluster
+    configuration specifies the i4i.xlarge and i4i.2xlarge EC2 instance types for
+    all update clusters within a DLT pipeline:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 传统计算为用户提供了最大的计算资源控制。然而，使用传统计算时，用户需要管理底层集群的多个方面。例如，数据工程团队需要配置集群属性，如自动扩展行为、是否使用
+    Photon 引擎或传统的 Catalyst 引擎在 Spark 中执行管道，以及可选的集群标签。此外，传统计算允许用户对为集群的驱动节点和工作节点选择的虚拟机实例类型拥有完全控制权。正如我们在前一部分看到的那样，可以在管道设置中通过在
+    JSON 配置中列出特定实例类型来指定虚拟机实例类型。例如，以下集群配置指定了 i4i.xlarge 和 i4i.2xlarge EC2 实例类型用于 DLT
+    管道中的所有更新集群：
+- en: '[PRE8]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: However, DLT pipelines configured to use a serverless compute will abstract
+    away all the underlying cluster settings, such as the cluster VM instance types,
+    the number of worker nodes, and the autoscaling settings. As the name *serverless
+    compute* suggests, the computational resources will be provisioned and managed
+    by Databricks in the Databricks cloud provider account. Behind the scenes, Databricks
+    will maintain a pool of pre-provisioned computational resources so that cluster
+    provisioning is fast. As soon as an update for a data pipeline is triggered, the
+    DLT system will create a logical network inside of the Databricks cloud provider
+    account and initialize a cluster to execute the pipeline’s data flow graph. Databricks
+    will automatically select the VM instance type, the Photon execution engine, and
+    the autoscaling behavior.
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，配置为使用无服务器计算的DLT管道将会抽象掉所有底层集群设置，例如集群虚拟机实例类型、工作节点数量以及自动扩展设置。正如*无服务器计算*这一名称所示，计算资源将由Databricks在Databricks云提供商帐户中进行配置和管理。在后台，Databricks将维持一个预配置计算资源池，以便集群配置快速完成。一旦数据管道的更新被触发，DLT系统将在Databricks云提供商帐户中创建一个逻辑网络，并初始化一个集群来执行管道的数据流图。Databricks将自动选择虚拟机实例类型、Photon执行引擎以及自动扩展行为。
+- en: As an added layer of security, there is no communication permitted between logical
+    networks or from the external internet, and the computational resources are never
+    reused across serverless workloads. When the data pipeline processing has been
+    completed and the cluster has been terminated, the computational resources are
+    released back to the cloud provider and destroyed.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 作为一层额外的安全性，逻辑网络之间或与外部互联网之间不允许通信，并且计算资源不会在无服务器工作负载之间重复使用。当数据管道处理完成并且集群已终止时，计算资源将被释放回云提供商并销毁。
+- en: You might choose a serverless compute to remove the infrastructure overhead
+    of maintaining and updating multiple cluster policies, as well as to also take
+    advantage of fast cluster provisioning when reacting to spikes in processing demands
+    is critical. Plus, serverless execution enables other platform features, such
+    as updating materialized views in continuous processing mode (processing modes
+    are covered in the next section).
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能会选择无服务器计算来消除维护和更新多个集群策略的基础设施开销，同时也能在应对处理需求激增时，利用快速集群配置。此外，无服务器执行还可以启用其他平台功能，例如在连续处理模式下更新物化视图（处理模式将在下一节中介绍）。
+- en: Loading external dependencies
+  id: totrans-131
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 加载外部依赖项
+- en: 'Data pipelines may need to load external dependencies, such as helper utilities
+    or third-party libraries. As such, DLT offers three ways to install runtime dependencies
+    for a data pipeline:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据管道可能需要加载外部依赖项，如帮助工具或第三方库。因此，DLT提供了三种方式来安装数据管道的运行时依赖项：
+- en: From a notebook cell, using the **%pip** magic command ( [https://docs.databricks.com/en/notebooks/notebooks-code.html#mix-languages](https://docs.databricks.com/en/notebooks/notebooks-code.html#mix-languages)
+    )
+  id: totrans-133
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从笔记本单元格中，使用**%pip**魔法命令（[https://docs.databricks.com/en/notebooks/notebooks-code.html#mix-languages](https://docs.databricks.com/en/notebooks/notebooks-code.html#mix-languages)）
+- en: Loading a module from a workspace file or Databricks repo
+  id: totrans-134
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从工作区文件或Databricks仓库加载模块
+- en: Using a cluster initialization script
+  id: totrans-135
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用集群初始化脚本
+- en: 'The popular Python package manager **pip** can be used to install Python modules
+    from any notebook in a data pipeline’s source code, via the **%pip** Databricks
+    magic command. **%pip** is the simplest method for installing library dependencies
+    in a data pipeline. At runtime, the DLT system will detect all notebook cells
+    containing **%pip** magic commands and execute these cells first, before performing
+    any pipeline updates. Furthermore, all notebooks for a declared data pipeline’s
+    source code will share a single virtual environment, so the library dependencies
+    will be installed together in an isolated environment and be globally available
+    to all notebooks in a data pipeline’s source code. Conversely, the notebooks for
+    a data pipeline cannot install different versions of the same Python library.
+    For example, the following code sample will use the **pip** package manager to
+    install the popular libraries **numpy** , **pandas** , and **scikit-learn** ,
+    as well as a custom Python library from a Databricks **Volumes** location:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 流行的 Python 包管理器 **pip** 可以通过 **%pip** Databricks 魔法命令，从数据管道源代码中的任何笔记本安装 Python
+    模块。**%pip** 是在数据管道中安装库依赖项的最简单方法。在运行时，DLT 系统会检测到所有包含 **%pip** 魔法命令的笔记本单元，并首先执行这些单元，然后再进行管道更新。此外，声明的数据管道源代码中的所有笔记本将共享一个虚拟环境，因此库依赖项将在一个隔离的环境中一起安装，并对数据管道源代码中的所有笔记本全局可用。相反，数据管道中的笔记本不能安装相同
+    Python 库的不同版本。例如，以下代码示例将使用 **pip** 包管理器安装流行的库 **numpy**、**pandas** 和 **scikit-learn**，以及来自
+    Databricks **Volumes** 位置的自定义 Python 库：
+- en: '[PRE9]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: As a best practice, these dependency installation statements should be placed
+    at the very top of a notebook, so that it's easier to reference pipeline dependencies
+    quickly.
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最佳实践是，这些依赖项安装语句应放在笔记本的顶部，以便能够更快速地引用管道依赖项。
+- en: Alternatively, library dependencies can also be installed as a Python module.
+    In this scenario, the library can be installed and loaded in a DLT pipeline as
+    either a workspace file or from a Databricks Repo, if the module is version-controlled
+    using a Git provider, such as GitHub or Bitbucket.
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另外，库依赖项也可以作为 Python 模块安装。在这种情况下，库可以作为工作区文件或从 Databricks Repo 安装并加载到 DLT 管道中，前提是该模块使用
+    Git 提供者（如 GitHub 或 Bitbucket）进行版本控制。
+- en: Lastly, cluster initialization scripts can also be used to install external
+    dependencies. These scripts are run after a cluster has provisioned the VMs and
+    installed the Databricks runtime, but before the data pipeline begins execution.
+    For example, this type of dependency installation might be applicable in a scenario
+    where firmwide libraries need to be consistently installed across all data engineering
+    platforms.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，集群初始化脚本也可以用来安装外部依赖项。这些脚本在集群配置好虚拟机并安装好 Databricks 运行时后运行，但在数据管道开始执行之前。例如，这种类型的依赖项安装可能适用于在所有数据工程平台上需要一致安装公司范围的库的场景。
+- en: Important note
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: You may have noticed that the preceding options only covered installing Python
+    dependencies. DLT does not support installing JVM libraries, since it only offers
+    the Python and SQL programming interfaces.
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可能已经注意到，前面的选项仅涵盖了安装 Python 依赖项。DLT 不支持安装 JVM 库，因为它仅提供 Python 和 SQL 编程接口。
+- en: Data pipeline processing modes
+  id: totrans-143
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 数据管道处理模式
+- en: The data pipeline processing mode determines how frequently the tables and materialized
+    views within a pipeline are updated. DLT offers two types of pipeline processing
+    modes – **triggered** processing mode and **continuous** processing mode.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据管道处理模式决定了管道内的表和物化视图更新的频率。DLT 提供了两种管道处理模式——**触发式**处理模式和**连续**处理模式。
+- en: Triggered processing mode will update the datasets contained within a pipeline
+    once and then immediately terminate the cluster that was provisioned to run the
+    pipeline, releasing the computational resources back to the cloud provider and
+    thereby terminating additional cloud costs from being assessed. As the name suggests,
+    triggered processing mode can be run in an ad hoc manner and will execute immediately
+    from a triggering event, such as the event of a button clicked on the DLT UI by
+    a user or an invocation to the Databricks REST API.
+  id: totrans-145
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 触发式处理模式将在管道内更新数据集一次，然后立即终止为运行管道而配置的集群，将计算资源释放回云提供商，从而终止额外的云费用产生。顾名思义，触发式处理模式可以以临时的方式运行，并会在触发事件发生时立即执行，例如用户在
+    DLT 用户界面上点击按钮或调用 Databricks REST API。
+- en: '![Figure 2.5 – A triggered data pipeline will refresh each dataset and then
+    immediately terminate the cluster](img/B22011_02_005.jpg)'
+  id: totrans-146
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.5 – 一个触发的数据管道将刷新每个数据集，然后立即终止集群](img/B22011_02_005.jpg)'
+- en: Figure 2.5 – A triggered data pipeline will refresh each dataset and then immediately
+    terminate the cluster
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.5 – 一个触发的数据管道将刷新每个数据集，然后立即终止集群
+- en: Triggered processing mode can also be triggered to run using a **cron** schedule,
+    which can be configured from the UI or via the REST API. As shown in *Figure 2*
+    *.6* , a recurring schedule can be created by clicking on the **Schedule** drop-down
+    button in the DLT UI, clicking the **Add schedule** button, and finally, selecting
+    the desired time to trigger a pipeline update. Each day, the datasets within the
+    pipeline will be refreshed at the scheduled time.
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 触发处理模式也可以通过 **cron** 调度触发运行，调度可以通过 UI 或 REST API 进行配置。如 *图 2.6* 所示，点击 DLT UI
+    中的 **Schedule** 下拉按钮，点击 **Add schedule** 按钮，最后选择触发管道更新的时间，即可创建一个循环调度。每天，管道中的数据集将在预定时间刷新。
+- en: '![Figure 2.6 – DLT pipelines can be scheduled to refresh datasets based on
+    a repeating schedule](img/B22011_02_006.jpg)'
+  id: totrans-149
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.6 – DLT 管道可以根据重复的计划安排来刷新数据集](img/B22011_02_006.jpg)'
+- en: Figure 2.6 – DLT pipelines can be scheduled to refresh datasets based on a repeating
+    schedule
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.6 – DLT 管道可以根据重复的计划安排来刷新数据集
+- en: Conversely, continuous processing mode will provision computational resources
+    to refresh datasets within a pipeline but will continue to execute indefinitely,
+    processing data and refreshing the tables and materialized views as data arrives
+    from the source. A continuous processing pipeline will keep the computational
+    resources running and will continue to incur cloud costs, with the trade-off of
+    minimal data staleness. This type of pipeline mode should be selected when data
+    latency is prioritized over cloud compute costs for a particular data pipeline.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相反，持续处理模式将配置计算资源来刷新管道中的数据集，但会持续执行，处理数据并在数据从源端到达时刷新表格和物化视图。持续处理管道将保持计算资源运行，并持续产生云成本，换取最小的数据陈旧性。当数据延迟优先于云计算成本时，应选择这种类型的管道模式。
+- en: Fortunately, the pipeline processing mode and other pipeline settings can be
+    updated throughout the lifecycle of a data pipeline, allowing the pipeline to
+    be flexible around processing latency and compute costs. For example, an economic
+    downturn may force an organization to prioritize cost savings over latency but
+    may again emphasize latency later down the road.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 幸运的是，管道处理模式和其他管道设置可以在数据管道的生命周期内进行更新，使得管道能够灵活应对处理延迟和计算成本。例如，经济衰退可能迫使一个组织优先考虑节省成本而非延迟，但之后可能又会重新强调延迟。
+- en: Let’s use everything that we’ve learned together in this chapter and build a
+    DLT pipeline that will apply SCD Type 2 changes to downstream datasets in our
+    data pipeline.
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们一起使用本章所学的所有内容，构建一个 DLT 管道，将 SCD 类型 2 的变更应用到数据管道中的下游数据集。
+- en: Hands-on exercise – applying SCD Type 2 changes
+  id: totrans-154
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实践练习 – 应用 SCD 类型 2 的变更
+- en: In this hands-on exercise, we’ll use Databricks Auto Loader to incrementally
+    load JSON files that are written to a raw landing zone in a cloud storage account.
+    Next, we’ll transform downstream columns and join data ingested from an external
+    Postgres database.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本次实践练习中，我们将使用 Databricks Auto Loader 增量加载写入云存储账户原始着陆区的 JSON 文件。接下来，我们将转换下游列并连接从外部
+    Postgres 数据库中获取的数据。
+- en: Important note
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: Reading data from a remote Postgres database is optional. This step is intended
+    to demonstrate the flexibility of the Databricks Data Intelligence Platform, showing
+    you how easy it is to read structured data from a remote RDBMS and combine it
+    with semi-structured data. If you do not have a Postgres database, a static DataFrame
+    containing the taxi driver information is provided for you.
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从远程 Postgres 数据库读取数据是可选的。此步骤旨在展示 Databricks 数据智能平台的灵活性，向你展示如何轻松地从远程关系型数据库管理系统（RDBMS）读取结构化数据，并将其与半结构化数据结合。如果你没有
+    Postgres 数据库，我们为你提供了一个包含出租车司机信息的静态 DataFrame。
+- en: If you haven’t done so, you will need to clone the accompanying notebooks from
+    this chapter’s GitHub repo, located at [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02)
+    .
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你还没有这样做，你需要从本章的GitHub仓库克隆随附的笔记本，仓库地址是：[https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter02)。
+- en: Let’s start by importing the data generator notebook, titled **Generate Mock
+    Taxi Trip Data** . This notebook will create a mock dataset containing fictitious
+    information about taxi trips. Once the mock dataset has been generated, this notebook
+    will store the taxi trip dataset as multiple JSON files in our cloud storage account,
+    which will be later ingested by our DLT pipeline. Attach the taxi trip data generator
+    notebook to an all-purpose cluster and execute all the cells to generate mock
+    data.
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先导入数据生成器笔记本，名为**生成模拟出租车行程数据**。该笔记本将创建一个包含虚拟出租车行程信息的模拟数据集。一旦模拟数据集生成，该笔记本会将出租车行程数据集存储为多个JSON文件到我们的云存储账户中，之后这些文件将由我们的DLT管道摄取。将出租车行程数据生成器笔记本附加到通用集群，并执行所有单元格以生成模拟数据。
+- en: Next, let’s create our DLT pipeline definition. Create a new notebook by clicking
+    the workspace table on the left sidebar, clicking on the **Add** dropdown, and
+    selecting **Notebook** . Rename the notebook with a meaningful name, such as **Taxi
+    Trips DLT Pipeline** . We’ll declare the datasets and transformations for our
+    DLT pipeline in this notebook.
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们创建我们的DLT管道定义。在左侧边栏点击工作区表格，点击**添加**下拉菜单，选择**笔记本**，创建一个新的笔记本。将笔记本重命名为一个有意义的名称，例如**出租车行程
+    DLT 管道**。我们将在这个笔记本中声明DLT管道的数据集和转换。
+- en: 'Next, import the DLT Python module to access the DLT function decorators to
+    define datasets and dependencies, as well as the PySpark functions module:'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，导入DLT Python模块，以访问DLT函数装饰器来定义数据集和依赖关系，以及PySpark函数模块：
+- en: '[PRE10]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'We’ll need to create a streaming table that will ingest taxi trip JSON data
+    that has been written to a landing zone on cloud storage. Let’s start by defining
+    a new streaming table that uses the **cloudFiles** data source to listen for new
+    file events in the raw landing zone:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要创建一个流式表格，来摄取已写入云存储着陆区的出租车行程JSON数据。我们首先定义一个新的流式表格，使用**cloudFiles**数据源监听原始着陆区中的新文件事件：
+- en: '[PRE11]'
+  id: totrans-164
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: As new taxi trip data arrives, our DLT pipeline will efficiently load the data
+    using Auto Loader, fetching only the information pertaining to the unprocessed
+    files.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着新的出租车行程数据到达，我们的DLT管道将通过Auto Loader高效加载数据，仅获取与未处理文件相关的信息。
+- en: 'Now that we’ve ingested the raw taxi trip data, we can begin applying the recorded
+    changes to downstream tables. Let’s first define a target streaming table to apply
+    SCD Type 2 changes that have been reported by the mock taxi trip data source:'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经摄取了原始出租车行程数据，可以开始将记录的更改应用到下游表中。让我们首先定义一个目标流式表格，用于应用由模拟出租车行程数据源报告的SCD类型2更改：
+- en: '[PRE12]'
+  id: totrans-167
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Next, we’ll leverage the **apply_changes()** function covered earlier to instruct
+    the DLT system on how changes should be applied, which columns to omit in the
+    downstream table, and which SCD type to use. Add the following function call to
+    the notebook:'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将利用之前讲解过的**apply_changes()**函数来指示DLT系统如何应用更改，哪些列应在下游表中省略，以及使用哪种SCD类型。请将以下函数调用添加到笔记本中：
+- en: '[PRE13]'
+  id: totrans-169
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'For our last step, we’ll transform a few of the columns in our upstream tables,
+    such as rounding columns with a **float** data type to two decimal places, as
+    well as splitting the **trip_distance** column into a column with miles as the
+    unit of measurement and another column with kilometers as the unit of measurement.
+    Next, we’ll connect to a remote Postgres database and read the latest taxi driver
+    information. If you have access to a Postgres database, you can import the notebook,
+    titled **Generate Postgres Table** , and execute the cells to generate a table
+    to test with. Our final streaming table, which enriches our data and joins the
+    latest taxi driver reference data, will look like the following:'
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一步，我们将对上游表中的一些列进行转换，例如将**浮动**数据类型的列四舍五入到小数点后两位，以及将**trip_distance**列拆分为一个以英里为单位的列和另一个以千米为单位的列。接下来，我们将连接到远程Postgres数据库并读取最新的出租车司机信息。如果你可以访问Postgres数据库，你可以导入标题为**生成Postgres表**的笔记本并执行单元格来生成一个测试用的表格。我们的最终流式表将丰富我们的数据并连接最新的出租车司机参考数据，其外观如下所示：
+- en: '[PRE14]'
+  id: totrans-171
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: In this last function definition, we make use of the **dlt.read()** function
+    to retrieve earlier dataset declarations. Behind the scenes, the DLT framework
+    will add the datasets to the dataflow graph, creating the dependencies between
+    the **taxi_trip_data_merged** and **taxi_trip_silver** datasets.
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在最后一个函数定义中，我们使用**dlt.read()**函数来检索早期的数据集声明。在后台，DLT框架将数据集添加到数据流图中，创建**taxi_trip_data_merged**和**taxi_trip_silver**数据集之间的依赖关系。
+- en: Now, it’s time to create our DLT pipeline. Attach the notebook in the previous
+    step to an all-purpose cluster and execute the notebook cells. When prompted,
+    click on the blue **Create Pipeline** button to open the **Pipeline** UI page.
+    Give the pipeline a meaningful name, such as **Taxi Trip Data Pipeline** . Since
+    we are leveraging the **apply_changes()** function, we will need to select the
+    **Advanced** product edition. Ensure that the **Triggered** processing mode radio
+    button is selected. To view the backend table that is created by the **apply_changes()**
+    function, select the Hive Metastore for the storage location, and provide a target
+    schema to store the pipeline datasets. Accept the remainder default values, and
+    then click the **Create** button to create the pipeline.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，是时候创建我们的DLT管道了。将前一步的笔记本附加到通用集群并执行笔记本单元格。当提示时，点击蓝色的**创建管道**按钮打开**管道**UI页面。为管道起一个有意义的名称，比如**出租车行程数据管道**。由于我们使用了**apply_changes()**函数，因此我们需要选择**高级**产品版本。确保选择了**触发**处理模式单选按钮。为了查看由**apply_changes()**函数创建的后台表格，选择Hive
+    Metastore作为存储位置，并提供一个目标模式来存储管道数据集。接受其余的默认值，然后点击**创建**按钮来创建管道。
+- en: Finally, run the newly created pipeline by clicking the **Start** button in
+    the DLT UI. Soon, you will see a data flow graph that ingests changes from the
+    raw JSON data, enriches downstream columns, and joins the remote structured data
+    from the Postgres database.
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，通过点击DLT UI中的**开始**按钮来运行新创建的管道。很快，你会看到一个数据流图，该图会从原始JSON数据中获取更改，丰富下游列，并将来自Postgres数据库的远程结构化数据进行连接。
+- en: '![Figure 2.7 – A data flow graph generated by the DLT system](img/B22011_02_007.jpg)'
+  id: totrans-175
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 2.7 – 由DLT系统生成的数据流图](img/B22011_02_007.jpg)'
+- en: Figure 2.7 – A data flow graph generated by the DLT system
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 2.7 – 由DLT系统生成的数据流图
+- en: As data is changed in the mock taxi trip data source, the full history of DML
+    changes is picked and applied to a target **taxi_trip_data_merged** table. The
+    output of our data pipeline will be a curated streaming table that contains information
+    about the taxi cab ride, as well as information about the taxi driver and taxi
+    vehicle. Best of all, with just a few lines of code, we deployed a fully scalable,
+    cost-efficient data pipeline that can easily process billions of files.
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当模拟出租车行程数据源中的数据发生变化时，DML更改的完整历史记录会被采集并应用到目标**taxi_trip_data_merged**表。我们数据管道的输出将是一个精心策划的流式表，包含有关出租车行程、出租车司机和出租车车辆的信息。最棒的是，只需几行代码，我们就部署了一个完全可扩展、成本高效的数据管道，可以轻松处理数十亿个文件。
+- en: Summary
+  id: totrans-178
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, we looked at how DLT can simplify our data pipelines by abstracting
+    away many of the low-level details of processing data in Spark. We saw how Databricks
+    Auto Loader solves the scalability problem of stream processing files from cloud
+    storage. With just a few lines of code, we deployed a scalable backend system
+    to efficiently read new files as soon as they appear in a cloud storage location.
+    When it came to applying data changes to downstream datasets within our pipeline,
+    the DLT framework once again simplified data reconciliation when data events were
+    published late or out of order. We also saw how we could apply slowly changing
+    dimensions with just a few parameter changes in the **apply_changes()** API. Finally,
+    we uncovered the details of data pipeline settings, optimizing the pipeline compute
+    based on the computational requirements and DLT feature set that we needed in
+    the data pipeline. We also saw how DLT can automatically handle pipeline failures
+    for us and proactively take action and attempt to fix certain runtime exceptions.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这一章中，我们探讨了DLT如何通过抽象化处理Spark中数据的许多低级细节，简化了我们的数据管道。我们看到Databricks Auto Loader如何解决了从云存储中流式处理文件的可扩展性问题。只需几行代码，我们就部署了一个可扩展的后端系统，能够在云存储位置有新文件出现时立即高效读取。当涉及到将数据变更应用到管道中的下游数据集时，DLT框架再次简化了数据对账工作，特别是在数据事件发布延迟或乱序的情况下。我们还看到，只需在**apply_changes()**
+    API中做几个参数调整，就能应用慢变维度。最后，我们揭示了数据管道设置的细节，根据计算需求和我们在数据管道中所需的DLT功能集优化了管道的计算过程。我们还看到DLT如何自动处理管道故障，主动采取措施并尝试修复某些运行时异常。
+- en: In the next chapter, we’ll look at how we can use *expectations* in DLT to enforce
+    data quality rul es on data throughout each hop in our data pipeline, taking action
+    whenever the data quality rules have been violated.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章，我们将探讨如何在分布式账本技术（DLT）中使用*期望值*来强制执行数据质量规则，确保数据在每一跳的传输过程中都符合要求，并在数据质量规则被违反时采取相应的行动。

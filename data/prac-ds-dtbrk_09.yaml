@@ -1,0 +1,1948 @@
+- en: '9'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '9'
+- en: Model Drift Detection and Retraining
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 模型漂移检测与再训练
+- en: In the last chapter, we covered various workflow management options available
+    in Databricks for automating **machine learning** (**ML**) tasks. Now, we will
+    expand upon our understanding of the ML life cycle up to now and introduce the
+    fundamental concept of **drift**. We will discuss why model monitoring is essential
+    and how you can ensure your ML models perform as expected over time.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一章中，我们讨论了在 Databricks 中用于自动化**机器学习**（**ML**）任务的各种工作流管理选项。现在，我们将扩展我们迄今为止对 ML
+    生命周期的理解，并引入**漂移**的基本概念。我们将讨论为什么模型监控至关重要，以及如何确保你的 ML 模型随着时间推移仍然按预期表现。
+- en: At the time of writing this book, Databricks has a product that is in development
+    that will simplify monitoring model performance and data out of the box. In this
+    chapter, we will go through an example of how to use the existing Databricks functionalities
+    to implement drift detection and monitoring.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在写这本书时，Databricks 正在开发一款产品，将简化模型性能和数据的监控。在本章中，我们将通过一个示例，展示如何使用现有的 Databricks
+    功能实现漂移检测和监控。
+- en: 'We will be covering the following topics:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将涵盖以下主题：
+- en: Motivation for model monitoring
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 模型监控的动机
+- en: Introduction to model drift
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 模型漂移简介
+- en: Introduction to Statistical Drift
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 统计漂移简介
+- en: Techniques for drift detection
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 漂移检测技术
+- en: Implementing drift detection on Databricks
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在 Databricks 上实现漂移检测
+- en: Let’s go through the technical requirements for this chapter.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看本章的技术要求。
+- en: Technical requirements
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'The following are the prerequisites for the chapter:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的先决条件如下：
+- en: Access to a Databricks workspace
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 访问 Databricks 工作区
+- en: A running cluster with Databricks Runtime for Machine Learning (Databricks Runtime
+    ML) with a version higher than 10.3
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个运行中的集群，配备 Databricks 机器学习运行时（Databricks Runtime ML），版本高于 10.3
+- en: Notebooks from [*Chapter 9*](B17875_09.xhtml#_idTextAnchor129) imported into
+    the Databricks workspace
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 从[*第9章*](B17875_09.xhtml#_idTextAnchor129)导入到 Databricks 工作区的笔记本
+- en: Introductory knowledge of hypothesis testing and interpreting statistical tests
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 假设检验和统计测试解释的基础知识
+- en: Let’s take a look at the motivation behind why model monitoring is important.
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看为什么模型监控如此重要。
+- en: The motivation behind model monitoring
+  id: totrans-18
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 模型监控的动机
+- en: According to an article in Forbes magazine by Enrique Dans, July 21, 2019, 87%
+    of data science projects never make it to production ([https://www.forbes.com/sites/enriquedans/2019/07/21/stop-experimenting-with-machine-learning-and-start-actually-usingit/?sh=1004ff0c3365](https://www.forbes.com/sites/enriquedans/2019/07/21/stop-experimenting-with-machine-learning-and-start-actually-usingit/?sh=1004ff0c3365)).
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据 Enrique Dans 在 2019 年 7 月 21 日发表于《福布斯》杂志的文章，87% 的数据科学项目从未进入生产阶段（[https://www.forbes.com/sites/enriquedans/2019/07/21/stop-experimenting-with-machine-learning-and-start-actually-usingit/?sh=1004ff0c3365](https://www.forbes.com/sites/enriquedans/2019/07/21/stop-experimenting-with-machine-learning-and-start-actually-usingit/?sh=1004ff0c3365)）。
+- en: There are a lot of reasons why ML models fail; however, if we look purely at
+    the reason for ML project failure in a production environment, it comes down to
+    a lack of re-training and testing the deployed models for performance consistency
+    over time.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机器学习模型失败的原因有很多；然而，如果我们单纯从生产环境中 ML 项目失败的原因来看，归根结底是因为缺乏再训练以及在生产环境中测试已部署模型的性能一致性。
+- en: 'The performance of the model keeps degrading over time. Many data scientists
+    neglect the maintenance aspect of the models post-production. The following visualizations
+    offer a comparative analysis between two distinct approaches to model management—one
+    where the model is trained once and then deployed for an extended period and another
+    where the model undergoes regular retraining with fresh data while being monitored
+    for performance drift:'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模型的性能随时间不断下降。许多数据科学家忽视了模型生产后的维护。以下可视化展示了两种不同的模型管理方法——一种是模型训练一次后长时间部署，另一种是模型在监控性能漂移的同时定期用新数据重新训练：
+- en: '![Figure 9.1 – A comparison of model quality for a static model versus a regularly
+    trained model](img/B17875_09_01.jpg)'
+  id: totrans-22
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.1 – 静态模型与定期训练模型的质量比较](img/B17875_09_01.jpg)'
+- en: Figure 9.1 – A comparison of model quality for a static model versus a regularly
+    trained model
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.1 – 静态模型与定期训练模型的质量比较
+- en: Source
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来源
+- en: Courtesy of Databricks
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 感谢 Databricks 提供
+- en: There are a lot of statistical tests that can help us monitor changes in our
+    model’s performance over time, and since the field of MLOps is still in the early
+    stages of maturity, ML practitioners struggle with how and which tests to incorporate
+    in their ML productionizing process.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有许多统计测试可以帮助我们监控模型性能随时间的变化，由于 MLOps 领域仍处于发展初期，机器学习从业者在如何以及选择哪些测试纳入其机器学习生产化过程中面临挑战。
+- en: In this chapter, we will dive deeper into what statistical tests we recommend
+    using to monitor ML models in the production environment. Several Python libraries
+    can be seamlessly integrated into the Databricks environment for this purpose.
+    Among these are open source options such as whylogs, Evidently, and Seldon Alibi
+    Detect, which offer various functionalities ranging from data drift tracking to
+    full-scale model health assessments. Although the primary focus of this chapter
+    will be on leveraging statistical tests for model monitoring within Databricks,
+    you are encouraged to explore these libraries to augment your monitoring toolkit.
+    Databricks’ flexibility allows you to easily incorporate these libraries into
+    your workflows if you wish to extend beyond statistical approaches.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将深入探讨我们建议使用哪些统计测试来监控生产环境中的机器学习模型。几种 Python 库可以无缝集成到 Databricks 环境中，用于此目的。这些库包括开源选项，如
+    whylogs、Evidently 和 Seldon Alibi Detect，它们提供从数据漂移追踪到全面的模型健康评估等多种功能。尽管本章的主要重点将放在如何利用统计测试进行
+    Databricks 内的模型监控，但我们鼓励你探索这些库，以增强你的监控工具集。Databricks 的灵活性使你可以轻松地将这些库集成到你的工作流程中，若你希望扩展到统计方法之外的其他方法。
+- en: We will also go over how to use everything we have learned up to now to implement
+    model monitoring on Databricks using open source tools.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还将讨论如何利用迄今为止学到的内容，使用开源工具在 Databricks 上实施模型监控。
+- en: The example we’ll explore focuses on batch scoring using a tabular dataset.
+    However, the underlying principles are equally applicable to streaming or real-time
+    inference involving image or text data.
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将探讨的例子集中于使用表格数据集进行批量评分。然而，底层原则同样适用于涉及图像或文本数据的流式或实时推理。
+- en: Organizations differ in their automation preferences, particularly when it comes
+    to retraining models in response to detected performance drift. In this section,
+    our primary objective is to examine various model monitoring strategies. Depending
+    on your specific use case, you can then determine the most appropriate next steps
+    based on these insights.
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 各组织在自动化偏好上有所不同，尤其是在针对性能漂移进行模型再训练时。在本节中，我们的主要目标是审视各种模型监控策略。根据你的具体使用案例，你可以根据这些见解决定最合适的下一步行动。
+- en: To better contextualize where model monitoring fits in, let’s examine the typical
+    life cycle of an ML project.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了更好地说明模型监控的定位，我们来看看机器学习项目的典型生命周期。
+- en: '![Figure 9.2 – Showing the life cycle of an ML project](img/B17875_09_02.jpg)'
+  id: totrans-32
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.2 – 显示机器学习项目的生命周期](img/B17875_09_02.jpg)'
+- en: Figure 9.2 – Showing the life cycle of an ML project
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.2 – 显示机器学习项目的生命周期
+- en: Source
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 来源
+- en: Courtesy of Databricks
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 感谢 Databricks 提供
+- en: The first step in any ML project is the business coming up with a business problem
+    that they believe can benefit from the application of ML. As part of this process,
+    the various stakeholders and the data scientists come up with the online and offline
+    metrics.
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 任何机器学习项目的第一步是业务方提出他们认为可以从应用机器学习中获益的业务问题。作为此过程的一部分，相关利益方和数据科学家共同制定在线和离线指标。
+- en: Offline metrics are the ones that can be calculated when ML models are being
+    trained, such as accuracy and F1 score. Online metrics are the ones that are business-driven.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 离线指标是在训练机器学习模型时可以计算的指标，如准确率和 F1 分数。在线指标则是与业务相关的指标。
+- en: After the metrics and success criteria are decided, the data scientists and
+    ML engineers work with the data engineers to understand all the data sources that
+    are available to them and which could be useful for the current business problem.
+    In the preceding figure, this is shown as the **Data** **Collection** phase.
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在确定了指标和成功标准后，数据科学家和机器学习工程师与数据工程师合作，理解所有可用的数据源，并确定哪些对于当前的业务问题有用。在前面的图示中，这一阶段被称为**数据**
+    **收集**阶段。
+- en: Once data collection is done, the data scientists proceed to perform the feature
+    engineering and train various ML models, and after evaluating the model, they
+    productionize the best model.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦数据收集完成，数据科学家将继续进行特征工程并训练各种机器学习模型，在评估模型后，他们将生产化最佳模型。
+- en: This productionizing of the model is where the model deployment and monitoring
+    come in. The entire process, from collecting data to training and evaluating models
+    and productionizing the best model, is iterative in nature.
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模型的生产化就是模型部署和监控的过程。整个过程，从收集数据到训练和评估模型，再到将最佳模型投入生产，都是一个迭代的过程。
+- en: Operationalizing the entire process previously explained is what we call MLOps.
+    All the ML deployments look different and depend on the domain and the problem
+    we are trying to solve.
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将之前解释的整个过程付诸实践就是我们所说的 MLOps。所有的机器学习部署都各不相同，取决于我们要解决的领域和问题。
+- en: When you are designing your own ML solution on Databricks, spend considerable
+    time determining how often you will train and deploy a new model and what kind
+    of performance monitoring and action will make sense for your use case.
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你在 Databricks 上设计自己的机器学习解决方案时，应花费相当的时间来确定你将多频繁地训练和部署新模型，以及哪些性能监控和措施对于你的用例来说是合理的。
+- en: So far, we have discovered that degrading model performance over time is one
+    of the main causes of failed ML projects in organizations. Now, let’s take a look
+    at some of the reasons why model performance might degrade over time.
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们已经发现，随着时间推移，模型性能的下降是组织中机器学习项目失败的主要原因之一。现在，让我们来看一下模型性能为何可能随着时间而退化的一些原因。
+- en: Introduction to model drift
+  id: totrans-44
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 模型漂移简介
+- en: ML models can experience a decline in performance over time, which is a common
+    issue in projects. The main reasons for this are changes in the input data that
+    is fed into the model. These changes can occur due to various reasons, such as
+    the underlying distribution of the data changing, an alteration in the relationship
+    between the dependent and independent features, or changes in the source system
+    that generates the data itself.
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机器学习模型可能会随着时间的推移而性能下降，这是项目中的常见问题。主要原因是输入到模型中的数据发生了变化。这些变化可能由于多种原因发生，例如数据的基础分布发生了变化，依赖特征与独立特征之间的关系发生了变化，或者生成数据的源系统发生了变化。
+- en: 'The performance degradation of deployed models over time is called Model Drift.
+    To effectively identify instances of Model Drift, various metrics can be monitored:'
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 部署模型随时间的性能退化称为模型漂移。为了有效地识别模型漂移的实例，可以监控各种指标：
+- en: '**Accuracy**: A declining trend in accuracy can serve as a strong indicator
+    of model drift.'
+  id: totrans-47
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**准确性**：准确性下降的趋势可以作为模型漂移的强烈指示。'
+- en: '**Precision and Recall**: A noticeable decrease in these values may highlight
+    the model''s diminishing ability to make accurate and relevant predictions.'
+  id: totrans-48
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**精确度和召回率**：这些值的显著下降可能会突出模型在做出准确和相关预测方面能力的下降。'
+- en: '**F1 Score**: This is a harmonized metric that encapsulates both precision
+    and recall. A drop in the F1 Score suggests that the model''s overall efficacy
+    is compromised.'
+  id: totrans-49
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**F1 分数**：这是一个统一的度量，涵盖了精确度和召回率。F1 分数下降表明模型的整体效能受到影响。'
+- en: '**Business Metrics**: Beyond technical indicators, key business metrics like
+    conversion rate, churn rate, and customer lifetime value can also reveal model
+    drift by showing the model''s declining impact on business objectives.'
+  id: totrans-50
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**业务指标**：除了技术指标之外，关键的业务指标，如转化率、流失率和客户生命周期价值，也可以通过展示模型对业务目标影响的下降来揭示模型漂移。'
+- en: 'There are many categories of model drift, including the following:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 模型漂移有许多类别，包括以下几种：
+- en: '**Feature drift**: Feature drift refers to changes in the distribution of input
+    features or predictors used by an ML model. These changes can occur due to various
+    reasons, such as changes in data collection processes, measurement errors, or
+    shifts in the characteristics of the data source:'
+  id: totrans-52
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**特征漂移**：特征漂移指的是输入特征或预测变量的分布发生变化，这些特征或变量被机器学习模型用作输入。变化可能由于多种原因发生，例如数据收集过程的变化、测量误差，或数据源特征的变化：'
+- en: For example, if a model is trained on data collected from a specific location
+    and time period and then deployed to a different location or time period where
+    the feature distributions are different, the model may experience feature drift.
+    This can result in the degradation of model performance, as the model may not
+    be able to accurately generalize to the new feature distribution.
+  id: totrans-53
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 例如，如果一个模型是在某个特定地点和时间段收集的数据上训练的，然后被部署到一个特征分布不同的其他地点或时间段，模型可能会遇到特征漂移。这可能导致模型性能下降，因为模型可能无法准确地泛化到新的特征分布上。
+- en: '**Label drift**: Label drift refers to changes in the distribution of output
+    labels or target variables used for training an ML model. These changes can occur
+    due to shifts in the underlying data generation process, changes in data collection
+    methods, or changes in the definitions of labels:'
+  id: totrans-54
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**标签漂移**：标签漂移指的是用于训练机器学习模型的输出标签或目标变量的分布变化。这些变化可能由于基础数据生成过程的变化、数据收集方法的变化或标签定义的变化而发生：'
+- en: For example, if a model is trained to predict customer churn using historical
+    data and the definition of churn changes over time, the model may experience label
+    drift. This can result in a misalignment between the model’s predictions and the
+    ground truth labels, leading to decreased model performance.
+  id: totrans-55
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 例如，如果一个模型通过历史数据训练来预测客户流失，而流失的定义随着时间变化，那么模型可能会经历标签漂移。这可能导致模型的预测与真实标签之间出现不一致，从而导致模型性能下降。
+- en: '**Prediction drift**: Prediction drift refers to changes in the distribution
+    of model predictions over time. This can occur due to changes in the underlying
+    data distribution, changes in the model’s parameters, or changes in the model’s
+    architecture:'
+  id: totrans-56
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**预测漂移**：预测漂移指的是模型预测的分布随着时间变化而发生的变化。这种情况可能由于基础数据分布的变化、模型参数的变化或模型架构的变化而发生：'
+- en: For example, if a model is trained to predict stock prices and deployed in a
+    dynamic financial market, the model’s predictions may drift over time as the market
+    conditions change. Prediction drift can impact the reliability and accuracy of
+    the model’s predictions, leading to potential business or operational implications.
+  id: totrans-57
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 例如，如果一个模型用于预测股市价格并部署在动态的金融市场中，随着市场条件的变化，模型的预测可能会发生漂移。预测漂移可能会影响模型预测的可靠性和准确性，从而可能对业务或运营产生影响。
+- en: '**Concept drift**: Concept drift refers to changes in the underlying concepts
+    or relationships between variables in the data distribution over time. This can
+    occur due to changes in the data source, changes in the data generation process,
+    or changes in the underlying phenomenon being modeled:'
+  id: totrans-58
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**概念漂移**：概念漂移指的是数据分布中变量之间的基础概念或关系随着时间变化而发生的变化。这种情况可能由于数据源的变化、数据生成过程的变化或所建模的基础现象的变化而发生：'
+- en: For example, if a model is trained to predict credit risk based on historical
+    credit data and there are changes in the economic or regulatory environment, the
+    model may experience concept drift. Concept drift can result in a misalignment
+    between the model and the real-world phenomenon, leading to decreased model performance.
+  id: totrans-59
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 例如，如果一个模型基于历史信用数据训练来预测信用风险，并且经济或监管环境发生变化，那么模型可能会经历概念漂移。概念漂移可能导致模型与现实世界现象之间的不一致，从而导致模型性能下降。
+- en: 'We can summarize this information on the various types of drift and how to
+    mitigate them as follows:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以将有关各种漂移类型及其缓解措施的信息总结如下：
+- en: '![Figure 9.3 – Summarizing the various types of drift and the actions we can
+    perform to mitigate them](img/B17875_09_03.jpg)'
+  id: totrans-61
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.3 – 总结各种类型的漂移及我们可以采取的缓解措施](img/B17875_09_03.jpg)'
+- en: Figure 9.3 – Summarizing the various types of drift and the actions we can perform
+    to mitigate them
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.3 – 总结各种类型的漂移及我们可以采取的缓解措施
+- en: Feature drift, label drift, and concept drift collectively fall into the category
+    of **data drift**.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 特征漂移、标签漂移和概念漂移共同归类为**数据漂移**。
+- en: Understanding and addressing drift in ML models is crucial to ensure their continued
+    performance and reliability in real-world applications. Feature drift, label drift,
+    prediction drift, and concept drift are important types of drift that can occur
+    in ML models. Detecting and mitigating drift requires the use of appropriate statistical
+    tests or methods to identify and quantify the changes in data distribution over
+    time.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 理解并解决机器学习模型中的漂移至关重要，以确保它们在实际应用中的持续性能和可靠性。特征漂移、标签漂移、预测漂移和概念漂移是机器学习模型中可能发生的几种重要漂移类型。检测和缓解漂移需要使用适当的统计测试或方法来识别和量化数据分布随时间的变化。
+- en: In the next section, we'll explore another critical factor that can contribute
+    to the deterioration of model performance over time—Statistical Drift.
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将探讨另一个可能导致模型性能随时间恶化的重要因素——统计漂移。
+- en: Introduction to Statistical Drift
+  id: totrans-66
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 统计漂移简介
+- en: Statistical drift refers to changes in the underlying data distribution itself.
+    It can affect both the input features and the target variable. This drift may
+    or may not affect the model's performance but understanding it is crucial for
+    broader data landscape awareness.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 统计漂移是指基础数据分布本身的变化。它可以影响输入特征和目标变量。这种漂移可能会或可能不会影响模型的性能，但理解它对更广泛的数据环境认知至关重要。
+- en: 'To effectively identify instances of Statistical Drift, various metrics can
+    be monitored:'
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了有效地识别统计漂移的实例，可以监控以下各种指标：
+- en: '**Mean and Standard Deviation**: Significant changes can indicate drift.'
+  id: totrans-69
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**均值和标准差**：显著的变化可能表明发生了漂移。'
+- en: '**Kurtosis and Skewness**: Changes signal data distribution alterations.'
+  id: totrans-70
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**峰度和偏度**：变化表明数据分布发生了改变。'
+- en: '**Quantile Statistics**: Look at changes in 25th, 50th, and 75th percentiles
+    for example.'
+  id: totrans-71
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**分位数统计**：例如，观察25th、50th和75th百分位数的变化。'
+- en: 'To fully grasp how Model Drift and Statistical Drift are interconnected, consider
+    the following key points:'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了全面理解模型漂移与统计漂移之间的相互关系，请考虑以下关键点：
+- en: '**Cause and Effect Relationship**: Statistical drift in either the features
+    or the target variable frequently serves as a precursor to model drift. For example,
+    should the age demographic of your customer base shift (indicative of statistical
+    drift), a model designed to predict customer behavior could begin to falter in
+    its performance (resulting in model drift).'
+  id: totrans-73
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**因果关系**：特征或目标变量的统计漂移通常是模型漂移的前兆。例如，若客户群体的年龄结构发生变化（显示统计漂移），则一个用来预测客户行为的模型可能会开始在性能上出现问题（导致模型漂移）。'
+- en: '**Simultaneous Occurrence**: Both forms of drift can occur concurrently. Take,
+    for instance, an e-commerce model that experiences model drift due to seasonal
+    variations, while also undergoing statistical drift owing to changes in customer
+    demographics.'
+  id: totrans-74
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**同时发生**：这两种漂移形式可以同时发生。例如，某电商模型可能因季节性变化而经历模型漂移，同时也由于客户群体的变化而发生统计漂移。'
+- en: '**Diverse Monitoring Requirements**: Each type of drift necessitates its own
+    unique set of monitoring strategies. Model drift is commonly identified through
+    an examination of prediction errors, whereas statistical drift is usually detected
+    by observing shifts in the data distribution.'
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**多样化的监控需求**：每种类型的漂移都需要独特的监控策略。模型漂移通常通过检查预测误差来识别，而统计漂移通常通过观察数据分布的变化来检测。'
+- en: '**Distinct Corrective Measures**: Addressing model drift typically involves
+    retraining the model or making fine-tuned adjustments. On the other hand, statistical
+    drift may call for more comprehensive changes in data processing protocols or
+    adjustments in feature engineering.'
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**不同的纠正措施**：处理模型漂移通常涉及重新训练模型或进行微调。而统计漂移可能需要在数据处理协议或特征工程方面做出更全面的调整。'
+- en: To make an informed decision on which drift detection method to employ, it's
+    essential to weigh the pros and cons of each approach. Your choice will hinge
+    on the specific requirements of your project and the nuances of your business
+    domain. The table below offers a concise summary, highlighting the advantages
+    and challenges of using Model Drift Detection Methods versus Statistical Drift
+    Detection Methods.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在做出选择使用哪种漂移检测方法的决策时，至关重要的是权衡每种方法的优缺点。你的选择将取决于项目的具体需求以及业务领域的细微差别。下表提供了一个简明的总结，突出了使用模型漂移检测方法与统计漂移检测方法的优点和挑战。
+- en: '| **Aspect** | **Model Drift** **Detection Methods** | **Statistical Drift**
+    **Detection Methods** |'
+  id: totrans-78
+  prefs: []
+  type: TYPE_TB
+  zh: '| **方面** | **模型漂移** **检测方法** | **统计漂移** **检测方法** |'
+- en: '| Pros | Ease of detection through performance metrics; Allows for model updates
+    or recalibration | Provides broader understanding of data landscape, Not model-specific
+    |'
+  id: totrans-79
+  prefs: []
+  type: TYPE_TB
+  zh: '| 优点 | 通过性能指标易于检测；允许模型更新或再校准 | 提供对数据环境的更广泛理解，与模型无关 |'
+- en: '| Cons | Requires continual monitoring; Can be resource-intensive | Difficult
+    to quantify; May require sophisticated tests; Less obvious indicators |'
+  id: totrans-80
+  prefs: []
+  type: TYPE_TB
+  zh: '| 缺点 | 需要持续监控；可能会消耗资源 | 难以量化；可能需要复杂的测试；指示器不明显 |'
+- en: Table 9.1 – Summarizing the pros and cons of Model Drift Detection Methods versus
+    Statistical Drift Detection Methods.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表格 9.1 – 总结模型漂移检测方法与统计漂移检测方法的优缺点。
+- en: In the next section, we will discuss the various techniques we can utilize to
+    monitor drift in our features and model performance over time.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一部分中，我们将讨论可以用来监控特征和模型性能随时间变化的各种技术。
+- en: Techniques for drift detection
+  id: totrans-83
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 漂移检测技术
+- en: To ensure effective monitoring of our model’s performance over time, we should
+    track changes in summary statistics and distributions of both the model features
+    and target variables. This will enable us to detect any potential data drift early
+    on.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了确保有效监控模型在时间上的表现，我们应追踪模型特征和目标变量的总结统计量和分布的变化。这将帮助我们早期检测到潜在的数据漂移。
+- en: Furthermore, it’s important to monitor offline model metrics such as accuracy
+    and F1 scores that were utilized during the initial training of the model.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，监控离线模型指标，如准确率和 F1 分数等，也很重要，这些指标是在模型最初训练时使用的。
+- en: Lastly, we should also keep an eye on online metrics or business metrics to
+    ensure that our model remains relevant to the specific business problem we are
+    trying to solve.
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们还应该关注在线指标或业务指标，确保我们的模型始终与我们要解决的特定业务问题相关。
+- en: The following table provides an overview of various statistical tests and methods
+    that can be employed to identify drift in your data and models. Please note that
+    this compilation is not all-encompassing.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下表格提供了用于识别数据和模型漂移的各种统计检验和方法的概览。请注意，这个汇编并非包罗万象。
+- en: '| **Data Type** **to Monitor** | **Sub-Category** | **Statistical Measures**
+    **and Tests** |'
+  id: totrans-88
+  prefs: []
+  type: TYPE_TB
+  zh: '| **需要监控的数据类型** | **子类别** | **统计度量** **和检验** |'
+- en: '| --- | --- | --- |'
+  id: totrans-89
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- | --- |'
+- en: '| **Numeric Features** | Summary Statistics | - Mean |'
+  id: totrans-90
+  prefs: []
+  type: TYPE_TB
+  zh: '| **数值特征** | 总结统计量 | - 均值 |'
+- en: '|  |  | - Median |'
+  id: totrans-91
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 中位数 |'
+- en: '|  |  | - Minimum |'
+  id: totrans-92
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 最小值 |'
+- en: '|  |  | - Maximum |'
+  id: totrans-93
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 最大值 |'
+- en: '|  |  | - Missing value count |'
+  id: totrans-94
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 缺失值计数 |'
+- en: '|  | Statistical Tests | - Kolmogorov-Smirnov (KS) test |'
+  id: totrans-95
+  prefs: []
+  type: TYPE_TB
+  zh: '|  | 统计检验 | - Kolmogorov-Smirnov (KS) 检验 |'
+- en: '|  |  | - Levene test |'
+  id: totrans-96
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - Levene 检验 |'
+- en: '|  |  | - Wasserstein distance |'
+  id: totrans-97
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - Wasserstein 距离 |'
+- en: '| **Categorical Features** | Summary Statistics | - Mode |'
+  id: totrans-98
+  prefs: []
+  type: TYPE_TB
+  zh: '| **分类特征** | 总结统计量 | - 众数 |'
+- en: '|  |  | - Unique level count |'
+  id: totrans-99
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 唯一水平计数 |'
+- en: '|  |  | - Missing value count |'
+  id: totrans-100
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 缺失值计数 |'
+- en: '|  | Statistical Tests | - Chi-Squared Test |'
+  id: totrans-101
+  prefs: []
+  type: TYPE_TB
+  zh: '|  | 统计检验 | - 卡方检验 |'
+- en: '| **Target-Feature Relation** | Numeric Target | - Pearson Coefficient |'
+  id: totrans-102
+  prefs: []
+  type: TYPE_TB
+  zh: '| **目标-特征关系** | 数值型目标 | - 皮尔逊系数 |'
+- en: '|  | Categorical Target | - Contingency Tables |'
+  id: totrans-103
+  prefs: []
+  type: TYPE_TB
+  zh: '|  | 分类目标 | - 列联表 |'
+- en: '| **Model Performance** | Regression Models | - Mean Square Error (MSE) |'
+  id: totrans-104
+  prefs: []
+  type: TYPE_TB
+  zh: '| **模型表现** | 回归模型 | - 均方误差 (MSE) |'
+- en: '|  |  | - Error distribution plots |'
+  id: totrans-105
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 错误分布图 |'
+- en: '|  | Classification Models | - Confusion Matrix |'
+  id: totrans-106
+  prefs: []
+  type: TYPE_TB
+  zh: '|  | 分类模型 | - 混淆矩阵 |'
+- en: '|  |  | - Accuracy |'
+  id: totrans-107
+  prefs: []
+  type: TYPE_TB
+  zh: '|  |  | - 准确率 |'
+- en: Table 9.2 – Monitoring table for detecting various types of drift
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表格 9.2 – 用于检测各种类型漂移的监测表
+- en: Going into detail for each and every statistical test is out of the scope of
+    this book. We will be using open source libraries to perform these tests and detect
+    drift; however, it is still beneficial to learn the high-level steps involved
+    in performing some of the tests we will use in the sample notebooks accompanying
+    this chapter.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对每一种统计检验进行详细讲解超出了本书的范围。我们将使用开源库来执行这些检验并检测漂移；然而，了解我们将在本章附带的示例笔记本中使用的一些检验的高层次步骤仍然是有益的。
+- en: Let’s first understand the basics of hypothesis testing. All statistical tests
+    use the hypothesis testing framework.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们理解假设检验的基础知识。所有统计检验都使用假设检验框架。
+- en: Hypothesis testing
+  id: totrans-111
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 假设检验
+- en: When it comes to drawing conclusions about population characteristics based
+    on sample data, hypothesis tests are invaluable. This statistical technique is
+    designed to examine whether meaningful discrepancies exist between distinct sets
+    of data. Let’s take a look at the core steps involved in hypothesis testing.
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们需要根据样本数据得出关于总体特征的结论时，假设检验是无价的。这个统计技术旨在检验不同数据集之间是否存在显著差异。让我们看看假设检验的核心步骤。
+- en: Core steps in hypothesis testing
+  id: totrans-113
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 假设检验的核心步骤
+- en: 'There are four core steps in hypothesis testing:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设检验的核心步骤有四个：
+- en: '**Formulate** **the hypotheses**:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**制定假设**：'
+- en: '**Null Hypothesis H0**: This proposes that no noteworthy differences exist
+    between the datasets.'
+  id: totrans-116
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**原假设 H0**：该假设主张数据集之间没有显著差异。'
+- en: '**Alternate Hypothesis Ha**: This claims that a significant divergence is present
+    between the datasets.'
+  id: totrans-117
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**备择假设 Ha**：该假设主张数据集之间存在显著差异。'
+- en: '**Establish the level of significance**: Often symbolized by *α*, this value
+    signifies the likelihood of making an erroneous decision by rejecting the null
+    hypothesis when it’s actually true. An *α* value of 0.05 is commonly chosen, which
+    corresponds to a 5% risk of a Type I error.'
+  id: totrans-118
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**确定显著性水平**：通常用*α*表示，该值表示当原假设为真时，拒绝原假设所犯的错误的可能性。常选用0.05作为*α*值，这对应于5%的第一类错误风险。'
+- en: '**Compute the test statistic**: This numerical measure is derived from both
+    the sample data and the null hypothesis. It serves as the basis for determining
+    the validity of the null hypothesis.'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**计算检验统计量**：这个数值度量来自样本数据和原假设，它是判断原假设有效性的依据。'
+- en: '**Ascertain the p-value**: The p-value quantifies the odds of achieving the
+    computed test statistic—or a more extreme result if the null hypothesis holds.
+    This metric guides the decision to either uphold or reject the null hypothesis.'
+  id: totrans-120
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**确定p值**：p值量化了在原假设成立的情况下，获得已计算的检验统计量或更极端结果的可能性。这个度量标准指导我们是否应该接受或拒绝原假设。'
+- en: '**Making the** **final decision**'
+  id: totrans-121
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**做出最终决策**'
+- en: When the p−value< *α*, the null hypothesis is rejected. The data provides ample
+    evidence to support the claim made by the alternate hypothesis.
+  id: totrans-122
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当p−值 < *α* 时，原假设被拒绝。数据提供了充分的证据支持备择假设所提出的主张。
+- en: When the p−value< *α*, the null hypothesis is not rejected. The evidence to
+    back the alternate hypothesis is insufficient.
+  id: totrans-123
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 当p−值 < *α* 时，原假设不被拒绝。支持备择假设的证据不足。
+- en: So, now we understand the basics of hypothesis testing. Let’s go over the steps
+    for some statistical tests that are utilized in the notebook accompanying this
+    chapter to demonstrate drift detection.
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，现在我们了解了假设检验的基本知识。接下来，我们将回顾一些在本章附带的笔记本中用于演示漂移检测的统计检验步骤。
+- en: 'To clearly visualize the outcomes of each numerical test we''ll discuss, the
+    accompanying figures will be based on a synthetic dataset. This dataset contains
+    two distinct yet comparable sets of data points, labeled as ''Group 1'' and ''Group
+    2'':'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了清晰地可视化我们将讨论的每个数值检验结果，附带的图形将基于一个合成数据集。这个数据集包含两个不同但可比较的数据点集，分别标记为“组1”和“组2”：
+- en: Group 1
+  id: totrans-126
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 组1
+- en: This ensemble includes 1,000 entries, generated using a Gaussian distribution
+    with a zero mean and a unitary standard deviation. Essentially, it's a prototypical
+    bell-shaped curve centered at zero.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该数据集包括1,000个条目，使用均值为零、标准差为1的高斯分布生成。实质上，它是一个典型的钟形曲线，中心位于零。
+- en: Group 2
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第二组
+- en: This assembly, too, comprises 1,000 entries. However, these are pulled from
+    a Gaussian distribution with a mean value of one and a unit standard deviation.
+    The distribution closely resembles that of Group 1, albeit shifted one unit to
+    the right on the x-axis.
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该集合也包含1,000个条目。然而，这些条目来自均值为1、标准差为1的高斯分布。其分布与组1相似，但在x轴上向右移动了一个单位。
+- en: Defining Characteristics
+  id: totrans-130
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 定义特征
+- en: '**Sample Size**: Each of the groups, Group 1 and Group 2, contains an equal
+    number of entries, allowing for a balanced comparison.'
+  id: totrans-131
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**样本大小**：组1和组2各包含相同数量的条目，从而实现平衡比较。'
+- en: '**Distribution Nature**: Both groups follow a Gaussian distribution, although
+    the central values are distinct.'
+  id: totrans-132
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**分布性质**：两个组都遵循高斯分布，尽管中心值有所不同。'
+- en: '**Uniform Variance**: The variances for both groups are closely matched, making
+    them appropriate for any tests that hinge on equal variance assumptions.'
+  id: totrans-133
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**方差齐性**：两个组的方差非常接近，使得它们适用于任何基于等方差假设的检验。'
+- en: Statistical tests and measurements for numeric features
+  id: totrans-134
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 数值特征的统计检验和度量
+- en: In the following section, we delve into an array of statistical techniques that
+    are crucial for understanding and analyzing numeric features in your dataset.
+    We’ll explore various tests and metrics that can help you assess the quality,
+    distribution, and relationships of these features, thereby aiding in effective
+    model building and monitoring.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的部分中，我们将深入探讨一系列统计技术，这些技术对于理解和分析数据集中的数值特征至关重要。我们将探索各种检验和度量方法，帮助你评估这些特征的质量、分布和关系，从而有助于有效的模型构建和监控。
+- en: Kolmogorov-Smirnov tests
+  id: totrans-136
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Kolmogorov-Smirnov 检验
+- en: 'The **Kolmogorov-Smirnov** (**KS**) two-sample assessment is a non-parametric
+    method of evaluating whether two separate sets of data originate from identical
+    distributions or if their distributions differ in a statistically meaningful way.
+    This test focuses on comparing the **empirical cumulative distribution functions**
+    (**ECDFs**) of the two datasets. To perform a KS test for detecting drift in our
+    numeric features, we take the following steps:'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**Kolmogorov-Smirnov**（**KS**）两样本检验是一种非参数方法，用于评估两个独立数据集是否来自相同的分布，或它们的分布是否在统计上有显著差异。该检验侧重于比较两个数据集的**经验累积分布函数**（**ECDFs**）。要进行KS检验以检测我们数值特征中的漂移，按照以下步骤进行：'
+- en: 'Formulate hypotheses:'
+  id: totrans-138
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 制定假设：
+- en: '**Null hypothesis (H0)**: This hypothesis posits that both datasets come from
+    the same distribution.'
+  id: totrans-139
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**零假设（H0）**：该假设认为两个数据集来自相同的分布。'
+- en: '**Alternative hypothesis (H1)**: This hypothesis argues that the two datasets
+    have statistically different distributions.'
+  id: totrans-140
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**备择假设（H1）**：该假设认为两个数据集具有统计上不同的分布。'
+- en: Choose a significance level (alpha). This is the cut-off point for deciding
+    whether to reject the null hypothesis. Typical alpha values are 0.05 or 0.01.
+  id: totrans-141
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择显著性水平（alpha）。这是决定是否拒绝零假设的临界点。常见的alpha值为0.05或0.01。
+- en: Calculate the test statistics and determine the critical value or p-value from
+    the KS test’s critical values table.
+  id: totrans-142
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算检验统计量并根据KS检验的临界值表确定临界值或p值。
+- en: 'Make a decision:'
+  id: totrans-143
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 做出决策：
+- en: Compare the p-value obtained in *step 3* with the chosen significance level
+    (alpha).
+  id: totrans-144
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将在*第3步*中获得的p值与选择的显著性水平（alpha）进行比较。
+- en: If the p-value is less than alpha, reject the null hypothesis and conclude that
+    the variances of the groups or samples are not equal.
+  id: totrans-145
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果p值小于alpha，拒绝零假设，并得出结论认为组别或样本的方差不相等。
+- en: If the p-value is larger than alpha, retain the null hypothesis. This suggests
+    that there’s insufficient evidence to say the distributions are different.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果p值大于alpha，保留零假设。这表明没有足够的证据表明分布是不同的。
+- en: The following graph depicts the **Empirical Cumulative Distribution Functions**
+    (**ECDFs**) for Group 1 and Group 2\. The red dashed line indicates the maximum
+    difference between the two ECDFs, quantifying the **Kolmogorov-Smirnov** (**KS**)
+    statistic. The KS statistic and p-value are presented, offering a statistical
+    measure of the drift between the two groups.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图表描绘了**经验累积分布函数**（**ECDFs**）在组1和组2之间的情况。红色虚线表示两个ECDF之间的最大差异，量化了**Kolmogorov-Smirnov**（**KS**）统计量。图中展示了KS统计量和p值，提供了两组之间漂移的统计量度量。
+- en: '![Figure 9.4 – Kolmogorov-Smirnov test visualization using the described dummy
+    data for ''Group 1'' and ''Group 2](img/B17875_09_04.jpg)'
+  id: totrans-148
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图9.4 – 使用描述的虚拟数据为“组1”和“组2”进行Kolmogorov-Smirnov检验的可视化](img/B17875_09_04.jpg)'
+- en: Figure 9.4 – Kolmogorov-Smirnov test visualization using the described dummy
+    data for 'Group 1' and 'Group 2
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.4 – 使用描述的虚拟数据为“组1”和“组2”进行Kolmogorov-Smirnov检验的可视化
+- en: The KS statistic is 0.4310 and the p-value is nearly 0.0, indicating that the
+    difference between the two groups is statistically significant. In terms of "drift,"
+    this suggests that there is indeed a notable change or drift in the distribution
+    between 'Group 1' and 'Group 2.' This is particularly relevant when monitoring
+    models over time for changes in the data they are processing.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: KS统计量为0.4310，p值接近0.0，表明两组之间的差异在统计上显著。从“漂移”的角度来看，这表明“组1”和“组2”之间的分布确实发生了显著变化或漂移。这在长期监测模型时尤为重要，特别是监测它们处理的数据是否发生变化。
+- en: It is important to note that, depending on the use case, we may need to use
+    Bonferroni correction to reduce false positives.
+  id: totrans-151
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，根据具体的应用场景，可能需要使用Bonferroni校正以减少假阳性的出现。
+- en: Levene t-test
+  id: totrans-152
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Levene t检验
+- en: 'Levene’s test is a statistical test used to assess the equality of variances
+    in two or more groups or samples. It is a parametric test that can be used when
+    the assumption of equal variances (homoscedasticity) required by some other tests,
+    such as the t-test or **analysis of variance** (**ANOVA**), may not be met. Levene’s
+    test can be performed using the following steps:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Levene检验是一种统计检验，用于评估两个或更多组别或样本的方差是否相等。它是一个参数检验，当其他检验（如t检验或**方差分析**（**ANOVA**））所要求的方差相等假设（同方差性）无法满足时，可以使用Levene检验。Levene检验可以通过以下步骤执行：
+- en: 'Formulate the hypotheses:'
+  id: totrans-154
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 制定假设：
+- en: '**Null hypothesis (H0)**: This means the variances of the groups or samples
+    are equal.'
+  id: totrans-155
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**零假设（H0）**：这意味着组别或样本的方差相等。'
+- en: '**Alternative hypothesis (H1)**: This means the variances of the groups or
+    samples are not equal.'
+  id: totrans-156
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**备择假设（H1）**：这意味着组或样本的方差不相等。'
+- en: Choose a significance level (alpha).
+  id: totrans-157
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择显著性水平（alpha）。
+- en: Calculate the test statistics and compare them to the p-value.
+  id: totrans-158
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 计算检验统计量，并将其与p值进行比较。
+- en: 'Make a decision:'
+  id: totrans-159
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 做出决策：
+- en: Compare the p-value from the third step to the predetermined alpha level.
+  id: totrans-160
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将第三步中的p值与预设的alpha水平进行比较。
+- en: If the p-value is smaller than the alpha level, reject the null hypothesis.
+    This indicates that the variances across the groups or samples are not the same.
+  id: totrans-161
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果p值小于显著性水平（alpha），则拒绝零假设。这表明不同组或样本之间的方差不相同。
+- en: If the p-value is larger than the alpha level, retain the null hypothesis. This
+    suggests that there’s insufficient evidence to claim the variances are different.
+  id: totrans-162
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 如果p值大于显著性水平（alpha），则保留零假设。这表明没有足够的证据证明方差存在差异。
+- en: The box plots display the data distributions for 'Group 1' and 'Group 2.' Variances
+    for each group are annotated, and the W statistic and p-value are presented to
+    assess the statistical significance of variance differences.
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 箱线图显示了'Group 1'和'Group 2'的数据显示分布。每个组的方差被注释，并且W统计量和p值被呈现用于评估方差差异的统计显著性。
+- en: '![Figure 9.5 – The W statistic and p-value from Levene’s test](img/B17875_09_05.jpg)'
+  id: totrans-164
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.5 – Levene检验的W统计量和p值](img/B17875_09_05.jpg)'
+- en: Figure 9.5 – The W statistic and p-value from Levene’s test
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.5 – Levene检验的W统计量和p值
+- en: The W statistic is low, and the p-value is high, suggesting that the variances
+    between the two groups are not significantly different.
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: W统计量较低，p值较高，表明两个组之间的方差差异不显著。
+- en: Wasserstein distance
+  id: totrans-167
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Wasserstein距离
+- en: Also referred to as the earth mover’s distance, the Wasserstein metric serves
+    as a gauge for comparing the likeness or differences between two statistical distributions.
+    It calculates the effort needed to morph one distribution into another, where
+    these distributions can be depicted as histograms or discrete sets of probability
+    values. When it comes to identifying data drift, this metric can be employed to
+    assess how much two distributions diverge from each other, either over time or
+    across varying conditions.
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 也被称为地球搬运工距离，Wasserstein度量用于衡量两个统计分布之间的相似性或差异。它计算将一个分布转化为另一个分布所需的努力，其中这些分布可以表示为直方图或离散的概率值集合。在识别数据漂移时，可以使用此度量来评估两个分布之间的差异程度，无论是随着时间推移还是在不同条件下。
+- en: When comparing two distributions using the Wasserstein distance, a higher Wasserstein
+    distance value indicates greater dissimilarity or discrepancy between the distributions,
+    while a lower Wasserstein distance value indicates greater similarity or agreement
+    between the distributions. In the context of data drift detection, an increase
+    in the Wasserstein distance over time or between different environments can indicate
+    the presence of data drift, which refers to changes in the underlying data-generating
+    process or distribution.
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用Wasserstein距离比较两个分布时，较高的Wasserstein距离值表示分布之间的差异或不相似性较大，而较低的Wasserstein距离值则表示分布之间的相似性或一致性较强。在数据漂移检测的背景下，Wasserstein距离随时间或不同环境的增加可以表明数据漂移的存在，数据漂移指的是基础数据生成过程或分布的变化。
+- en: In other words, if the Wasserstein distance between two distributions increases
+    significantly over time or between different environments, it suggests that the
+    distributions have diverged and the data may have drifted from the original distribution.
+    This can be an indication of changes in data characteristics, the data-generating
+    process, or the data source. This may prompt further investigation and monitoring
+    to ensure data quality and model performance. The threshold for what constitutes
+    a significant increase in the Wasserstein distance as an indicator of data drift
+    may depend on the specific problem or application. It requires careful consideration
+    and domain knowledge.
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 换句话说，如果两个分布之间的Wasserstein距离在时间推移或不同环境下显著增加，表明这些分布已经发生偏离，数据可能已经从原始分布中漂移。这可能是数据特征、数据生成过程或数据源发生变化的迹象。这可能促使进一步调查和监控，以确保数据质量和模型性能。作为数据漂移指示器，Wasserstein距离的显著增加的阈值可能取决于具体问题或应用，需要仔细考虑和领域知识。
+- en: The histograms in the following represent the distributions of 'Group 1' and
+    'Group 2.' The purple dashed lines visually signify the Wasserstein distance,
+    quantifying the amount of 'work' required to transform one distribution into the
+    other.
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下直方图展示了'组 1'和'组 2'的分布。紫色虚线视觉上表示Wasserstein距离，量化了将一个分布转换为另一个分布所需的“工作量”。
+- en: '![Figure 9.6 – visualization to represent the Wasserstein distance between
+    ''Group 1'' and ''Group 2](img/B17875_09_06.jpg)'
+  id: totrans-172
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.6 – 用于表示''组 1''与''组 2''之间的Wasserstein距离的可视化](img/B17875_09_06.jpg)'
+- en: Figure 9.6 – visualization to represent the Wasserstein distance between 'Group
+    1' and 'Group 2
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.6 – 用于表示'组 1'与'组 2'之间的Wasserstein距离的可视化
+- en: The Wasserstein distance provides a measure of how much the two distributions
+    differ in terms of their location and shape. In this case, the distance value
+    and the spread of the purple lines across the distributions suggest that there
+    is some level of discrepancy between the two groups, but not an extreme one..
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Wasserstein 距离提供了一种衡量两个分布在位置和形状上的差异的方法。在本例中，距离值和紫色线条在分布中的分布表明，两个组之间存在一定程度的差异，但并不是极端的。
+- en: Statistical tests and measurements for categorical features
+  id: totrans-175
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 类别特征的统计检验和度量
+- en: 'In this section, we are going to briefly cover one of the most popular tests:
+    the chi-squared test. As mentioned before, all the statistical tests follow the
+    framework of hypothesis testing described in the earlier section.'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节中，我们将简要介绍最常用的检验之一：卡方检验。如前所述，所有统计检验都遵循前面部分描述的假设检验框架。
+- en: Chi-squared test
+  id: totrans-177
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 卡方检验
+- en: 'The chi-squared test serves as a statistical method for assessing the presence
+    of a meaningful relationship between two categorical variables, typically represented
+    in a contingency table. The general procedure involves the following steps:'
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 卡方检验是评估两个类别变量之间是否存在有意义关系的统计方法，通常以列联表的形式表示。一般的步骤包括以下几个步骤：
+- en: 'Establish the hypotheses:'
+  id: totrans-179
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 建立假设：
+- en: '**Null Hypothesis (H0)**: This suggests that no significant relationship exists
+    between the two categorical variables.'
+  id: totrans-180
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**零假设 (H0)**：这表明两个类别变量之间不存在显著的关系。'
+- en: '**Alternative Hypothesis (Ha)**: This indicates that a meaningful relationship
+    does exist between the two categorical variables.'
+  id: totrans-181
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**备择假设 (Ha)**：这表示两个类别变量之间确实存在有意义的关系。'
+- en: '**Make** **the decision**:'
+  id: totrans-182
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '**做出** **决策**：'
+- en: If the chi-squared statistics have a p-value less than the chosen significance
+    level (alpha), we reject the null hypothesis. Otherwise, we accept the null hypothesis.
+  id: totrans-183
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 如果卡方统计量的p值小于选定的显著性水平（alpha），则拒绝零假设。否则，接受零假设。
+- en: 'To offer a clear understanding of the Chi-squared test, we will utilize illustrative
+    visuals based on a synthetic dataset. This dataset comprises two distinct categories,
+    termed ''Group 1'' and ''Group 2'':'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了清晰地理解卡方检验，我们将基于一个合成数据集使用示意图。该数据集包含两个不同的类别，称为'组 1'和'组 2'：
+- en: '**Group** 1'
+  id: totrans-185
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: '**组** 1'
+- en: This collection consists of 1,000 entries. Specifically, 572 entries fall under
+    category 'A' and 428 entries under category 'B'.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该集合包含1,000个条目。具体来说，572个条目属于类别 'A'，428个条目属于类别 'B'。
+- en: '**Group 2**'
+  id: totrans-187
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: '**组 2**'
+- en: This set also includes 1,000 entries, with 447 entries in category 'A' and 553
+    entries in category 'B'.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该数据集也包含1,000个条目，其中类别'A'包含447个条目，类别'B'包含553个条目。
+- en: Key Attributes
+  id: totrans-189
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 关键属性
+- en: '**Sample Size**: Both Group 1 and Group 2 have an equal number of entries (N=1,000),
+    enabling a fair comparative analysis.'
+  id: totrans-190
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**样本大小**：组 1 和组 2 都有相同数量的条目（N=1,000），从而使得公平的比较分析成为可能。'
+- en: '**Category Distribution**: Each group contains two categories—''A'' and ''B''.
+    However, the distribution of entries across these categories varies between the
+    groups.'
+  id: totrans-191
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**类别分布**：每个组包含两个类别——''A'' 和 ''B''。然而，这些类别中的条目分布在不同组之间有所不同。'
+- en: '**Uniform Sample Size**: Since both groups have 1,000 entries, they are suitable
+    for statistical tests like the Chi-squared test that benefit from balanced datasets.'
+  id: totrans-192
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**均匀样本大小**：由于两个组都有1,000个条目，因此它们适合像卡方检验这样从平衡数据集中受益的统计检验。'
+- en: The following bar chart showcases the frequencies of categories 'A' and 'B'
+    for 'Group 1' and 'Group 2'. The annotated statistics in the corner provide the
+    calculated Chi-squared statistic, p-value, and degrees of freedom, serving as
+    quantitative measures for the visual comparisons.
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 下方的柱状图展示了'组 1'和'组 2'中类别 'A' 和 'B' 的频率。角落中的注释统计信息提供了计算出的卡方统计量、p值和自由度，作为视觉比较的定量度量。
+- en: '![Figure 9.7 – visualization to represent the Chi-squared test results between
+    ''Group 1'' and ''Group 2](img/B17875_09_07.jpg)'
+  id: totrans-194
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.7 – 可视化展示''组1''与''组2''之间的卡方检验结果](img/B17875_09_07.jpg)'
+- en: Figure 9.7 – visualization to represent the Chi-squared test results between
+    'Group 1' and 'Group 2
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.7 – 可视化展示'组1'与'组2'之间的卡方检验结果
+- en: The extremely low p-value and the high Chi-squared statistic indicate a statistically
+    significant difference between the category distributions of 'Group 1' and 'Group
+    2'.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 极低的 p 值和高的卡方统计量表明'组1'和'组2'之间的类别分布存在统计显著差异。
+- en: For easy reference here's a table detailing various statistical methods, their
+    hypotheses formulation, decision criteria, and example use-cases with metrics.
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了方便参考，这里有一张表，详细列出了各种统计方法、它们的假设公式、决策标准和示例用例及指标。
+- en: '| **Method** | **Formulate** **Hypotheses** | **Decision** **Criteria** | **Example**
+    **Metrics** | **Feature** **Type** |'
+  id: totrans-198
+  prefs: []
+  type: TYPE_TB
+  zh: '| **方法** | **假设公式** | **决策标准** | **示例指标** | **特征类型** |'
+- en: '| T-Test | Null: Sample means identical &#124; Alt: Sample means differ | Reject
+    null if p-value is less than significance level | Average user session durations:
+    5 min vs 8 min | Numeric |'
+  id: totrans-199
+  prefs: []
+  type: TYPE_TB
+  zh: '| T检验 | 原假设：样本均值相同 &#124; 备择假设：样本均值不同 | 如果 p 值小于显著性水平，则拒绝原假设 | 平均用户会话时长：5分钟
+    vs 8分钟 | 数值型 |'
+- en: '| Chi-SquaredTest | Null: No relation between categories &#124; Alt: Categories
+    related | Reject null if p-value is less than significance level | Engagement
+    levels across various ad channels | Categorical |'
+  id: totrans-200
+  prefs: []
+  type: TYPE_TB
+  zh: '| 卡方检验 | 原假设：类别之间没有关系 &#124; 备择假设：类别之间有关系 | 如果 p 值小于显著性水平，则拒绝原假设 | 各广告渠道的参与度
+    | 类别型 |'
+- en: '| ANOVA | Null: Group averages same &#124; Alt: At least one group average
+    varies | Reject null if p-value is less than significance level | Performance
+    metrics of distinct sales units | Numeric |'
+  id: totrans-201
+  prefs: []
+  type: TYPE_TB
+  zh: '| 方差分析（ANOVA） | 原假设：组均值相同 &#124; 备择假设：至少一个组均值不同 | 如果 p 值小于显著性水平，则拒绝原假设 | 不同销售单元的绩效指标
+    | 数值型 |'
+- en: '| Kolmogorov-Smirnov Test | Null: Data distributions match &#124; Alt: Data
+    distributions vary | Reject null if D exceeds critical value | Customer age distributions
+    across regions | Numeric |'
+  id: totrans-202
+  prefs: []
+  type: TYPE_TB
+  zh: '| Kolmogorov-Smirnov 检验 | 原假设：数据分布匹配 &#124; 备择假设：数据分布不同 | 如果 D 超过临界值，则拒绝原假设
+    | 各地区的客户年龄分布 | 数值型 |'
+- en: '| Levene’s Test | Null: Equal group variances &#124; Alt: Variances differ
+    between groups | Reject null if p-value is less than significance level | Score
+    variance comparison between genders | Numeric |'
+  id: totrans-203
+  prefs: []
+  type: TYPE_TB
+  zh: '| Levene 检验 | 原假设：各组方差相等 &#124; 备择假设：组间方差不同 | 如果 p 值小于显著性水平，则拒绝原假设 | 性别间的评分方差比较
+    | 数值型 |'
+- en: '| Wasserstein Distance | Null: Distributions are equal &#124; Alt: Distributions
+    differ | Consider domain-specific threshold for Wasserstein distance | Distributional
+    shift in customer incomes over time | Numeric |'
+  id: totrans-204
+  prefs: []
+  type: TYPE_TB
+  zh: '| Wasserstein 距离 | 原假设：分布相等 &#124; 备择假设：分布不同 | 考虑特定领域的 Wasserstein 距离阈值 | 随时间变化的客户收入分布变化
+    | 数值型 |'
+- en: Table 9.3 – A guide to statistical methods, their hypotheses, decision criteria,
+    example use-cases, and applicable feature types.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 9.3 – 统计方法的指南，包括假设、决策标准、示例用例和适用的特征类型。
+- en: Now we have covered at a high level statistical tests involved for detecting
+    drift for individual features. Let’s discuss what monitoring tests we can implement
+    on our models.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经简要介绍了用于检测单个特征漂移的统计检验。接下来，我们将讨论可以在模型上实施的监控测试。
+- en: Statistical tests and measurements on models
+  id: totrans-207
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 模型的统计检验和测量
+- en: 'When it comes to monitoring model performance altogether, we can have additional
+    monitoring in place for the following:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当涉及到整体监控模型性能时，我们可以针对以下内容进行额外监控：
+- en: 'You can monitor the relationship between the target and independent features:'
+  id: totrans-209
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 你可以监控目标与独立特征之间的关系：
+- en: '**Numeric target**: For calculating and monitoring Pearson coefficients'
+  id: totrans-210
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**数值型目标**：用于计算和监控皮尔逊相关系数'
+- en: '**Categorical target**: For calculating and monitoring contingency tables'
+  id: totrans-211
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**类别型目标**：用于计算和监控列联表'
+- en: '**Model performance**: Here, we can monitor the model’s offline metrics over
+    time:'
+  id: totrans-212
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**模型性能**：在这里，我们可以监控模型的离线指标随时间的变化：'
+- en: '**Regression models**: These comprise **Mean square error** (**MSE**), residual
+    plots, **root-mean-squared Error** (**RMSE**), and so on'
+  id: totrans-213
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**回归模型**：包括**均方误差**（**MSE**）、残差图、**均方根误差**（**RMSE**）等'
+- en: '**Classification models**: These comprise accuracy, F1 scores, **receiving
+    operating characteristics** (**ROC**) curves, and so on'
+  id: totrans-214
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**分类模型**：包括准确率、F1 分数、**接收操作特性**（**ROC**）曲线等'
+- en: Tracking performance on holdout datasets
+  id: totrans-215
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在保持数据集上的性能跟踪
+- en: '**Time taken to train**: If the time taken to train the model over time increases
+    drastically, we may need to investigate that'
+  id: totrans-216
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**训练所需时间**：如果训练模型的时间随时间大幅增加，我们可能需要对此进行调查。'
+- en: Let’s take a look at an end-to-end example of detecting drift on the Databricks
+    platform. We will be working with a synthetic dataset generated to simulate various
+    types of drift.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一个在Databricks平台上检测漂移的端到端示例。我们将使用一个合成数据集，该数据集用于模拟各种类型的漂移。
+- en: Implementing drift detection on Databricks
+  id: totrans-218
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在Databricks上实现漂移检测
+- en: The necessary files for this chapter are located within the `Chapter-09` folder.
+    This example demonstrates how you can arrange your code into specific modules
+    to keep it organized.
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章所需的文件位于`Chapter-09`文件夹内。这个示例演示了如何将代码组织成特定模块，以保持结构的清晰。
+- en: '![Figure 9.8 – A screenshot showing the layout of the files in our code base](img/B17875_09_08.jpg)'
+  id: totrans-220
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图9.8 – 显示我们代码库中文件布局的截图](img/B17875_09_08.jpg)'
+- en: Figure 9.8 – A screenshot showing the layout of the files in our code base
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.8 – 显示我们代码库中文件布局的截图
+- en: The setup notebook in the `config` folder is designed to establish the folder
+    structure for data reading and writing. It also sets up the MLflow experiment
+    for tracking model performance over time and manages other variables that will
+    be utilized in our `model`-`drift` notebook.
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`config`文件夹中的设置笔记本旨在建立用于数据读取和写入的文件夹结构。它还设置了用于跟踪模型性能的MLflow实验，并管理将会在我们的`model`-`drift`笔记本中使用的其他变量。'
+- en: The `datagen` notebook within the data folder serves the purpose of creating
+    a synthetic dataset that effectively demonstrates the concept of model drift.
+    This dataset encompasses time series data of online sales for an e-commerce website
+    spanning three months.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据文件夹中的`datagen`笔记本用于创建一个合成数据集，有效地展示模型漂移的概念。该数据集涵盖了一个电子商务网站的在线销售时间序列数据，时间跨度为三个月。
+- en: 'In this dataset, we have a set of independent features and a target feature,
+    along with simulated relationships between them. The independent features include
+    the following:'
+  id: totrans-224
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个数据集中，我们有一组独立特征和一个目标特征，以及它们之间的模拟关系。独立特征包括以下内容：
+- en: '`Temperature` **(Numeric)**: This captures the highest daily temperature in
+    Fahrenheit'
+  id: totrans-225
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Temperature` **（数值型）**：表示每日的最高温度，单位为华氏度'
+- en: '`Weather_Condition``''sunny''`, `''cloudy''`, or `''rainy''`'
+  id: totrans-226
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Weather_Condition` **`''sunny''`**, **`''cloudy''`**, 或 **`''rainy''`**'
+- en: '`Promotion_Type``''discount''`, `''free_gift''`, or `''bundle_deal''`'
+  id: totrans-227
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Promotion_Type` **`''discount''`**, **`''free_gift''`**, 或 **`''bundle_deal''`**'
+- en: '`Website_Traffic` **(Numeric)**: This represents the total number of visits
+    to the website'
+  id: totrans-228
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Website_Traffic` **（数值型）**：表示网站的总访问量'
+- en: '`Device_Type` **(Categorical)**: This indicates the type of device used to
+    access the website'
+  id: totrans-229
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`Device_Type` **（类别型）**：表示用于访问网站的设备类型'
+- en: The target feature is `Daily_Sales` (numeric), which represents the total sales
+    revenue for each day.
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 目标特征是`Daily_Sales`（数值型），表示每天的总销售收入。
+- en: In terms of relationships, the target variable, `Daily_Sales`, has specific
+    correlations with these features. For instance, it shows a `Temperature` and `Website_Traffic`.
+    On the other hand, it has a `Weather_Condition` and `Device_Type`.
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就关系而言，目标变量`Daily_Sales`与这些特征有特定的相关性。例如，它与`Temperature`和`Website_Traffic`相关，而与`Weather_Condition`和`Device_Type`相关。
+- en: Our approach involves training the model using the data from the initial month
+    and subsequently simulating diverse drift patterns in the ensuing months’ data.
+    This process allows us to effectively explore the impact of changing data distributions
+    and patterns on the model’s performance.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的方法是使用初始月份的数据训练模型，然后在接下来的几个月数据中模拟不同的漂移模式。这个过程使我们能够有效地探索数据分布和模式变化对模型性能的影响。
+- en: Lastly, there are two additional notebooks present inside the `util` folder.
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，`util`文件夹中还有两个附加的笔记本。
+- en: The `monitoring` notebook contains a set of monitoring utility functions designed
+    to ensure the quality and consistency of new incoming data compared to production
+    data in a data-driven environment. These functions cover various aspects, including
+    checking null value proportions, identifying significant differences in summary
+    statistics, detecting variations in variances and distributions, evaluating categorical
+    differences, and comparing model performances. The utility functions assist in
+    maintaining data integrity, identifying potential discrepancies, and providing
+    recommendations for transitioning models to production. Additionally, there’s
+    a function to plot boxplots for visualizing distribution differences between incoming
+    and production data.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`monitoring`笔记本包含一组监控工具函数，旨在确保新到数据与生产数据在数据驱动环境中的质量和一致性。这些函数涵盖了各个方面，包括检查空值比例、识别总结统计量中的显著差异、检测方差和分布的变化、评估类别差异以及比较模型性能。该工具函数有助于维护数据完整性、识别潜在差异，并为将模型迁移到生产环境提供建议。此外，还提供了一个绘制箱型图的功能，用于可视化新到数据和生产数据之间的分布差异。'
+- en: To perform various statistical tests on data, we are going to use the `scipy.stats`
+    package. The `scipy.stats` package is a fundamental component of the SciPy library,
+    which is widely used in scientific and statistical computing in Python. It provides
+    a comprehensive collection of statistical distributions, functions, and methods
+    for performing various statistical calculations, probability density estimations,
+    and hypothesis testing. With `scipy.stats`, you can easily work with continuous
+    and discrete probability distributions, generate random samples, compute statistical
+    measures, and perform tests to analyze data.
+  id: totrans-235
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了对数据执行各种统计检验，我们将使用`scipy.stats`包。`scipy.stats`是SciPy库的一个基本组成部分，广泛应用于Python中的科学和统计计算。它提供了一整套统计分布、函数和方法，用于执行各种统计计算、概率密度估计和假设检验。借助`scipy.stats`，你可以轻松地处理连续和离散的概率分布、生成随机样本、计算统计量以及执行检验来分析数据。
+- en: This package encompasses a wide range of statistical techniques, such as calculating
+    probabilities, quantiles, and moments and performing goodness-of-fit tests. The
+    distributions available in `scipy.stats` include common ones such as normal, exponential,
+    uniform, and many more, as well as less common and specialized distributions used
+    in various research fields.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该包涵盖了广泛的统计技术，例如计算概率、分位数、矩和进行拟合优度检验。`scipy.stats`中提供的分布包括常见的正态分布、指数分布、均匀分布等，以及在各个研究领域中使用的较不常见和专业的分布。
+- en: In addition to statistical distributions, `scipy.stats` offers functions for
+    hypothesis testing, correlation analysis, linear regression, and non-parametric
+    tests. You can read more about it on the official website ([https://docs.scipy.org/doc/scipy/reference/stats.html](https://docs.scipy.org/doc/scipy/reference/stats.html)).
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了统计分布，`scipy.stats`还提供了假设检验、相关性分析、线性回归和非参数检验等函数。你可以在官方网站上了解更多信息（[https://docs.scipy.org/doc/scipy/reference/stats.html](https://docs.scipy.org/doc/scipy/reference/stats.html)）。
+- en: The `training` notebook focuses on training and managing ML models using scikit-learn
+    within the MLflow environment. It includes utility functions for MLflow Model
+    Registry interactions, Delta table-handling, and a detailed ML workflow. The workflow
+    encompasses data loading, preprocessing, training a `RandomForestRegressor` model,
+    evaluating performance, and logging relevant metrics and artifacts to MLflow for
+    model tracking. The script’s purpose is to streamline the end-to-end process of
+    training, evaluating, and tracking ML models in a production setting.
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`training`笔记本专注于在MLflow环境中使用scikit-learn训练和管理机器学习模型。它包括与MLflow模型注册表交互、处理Delta表格和详细的机器学习工作流的工具函数。该工作流涵盖了数据加载、预处理、训练`RandomForestRegressor`模型、评估性能以及将相关指标和工件记录到MLflow以进行模型跟踪。该脚本的目的是简化训练、评估和跟踪机器学习模型的端到端过程，尤其是在生产环境中。'
+- en: With all the supporting notebooks and high-level code explanations out of the
+    way, let’s go through the main driver notebook called `model-drift`, which calls
+    all the other notebooks. You can go over the supporting notebooks in your own
+    time.
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在处理完所有支持的笔记本和高级代码说明后，接下来我们将介绍名为`model-drift`的主驱动笔记本，它调用了所有其他笔记本。你可以在自己的时间里浏览支持的笔记本。
+- en: 'Let’s jump right into the `model-drift` notebook:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们直接进入`model-drift`笔记本：
+- en: 'The initial cells are just calling the other supporting notebooks to have the
+    required libraries, directory structure, raw dataset, and MLflow experiment ready
+    for our example:'
+  id: totrans-241
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 初始单元格只是调用其他支持性笔记本，以便为我们的示例准备所需的库、目录结构、原始数据集和 MLflow 实验：
+- en: '[PRE0]'
+  id: totrans-242
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Next, we use the Databricks notebook widgets to allow us to parametrize our
+    notebook to set certain thresholds for our hypothesis tests and model performance
+    metrics:'
+  id: totrans-243
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们使用 Databricks 笔记本小部件来参数化我们的笔记本，以设置假设检验和模型性能指标的某些阈值：
+- en: '[PRE1]'
+  id: totrans-244
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Ingest the first month’s data from the raw synthetic dataset stored as a CSV
+    file into a Delta table:'
+  id: totrans-245
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 从存储为 CSV 文件的原始合成数据集中提取第一个月的数据，并将其导入 Delta 表：
+- en: '[PRE2]'
+  id: totrans-246
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Train the baseline model as an MLflow run using our custom method, `train_sklearn_rf_model`.
+    This run will be available to view under our experiment:'
+  id: totrans-247
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用我们自定义的方法`train_sklearn_rf_model`作为 MLflow 运行来训练基准模型。这个运行将可以在我们的实验中查看：
+- en: '[PRE3]'
+  id: totrans-248
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Register the baseline model we trained on the first month’s data in the model
+    registry and change its state to production:'
+  id: totrans-249
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将我们在第一个月的数据上训练的基准模型注册到模型注册表，并将其状态更改为生产环境：
+- en: '[PRE4]'
+  id: totrans-250
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: Let’s delve into the run that has been generated as a result of training the
+    baseline model. Locate the flask icon situated on the right-hand side of the notebook
+    and proceed to click on it to access the run. It’s important to note that the
+    name of the run might vary given that it is randomly generated.
+  id: totrans-251
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们深入了解训练基准模型后生成的运行。找到位于笔记本右侧的 Flask 图标，并点击它以访问该运行。需要注意的是，运行名称可能会有所不同，因为它是随机生成的。
+- en: '![Figure 9.9 – A screenshot showing run tracking the baseline model training
+    using the first month’s data](img/B17875_09_09.jpg)'
+  id: totrans-252
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.9 – 显示使用第一个月数据进行基准模型训练的运行跟踪截图](img/B17875_09_09.jpg)'
+- en: Figure 9.9 – A screenshot showing run tracking the baseline model training using
+    the first month’s data
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.9 – 显示使用第一个月数据进行基准模型训练的运行跟踪截图
+- en: In addition to the metrics, our custom model training method contains code that
+    logs the summary statistics of the dataset that we used for training the model.
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了度量指标外，我们的自定义模型训练方法还包含记录用于训练模型的数据集摘要统计信息的代码。
+- en: '![Figure 9.10 – A screenshot showing the logged summary statistics for the
+    training dataset](img/B17875_09_10.jpg)'
+  id: totrans-255
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.10 – 显示训练数据集的记录摘要统计信息截图](img/B17875_09_10.jpg)'
+- en: Figure 9.10 – A screenshot showing the logged summary statistics for the training
+    dataset
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.10 – 显示训练数据集的记录摘要统计信息截图
+- en: Along with this, we also logged the exact version of the Delta table that we
+    used to train the model. This will provide us with reproducibility and lineage
+    in the future if we need to analyze how this model was trained and what features
+    were used to train it.
+  id: totrans-257
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 此外，我们还记录了用于训练模型的 Delta 表的确切版本。如果将来需要分析此模型的训练过程以及训练中使用的特征，这将为我们提供可重现性和溯源信息。
+- en: '![Figure 9.11 – The logging of the Delta table version and the size of the
+    training and test sets used for this run](img/B17875_09_11.jpg)'
+  id: totrans-258
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.11 – 记录 Delta 表版本以及用于此次运行的训练集和测试集大小的截图](img/B17875_09_11.jpg)'
+- en: Figure 9.11 – The logging of the Delta table version and the size of the training
+    and test sets used for this run
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.11 – 记录 Delta 表版本以及用于此次运行的训练集和测试集大小的截图
+- en: In the rest of the notebook, we simply use this baseline to compare model performance.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在笔记本的其余部分，我们仅使用此基准模型来比较模型性能。
+- en: 'For the second month’s data, we simulate upstream data errors by introducing
+    missing values for `website_traffic` for certain promotion types and changing
+    the measurement of the temperature from Fahrenheit to Celsius. By performing the
+    test that checks the null proportion for all numeric columns, we are able to capture
+    that `web_traffic` has an unusual amount of missing values:'
+  id: totrans-261
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于第二个月的数据，我们通过引入某些推广类型的`website_traffic`缺失值和将温度的测量单位从华氏度改为摄氏度来模拟上游数据错误。通过执行检查所有数值列的空值比例的测试，我们能够捕捉到`web_traffic`有异常的缺失值：
+- en: '[PRE5]'
+  id: totrans-262
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: '![Figure 9.12 – A screenshot showing the results of the null value check on
+    the new data](img/B17875_09_12.jpg)'
+  id: totrans-263
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 9.12 – 显示对新数据进行空值检查的结果截图](img/B17875_09_12.jpg)'
+- en: Figure 9.12 – A screenshot showing the results of the null value check on the
+    new data
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 9.12 – 显示对新数据进行空值检查的结果截图
+- en: 'To detect drift in the data, we use the `calculate_summary_stats` method defined
+    in our monitoring notebook to calculate summary statistics on the second month’s
+    data. Then, we use the other utility methods, such as `load_summary_stats_pdf_from_run`,
+    to read the summary statistics from our base run to compare the second month’s
+    data with:'
+  id: totrans-265
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 为了检测数据中的漂移，我们使用在监控笔记本中定义的`calculate_summary_stats`方法来计算第二个月数据的摘要统计。然后，我们使用其他实用方法，如`load_summary_stats_pdf_from_run`，从我们的基础运行中读取摘要统计，以便将第二个月的数据进行比较：
+- en: '[PRE6]'
+  id: totrans-266
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: Our summary statistics comparison tests are able to capture the drift in the
+    data and highlight that the temperature has changed drastically in the new data.
+  id: totrans-267
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 我们的摘要统计比较检验能够捕捉到数据中的漂移，并突出显示新数据中温度发生了剧烈变化。
+- en: '![Figure 9.13 – Screenshot showcasing the output generated by the statistical
+    tests comparing the summary statistics between the new month’s data and the baseline
+    data](img/B17875_09_13.jpg)'
+  id: totrans-268
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图9.13 – 截图展示了通过统计检验生成的输出，比较了新一个月的数据与基准数据的摘要统计](img/B17875_09_13.jpg)'
+- en: Figure 9.13 – Screenshot showcasing the output generated by the statistical
+    tests comparing the summary statistics between the new month’s data and the baseline
+    data
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图9.13 – 截图展示了通过统计检验生成的输出，比较了新一个月的数据与基准数据的摘要统计
+- en: 'Moving forward, we employ the Levine test to assess variations in variance
+    coupled with a corrected Bonferroni test to ascertain statistical significance:'
+  id: totrans-270
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 接下来，我们将使用Levine检验来评估方差的变化，并结合修正过的Bonferroni检验来确定统计显著性：
+- en: '[PRE7]'
+  id: totrans-271
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: As the next step in the production stage, you may want to collaborate with the
+    upstream data provider team to understand the root cause of the temperature values
+    have changed so drastically in comparison to our base dataset.
+  id: totrans-272
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 作为生产阶段的下一步，你可能需要与上游数据提供团队合作，了解与我们基础数据集相比，温度值为何发生如此剧烈的变化。
+- en: The presented tests serve as illustrative instances, underscoring the seamless
+    integration of drift detection code within your ML workflow on Databricks. It’s
+    worth noting that these tests can be effortlessly triggered automatically, mirroring
+    the demonstration in [*Chapter 8*](B17875_08.xhtml#_idTextAnchor122), *Automating
+    ML Workflows Using* *Databricks Jobs*.
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所展示的检验方法作为示例，突显了在Databricks的机器学习工作流中无缝集成漂移检测代码的重要性。值得注意的是，这些检验可以轻松地自动触发，类似于在[*第8章*](B17875_08.xhtml#_idTextAnchor122)中展示的自动化示例，*使用Databricks作业自动化机器学习工作流*。
+- en: As you progress through the remainder of the notebook, you’ll encounter additional
+    examples that illuminate the method of tracking model metrics over time to detect
+    deterioration. Furthermore, you’ll gain insights into the programmatic management
+    of model promotion up to the production stage or other stages, a process contingent
+    on the outcomes derived from your tests.
+  id: totrans-274
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着你继续浏览剩余的笔记本内容，你将遇到更多示例，这些示例阐明了如何随着时间的推移追踪模型指标以检测性能退化。此外，你还将获得关于如何通过编程管理模型在生产阶段或其他阶段的推进的见解，这一过程依赖于你从测试中得出的结果。
+- en: Let’s summarize what we learned in this chapter.
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们总结一下本章的内容。
+- en: Summary
+  id: totrans-276
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, we extensively explored the significance of monitoring both
+    models and data, emphasizing the crucial role of drift detection. Our understanding
+    deepened as we delved into the spectrum of statistical tests at our disposal,
+    which are adept at identifying diverse forms of drift encompassing numerical and
+    categorical features.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们深入探讨了监控模型和数据的重要性，强调了漂移检测的关键作用。通过深入了解我们可以使用的各种统计检验方法，我们加深了对这一领域的理解，这些方法能够有效识别涵盖数值和分类特征的各种漂移形式。
+- en: Moreover, we engaged in a comprehensive walk-through, exemplifying the application
+    of these concepts. Through a simulated model drift scenario using a synthetic
+    e-commerce dataset, we harnessed the power of various statistical tests from the
+    `scipy.stats` package to accurately pinpoint instances of drift.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，我们还进行了全面的演练，示范了这些概念的应用。通过使用合成的电子商务数据集进行模拟模型漂移场景，我们运用了`scipy.stats`包中的各种统计检验方法，准确地识别出了漂移的实例。
+- en: As we venture into the next chapter, our focus will pivot toward elucidating
+    the organization within the Databricks workspace and delving into the realm of
+    **continuous integration/continuous** **deployment** (**CI/CD**).
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随着我们进入下一章，焦点将转向阐明Databricks工作区的组织结构，并深入探讨**持续集成/持续部署**（**CI/CD**）领域。

@@ -1,0 +1,1974 @@
+- en: Chapter 4. Data Analysis – Deep Dive
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第4章 数据分析——深度分析
+- en: 'In this chapter, we will cover the following topics:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下主题：
+- en: Extracting the principal components
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 提取主成分
+- en: Using Kernel PCA
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用内核PCA
+- en: Extracting features using Singular Value Decomposition
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用奇异值分解（SVD）提取特征
+- en: Reducing the data dimension with Random Projection
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用随机投影减少数据维度
+- en: Decomposing Feature matrices using **NMF** (**Non-negative Matrix Factorization**)
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用**NMF**（**非负矩阵分解**）分解特征矩阵
+- en: Introduction
+  id: totrans-7
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 简介
+- en: In this chapter, we will look at recipes dealing with dimensionality reduction.
+    In the previous chapter, we looked at how to surf through the data to understand
+    its characteristics in order to put it to meaningful use. We restricted our discussions
+    to only bivariate data. Imagine a dataset with hundreds of columns; how do we
+    proceed with the analysis of the data characteristics of such a large dimensional
+    dataset? We need efficient tools to handle this hurdle as we work our way through
+    the data.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章我们将讨论降维的相关技术。在上一章中，我们探讨了如何浏览数据以理解其特征，从而为实际应用提供有意义的使用方式。我们将讨论仅限于二元数据。想象一下，如果有一个拥有数百列的数据集，我们如何进行分析以了解如此大维度数据集的特征？我们需要高效的工具来解决这个难题，以便处理数据。
+- en: Today, high-dimensional data is everywhere. Consider building a product recommendation
+    engine for a moderately-sized e-commerce website. Even with the range of thousands
+    of products, the number of variables to consider very high. Bioinformatics is
+    another area with very high-dimensional data. Gene expression are microarray datasets
+    could contain tens of thousands of dimensions.
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如今，高维数据无处不在。考虑为一个中等规模的电子商务网站构建产品推荐引擎。即便只有几千种产品，考虑的变量数量依然非常庞大。生物信息学也是另一个拥有极高维度数据的领域。基因表达的微阵列数据集可能包含成千上万的维度。
+- en: If your task at hand is to either explore the data or prepare the data for an
+    algorithm, the high dimensionality, popularly called the *curse of dimensionality*,
+    is a big roadblock. We need efficient methods to handle this. Additionally, the
+    complexity of many existing data mining algorithms increases exponentially with
+    the increase in the number of dimensions. With increasing dimensions, the algorithms
+    become computationally infeasible and thus inapplicable in many applications.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你的任务是探索数据或为算法准备数据，那么高维度，通常称为*维度灾难*，是一个很大的障碍。我们需要高效的方法来处理这个问题。此外，许多现有的数据挖掘算法的复杂度会随着维度数量的增加而呈指数级增长。随着维度的增加，算法的计算难度也变得无法处理，因此在许多应用中不可行。
+- en: Dimensionality reduction techniques preserve the structure of the data as much
+    as possible while reducing the number of dimensions. Thus, in the reduced feature
+    space, the execution time of the algorithms is reduced as we have lower dimensions.
+    As the structure of data is preserved, the results obtained can be a reliable
+    approximation of the original data space. By preserving the structure, we mean
+    two things; the first is not tampering with the variations in the original dataset
+    and the second is preserving the distance between the data vectors in the new
+    projected space.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 降维技术尽可能保留数据的结构，同时减少维度的数量。因此，在降维后的特征空间中，算法的执行时间得以缩短，因为维度变得较低。由于数据的结构得以保留，获得的结果可以是原始数据空间的可靠近似。保留结构意味着两点；第一是保持原始数据集中的变异性，第二是保留新投影空间中数据向量之间的距离。
+- en: 'Matrix Decomposition:'
+  id: totrans-12
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: '矩阵分解:'
+- en: Matrix decomposition yields several techniques for dimensionality reduction.
+    Our data is typically a matrix with the instances in rows and features in columns.
+    In the previous recipes, we have been storing our data as NumPy matrices all the
+    way. For example, in the Iris dataset, our tuples or data instances were represented
+    as rows and the features, which included sepal and petal width and length, were
+    the columns of the matrix.
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 矩阵分解提供了几种降维技术。我们的数据通常是一个矩阵，实例位于行中，特征位于列中。在之前的例子中，我们一直将数据存储为NumPy矩阵。例如，在鸢尾花数据集（Iris
+    dataset）中，我们的数据元组或实例表示为矩阵的行，而特征（如花萼和花瓣的宽度和长度）则为矩阵的列。
+- en: Matrix decomposition is a way of expressing a matrix. Say that A is a product
+    of two other matrices, B and C. The matrix B is supposed to contain vectors that
+    can explain the direction of variation in the data. The matrix C is supposed to
+    contain the magnitude of this variation. Thus, our original matrix A is now expressed
+    as a linear combination of B and C.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 矩阵分解是一种表达矩阵的方法。假设 A 是两个其他矩阵 B 和 C 的乘积。矩阵 B 应该包含可以解释数据变化方向的向量。矩阵 C 应该包含这种变化的幅度。因此，我们的原始矩阵
+    A 现在表示为矩阵 B 和 C 的线性组合。
+- en: The techniques that we will see in the coming sections exploit matrix decomposition
+    in order to tackle the dimensionality reduction. There are methods that insist
+    that the basic vectors have to be orthogonal to each other, such as the principal
+    component analysis, and there are some that don't insist on this requirement,
+    such as dictionary learning.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在接下来的章节中看到的技术利用矩阵分解来解决降维问题。有些方法要求基本向量必须彼此正交，如主成分分析（PCA）；还有一些方法则不强求这一要求，如字典学习。
+- en: Let's buckle up and see some of these techniques in action in this chapter.
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们系好安全带，在本章中看看这些技术如何实际应用。
+- en: Extracting the principal components
+  id: totrans-17
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 提取主成分
+- en: 'The first technique that we will look at is the **Principal Component Analysis**
+    (**PCA**). PCA is an unsupervised method. In multivariate problems, PCA is used
+    to reduce the dimension of the data with minimal information loss, in other words,
+    retaining the maximum variation in the data. By variation, we mean the direction
+    in which the data is dispersed to the maximum. Let''s look at the following plot:'
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将要看的第一个技术是 **主成分分析**（**PCA**）。PCA 是一种无监督方法。在多变量问题中，PCA 用于通过最小的信息损失来减少数据的维度，换句话说，就是保留数据中的最大变化。这里所说的变化，指的是数据扩展的最大方向。让我们来看一下下面的图：
+- en: '![Extracting the principal components](img/B04041_04_24.jpg)'
+  id: totrans-19
+  prefs: []
+  type: TYPE_IMG
+  zh: '![提取主成分](img/B04041_04_24.jpg)'
+- en: We have a scatter plot of two variables, *x1* and *x2*. The diagonal line indicates
+    the maximum variation. By using PCA, our intent is to capture this direction of
+    the variation. So, instead of using the direction of two variables, *x1* and *x2*,
+    to represent this data, the quest is to find a vector represented by the blue
+    line and represent the data with only this vector. Essentially we want to reduce
+    the dimension of the data from two to one.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们有一个包含两个变量 *x1* 和 *x2* 的散点图。对角线表示最大变化方向。通过使用 PCA，我们的目标是捕捉这种变化的方向。因此，我们的任务不是使用两个变量
+    *x1* 和 *x2* 的方向来表示数据，而是要找到一个由蓝线表示的向量，并仅用这个向量来表示数据。实质上，我们希望将数据的维度从二维降到一维。
+- en: We will leverage the mathematical tools Eigenvalues and Eigenvectors to find
+    this blue line vector.
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将利用数学工具特征值和特征向量来找到这个蓝色线向量。
+- en: We saw in the previous chapter that the variance measures the amount of dispersion
+    or spread in the data. What we saw was an example in one dimension. In case of
+    more than one dimension it is easy to express correlation among the variables
+    as a matrix, called as Covariance matrix. When the values of the Covariance matrix
+    are normalized by standard deviation we get a Correlation matrix. In our case,
+    the covariance matrix is a 2 X 2 matrix for two variables, *x1* and *x2*, and
+    it measures how much these two variables move in the same direction or generally
+    vary together.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在上一章中看到，方差衡量数据的离散程度或扩展程度。我们看到的是一维的示例。若维度超过一维，就很容易将变量之间的相关性表示为矩阵，这个矩阵称为协方差矩阵。当协方差矩阵的值被标准差归一化时，我们得到相关矩阵。在我们的例子中，协方差矩阵是一个二维的2
+    X 2矩阵，表示两个变量 *x1* 和 *x2*，它衡量这两个变量是否朝同一方向变化或一起变化的程度。
+- en: When we perform Eigenvalue decomposition, that is, get the Eigenvectors and
+    Eigenvalues of the covariance matrix, the principal Eigenvector, which is the
+    vector with the largest Eigenvalue, is in the direction of the maximum variance
+    in the original data.
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当我们进行特征值分解，即得到协方差矩阵的特征向量和特征值时，主特征向量是具有最大特征值的向量，它指向原始数据中最大方差的方向。
+- en: In our example, this should be the vector that is represented by the blue line
+    in our graph. We will then proceed to project our input data in this blue line
+    vector in order to get the reduced dimension.
+  id: totrans-24
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的示例中，这应该是图中由蓝线表示的向量。然后，我们将继续把输入数据投影到这个蓝线向量上，以获得降维后的结果。
+- en: Note
+  id: totrans-25
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注
+- en: With a dataset (n x m) with n instances and m dimensions, PCA projects it onto
+    a smaller subspace (n x d), where d << m.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于一个包含n个实例和m个维度的数据集（n x m），PCA将其投影到一个较小的子空间（n x d），其中d << m。
+- en: A point to note is that PCA is computationally very expensive.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的一点是，PCA在计算上非常昂贵。
+- en: PCA can be performed on both the covariance and correlation matrix. Remember
+    when a Covariance matrix of a dataset with unevenly scaled datasets is used in
+    PCA, the results may not be very useful. Curious readers can refer to the Book
+    A First Course in Multivariate Statistics by Bernard Flury on the topic of using
+    either correlation or covariance matrix for PCA.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA可以在协方差矩阵和相关矩阵上执行。记住，当使用具有不均匀尺度的数据集的协方差矩阵进行PCA时，结果可能不太有用。感兴趣的读者可以参考Bernard
+    Flury的《A First Course in Multivariate Statistics》一书，了解使用相关矩阵或协方差矩阵进行PCA的话题。
+- en: '[http://www.springer.com/us/book/9780387982069](http://www.springer.com/us/book/9780387982069).'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://www.springer.com/us/book/9780387982069](http://www.springer.com/us/book/9780387982069)'
+- en: Getting ready
+  id: totrans-30
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: Let's use the Iris dataset to understand how to use PCA efficiently in reducing
+    the dimension of the dataset. The Iris dataset contains measurements for 150 iris
+    flowers from three different species.
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用Iris数据集来理解如何有效地使用PCA减少数据集的维度。Iris数据集包含来自三种不同物种的150朵鸢尾花的测量数据。
+- en: 'The three classes in the Iris dataset are as follows:'
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Iris数据集中的三种类别如下：
+- en: Iris Setosa
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Iris Setosa
+- en: Iris Versicolor
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Iris Versicolor
+- en: Iris Virginica
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Iris Virginica
+- en: 'The following are the four features in the Iris dataset:'
+  id: totrans-36
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下是Iris数据集中的四个特征：
+- en: The sepal length in cm
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 花萼长度（单位：厘米）
+- en: The sepal width in cm
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 花萼宽度（单位：厘米）
+- en: The petal length in cm
+  id: totrans-39
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 花瓣长度（单位：厘米）
+- en: The petal width in cm
+  id: totrans-40
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 花瓣宽度（单位：厘米）
+- en: Can we use, say, two columns instead of all the four to express most of the
+    variations in the data? Our quest is to reduce the dimension of the data. In this
+    case, our instances have four columns. Let's say that we are building a classifier
+    to predict the type of flower with a new instance; can we do this task using instances
+    in the reduced dimension space? Can we reduce the number of columns from four
+    to two and still achieve a good accuracy for our classifier?
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们能否仅使用两列而不是四列来表示数据中大多数变化？我们的目标是减少数据的维度。在这种情况下，我们的数据有四列。假设我们正在构建一个分类器来预测一种新实例的花卉类型；我们能否在减少维度后的空间中完成这项任务？我们是否可以将列数从四列减少到两列，并且仍然为分类器实现较好的准确性？
+- en: 'PCA is done using the following steps:'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA的步骤如下：
+- en: Standardize the dataset to have a zero mean value.
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将数据集标准化，使其均值为零。
+- en: Find the correlation matrix for the dataset and unit standard deviation value.
+  id: totrans-44
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 找出数据集的相关矩阵和单位标准差值。
+- en: Reduce the Correlation matrix matrix into its Eigenvectors and values.
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将相关矩阵降维为其特征向量和特征值。
+- en: Select the top nEigenvectors based on the Eigenvalues sorted in descending order.
+  id: totrans-46
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 根据按降序排列的特征值，选择前n个特征向量。
+- en: Project the input Eigenvectors matrix into the new subspace.
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 将输入的特征向量矩阵投影到新的子空间。
+- en: How to do it…
+  id: totrans-48
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何操作……
+- en: 'Let''s load the necessary libraries and call the utility function `load_iris`
+    from scikit-learn to get the Iris dataset:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们加载必要的库，并调用来自scikit-learn的实用函数`load_iris`来获取Iris数据集：
+- en: '[PRE0]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Now, we will proceed to Standardize this data, with a zero mean and standard
+    deviation of one, we will leverage the `numpyscorr_coef` function to find the
+    correlation matrix:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们将对这些数据进行标准化，使其均值为零，标准差为一，我们将利用`numpyscorr_coef`函数来找出相关矩阵：
+- en: '[PRE1]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'We will then do the Eigenvalue decomposition and project our Iris data on the
+    first two principal Eigenvectors. Finally, we will plot the dataset in the reduced
+    space:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，我们将进行特征值分解，并将我们的Iris数据投影到前两个主特征向量上。最后，我们将在降维空间中绘制数据集：
+- en: '[PRE2]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Using function scale. The scale function can perform centering, scaling and
+    standardization. Centering is subtracting the mean value from individual values,
+    Scaling is dividing each value by the variable's standard deviation and finally
+    Standardization is performing centering followed by scaling. Using variables with_mean
+    and with_std function scale can be used to perform all three normalization techniques.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用函数scale。scale函数可以执行中心化、缩放和标准化。中心化是将每个值减去均值，缩放是将每个值除以变量的标准差，最后标准化是先进行中心化，再进行缩放。使用变量with_mean和with_std，scale函数可以执行这三种归一化技术。
+- en: How it works…
+  id: totrans-56
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: The Iris dataset has four columns. Though there are not many columns, it will
+    serve our purpose. We intend to reduce the dimensionality of the Iris dataset
+    to two from four and still retain all the information about the data.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Iris数据集有四列。尽管列不多，但足以满足我们的需求。我们的目标是将Iris数据集的维度从四降到二，并且仍然保留数据的所有信息。
+- en: 'We will load the Iris data to the `x` and `y` variables using the convenient
+    `load_iris` function from scikit-learn. The `x` variable is our data matrix and
+    we can inspect its shape as follows:'
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用scikit-learn中方便的`load_iris`函数将Iris数据加载到`x`和`y`变量中。`x`变量是我们的数据矩阵，我们可以查看它的形状：
+- en: '[PRE3]'
+  id: totrans-59
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'We will scale the data matrix `x` to have zero mean and unit standard deviation.
+    The rule of thumb is that if all your columns are measured in the same scale in
+    your data and have the same unit of measurement, you don''t have to scale the
+    data. This will allow PCA to capture these basic units with the maximum variation:'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将对数据矩阵`x`进行标准化，使其均值为零，标准差为一。基本规则是，如果你的数据中的所有列都在相同的尺度上测量并且具有相同的单位，你就不需要对数据进行标准化。这将允许PCA捕捉这些基本单位的最大变异性：
+- en: '[PRE4]'
+  id: totrans-61
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'We will proceed to build the correlation matrix of our input data:'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将继续构建输入数据的相关性矩阵：
+- en: '*The correlation matrix of n random variables X1, ..., Xn is then × n matrix
+    whosei, jentry is corr (Xi, Xj), Wikipedia.*'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*n个随机变量X1, ..., Xn的相关性矩阵是一个n × n的矩阵，其中第i, j个元素是corr(Xi, Xj)，参考维基百科。*'
+- en: 'We will then use the SciPy library to calculate the Eigenvalues and Eigenvectors
+    of the matrix.Let''s look at our Eigenvalues and Eigenvectors:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们将使用SciPy库计算矩阵的特征值和特征向量。让我们看看我们的特征值和特征向量：
+- en: '[PRE5]'
+  id: totrans-65
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'The output looks as follows:'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出如下：
+- en: '![How it works…](img/B04041_04_26.jpg)'
+  id: totrans-67
+  prefs: []
+  type: TYPE_IMG
+  zh: '![如何工作…](img/B04041_04_26.jpg)'
+- en: In our case, the Eigenvalues are printed in a descending order. A key question
+    is how many components should we choose? In the next section, we will explain
+    a few ways of choosing the number of components.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的案例中，特征值是按降序打印的。一个关键问题是，我们应该选择多少个组件？在接下来的章节中，我们将解释几种选择组件数量的方法。
+- en: You can see that we selected only the first two columns of our right-hand side
+    Eigenvectors. The discrimination capability of the retained components on the
+    `y` variable is a good test of how much information or variation is retained in
+    the data.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到我们仅选择了右侧特征向量的前两列。所保留组件对`y`变量的区分能力，是测试数据中保留了多少信息或变异性的一个很好的方法。
+- en: We will project the data to the new reduced dimension.
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将把数据投影到新的降维空间。
+- en: 'Finally, we will plot the components in the `x` and `y` axes and color them
+    by the target variable:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将绘制`x`和`y`轴上的各个组件，并根据目标变量进行着色：
+- en: '![How it works…](img/B04041_04_01.jpg)'
+  id: totrans-72
+  prefs: []
+  type: TYPE_IMG
+  zh: '![如何工作…](img/B04041_04_01.jpg)'
+- en: You can see that components `1` and `2` are able to discriminate the three classes
+    of the iris flowers. Thus we have effectively used PCA in reducing the dimension
+    to two from four and still able to discriminate the instances belonging to different
+    classes of Iris flower.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到，组件`1`和`2`能够区分三种鸢尾花的类别。因此，我们有效地使用PCA将维度从四降到二，并且仍然能够区分属于不同鸢尾花类别的样本。
+- en: There's more…
+  id: totrans-74
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 更多内容…
+- en: 'In the previous section, we said that we would outline a couple of ways to
+    help us select how many components should we include. In our recipe, we included
+    only two. The following are a list of ways to select the components more empirically:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前一节中，我们提到过会概述几种方法，帮助我们选择应该包含多少个组件。在我们的方案中，我们只包含了两个。以下是一些更加经验性的方法，用于选择组件：
+- en: 'The Eigenvalue criterion:'
+  id: totrans-76
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 特征值标准：
+- en: An Eigenvalue of one would mean that the component would explain about one variable's
+    worth of variability. So, according to this criterion, a component should at least
+    explain one variable's worth of variability. We can say that we will include only
+    those Eigenvalues whose value is greater than or equal to one. Based on your data
+    set you can set the threshold. In a very large dimensional dataset including components
+    capable of explaining only one variable may not be very useful.
+  id: totrans-77
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 一个特征值为一意味着该组件将解释大约一个变量的变异性。因此，根据这个标准，一个组件至少应当解释一个变量的变异性。我们可以说，我们将只包含特征值大于或等于一的组件。根据你的数据集，你可以设定这个阈值。在一个非常高维的数据集中，仅包含能够解释一个变量的组件可能并不是非常有用。
+- en: 'The proportion of the variance explained criterion:'
+  id: totrans-78
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 方差解释比例标准：
+- en: 'Let''s run the following code:'
+  id: totrans-79
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 让我们运行以下代码：
+- en: '[PRE6]'
+  id: totrans-80
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: The output is as follows:![There's more…](img/B04041_04_25.jpg)
+  id: totrans-81
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 输出结果如下：![更多内容…](img/B04041_04_25.jpg)
+- en: For each component, we printed the Eigenvalue, percentage of the variance explained
+    by that component, and cumulative percentage value of the variance explained.
+    For example, component `1` has an Eigenvalue of `2.91`; `2.91/4` gives the percentage
+    of the variance explained, which is 72.80%. Now, if we include the first two components,
+    then we can explain 95.80% of the variance in the data.
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对每个主成分，我们打印了其特征值、该主成分所解释的方差百分比以及解释的方差的累计百分比。例如，主成分`1`的特征值为`2.91`；`2.91/4`给出了该主成分所解释的方差百分比，即72.80%。现在，如果我们包含前两个主成分，我们就可以解释数据中95.80%的方差。
+- en: The decomposition of a correlation matrix into its Eigenvectors and values is
+    a general technique that can be applied to any matrix. In this case, we will apply
+    it to a correlation matrix in order to understand the principal axes of data distribution,
+    that is, axes through which the maximum variation in the data is observed.
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将相关矩阵分解为其特征向量和特征值是一种通用技术，可以应用于任何矩阵。在本例中，我们将应用它来分析相关矩阵，以便理解数据分布的主轴，即观察数据最大变化的轴。
+- en: PCA can be used either as an exploratory technique or as a data preparation
+    technique for a downstream algorithm. Document classification dataset problems
+    typically have very large dimensional feature vectors. PCA can be used to reduce
+    the dimension of the dataset in order to include only the most relevant features
+    before feeding the data to a classification algorithm.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 主成分分析（PCA）既可以作为探索性技术，也可以作为下游算法的数据准备技术。文档分类数据集问题通常具有非常大的维度特征向量。PCA可以用来减少数据集的维度，从而在将数据输入到分类算法之前，只保留最相关的特征。
+- en: A drawback of PCA worth mentioning here is that it is computationally expensive
+    operation. Finally a point about numpy's corrcoeff function. The corrcoeff function
+    will standardize your data internally as a part of its calculation. But since
+    we want to explicitly state the reason for scaling, we have included it in our
+    recipe.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA的一个缺点是它是一个计算开销较大的操作。最后，关于numpy的corrcoeff函数，需要指出的是，corrcoeff函数会在内部对数据进行标准化作为其计算的一部分。但由于我们希望明确地说明缩放的原因，因此我们在本节中显式地进行了说明。
+- en: Tip
+  id: totrans-86
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 提示
+- en: '**When would PCA work?**'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**PCA何时有效？**'
+- en: The input dataset should have correlated columns for PCA to work effectively.
+    Without a correlation of the input variables, PCA cannot help us.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输入数据集应该具有相关的列，才能使PCA有效工作。如果输入变量之间没有相关性，PCA将无法帮助我们。
+- en: See also
+  id: totrans-89
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: '*Performing Singular Value Decomposition* recipe in [Chapter 4](ch04.xhtml
+    "Chapter 4. Data Analysis – Deep Dive"), *Analyzing Data - Deep Dive*'
+  id: totrans-90
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在[第4章](ch04.xhtml "第4章 数据分析 – 深度探讨")中，*执行奇异值分解*的技巧，*数据分析 - 深度探讨*
+- en: Using Kernel PCA
+  id: totrans-91
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用核PCA
+- en: PCA makes an assumption that all the principal directions of variation in the
+    data are straight lines. This is not true in a lot of real-world datasets.
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA假设数据中的所有主变化方向都是直线。然而，许多实际数据集并不符合这一假设。
+- en: Note
+  id: totrans-93
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: PCA is limited to only those variables where the variation in the data falls
+    in a straight line. In other words, it works only with linearly separable data.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PCA仅限于数据变化呈直线的那些变量。换句话说，它仅适用于线性可分的数据。
+- en: In this section, we will look at kernel PCA, which will help us reduce the dimension
+    of datasets where the variations in them are not straight lines. We will explicitly
+    create such a dataset and apply kernel PCA on it.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将介绍核PCA，它将帮助我们减少数据集的维度，尤其是当数据集中的变化不是直线时。我们将显式创建这样的数据集，并应用核PCA进行分析。
+- en: In kernel PCA, a kernel function is applied to all the data points. This transforms
+    the input data into kernel space. A normal PCA is performed in the kernel space.
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在核PCA中，核函数应用于所有数据点。这将输入数据转换为核空间。然后，在核空间中执行普通PCA。
+- en: Getting ready
+  id: totrans-97
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will not use the Iris dataset here, but will generate a dataset where variations
+    are not straight lines. This way, we cannot apply a simple PCA on this dataset.
+    Let's proceed to look at our recipe.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里不会使用鸢尾花数据集，而是生成一个变化不是直线的数据集。这样，我们就不能在这个数据集上应用简单的PCA。让我们继续查看我们的配方。
+- en: How to do it…
+  id: totrans-99
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何实现…
+- en: 'Let''s load the necessary libraries. We will proceed to make a dataset using
+    the `make_circles` function from the scikit-learn library. We will plot this data
+    and do a normal PCA on this dataset:'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们加载必要的库。我们将使用scikit-learn库中的`make_circles`函数生成一个数据集。我们将绘制这个数据并在该数据集上执行普通PCA：
+- en: '[PRE7]'
+  id: totrans-101
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'We will then plot the first two principal components of this dataset. We will
+    plot the dataset using only the first principal component:'
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将绘制数据集的前两个主成分。我们只使用第一个主成分来绘制数据集：
+- en: '[PRE8]'
+  id: totrans-103
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Let''s finish it up by performing a kernal PCA and plotting the components:'
+  id: totrans-104
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们通过执行核PCA并绘制主成分来完成它：
+- en: '[PRE9]'
+  id: totrans-105
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: How it works…
+  id: totrans-106
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的…
+- en: In step 1, we generated a dataset using the scikit's data generation function.
+    In this case, we used the `make_circles` function. We can create two concentric
+    circles, a large one containing the smaller one, using this function. Each concentric
+    circle belongs to a certain class. Thus, we created a two class problem with two
+    concentric circles.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在步骤1中，我们使用scikit的数据生成函数生成了一个数据集。在此案例中，我们使用了`make_circles`函数。我们可以用这个函数创建两个同心圆，一个大圆包含一个小圆。每个同心圆属于某一类。因此，我们创建了一个由两个同心圆组成的两类问题。
+- en: 'First, let''s look at the data that we generated. The `make_circles` function
+    generated a dataset of size 400 with two dimensions. A plot of the original data
+    is as follows:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，让我们看看我们生成的数据。`make_circles`函数生成了一个包含400个数据点的二维数据集。原始数据的图如下：
+- en: '![How it works…](img/B04041_04_02.jpg)'
+  id: totrans-109
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_04_02.jpg)'
+- en: This chart describes how our data has been distributed. The outer circle belongs
+    to class one and the inner circle belongs to class two. Is there a way we can
+    take this data and use it with a linear classifier? We will not be able to do
+    it. The variations in the data are not straight lines. We cannot use the normal
+    PCA. Hence, we will resort to a kernel PCA in order to transform the data.
+  id: totrans-110
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这张图描述了我们的数据是如何分布的。外圈属于第一类，内圈属于第二类。我们能不能将这些数据用线性分类器来处理？我们无法做到。数据中的变化不是直线。我们无法使用普通的PCA。因此，我们将求助于核PCA来变换数据。
+- en: Before we venture into kernel PCA, let's see what happens if we apply a normal
+    PCA on this dataset.
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们深入探讨核PCA之前，让我们先看看如果对这个数据集应用普通PCA会发生什么。
+- en: 'Let''s look at the output plot of the first two components:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看前两个组件的输出图：
+- en: '![How it works…](img/B04041_04_03.jpg)'
+  id: totrans-113
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_04_03.jpg)'
+- en: As you can see, the components of PCA are unable to distinguish between the
+    two classes in a linear fashion.
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你所见，PCA的组件无法以线性方式区分这两个类别。
+- en: 'Let''s plot the first component and see its class distinguishing ability. The
+    following graph, where we have plotted only the first component, explains how
+    PCA is unable to differentiate the data:'
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们绘制第一个主成分并看看它的类别区分能力。下面的图表是我们只绘制第一个主成分时的情况，解释了PCA无法区分数据：
+- en: '![How it works…](img/B04041_04_04.jpg)'
+  id: totrans-116
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_04_04.jpg)'
+- en: The normal PCA approach is a linear projection technique that works well if
+    the data is linearly separable. In cases where the data is not linearly separable,
+    a nonlinear technique is required for the dimensionality reduction of the dataset.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 普通的PCA方法是一种线性投影技术，当数据是线性可分时效果良好。在数据不可线性分割的情况下，需要使用非线性技术来进行数据集的降维。
+- en: Note
+  id: totrans-118
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: Kernel PCA is a nonlinear technique for data reduction.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 核PCA是一种用于数据降维的非线性技术。
+- en: 'Let''s proceed to create a kernel PCA object using the scikit-learn library.
+    Here is our object creation code:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们继续创建一个核PCA对象，使用scikit-learn库。以下是我们的对象创建代码：
+- en: '[PRE10]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: We selected the **Radial Basis Function** (**RBF**) kernel with a gamma value
+    of ten. Gamma is the parameter of the kernel (to handle nonlinearity)—the kernel
+    coefficient.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们选择了**径向基函数**（**RBF**）核，γ值为10。γ是核的参数（用于处理非线性）——核系数。
+- en: Before we go further, let's look at a little bit of theory about what kernels
+    really are. As a simple definition, a kernel is a function that computes the dot
+    product, that is, the similarity between two vectors, which are passed to it as
+    input.
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在进一步讨论之前，让我们看一下有关核函数的一些理论。简单来说，核函数是一个计算两个向量点积的函数，也就是说，计算它们的相似度，这两个向量作为输入传递给它。
+- en: 'The RBFGaussian kernel is defined as follows for two points, *x* and *x''*
+    in some input space:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于两个点 *x* 和 *x'*，在某个输入空间中，RBFGaussian核的定义如下：
+- en: '![How it works…](img/B04041_04_15.jpg)'
+  id: totrans-125
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_04_15.jpg)'
+- en: Where,
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 其中，
+- en: '![How it works…](img/B04041_04_16.jpg)'
+  id: totrans-127
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的…](img/B04041_04_16.jpg)'
+- en: '*The RBF decreases with distance and takes values between 0 and 1\. Hence it
+    can be interpreted as a similarity measure. The feature space of the RBF kernel
+    has infinite dimensions –Wikipedia*.'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*RBF随着距离的增加而减小，取值范围在0和1之间。因此，它可以被解释为一种相似性度量。RBF核的特征空间具有无限维度——维基百科*。'
+- en: 'This can be found at:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 可以在以下位置找到：
+- en: '[http://en.wikipedia.org/wiki/Radial_basis_function_kernel](http://en.wikipedia.org/wiki/Radial_basis_function_kernel).'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://en.wikipedia.org/wiki/Radial_basis_function_kernel](http://en.wikipedia.org/wiki/Radial_basis_function_kernel)。'
+- en: Let's now transform the input from the feature space into the kernel space.
+    We will perform a PCA in the kernel space.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们将输入从特征空间转换到核空间。我们将在核空间中执行PCA。
+- en: 'Finally, we will plot the first two principal components as a scatter plot.
+    The points are colored based on their class value:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们将绘制前两个主成分的散点图。数据点的颜色根据它们的类别值来区分：
+- en: '![How it works…](img/B04041_04_05.jpg)'
+  id: totrans-133
+  prefs: []
+  type: TYPE_IMG
+  zh: '![如何工作…](img/B04041_04_05.jpg)'
+- en: You can see in this graph that the points are linearly separated in the kernel
+    space.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以在这个图中看到，数据点在核空间中是线性分开的。
+- en: There's more…
+  id: totrans-135
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多…
+- en: 'Scikit-learn''s kernel PCA object also allows other types of kernels, as follows:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Scikit-learn的核PCA对象还允许使用其他类型的核，如下所示：
+- en: Linear
+  id: totrans-137
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 线性
+- en: Polynomial
+  id: totrans-138
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 多项式
+- en: Sigmoid
+  id: totrans-139
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Sigmoid
+- en: Cosine
+  id: totrans-140
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 余弦
+- en: Precomputed
+  id: totrans-141
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 预计算
+- en: 'Scikit-learn also provides other types of nonlinear data that is generated.
+    The following is another example:'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Scikit-learn还提供了其他类型的非线性生成数据。以下是另一个示例：
+- en: '[PRE11]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'The data plot looks as follows:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据图像如下所示：
+- en: '![There''s more…](img/B04041_04_06.jpg)'
+  id: totrans-145
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_04_06.jpg)'
+- en: Extracting features using singular value decomposition
+  id: totrans-146
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用奇异值分解提取特征
+- en: 'After our discussion on PCA and kernel PCA, we can explain dimensionality reduction
+    in the following way:'
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们讨论完PCA和核PCA之后，我们可以通过以下方式来解释降维：
+- en: You can transform the correlated variables into a set of non-correlated variables.
+    This way, we will have a less dimension explaining the relationship in the underlying
+    data without any loss of information.
+  id: totrans-148
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 你可以将相关变量转换为一组不相关的变量。通过这种方式，我们将得到一个较低维度的解释，揭示数据之间的关系而不损失任何信息。
+- en: You can find out the principal axes, which has the most data variation recorded.
+  id: totrans-149
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 你可以找出主轴，这些轴记录了最多的数据变异。
+- en: '**Singular Value Decomposition** (**SVD**) is yet another matrix decomposition
+    technique that can be used to tackle the curse of the dimensionality problem.
+    It can be used to find the best approximation of the original data using fewer
+    dimensions. Unlike PCA, SVD works on the original data matrix.'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**奇异值分解** (**SVD**)是另一种矩阵分解技术，可以用来解决维度灾难问题。它可以用较少的维度找到原始数据的最佳近似。与PCA不同，SVD作用于原始数据矩阵。'
+- en: Note
+  id: totrans-151
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 注意
+- en: SVD does not need a covariance or correlation matrix. It works on the original
+    data matrix.
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SVD不需要协方差矩阵或相关矩阵。它直接作用于原始数据矩阵。
+- en: 'SVD factors an `m` x `n` matrix `A` into a product of three matrices:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SVD将一个`m` x `n`的矩阵`A`分解成三个矩阵的乘积：
+- en: '![Extracting features using singular value decomposition](img/B04041_04_17.jpg)'
+  id: totrans-154
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用奇异值分解提取特征](img/B04041_04_17.jpg)'
+- en: Here, U is an `m` x `k` matrix, V is an `n` x `k` matrix, and S is a `k` x `k`
+    matrix. The columns of U are called left singular vectors and columns of V are
+    called right singular vectors.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这里，U是一个`m` x `k`的矩阵，V是一个`n` x `k`的矩阵，S是一个`k` x `k`的矩阵。U的列称为左奇异向量，V的列称为右奇异向量。
+- en: The values on the diagonal of the S matrix are called singular values.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: S矩阵对角线上的值称为奇异值。
+- en: Getting ready
+  id: totrans-157
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: We will use the Iris dataset for this exercise. Our task in hand is to reduce
+    the dimensionality of the dataset from four to two.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用鸢尾花数据集进行此次练习。我们的任务是将数据集的维度从四维降至二维。
+- en: How to do it…
+  id: totrans-159
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做…
+- en: 'Let''s load the necessary libraries and get the Iris dataset:'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们加载必要的库并获取鸢尾花数据集：
+- en: '[PRE12]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'Now, we will demonstrate how to perform an SVD operation on the Iris dataset:'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们将展示如何对鸢尾花数据集执行SVD操作：
+- en: '[PRE13]'
+  id: totrans-163
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: How it works…
+  id: totrans-164
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何工作…
+- en: The Iris dataset has four columns. Though there are not many columns, it will
+    serve our purpose. We intend to reduce the dimensionality of the Iris dataset
+    to two from four and still retain all the information about the data.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 鸢尾花数据集有四列。虽然列数不多，但它足以满足我们的目的。我们计划将鸢尾花数据集的维度从四降到二，并仍然保留所有数据的信息。
+- en: 'We will load the Iris data to the `x` and `y` variables using the convenient
+    `load_iris` function from scikit-learn. The `x` variable is our data matrix; we
+    can inspect its shape in the following manner:'
+  id: totrans-166
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用Scikit-learn中的`load_iris`函数将鸢尾花数据加载到`x`和`y`变量中。`x`变量是我们的数据矩阵；我们可以通过以下方式检查其形状：
+- en: '[PRE14]'
+  id: totrans-167
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'We center the data matrix `x` using its mean. The rule of thumb is that if
+    all your columns are measured in the same scale and have the same unit of measurement
+    in the data, you don''t have to scale the data. This will allow PCA to capture
+    these basis units with the maximum variation. Note that we used only the mean
+    while invoking the function scale:'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们使用数据矩阵`x`的均值对其进行中心化。经验法则是，如果所有列都在相同的尺度上测量并具有相同的度量单位，则无需缩放数据。这将使PCA捕捉到这些基础单位的最大变化。请注意，我们在调用scale函数时只使用了均值：
+- en: '[PRE15]'
+  id: totrans-169
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: Run the SVD method on our scaled input dataset.
+  id: totrans-170
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在我们缩放过的输入数据集上运行SVD方法。
+- en: Select the top two singular components. This matrix is a reduced approximation
+    of the original input data.
+  id: totrans-171
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 选择前两个奇异分量。该矩阵是原始输入数据的一个简化近似。
+- en: Finally, plot the columns and color it by the class value:![How it works…](img/B04041_04_07.jpg)
+  id: totrans-172
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，绘制矩阵的列，并根据类别值进行着色：![它是如何工作的…](img/B04041_04_07.jpg)
+- en: There's more…
+  id: totrans-173
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容…
+- en: SVD is a two-mode factor analysis, where we start with an arbitrary rectangular
+    matrix with two types of entities. This is different from our previous recipe
+    where we saw PCA that took a correlation matrix as an input. PCA is a one-mode
+    factor analysis as the rows and columns in the input square matrix represent the
+    same entity.
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SVD是一种双模因子分析方法，我们从一个任意的矩形矩阵开始，该矩阵包含两种类型的实体。这与我们之前的PCA方法不同，PCA以相关矩阵作为输入，属于单模因子分析，因为输入的方阵的行和列表示的是相同的实体。
+- en: 'In text mining applications, the input is typically presented as a **Term-document
+    Matrix** (**TDM**). In a TDM, the rows correspond to the words and columns are
+    the documents. The cell entries are filled with either the term frequency or **Term
+    Frequency Inverse Document Frequency** (**TFIDF**) score. It is a rectangular
+    matrix with two entities: words and documents that are present in the rows and
+    columns of the matrix.'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在文本挖掘应用中，输入通常以**术语-文档矩阵**（**TDM**）的形式呈现。在TDM中，行对应单词，列对应文档。单元格条目填充的是术语频率或**词频逆文档频率**（**TFIDF**）得分。它是一个包含两种实体的矩形矩阵：单词和文档，这些实体分别出现在矩阵的行和列中。
+- en: SVD is widely used in text mining applications to uncover the hidden relationships
+    (semantic relationship) between words and documents, documents and documents,
+    and words and words.
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SVD广泛应用于文本挖掘中，用于揭示单词和文档、文档和文档、单词和单词之间的隐藏关系（语义关系）。
+- en: By applying SVD on a term-document matrix, we transform it into a new semantic
+    space, where the words that do not occur together in the same document can still
+    be close in the new semantic space. The goal of SVD is to find a useful way to
+    model the relationship between the words and documents. After applying SVD, each
+    document and word can be represented as a vector of the factor values. We can
+    choose to ignore the components with very low values and, hence, avoid noises
+    in the underlying dataset. This leads to an approximate representation of our
+    text corpus. This is called **Latent Semantic Analysis** (**LSA**).
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过在术语-文档矩阵上应用SVD，我们将其转换为一个新的语义空间，其中那些在同一文档中不一起出现的单词，在新的语义空间中仍然可以靠得很近。SVD的目标是找到一种有效的方式来建模单词和文档之间的关系。应用SVD后，每个文档和单词都可以表示为一个因子值的向量。我们可以选择忽略那些值非常低的分量，从而避免数据集中的噪声。这将导致对文本语料库的近似表示。这就是**潜在语义分析**（**LSA**）。
+- en: The ramification of this idea has a very high applicability in document indexing
+    for search and information retrieval. Instead of indexing the original words as
+    an inverted index, we can now index the output of LSA. This helps avoid problems
+    such as synonymy and polysemy. In synonymy, users may tend to use different words
+    to represent the same entity. A normal indexing is vulnerable to such scenarios.
+    As the underlying document is indexed by regular words, a search may not yield
+    the results. For example, if we indexed some documents related to financial instruments,
+    typically the words would be currency, money, and similar stuff. Currency and
+    money are synonymous words. While a user searches for money, he should be shown
+    the documents related to currency as well. However, with regular indexing, the
+    search engine would be able to retrieve only the documents having money. With
+    latent semantic indexing, the documents with currency will also be retrieved.
+    In the latent semantic space, currency and money will be close to each other as
+    their neighboring words would be similar in the documents.
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这一思路的应用在文档索引、搜索和信息检索中具有非常高的实用性。我们可以不再像传统倒排索引那样对原始单词进行索引，而是对LSA（潜在语义分析）的输出进行索引。这有助于避免同义词和歧义词等问题。在同义词问题中，用户可能倾向于使用不同的词来表示同一个实体。常规索引在这种情况下容易出问题。由于文档是通过常规词汇进行索引的，搜索时可能无法获得相关结果。例如，如果我们为一些与金融工具相关的文档建立索引，通常涉及的词汇可能是货币、金钱等相似的词。货币和金钱是同义词。当用户搜索金钱时，他也应该看到与货币相关的文档。然而，使用常规索引时，搜索引擎只能返回包含“金钱”一词的文档。而使用潜在语义索引，包含“货币”一词的文档也会被检索到。在潜在语义空间中，货币和金钱彼此接近，因为它们在文档中的邻近词汇是相似的。
+- en: Polysemy is about words that have more than one meaning. For example, bank can
+    refer to a financial institution or a river bank. Similar to synonymy, polysemy
+    can also be handled in the latent semantic space.
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 歧义词是指具有多重含义的词。例如，“银行”可以指金融机构或河岸。与同义词类似，歧义词也可以在潜在语义空间中处理。
+- en: 'For more information on LSA and latent semantic indexing, refer to the paper
+    by Deerwester et al at:'
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有关LSA和潜在语义索引的更多信息，请参考Deerwester等人的论文：
+- en: '[http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.108.8490](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.108.8490).
+    For a comparative study of Eigen Values and Singular Values refer to the book
+    Numerical Computing with MATLAB by Cleve Moler. Though the examples are in MATLAB,
+    with the help of our recipe you can redo them in Python:'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.108.8490](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.108.8490)。有关特征值与奇异值的比较研究，请参阅Cleve
+    Moler的《用MATLAB进行数值计算》一书。尽管示例使用MATLAB，你仍然可以通过我们的教程将其在Python中实现：'
+- en: '[https://in.mathworks.com/moler/eigs.pdf](https://in.mathworks.com/moler/eigs.pdf)'
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://in.mathworks.com/moler/eigs.pdf](https://in.mathworks.com/moler/eigs.pdf)'
+- en: Reducing the data dimension with random projection
+  id: totrans-183
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用随机投影减少数据维度
+- en: The methods that we saw previously for dimensionality reduction are computationally
+    expensive and not the fastest ones. Random projection is another way to perform
+    dimensionality reduction faster than these methods.
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前看到的降维方法计算开销较大，并且速度较慢。随机投影是另一种比这些方法更快的降维方式。
+- en: Random projections are attributed to the Johnson-Lindenstrauss lemma. According
+    to the lemma, a mapping from a high-dimensional to a low-dimensional Euclidean
+    space exists; such that the distance between the points is preserved within an
+    epsilon variance. The goal is to preserve the pairwise distances between any two
+    points in your data, and still reduce the number of dimensions in the data.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机投影与Johnson-Lindenstrauss引理相关。根据该引理，存在一个将高维空间映射到低维欧几里得空间的映射，使得点之间的距离保持在ε范围内。目标是保持数据中任意两点之间的成对距离，同时减少数据的维度。
+- en: Let's say that if we are given `n`-dimensional data in any Euclidean space,
+    according to the lemma, we can map it an Euclidean space of dimension k, such
+    that all the distances between the points are preserved up to a multiplicative
+    factor of (1-epsilon) and (1+ epsilon).
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们给定了一个`n`维的欧几里得空间数据，根据引理，我们可以将其映射到一个维度为k的欧几里得空间，在这个空间中，点之间的距离保持不变，误差范围在（1-ε）和（1+ε）之间。
+- en: Getting ready
+  id: totrans-187
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备开始
+- en: For this exercise, we will use the 20 newsgroup data ([http://qwone.com/~jason/20Newsgroups/](http://qwone.com/~jason/20Newsgroups/)).
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本次练习我们将使用20个新闻组数据集（[http://qwone.com/~jason/20Newsgroups/](http://qwone.com/~jason/20Newsgroups/)）。
+- en: 'It is a collection of approximately 20,000 newsgroup documents, partitioned
+    (nearly) evenly across 20 different categories of news. Scikit-learn provides
+    a convenient function to load this dataset:'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个包含大约20,000个新闻组文档的集合，几乎均匀地划分为20个不同的新闻类别。Scikit-learn提供了一个方便的函数来加载这个数据集：
+- en: '[PRE16]'
+  id: totrans-190
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: You can load all libraries or a list of categories of interest by providing
+    a list of strings of categories. In our case, we will use the `sci.crypt` category.
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 您可以通过提供一个类别字符串列表来加载所有库或感兴趣的类别列表。在我们的例子中，我们将使用`sci.crypt`类别。
+- en: We will load the input text as a term-document matrix where the features are
+    individual words. On this, we will apply random projection in order to reduce
+    the number of dimensions. We will try to see if the distances between the documents
+    are preserved in the reduced space and an instance is a document.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将把输入文本加载为一个词项-文档矩阵，其中特征是单独的单词。在此基础上，我们将应用随机投影以减少维度数量。我们将尝试看看文档之间的距离是否在降维空间中得以保持，且每个实例是一个文档。
+- en: How to do it…
+  id: totrans-193
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何做到……
+- en: 'Let''s start with loading the necessary libraries. Using scikit''s utility
+    function `fetch20newsgroups`, we will load the data. We will select only the `sci.crypt`
+    category out of all the data. We will then transform our text data into a vector
+    representation:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先加载必要的库。使用scikit的工具函数`fetch20newsgroups`，我们将加载数据。我们将从所有数据中仅选择`sci.crypt`类别。然后，我们将把文本数据转化为向量表示：
+- en: '[PRE17]'
+  id: totrans-195
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: Let's now proceed to demonstrate the concept of random projection.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们继续演示随机投影的概念。
+- en: How it works…
+  id: totrans-197
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 它是如何工作的……
+- en: After loading the newsgroup dataset, we will convert it to a matrix through
+    `TfidfVectorizer(use_idf=False)`.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 加载新闻组数据集后，我们将通过`TfidfVectorizer(use_idf=False)`将其转换为矩阵。
+- en: Notice that we have set `use_idf` to `False`. This creates our input matrix
+    where the rows are documents, columns are individual words, and cell values are
+    word counts.
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们已经将`use_idf`设置为`False`。这创建了我们的输入矩阵，其中行是文档，列是单独的单词，单元格的值是单词的计数。
+- en: 'If we print our vector using the `print vector.shape` command, we will get
+    the following output:'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们使用`print vector.shape`命令打印我们的向量，我们将得到以下输出：
+- en: '[PRE18]'
+  id: totrans-201
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: We can see that our input matrix has 595 documents and 16115 words; each word
+    is a feature and, hence, a dimension.
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以看到，我们的输入矩阵有595个文档和16115个单词；每个单词是一个特征，因此也是一个维度。
+- en: We will perform the projection of the data using a dense Gaussian matrix. The
+    Gaussian random matrix is generated by sampling elements from a normal distribution
+    `N`(0, 1/number of components). In our case, the number of components is 1000\.
+    Our intention is to reduce the dimension to 1000 from 16115\. We will then print
+    the original and the reduced dimension in order to verify the reduction in the
+    dimension.
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用一个密集的高斯矩阵进行数据投影。高斯随机矩阵是通过从正态分布`N`(0, 1/组件数量)中抽样元素生成的。在我们的例子中，组件数量是1000。我们的目标是将维度从16115降到1000。然后，我们将打印出原始维度和降维后的维度，以验证维度的减少。
+- en: 'Finally, we would like to validate whether the data characteristics are maintained
+    after the projection. We will calculate the Euclidean distances between the vectors.
+    We will record the distances in the original space and in the projected space
+    as well. We will take a difference between them as in step 7 and plot the difference
+    as a heat map:'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们想验证在投影之后数据特性是否得以保持。我们将计算向量之间的欧几里得距离。我们将记录原始空间和投影空间中的距离。我们将像第7步一样计算它们之间的差异，并将差异绘制成热图：
+- en: '![How it works…](img/B04041_04_08.jpg)'
+  id: totrans-205
+  prefs: []
+  type: TYPE_IMG
+  zh: '![它是如何工作的……](img/B04041_04_08.jpg)'
+- en: As you can see, the gradient is in the range of 0.000 to 0.105 and indicates
+    the difference in distance of vectors in the original and reduced space. The difference
+    between the distance in the original space and projected space are pretty much
+    in a very small range.
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，梯度范围在0.000到0.105之间，表示原始空间和降维空间中向量距离的差异。原始空间和投影空间中距离的差异几乎都在一个非常小的范围内。
+- en: There's more…
+  id: totrans-207
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容……
+- en: 'There are a lot of references for random projections. It is a very active field
+    of research. Interested readers can refer to the following papers:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于随机投影有很多参考文献。这是一个非常活跃的研究领域。有兴趣的读者可以参考以下论文：
+- en: 'Experiments with random projections:'
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 随机投影实验：
+- en: '[http://dl.acm.org/citation.cfm?id=719759](http://dl.acm.org/citation.cfm?id=719759)'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://dl.acm.org/citation.cfm?id=719759](http://dl.acm.org/citation.cfm?id=719759)'
+- en: 'Experiments with random projections for machine learning:'
+  id: totrans-211
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机器学习中的随机投影实验：
+- en: '[http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.13.9205](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.13.9205)'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.13.9205](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.13.9205)'
+- en: In our recipe, we used the Gaussian random projection where a Gaussian random
+    matrix was generated by sampling from a normal distribution, N(0,1/1000), where
+    1000 is the required dimension of the reduced space.
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的方案中，我们使用了高斯随机投影，其中通过从正态分布N(0,1/1000)中抽样生成了一个高斯随机矩阵，其中1000是降维空间的所需维度。
+- en: 'However, having a dense matrix can create severe memory-related issues while
+    processing. In order to avoid this, Achlioptas proposed sparse random projections.
+    Instead of choosing from a standard normal distribution, the entries are picked
+    from {-1.0,1} with a probability of `{1/6,2/3,1/6}`. As you can see, the probability
+    of having 0 is two-thirds and, hence, the resultant matrix will be sparse. Users
+    can refer to the seminal paper by Achlioptas at *Dimitris Achlioptas*, *Database-friendly
+    random projections: Johnson-Lindenstrauss with binary coins. Journal of Computer
+    and System Sciences, 66(4):671–687, 2003.*'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，使用稠密矩阵在处理时可能会产生严重的内存问题。为了避免这种情况，Achlioptas提出了稀疏随机投影。与从标准正态分布中选择不同，矩阵条目是从{-1.0,1}中选择的，选择概率分别为`{1/6,2/3,1/6}`。如你所见，0出现的概率为三分之二，因此最终的矩阵将是稀疏的。用户可以参考Achlioptas的开创性论文
+    *Dimitris Achlioptas*，*数据库友好的随机投影：使用二进制硬币的Johnson-Lindenstrauss方法。《计算机与系统科学杂志》，66(4):671–687，2003年。*
+- en: 'The scikit implementation allows the users to choose the density of the resultant
+    matrix. Let''s say that if we specify the density as d and s as 1/d, then the
+    elements of the matrix are picked from the following equation:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: scikit实现允许用户选择结果矩阵的密度。假设我们将密度指定为d，s为1/d，则矩阵的元素可以从以下方程中选择：
+- en: '![There''s more…](img/B04041_04_18.jpg)'
+  id: totrans-216
+  prefs: []
+  type: TYPE_IMG
+  zh: '![更多内容…](img/B04041_04_18.jpg)'
+- en: 'With probability of the following:'
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 概率如下：
+- en: '![There''s more…](img/B04041_04_19.jpg)'
+  id: totrans-218
+  prefs: []
+  type: TYPE_IMG
+  zh: '![更多内容…](img/B04041_04_19.jpg)'
+- en: See also
+  id: totrans-219
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: '*Using kernel PCA* recipe in [Chapter 4](ch04.xhtml "Chapter 4. Data Analysis
+    – Deep Dive"), *Analyzing Data - Deep Dive*'
+  id: totrans-220
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*使用核PCA* 配方见[第4章](ch04.xhtml "第4章. 数据分析 – 深入解析")，*数据分析 - 深入解析*'
+- en: Decomposing the feature matrices using non-negative matrix factorization
+  id: totrans-221
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用非负矩阵分解分解特征矩阵
+- en: We discussed all the previous matrix decomposition recipes from a data dimensionality
+    reduction perspective. Let's discuss this recipe from a collaborative filtering
+    perspective to make it more interesting. Though data dimensionality reduction
+    is what we are after, **Non-negative Matrix Factorization** (**NMF**) is used
+    extensively in recommendation systems using a collaborative filtering algorithm.
+  id: totrans-222
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们之前从数据降维的角度讨论了所有的矩阵分解方法。现在，让我们从协同过滤的角度讨论这个方法，使它更有趣。虽然数据降维是我们的目标，**非负矩阵分解**
+    (**NMF**) 在使用协同过滤算法的推荐系统中得到了广泛应用。
+- en: 'Let''s say that our input matrix A is of a dimension `m x n`. NMF factorizes
+    the input matrix into two matrices, `A_dash` and `H`:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们的输入矩阵A的维度为`m x n`。NMF将输入矩阵分解为两个矩阵，`A_dash`和`H`：
+- en: '![Decomposing the feature matrices using non-negative matrix factorization](img/B04041_04_21.jpg)'
+  id: totrans-224
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用非负矩阵分解分解特征矩阵](img/B04041_04_21.jpg)'
+- en: Let's say that we want to reduce the dimension of the A matrix to d, that is,
+    we want the original m x n matrix to be decomposed into m x d, where d << n.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们想将A矩阵的维度减少到d，即我们希望将原始的m x n矩阵分解成m x d，其中d << n。
+- en: 'The `A_dash` matrix is of a size m x d and the `H` matrix is of a size d x
+    m. NMF solves this as an optimization problem, that is, minimizing the function:'
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`A_dash`矩阵的大小为m x d，`H`矩阵的大小为d x m。NMF将其作为一个优化问题来解决，即最小化以下函数：'
+- en: '![Decomposing the feature matrices using non-negative matrix factorization](img/B04041_04_22.jpg)'
+  id: totrans-227
+  prefs: []
+  type: TYPE_IMG
+  zh: '![使用非负矩阵分解分解特征矩阵](img/B04041_04_22.jpg)'
+- en: 'The famous Netflix challenge was solved using NMF. Please refer to the following
+    link:'
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 著名的Netflix挑战赛就是使用NMF解决的。请参阅以下链接：
+- en: '*Gábor Takács et al., (2008). Matrix factorization and neighbor based algorithms
+    for the Netflix prize problem. In: Proceedings of the 2008 ACM Conference on Recommender
+    Systems, Lausanne, Switzerland, October 23 - 25, 267-274:*'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*Gábor Takács等人，（2008）。矩阵分解与基于邻域的算法解决Netflix奖问题。载于：2008年ACM推荐系统大会论文集，瑞士洛桑，10月23日至25日，267-274：*'
+- en: '[http://dl.acm.org/citation.cfm?id=1454049](http://dl.acm.org/citation.cfm?id=1454049)'
+  id: totrans-230
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[http://dl.acm.org/citation.cfm?id=1454049](http://dl.acm.org/citation.cfm?id=1454049)'
+- en: Getting ready
+  id: totrans-231
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: In order to explain NMF, let's create a toy recommendation problem. In a typical
+    recommendation system such as the one with MovieLens or Netflix, there is a group
+    of users and group of items (movies). If each user has rated a few movies, we
+    want to predict their ratings for the movies that they have not rated. We will
+    assume that the users have not watched the movies that they have not rated. Our
+    prediction algorithm output is the ratings for these movies. We can then recommend
+    the movies that have a very high rating from our prediction engine to these users.
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了说明NMF，让我们创建一个推荐问题。像MovieLens或Netflix这样的典型推荐系统中，存在一组用户和一组物品（电影）。如果每个用户对一些电影进行了评分，我们希望预测他们对尚未评分电影的评分。我们假设用户没有看过他们没有评分的电影。我们的预测算法输出的是这些电影的评分。然后，我们可以推荐预测引擎给出非常高评分的电影给这些用户。
+- en: 'Our toy problem is set as follows; we have the following movies:'
+  id: totrans-233
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的玩具问题如下：我们有以下电影：
+- en: '| Movie ID | Movie Name |'
+  id: totrans-234
+  prefs: []
+  type: TYPE_TB
+  zh: '| 电影 ID | 电影名称 |'
+- en: '| --- | --- |'
+  id: totrans-235
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- |'
+- en: '| 1 | Star Wars |'
+  id: totrans-236
+  prefs: []
+  type: TYPE_TB
+  zh: '| 1 | 《星际大战》 |'
+- en: '| 2 | The Matrix |'
+  id: totrans-237
+  prefs: []
+  type: TYPE_TB
+  zh: '| 2 | 《黑客帝国》 |'
+- en: '| 3 | Inception |'
+  id: totrans-238
+  prefs: []
+  type: TYPE_TB
+  zh: '| 3 | 《盗梦空间》 |'
+- en: '| 4 | Harry Potter |'
+  id: totrans-239
+  prefs: []
+  type: TYPE_TB
+  zh: '| 4 | 《哈利·波特》 |'
+- en: '| 5 | The Hobbit |'
+  id: totrans-240
+  prefs: []
+  type: TYPE_TB
+  zh: '| 5 | 《霍比特人》 |'
+- en: '| 6 | Guns of Navarone |'
+  id: totrans-241
+  prefs: []
+  type: TYPE_TB
+  zh: '| 6 | 《纳瓦隆的枪》 |'
+- en: '| 7 | Saving Private Ryan |'
+  id: totrans-242
+  prefs: []
+  type: TYPE_TB
+  zh: '| 7 | 《拯救大兵瑞恩》 |'
+- en: '| 8 | Enemy at the Gates |'
+  id: totrans-243
+  prefs: []
+  type: TYPE_TB
+  zh: '| 8 | 《敌人门前》 |'
+- en: '| 9 | Where Eagles Dare |'
+  id: totrans-244
+  prefs: []
+  type: TYPE_TB
+  zh: '| 9 | 《勇敢的心》 |'
+- en: '| 10 | The Great Escape |'
+  id: totrans-245
+  prefs: []
+  type: TYPE_TB
+  zh: '| 10 | 《大逃亡》 |'
+- en: 'We have ten movies, each identified with a movie ID. We also have 10 users
+    who have rated these movies as follows:'
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们有十部电影，每部电影都有一个电影 ID。我们也有10个用户对这些电影进行了评分，具体如下：
+- en: '|   | Movie ID |'
+  id: totrans-247
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | 电影 ID |'
+- en: '| --- | --- |'
+  id: totrans-248
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- |'
+- en: '| **User ID** | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |'
+  id: totrans-249
+  prefs: []
+  type: TYPE_TB
+  zh: '| **用户 ID** | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |'
+- en: '| 1 | 5.0 | 5.0 | 4.5 | 4.5 | 5.0 | 3.0 | 2.0 | 2.0 | 0.0 | 0.0 |'
+  id: totrans-250
+  prefs: []
+  type: TYPE_TB
+  zh: '| 1 | 5.0 | 5.0 | 4.5 | 4.5 | 5.0 | 3.0 | 2.0 | 2.0 | 0.0 | 0.0 |'
+- en: '| 2 | 4.2 | 4.7 | 5.0 | 3.7 | 3.5 | 0.0 | 2.7 | 2.0 | 1.9 | 0.0 |'
+  id: totrans-251
+  prefs: []
+  type: TYPE_TB
+  zh: '| 2 | 4.2 | 4.7 | 5.0 | 3.7 | 3.5 | 0.0 | 2.7 | 2.0 | 1.9 | 0.0 |'
+- en: '| 3 | 2.5 | 0.0 | 3.3 | 3.4 | 2.2 | 4.6 | 4.0 | 4.7 | 4.2 | 3.6 |'
+  id: totrans-252
+  prefs: []
+  type: TYPE_TB
+  zh: '| 3 | 2.5 | 0.0 | 3.3 | 3.4 | 2.2 | 4.6 | 4.0 | 4.7 | 4.2 | 3.6 |'
+- en: '| 4 | 3.8 | 4.1 | 4.6 | 4.5 | 4.7 | 2.2 | 3.5 | 3.0 | 2.2 | 0.0 |'
+  id: totrans-253
+  prefs: []
+  type: TYPE_TB
+  zh: '| 4 | 3.8 | 4.1 | 4.6 | 4.5 | 4.7 | 2.2 | 3.5 | 3.0 | 2.2 | 0.0 |'
+- en: '| 5 | 2.1 | 2.6 | 0.0 | 2.1 | 0.0 | 3.8 | 4.8 | 4.1 | 4.3 | 4.7 |'
+  id: totrans-254
+  prefs: []
+  type: TYPE_TB
+  zh: '| 5 | 2.1 | 2.6 | 0.0 | 2.1 | 0.0 | 3.8 | 4.8 | 4.1 | 4.3 | 4.7 |'
+- en: '| 6 | 4.7 | 4.5 | 0.0 | 4.4 | 4.1 | 3.5 | 3.1 | 3.4 | 3.1 | 2.5 |'
+  id: totrans-255
+  prefs: []
+  type: TYPE_TB
+  zh: '| 6 | 4.7 | 4.5 | 0.0 | 4.4 | 4.1 | 3.5 | 3.1 | 3.4 | 3.1 | 2.5 |'
+- en: '| 7 | 2.8 | 2.4 | 2.1 | 3.3 | 3.4 | 3.8 | 4.4 | 4.9 | 4.0 | 4.3 |'
+  id: totrans-256
+  prefs: []
+  type: TYPE_TB
+  zh: '| 7 | 2.8 | 2.4 | 2.1 | 3.3 | 3.4 | 3.8 | 4.4 | 4.9 | 4.0 | 4.3 |'
+- en: '| 8 | 4.5 | 4.7 | 4.7 | 4.5 | 4.9 | 0.0 | 2.9 | 2.9 | 2.5 | 2.1 |'
+  id: totrans-257
+  prefs: []
+  type: TYPE_TB
+  zh: '| 8 | 4.5 | 4.7 | 4.7 | 4.5 | 4.9 | 0.0 | 2.9 | 2.9 | 2.5 | 2.1 |'
+- en: '| 9 | 0.0 | 3.3 | 2.9 | 3.6 | 3.1 | 4.0 | 4.2 | 0.0 | 4.5 | 4.6 |'
+  id: totrans-258
+  prefs: []
+  type: TYPE_TB
+  zh: '| 9 | 0.0 | 3.3 | 2.9 | 3.6 | 3.1 | 4.0 | 4.2 | 0.0 | 4.5 | 4.6 |'
+- en: '| 10 | 4.1 | 3.6 | 3.7 | 4.6 | 4.0 | 2.6 | 1.9 | 3.0 | 3.6 | 0.0 |'
+  id: totrans-259
+  prefs: []
+  type: TYPE_TB
+  zh: '| 10 | 4.1 | 3.6 | 3.7 | 4.6 | 4.0 | 2.6 | 1.9 | 3.0 | 3.6 | 0.0 |'
+- en: For readability, we have kept it as a matrix where the rows correspond to the
+    users and columns correspond to the movies. The cell values are the ratings from
+    1 to 5, where 5 signifies a high user affinity to the movie and 1 signifies the
+    user's dislike. There are 0 values in the cells that indicate that the user has
+    not rated those movies. In this recipe, we will decompose the `user_id` x `movie_id`
+    matrix using NMF.
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了提高可读性，我们将数据保持为矩阵形式，其中行对应用户，列对应电影。单元格中的数值表示评分，范围从1到5，其中5表示用户对电影的高度喜好，1表示用户不喜欢。单元格中的0表示用户未对该电影进行评分。在本例中，我们将使用NMF对`user_id`
+    x `movie_id`矩阵进行分解。
+- en: How to do it…
+  id: totrans-261
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何进行…
+- en: 'We will start with loading the necessary libraries and then creating our dataset.
+    We will store our dataset as a matrix:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将首先加载必要的库，然后创建我们的数据集。我们将把数据集存储为矩阵：
+- en: '[PRE19]'
+  id: totrans-263
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Let''s now proceed to demonstrate a non-negative matrix transformation:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们将演示非负矩阵分解（NMF）：
+- en: '[PRE20]'
+  id: totrans-265
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: How it works…
+  id: totrans-266
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 如何运作…
+- en: We will load the data to a NumPy matrix A from the list. We will choose to reduce
+    the dimension to two as dictated by the `max_components` variable. We will initialize
+    the NMF object with the number of components. Finally, we will apply the algorithm
+    to get the reduced matrix, `A_dash`.
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从列表中将数据加载到NumPy矩阵A中。我们将根据`max_components`变量选择将维度降至2。然后，我们将用组件数初始化NMF对象。最后，我们将应用该算法以获得降维后的矩阵`A_dash`。
+- en: 'That''s all we need to do. The scikit library hides a lot of details for us.
+    Let''s now look at what is happening in the background. Formally, NMF decomposes
+    the original matrix into two matrices, which when multiplied together, give the
+    approximation of our original matrix. Look at the following line in our code:'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我们需要做的。scikit 库为我们隐藏了许多细节。现在让我们来看一下后台发生了什么。从正式角度来看，NMF 将原始矩阵分解成两个矩阵，这两个矩阵相乘后，可以得到我们原始矩阵的近似值。看一下我们代码中的以下一行：
+- en: '[PRE21]'
+  id: totrans-269
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'The input matrix `A` is transformed into a reduced matrix, A_dash. Let''s look
+    at the shape of the new matrix:'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输入矩阵 `A` 被转换为简化后的矩阵 A_dash。让我们来看一下新矩阵的形状：
+- en: '[PRE22]'
+  id: totrans-271
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: The original matrix is reduced to two columns as compared to the original ten
+    columns. This is the reduced space. From this data perspective, we can say that
+    our algorithm has now grouped our original ten movies into two concepts. The cell
+    value indicates the user affinity towards each of the concepts.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 原始矩阵被简化为两列，而不是原来的十列。这就是简化空间。从这个数据的角度来看，我们可以说我们的算法已经将原来的十部电影分成了两个概念。单元格的数值表示用户对每个概念的亲和力。
+- en: 'We will print and see how the affinity looks:'
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将打印并查看亲和力的表现：
+- en: '[PRE23]'
+  id: totrans-274
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'The output looks as follows:'
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出如下所示：
+- en: '![How it works…](img/B04041_04_20.jpg)'
+  id: totrans-276
+  prefs: []
+  type: TYPE_IMG
+  zh: '![How it works…](img/B04041_04_20.jpg)'
+- en: Let's look at user 1; the first line in the preceding image says that user 1
+    has a score of 2.14 for concept 1 and 0 for concept 2, indicating that user 1
+    has more affinity towards concept 1.
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看看用户 1；前面图像中的第一行显示，用户 1 在概念 1 上得分为 2.14，而在概念 2 上得分为 0，表明用户 1 对概念 1 有更强的亲和力。
+- en: Look at user ID 3; this user has more affinity towards concept 1\. Now we have
+    reduced our input dataset to two dimensions, it would be nice to view this in
+    a graph.
+  id: totrans-278
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看看用户 ID 为 3 的用户；这个用户对概念 1 有更多的亲和力。现在我们已经将输入数据集减少为二维，展示在图表中会更加清晰。
+- en: 'In our *x* axis, we have component 1 and our *y* axis is component 2\. We will
+    plot the various users as a scatter plot. Our graph looks as follows:'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们的 *x* 轴上，我们有组件 1，*y* 轴上是组件 2。我们将以散点图的形式绘制各种用户。我们的图形如下所示：
+- en: '![How it works…](img/B04041_04_09.jpg)'
+  id: totrans-280
+  prefs: []
+  type: TYPE_IMG
+  zh: '![How it works…](img/B04041_04_09.jpg)'
+- en: You can see that we have two groups of users; all those with a component 1 score
+    of greater than 1.5 and others with less than 1.5\. We are able to group our users
+    into two clusters in the reduced feature space.
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到，我们有两组用户；一组是组件 1 得分大于 1.5 的用户，另一组是得分小于 1.5 的用户。我们能够将用户分为两类，基于简化的特征空间。
+- en: 'Let''s look at the other matrix, `F`:'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看另一个矩阵 `F`：
+- en: '[PRE24]'
+  id: totrans-283
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: The `F` matrix has two rows; each row corresponds to our component and ten columns,
+    each corresponding to a movie ID. Another way to look at it is the affinity of
+    movies towards these concepts. Let's plot the matrix.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`F` 矩阵有两行；每一行对应我们的组件，十列，每一列对应一个电影 ID。换句话说，就是电影对这些概念的亲和力。我们来绘制这个矩阵。'
+- en: 'You can see that our *x* axis is the first row and the *y* axis is the second
+    row. In step 1, we declared a dictionary. We want this dictionary to annotate
+    each point with the movie name:'
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到我们的 *x* 轴是第一行，*y* 轴是第二行。在步骤 1 中，我们声明了一个字典。我们希望这个字典为每个点标注电影名称：
+- en: '[PRE25]'
+  id: totrans-286
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: The annotate method takes the string (used to annotate) as the first parameter
+    and the `x` and `y` coordinates as a tuple.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`annotate` 方法将字符串（用于标注）作为第一个参数，并且将 `x` 和 `y` 坐标作为一个元组。'
+- en: 'You can see the output graph as follows:'
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到输出图表如下：
+- en: '![How it works…](img/B04041_04_10.jpg)'
+  id: totrans-289
+  prefs: []
+  type: TYPE_IMG
+  zh: '![How it works…](img/B04041_04_10.jpg)'
+- en: You can see that we have two distinct groups. All the war movies have a very
+    low component 1 score and a very high component 2 score. All the fantasy movies
+    have a vice versa score. We can safely say that component 1 comprises of war movies
+    and the users having high component 1 scores have very high affinity towards war
+    movies. The same can be said for fantasy movies.
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你可以看到，我们有两组明显不同的群体。所有战争电影的组件 1 得分非常低，而组件 2 得分非常高。所有奇幻电影的得分则正好相反。我们可以大胆地说，组件
+    1 包含了战争电影，而得分高的用户对战争电影有很强的亲和力。同样的情况也适用于奇幻电影。
+- en: Thus, using NMF, we are able to unearth the hidden features in our input matrix
+    with respect to the movies.
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，通过使用 NMF，我们能够发掘出输入矩阵中关于电影的隐藏特征。
+- en: There's more…
+  id: totrans-292
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 还有更多内容……
+- en: 'We saw how the feature space was reduced from ten dimensions to two dimensions
+    for the users. Now, let''s see how this can be used for the recommendation engines.
+    Let''s reconstruct the original matrix from the two matrices:'
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们看到特征空间从十维被简化到二维，接下来，让我们看看这如何应用于推荐引擎。我们从这两个矩阵中重建原始矩阵：
+- en: '[PRE26]'
+  id: totrans-294
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'The reconstructed matrix looks as follows:'
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重建后的矩阵如下所示：
+- en: '![There''s more…](img/B04041_04_23.jpg)'
+  id: totrans-296
+  prefs: []
+  type: TYPE_IMG
+  zh: '![还有更多…](img/B04041_04_23.jpg)'
+- en: 'How different is it from the original matrix? The original matrix is given
+    here; look at the highlighted row:'
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它与原始矩阵有多大不同？原始矩阵在这里给出；请查看高亮的行：
+- en: '|   | Movie ID |'
+  id: totrans-298
+  prefs: []
+  type: TYPE_TB
+  zh: '|   | 电影 ID |'
+- en: '| --- | --- |'
+  id: totrans-299
+  prefs: []
+  type: TYPE_TB
+  zh: '| --- | --- |'
+- en: '| **User ID** | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |'
+  id: totrans-300
+  prefs: []
+  type: TYPE_TB
+  zh: '| **用户 ID** | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |'
+- en: '| 1 | 5.0 | 5.0 | 4.5 | 4.5 | 5.0 | 3.0 | 2.0 | 2.0 | 0.0 | 0.0 |'
+  id: totrans-301
+  prefs: []
+  type: TYPE_TB
+  zh: '| 1 | 5.0 | 5.0 | 4.5 | 4.5 | 5.0 | 3.0 | 2.0 | 2.0 | 0.0 | 0.0 |'
+- en: '| 2 | 4.2 | 4.7 | 5.0 | 3.7 | 3.5 | 0.0 | 2.7 | 2.0 | 1.9 | 0.0 |'
+  id: totrans-302
+  prefs: []
+  type: TYPE_TB
+  zh: '| 2 | 4.2 | 4.7 | 5.0 | 3.7 | 3.5 | 0.0 | 2.7 | 2.0 | 1.9 | 0.0 |'
+- en: '| 3 | 2.5 | 0.0 | 3.3 | 3.4 | 2.2 | 4.6 | 4.0 | 4.7 | 4.2 | 3.6 |'
+  id: totrans-303
+  prefs: []
+  type: TYPE_TB
+  zh: '| 3 | 2.5 | 0.0 | 3.3 | 3.4 | 2.2 | 4.6 | 4.0 | 4.7 | 4.2 | 3.6 |'
+- en: '| 4 | 3.8 | 4.1 | 4.6 | 4.5 | 4.7 | 2.2 | 3.5 | 3.0 | 2.2 | 0.0 |'
+  id: totrans-304
+  prefs: []
+  type: TYPE_TB
+  zh: '| 4 | 3.8 | 4.1 | 4.6 | 4.5 | 4.7 | 2.2 | 3.5 | 3.0 | 2.2 | 0.0 |'
+- en: '| 5 | 2.1 | 2.6 | 0.0 | 2.1 | 0.0 | 3.8 | 4.8 | 4.1 | 4.3 | 4.7 |'
+  id: totrans-305
+  prefs: []
+  type: TYPE_TB
+  zh: '| 5 | 2.1 | 2.6 | 0.0 | 2.1 | 0.0 | 3.8 | 4.8 | 4.1 | 4.3 | 4.7 |'
+- en: '| **6** | **4.7** | **4.5** | **0.0** | **4.4** | **4.1** | **3.5** | **3.1**
+    | **3.4** | **3.1** | **2.5** |'
+  id: totrans-306
+  prefs: []
+  type: TYPE_TB
+  zh: '| **6** | **4.7** | **4.5** | **0.0** | **4.4** | **4.1** | **3.5** | **3.1**
+    | **3.4** | **3.1** | **2.5** |'
+- en: '| 7 | 2.8 | 2.4 | 2.1 | 3.3 | 3.4 | 3.8 | 4.4 | 4.9 | 4.0 | 4.3 |'
+  id: totrans-307
+  prefs: []
+  type: TYPE_TB
+  zh: '| 7 | 2.8 | 2.4 | 2.1 | 3.3 | 3.4 | 3.8 | 4.4 | 4.9 | 4.0 | 4.3 |'
+- en: '| 8 | 4.5 | 4.7 | 4.7 | 4.5 | 4.9 | 0.0 | 2.9 | 2.9 | 2.5 | 2.1 |'
+  id: totrans-308
+  prefs: []
+  type: TYPE_TB
+  zh: '| 8 | 4.5 | 4.7 | 4.7 | 4.5 | 4.9 | 0.0 | 2.9 | 2.9 | 2.5 | 2.1 |'
+- en: '| 9 | 0.0 | 3.3 | 2.9 | 3.6 | 3.1 | 4.0 | 4.2 | 0.0 | 4.5 | 4.6 |'
+  id: totrans-309
+  prefs: []
+  type: TYPE_TB
+  zh: '| 9 | 0.0 | 3.3 | 2.9 | 3.6 | 3.1 | 4.0 | 4.2 | 0.0 | 4.5 | 4.6 |'
+- en: '| 10 | 4.1 | 3.6 | 3.7 | 4.6 | 4.0 | 2.6 | 1.9 | 3.0 | 3.6 | 0.0 |'
+  id: totrans-310
+  prefs: []
+  type: TYPE_TB
+  zh: '| 10 | 4.1 | 3.6 | 3.7 | 4.6 | 4.0 | 2.6 | 1.9 | 3.0 | 3.6 | 0.0 |'
+- en: For user 6 and movie 3, we now have a rating. This will help us decide whether
+    to recommend this movie to the user, as he has not watched it. Remember that this
+    is a toy dataset; real-world scenarios have many movies and users.
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于用户 6 和电影 3，我们现在有了评分。这将帮助我们决定是否推荐这部电影给用户，因为他还没有看过。记住，这是一个玩具数据集；现实世界中的场景有许多电影和用户。
+- en: See also
+  id: totrans-312
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 另见
+- en: '*Extracting Features Using Singular Value Decomposition* recipe in [Chapter
+    4](ch04.xhtml "Chapter 4. Data Analysis – Deep Dive"), *Analyzing Data - Deep
+    Dive*'
+  id: totrans-313
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*使用奇异值分解提取特征* 配方在 [第 4 章](ch04.xhtml "第 4 章. 数据分析 - 深入探讨")中，*数据分析 - 深入探讨*'

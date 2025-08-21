@@ -1,0 +1,2021 @@
+- en: Testing and Debugging Spark
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试与调试 Spark
+- en: '"Everyone knows that debugging is twice as hard as writing a program in the
+    first place. So if you''re as clever as you can be when you write it, how will
+    you ever debug it?"'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “每个人都知道调试比编写程序本身要难两倍。所以如果你在写程序时尽可能聪明，那你怎么能调试它呢？”
+- en: '- Brian W. Kernighan'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '- Brian W. Kernighan'
+- en: In an ideal world, we write perfect Spark codes and everything runs perfectly
+    all the time, right? Just kidding; in practice, we know that working with large-scale
+    datasets is hardly ever that easy, and there are inevitably some data points that
+    will expose any corner cases with your code.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在理想的世界里，我们编写完美的 Spark 代码，所有事情都完美运行，对吧？开玩笑；实际上，我们知道，处理大规模数据集几乎从来都不那么简单，总会有一些数据点暴露出代码的任何边角问题。
+- en: 'Considering the aforementioned challenges, therefore, in this chapter, we will
+    see how difficult it can be to test an application if it is distributed; then,
+    we will see some ways to tackle this. In a nutshell, the following topics will
+    be cover throughout this chapter:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 考虑到上述挑战，因此，在本章中，我们将看到测试一个分布式应用程序是多么困难；接下来，我们将看到一些应对方法。简而言之，本章将涵盖以下主题：
+- en: Testing in a distributed environment
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在分布式环境中的测试
+- en: Testing Spark application
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 测试 Spark 应用程序
+- en: Debugging Spark application
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 调试 Spark 应用程序
+- en: Testing in a distributed environment
+  id: totrans-8
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在分布式环境中的测试
+- en: 'Leslie Lamport defined the term distributed system as follows:'
+  id: totrans-9
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Leslie Lamport 定义了分布式系统这个术语，具体如下：
+- en: '"A distributed system is one in which I cannot get any work done because some
+    machine I have never heard of has crashed."'
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: “分布式系统是这样一个系统，在其中我无法完成任何工作，因为一台我从未听说过的机器崩溃了。”
+- en: Resource sharing through **World Wide Web** (aka **WWW**), a network of connected
+    computers (aka a cluster), is a good example of distributed systems. These distributed
+    environments are often complex and lots of heterogeneity occurs frequently. Testing
+    in these kinds of the heterogeneous environments is also challenging. In this
+    section, at first, we will observe some commons issues that are often raised while
+    working with such system.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过**万维网**（也叫**WWW**）进行资源共享，连接计算机的网络（也叫集群），是分布式系统的一个好例子。这些分布式环境通常是复杂的，且经常出现异质性。在这些异质环境中进行测试也充满挑战。在这一部分，首先，我们将观察在与此类系统工作时常见的一些问题。
+- en: Distributed environment
+  id: totrans-12
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 分布式环境
+- en: 'There are numerous definitions of distributed systems. Let''s see some definition
+    and then we will try to correlate the aforementioned categories afterward. Coulouris
+    defines a distributed system as *a system in which hardware or software components
+    located at networked computers communicate and coordinate their actions only by
+    message passing*. On the other hand, Tanenbaum defines the term in several ways:'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 关于分布式系统有许多定义。让我们看看一些定义，然后我们将尝试关联上述类别。Coulouris 将分布式系统定义为*一种硬件或软件组件位于联网计算机上的系统，这些组件仅通过消息传递来通信并协调其操作*。另一方面，Tanenbaum
+    通过几种方式定义了这个术语：
+- en: '*A collection of independent computers that appear to the users of the system
+    as a single computer.*'
+  id: totrans-14
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*一组独立的计算机，对系统用户而言，表现为一台单一的计算机。*'
+- en: '*A system that consists of a collection of two or more independent Computers
+    which coordinate their processing through the exchange of synchronous or asynchronous
+    message passing.*'
+  id: totrans-15
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*一个由两台或更多独立计算机组成的系统，这些计算机通过同步或异步的消息传递协调它们的处理过程。*'
+- en: '*A distributed system is a collection of autonomous computers linked by a network
+    with software designed to produce an integrated computing facility.*'
+  id: totrans-16
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*分布式系统是一组通过网络连接的自治计算机，软件设计用来提供一个集成的计算设施。*'
+- en: 'Now, based on the preceding definition, distributed systems can be categorized
+    as follows:'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，基于上述定义，分布式系统可以被分类如下：
+- en: Only hardware and software are distributed:The local distributed system is connected
+    through LAN.
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 只有硬件和软件是分布式的：本地分布式系统通过局域网（LAN）连接。
+- en: Users are distributed, but there are computing and hardware resources that are
+    running backend, for example, WWW.
+  id: totrans-19
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 用户是分布式的，但有一些计算和硬件资源在后台运行，例如 WWW。
+- en: 'Both users and hardware/software are distributed: Distributed computing cluster
+    that is connected through WAN. For example, you can get these types of computing
+    facilities while using Amazon AWS, Microsoft Azure, Google Cloud, or Digital Ocean''s
+    droplets.'
+  id: totrans-20
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 用户和硬件/软件都分布式：通过广域网（WAN）连接的分布式计算集群。例如，当你使用 Amazon AWS、Microsoft Azure、Google
+    Cloud 或 Digital Ocean 的 droplets 时，你可以获得这些类型的计算设施。
+- en: Issues in a distributed system
+  id: totrans-21
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 分布式系统中的问题
+- en: Here we will discuss some major issues that need to be taken care of during
+    the software and hardware testing so that Spark jobs run smoothly in cluster computing,
+    which is essentially a distributed computing environment.
+  id: totrans-22
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们将讨论在软件和硬件测试过程中需要注意的一些主要问题，以确保 Spark 作业能够在集群计算中顺利运行，而集群计算本质上是一个分布式计算环境。
+- en: 'Note that all the issues are unavoidable, but we can at least tune them for
+    betterment. You should follow the instructions and recommendations given in the
+    previous chapter. According to *Kamal Sheel Mishra* and *Anil Kumar Tripathi*,
+    *Some Issues, Challenges and Problems of Distributed Software System*, in *International
+    Journal of Computer Science and Information Technologies*, Vol. 5 (4), 2014, 4922-4925\.
+    URL: [https://pdfs.semanticscholar.org/4c6d/c4d739bad13bcd0398e5180c1513f18275d8.pdf](https://pdfs.semanticscholar.org/4c6d/c4d739bad13bcd0398e5180c1513f18275d8.pdf),
+    there are several issues that need to be addressed while working with software
+    or hardware in a distributed environment:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，所有这些问题都是不可避免的，但我们至少可以对它们进行调整以达到更好的效果。你应该遵循上一章中给出的指示和建议。根据*Kamal Sheel Mishra*和*Anil
+    Kumar Tripathi*在《分布式软件系统的一些问题、挑战和难题》中提到的内容，见于《国际计算机科学与信息技术杂志》，第5卷（4期），2014年，4922-4925页，网址：[https://pdfs.semanticscholar.org/4c6d/c4d739bad13bcd0398e5180c1513f18275d8.pdf](https://pdfs.semanticscholar.org/4c6d/c4d739bad13bcd0398e5180c1513f18275d8.pdf)，在分布式环境下使用软件或硬件时，需要解决几个问题：
+- en: Scalability
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 扩展性
+- en: Heterogeneous languages, platform, and architecture
+  id: totrans-25
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 异构语言、平台和架构
+- en: Resource management
+  id: totrans-26
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 资源管理
+- en: Security and privacy
+  id: totrans-27
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 安全与隐私
+- en: Transparency
+  id: totrans-28
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 透明性
+- en: Openness
+  id: totrans-29
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 开放性
+- en: Interoperability
+  id: totrans-30
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 互操作性
+- en: Quality of service
+  id: totrans-31
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 服务质量
+- en: Failure management
+  id: totrans-32
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 故障管理
+- en: Synchronization
+  id: totrans-33
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 同步
+- en: Communications
+  id: totrans-34
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通信
+- en: Software architectures
+  id: totrans-35
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 软件架构
+- en: Performance analysis
+  id: totrans-36
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 性能分析
+- en: Generating test data
+  id: totrans-37
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 生成测试数据
+- en: Component selection for testing
+  id: totrans-38
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 测试组件选择
+- en: Test sequence
+  id: totrans-39
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 测试顺序
+- en: Testing for system scalability and performance
+  id: totrans-40
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 系统扩展性和性能测试
+- en: Availability of source code
+  id: totrans-41
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 源代码的可用性
+- en: Reproducibility of events
+  id: totrans-42
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 事件的可重现性
+- en: Deadlocks and race conditions
+  id: totrans-43
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 死锁和竞争条件
+- en: Testing for fault tolerance
+  id: totrans-44
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 故障容忍性测试
+- en: Scheduling issue for distributed system
+  id: totrans-45
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 分布式系统的调度问题
+- en: Distributed task allocation
+  id: totrans-46
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 分布式任务分配
+- en: Testing distributed software
+  id: totrans-47
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 测试分布式软件
+- en: Monitoring and control mechanism from the hardware abstraction level
+  id: totrans-48
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 来自硬件抽象层的监控与控制机制
+- en: 'It''s true that we cannot fully solve all of these issues, but However, using
+    Spark, we can at least control a few of them that are related to distributed system.
+    For example, scalability, resource management, quality of service, failure management,
+    synchronization, communications, scheduling issue for distributed system, distributed
+    task allocation, and monitoring and control mechanism in testing distributed software.
+    Most of them were discussed in the previous two chapters. On the other hand, we
+    can address some issues in the testing and software side: such as software architectures,
+    performance analysis, generating test data, component selection for testing, test
+    sequence, testing for system scalability and performance, and availability of
+    source code. These will be covered explicitly or implicitly in this chapter at
+    least.'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 确实我们无法完全解决所有这些问题，但使用 Spark 后，我们至少可以控制一些与分布式系统相关的问题。例如，扩展性、资源管理、服务质量、故障管理、同步、通信、分布式系统的调度问题、分布式任务分配、以及测试分布式软件时的监控与控制机制。这些大多数问题在前两章中已有讨论。另一方面，我们可以在测试和软件方面解决一些问题，例如：软件架构、性能分析、生成测试数据、组件选择、测试顺序、系统扩展性与性能测试，以及源代码的可用性。至少本章中会显式或隐式地涵盖这些内容。
+- en: Challenges of software testing in a distributed environment
+  id: totrans-50
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 分布式环境中软件测试的挑战
+- en: There are some common challenges associated with the tasks in an agile software
+    development, and those challenges become more complex while testing the software
+    in a distributed environment before deploying them eventually. Often team members
+    need to merge the software components in parallel after the bugs proliferating.
+    However, based on urgency, often the merging occurs before testing phase. Sometimes,
+    many stakeholders are distributed across teams. Therefore, there's a huge potential
+    for misunderstanding and teams often lose in between.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 敏捷软件开发中的任务常常伴随着一些共同的挑战，这些挑战在将软件部署之前，在分布式环境中进行测试时变得更加复杂。团队成员通常需要在错误传播后并行合并软件组件。然而，由于紧急性，合并通常发生在测试阶段之前。有时，许多利益相关者分布在不同的团队之间。因此，误解的潜力很大，团队经常因此而迷失。
+- en: For example, Cloud Foundry ([https://www.cloudfoundry.org/](https://www.cloudfoundry.org/))
+    is an open source heavily distributed PaaS software system for managing deployment
+    and scalability of applications in the Cloud. It promises different features such
+    as scalability, reliability, and elasticity that come inherently to deployments
+    on Cloud Foundry require the underlying distributed system to implement measures
+    to ensure robustness, resiliency, and failover.
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，Cloud Foundry ([https://www.cloudfoundry.org/](https://www.cloudfoundry.org/))
+    是一个开源的、重度分布式的 PaaS 软件系统，用于管理云中应用程序的部署和可扩展性。它承诺提供不同的功能，如可扩展性、可靠性和弹性，这些功能在 Cloud
+    Foundry 上的部署中固有地要求底层的分布式系统实施措施，以确保稳健性、弹性和故障切换。
+- en: 'The process of software testing is long known to comprise *unit testing*, *integration
+    testing*, *smoke testing*, *acceptance testing*, *scalability testing*, *performance
+    testing*, and *quality of service testing*. In Cloud Foundry, the process of testing
+    a distributed system is shown in the following figure:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 软件测试的过程早已为人熟知，包括*单元测试*、*集成测试*、*冒烟测试*、*验收测试*、*可扩展性测试*、*性能测试*和*服务质量测试*。在 Cloud
+    Foundry 中，分布式系统的测试过程如下面的图所示：
+- en: '![](img/00106.jpeg)**Figure 1:** An example of software testing in a distributed
+    environment like Cloud'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00106.jpeg)**图 1：** 分布式环境中软件测试的示例，如 Cloud'
+- en: As shown in the preceding figure (first column), the process of testing in a
+    distributed environment like Cloud starts with running unit tests against the
+    smallest points of contract in the system. Following successful execution of all
+    the unit tests, integration tests are run to validate the behavior of interacting
+    components as part of a single coherent software system (second column) running
+    on a single box (for example, a **Virtual Machine** (**VM**) or bare metal). However,
+    while these tests validate the overall behavior of the system as a monolith, they
+    do not guarantee system validity in a distributed deployment. Once integration
+    tests pass, the next step (third column) is to validate distributed deployment
+    of the system and run the smoke tests.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如前面图所示（第一列），在像 Cloud 这样的分布式环境中，测试过程从对系统中最小的契约点执行单元测试开始。在所有单元测试成功执行后，进行集成测试，以验证作为一个单一一致软件系统的交互组件的行为（第二列），并运行在单个设备上（例如，**虚拟机**（**VM**）或裸机）。然而，尽管这些测试验证了系统作为一个整体的行为，但它们并不能保证在分布式部署中的系统有效性。一旦集成测试通过，下一步（第三列）是验证系统的分布式部署，并运行冒烟测试。
+- en: As you know, that the successful configuration of the software and execution
+    of unit tests prepares us to validate acceptability of system behavior. This verification
+    is done by running acceptance tests (fourth column). Now, to overcome the aforementioned
+    issues and challenges in distributed environments, there are also other hidden
+    challenges that need to be solved by researchers and big data engineers, but those
+    are actually out of the scope of this book.
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如你所知道的，成功配置软件并执行单元测试为我们验证系统行为的可接受性做好了准备。这一验证是通过执行验收测试（第四列）来完成的。现在，为了克服分布式环境中上述的问题和挑战，仍然有其他隐藏的挑战需要研究人员和大数据工程师解决，但这些内容实际上超出了本书的范围。
+- en: Now that we know what real challenges are for the software testing in a distributed
+    environment, now let's start testing our Spark code a bit. The next section is
+    dedicated to testing Spark applications.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们知道了在分布式环境中，软件测试所面临的真实挑战，接下来让我们开始测试一下我们的 Spark 代码。下一节将专门介绍测试 Spark 应用程序。
+- en: Testing Spark applications
+  id: totrans-58
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试 Spark 应用程序
+- en: 'There are many ways to try to test your Spark code, depending on whether it''s
+    Java (you can do basic JUnit tests to test non-Spark pieces) or ScalaTest for
+    your Scala code. You can also do full integration tests by running Spark locally
+    or on a small test cluster. Another awesome choice from Holden Karau is using
+    Spark-testing base. You probably know that there is no native library for unit
+    testing in Spark as of yet. Nevertheless, we can have the following two alternatives
+    to use two libraries:'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 测试Spark代码有很多种方式，这取决于它是Java代码（你可以做基本的JUnit测试来测试非Spark部分）还是ScalaTest用于Scala代码。你还可以通过在本地运行Spark或在小型测试集群上运行进行完整的集成测试。另一个很棒的选择是Holden
+    Karau的Spark-testing base。你可能知道，目前Spark没有原生的单元测试库。然而，我们可以使用以下两种库的替代方案：
+- en: ScalaTest
+  id: totrans-60
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: ScalaTest
+- en: Spark-testing base
+  id: totrans-61
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: Spark-testing base
+- en: However, before starting to test your Spark applications written in Scala, some
+    background knowledge about unit testing and testing Scala methods is a mandate.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在开始测试你用Scala编写的Spark应用程序之前，了解一些关于单元测试和测试Scala方法的背景知识是必须的。
+- en: Testing Scala methods
+  id: totrans-63
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试Scala方法
+- en: 'Here, we will see some simple techniques for testing Scala methods. For Scala
+    users, this is the most familiar unit testing framework (you can also use it for
+    testing Java code and soon for JavaScript). ScalaTest supports a number of different
+    testing styles, each designed to support a specific type of testing need. For
+    details, see ScalaTest User Guide at [http://www.scalatest.org/user_guide/selecting_a_style](http://www.scalatest.org/user_guide/selecting_a_style).
+    Although ScalaTest supports many styles, one of the quickest ways to get started
+    is to use the following ScalaTest traits and write the tests in the **TDD** (**test-driven
+    development**) style:'
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们将展示一些简单的技巧来测试Scala方法。对于Scala用户来说，这是最熟悉的单元测试框架（你也可以用它来测试Java代码，未来还可以用于JavaScript）。ScalaTest支持多种不同的测试风格，每种风格旨在支持特定类型的测试需求。详情请参见ScalaTest用户指南：[http://www.scalatest.org/user_guide/selecting_a_style](http://www.scalatest.org/user_guide/selecting_a_style)。虽然ScalaTest支持多种风格，但最简单的入门方法之一是使用以下ScalaTest特性，并以**TDD**（**测试驱动开发**）风格编写测试：
+- en: '`FunSuite`'
+  id: totrans-65
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`FunSuite`'
+- en: '`Assertions`'
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`Assertions`'
+- en: '`BeforeAndAfter`'
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`BeforeAndAfter`'
+- en: Feel free to browse the preceding URLs to learn more about these traits; that
+    will make rest of this tutorial go smoothly.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请随意浏览前面的链接，以了解更多关于这些特性的内容；这将使本教程的其余部分顺利进行。
+- en: It is to be noted that the TDD is a programming technique to develop software,
+    and it states that you should start development from tests. Hence, it doesn't
+    affect how tests are written, but when tests are written. There is no trait or
+    testing style to enforce or encourage TDD in `ScalaTest.FunSuite`, `Assertions`,
+    and `BeforeAndAfter` are only more similar to the xUnit testing frameworks.
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，TDD（测试驱动开发）是一种用于开发软件的编程技术，它指出你应该从测试开始开发。因此，它不会影响如何编写测试，而是影响何时编写测试。在`ScalaTest.FunSuite`、`Assertions`和`BeforeAndAfter`中没有强制或鼓励TDD的特性或测试风格，它们更类似于xUnit测试框架。
+- en: 'There are three assertions available in the ScalaTest in any style trait:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在ScalaTest的任何风格特性中，都有三种可用的断言：
+- en: '`assert`: This is used for general assertions in your Scala program.'
+  id: totrans-71
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assert`：用于你Scala程序中的一般断言。'
+- en: '`assertResult`: This helps differentiate expected value from the actual values.'
+  id: totrans-72
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assertResult`：用于区分预期值与实际值。'
+- en: '`assertThrows`: This is used to ensure a bit of code throws an expected exception.'
+  id: totrans-73
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assertThrows`：用于确保某段代码抛出预期的异常。'
+- en: 'The ScalaTest''s assertions are defined in the trait `Assertions`, which is
+    further extended by `Suite`. In brief, the `Suite` trait is the super trait for
+    all the style traits. According to the ScalaTest documentation at [http://www.scalatest.org/user_guide/using_assertions](http://www.scalatest.org/user_guide/using_assertions),
+    the `Assertions` trait also provides the following features:'
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: ScalaTest的断言定义在`Assertions`特性中，该特性进一步由`Suite`扩展。简而言之，`Suite`特性是所有风格特性的超类。根据ScalaTest文档：[http://www.scalatest.org/user_guide/using_assertions](http://www.scalatest.org/user_guide/using_assertions)，`Assertions`特性还提供以下功能：
+- en: '`assume` to conditionally cancel a test'
+  id: totrans-75
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assume` 用于有条件地取消测试'
+- en: '`fail` to fail a test unconditionally'
+  id: totrans-76
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`fail` 用于无条件地使测试失败'
+- en: '`cancel` to cancel a test unconditionally'
+  id: totrans-77
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`cancel` 用于无条件地取消测试'
+- en: '`succeed` to make a test succeed unconditionally'
+  id: totrans-78
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`succeed` 用于无条件地使测试成功'
+- en: '`intercept` to ensure a bit of code throws an expected exception and then make
+    assertions about the exception'
+  id: totrans-79
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`intercept` 用于确保某段代码抛出预期的异常，并对该异常进行断言'
+- en: '`assertDoesNotCompile` to ensure a bit of code does not compile'
+  id: totrans-80
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assertDoesNotCompile` 用于确保某段代码不编译'
+- en: '`assertCompiles` to ensure a bit of code does compile'
+  id: totrans-81
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assertCompiles` 用于确保代码能够编译'
+- en: '`assertTypeError` to ensure a bit of code does not compile because of a type
+    (not parse) error'
+  id: totrans-82
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`assertTypeError` 用于确保代码由于类型（而非解析）错误无法编译'
+- en: '`withClue` to add more information about a failure'
+  id: totrans-83
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`withClue` 用于添加更多关于失败的信息'
+- en: 'From the preceding list, we will show a few of them. In your Scala program,
+    you can write assertions by calling `assert` and passing a `Boolean` expression
+    in. You can simply start writing your simple unit test case using `Assertions`.
+    The `Predef` is an object, where this behavior of assert is defined. Note that
+    all the members of the `Predef` get imported into your every Scala source file.
+    The following source code will print `Assertion success` for the following case:'
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从前面的列表中，我们将展示其中的一些。在你的 Scala 程序中，你可以通过调用 `assert` 并传入一个 `Boolean` 表达式来编写断言。你可以简单地开始编写你的简单单元测试用例，使用
+    `Assertions`。`Predef` 是一个对象，在其中定义了 assert 的行为。注意，`Predef` 的所有成员都会自动导入到每个 Scala
+    源文件中。以下源代码会打印 `Assertion success`，对于以下情况：
+- en: '[PRE0]'
+  id: totrans-85
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'However, if you make `a = 2` and `b = 1`, for example, the assertion will fail
+    and you will experience the following output:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，如果你将 `a = 2` 和 `b = 1`，例如，断言将失败，并且你将遇到以下输出：
+- en: '![](img/00271.jpeg)**Figure 2:** An example of assertion fail'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00271.jpeg)**图 2：** 断言失败的示例'
+- en: If you pass a true expression, assert will return normally. However, assert
+    will terminate abruptly with an Assertion Error if the supplied expression is
+    false. Unlike the `AssertionError` and `TestFailedException` forms, the ScalaTest's
+    assert provides more information that will tell you exactly in which line the
+    test case failed or for which expression. Therefore, ScalaTest's assert provides
+    better error messages than Scala's assert.
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你传递一个为真的表达式，assert 将正常返回。然而，如果传入的表达式为假，assert 将会突然终止并抛出 Assertion Error。与
+    `AssertionError` 和 `TestFailedException` 形式不同，ScalaTest 的 assert 提供了更多的信息，告诉你测试失败发生在哪一行，或是哪个表达式出了问题。因此，ScalaTest
+    的 assert 提供比 Scala 的 assert 更好的错误信息。
+- en: 'For example, for the following source code, you should experience `TestFailedException`
+    that will tell that 5 did not equal 4:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 例如，对于以下源代码，你应该会遇到 `TestFailedException`，它会告诉你 5 不等于 4：
+- en: '[PRE1]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'The following figure shows the output of the preceding Scala test:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下图像展示了前面 Scala 测试的输出：
+- en: '![](img/00180.jpeg)**Figure 3:** An example of TestFailedException'
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00180.jpeg)**图 3：** TestFailedException 的示例'
+- en: 'The following source code explains the use of the `assertResult` unit test
+    to test the result of your method:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下源代码解释了如何使用 `assertResult` 单元测试来测试方法的结果：
+- en: '[PRE2]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'The preceding assertion will be failed and Scala will throw an exception `TestFailedException`
+    and prints `Expected 3 but got 4` (*Figure 4*):'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前面的断言将失败，Scala 会抛出一个 `TestFailedException` 异常，并打印 `Expected 3 but got 4` (*图
+    4*)：
+- en: '![](img/00060.jpeg)**Figure 4:** Another example of TestFailedException'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00060.jpeg)**图 4：** 另一个 TestFailedException 的示例'
+- en: 'Now, let''s see a unit testing to show expected exception:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看一个单元测试来展示预期的异常：
+- en: '[PRE3]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'If you try to access an array element outside the index, the preceding code
+    will tell you if you''re allowed to access the first character of the preceding
+    string `Hello world!`. If your Scala program can access the value in an index,
+    the assertion will fail. This also means that the test case has failed. Thus,
+    the preceding test case will fail naturally since the first index contains the
+    character `H`, and you should experience the following error message (*Figure
+    5*):'
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你尝试访问超出索引范围的数组元素，前面的代码将告诉你是否可以访问前一个字符串 `Hello world!` 的第一个字符。如果你的 Scala 程序能够访问某个索引的值，断言将失败。这也意味着测试用例失败。因此，前面的测试用例将自然失败，因为第一个索引包含字符
+    `H`，你应该会遇到以下错误信息 (*图 5*)：
+- en: '![](img/00337.jpeg)**Figure 5:** Third example of TestFailedException'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00337.jpeg)**图 5：** 第三个 TestFailedException 示例'
+- en: 'However, now let''s try to access the index at position `-1` as follows:'
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，现在让我们尝试如下访问位置为 `-1` 的索引：
+- en: '[PRE4]'
+  id: totrans-102
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'Now the assertion should be true, and consequently, the test case will be passed.
+    Finally, the code will terminate normally. Now, let''s check our code snippets
+    if it will compile or not. Very often, you may wish to ensure that a certain ordering
+    of the code that represents emerging "user error" does not compile at all. The
+    objective is to check the strength of the library against the error to disallow
+    unwanted result and behavior. ScalaTest''s `Assertions` trait includes the following
+    syntax for that purpose:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，断言应该为真，因此，测试用例将通过。最终，代码将正常终止。现在，让我们检查一下我们的代码片段是否能编译。通常，你可能希望确保某些代表“用户错误”的代码顺序根本无法编译。其目标是检查库在错误面前的强度，以阻止不希望的结果和行为。ScalaTest的`Assertions`特性包括以下语法：
+- en: '[PRE5]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'If you want to ensure that a snippet of code does not compile because of a
+    type error (as opposed to a syntax error), use the following:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你想确保一段代码由于类型错误（而非语法错误）而无法编译，可以使用以下代码：
+- en: '[PRE6]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'A syntax error will still result on a thrown `TestFailedException`. Finally,
+    if you want to state that a snippet of code does compile, you can make that more
+    obvious with the following:'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 语法错误仍会导致抛出`TestFailedException`。最后，如果你想声明一段代码能够编译，可以通过以下方式更明显地表达：
+- en: '[PRE7]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'A complete example is shown as follows:'
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完整的示例如下所示：
+- en: '[PRE8]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'The output of the preceding code is shown in the following figure:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码的输出如下图所示：
+- en: '![](img/00369.jpeg)**Figure 6:** Multiple tests together'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00369.jpeg)**图6：** 多个测试一起进行'
+- en: Now we would like to finish the Scala-based unit testing due to page limitation.
+    However, for other unit test cases, you can refer the Scala test guideline at
+    [http://www.scalatest.org/user_guide](http://www.scalatest.org/user_guide).
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于页面限制，我们现在将结束基于Scala的单元测试部分。然而，关于其他单元测试的案例，你可以参考Scala测试指南，网址为[http://www.scalatest.org/user_guide](http://www.scalatest.org/user_guide)。
+- en: Unit testing
+  id: totrans-114
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 单元测试
+- en: In software engineering, often, individual units of source code are tested to
+    determine whether they are fit for use or not. This way of software testing method
+    is also called the unit testing. This testing ensures that the source code developed
+    by a software engineer or developer meets the design specifications and works
+    as intended.
+  id: totrans-115
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在软件工程中，通常会对单独的源代码单元进行测试，以确定它们是否适合使用。这种软件测试方法也被称为单元测试。此测试确保软件工程师或开发人员编写的源代码符合设计规范，并按预期工作。
+- en: 'On the other hand, the goal of unit testing is to separate each part of the
+    program (that is, in a modular way). Then try to observe if all the individual
+    parts are working normally. There are several benefits of unit testing in any
+    software system:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，单元测试的目标是将程序的每个部分分开（即以模块化的方式）。然后尝试观察各个部分是否正常工作。单元测试在任何软件系统中的几个好处包括：
+- en: '**Find problems early:** It finds bugs or missing parts of the specification
+    early in the development cycle.'
+  id: totrans-117
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**尽早发现问题：** 它能在开发周期的早期发现错误或缺失的规范部分。'
+- en: '**Facilitates change:** It helps in refactoring and up gradation without worrying
+    about breaking functionality.'
+  id: totrans-118
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**促进变更：** 它有助于重构和升级，而无需担心破坏功能。'
+- en: '**Simplifies integration:** It makes integration tests easier to write.'
+  id: totrans-119
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**简化集成：** 它使得集成测试更容易编写。'
+- en: '**Documentation:** It provides a living documentation of the system.'
+  id: totrans-120
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**文档化：** 它提供了系统的活文档。'
+- en: '**Design:** It can act as the formal design of the project.'
+  id: totrans-121
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**设计：** 它可以作为项目的正式设计。'
+- en: Testing Spark applications
+  id: totrans-122
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 测试Spark应用
+- en: 'We have already seen how to test your Scala code using built-in `ScalaTest`
+    package of Scala. However, in this subsection, we will see how we could test our
+    Spark application written in Scala. The following three methods will be discussed:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经看到如何使用Scala的内置`ScalaTest`包来测试你的Scala代码。然而，在本小节中，我们将看看如何测试用Scala编写的Spark应用。接下来将讨论以下三种方法：
+- en: '**Method 1:** Testing Spark applications using JUnit'
+  id: totrans-124
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**方法1：** 使用JUnit测试Spark应用'
+- en: '**Method 2:** Testing Spark applications using `ScalaTest` package'
+  id: totrans-125
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**方法2：** 使用`ScalaTest`包进行Spark应用测试'
+- en: '**Method 3:** Testing Spark applications using Spark testing base'
+  id: totrans-126
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**方法3：** 使用Spark测试基础进行Spark应用测试'
+- en: Methods 1 and 2 will be discussed here with some practical codes. However, a
+    detailed discussion on method 3 will be provided in the next subsection. To keep
+    the understanding easy and simple, we will use the famous word counting applications
+    to demonstrate methods 1 and 2.
+  id: totrans-127
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 方法1和方法2将在这里讨论，并附有一些实际代码。然而，方法3的详细讨论将在下一个小节中提供。为了简化理解，我们将使用著名的单词计数应用程序来演示方法1和方法2。
+- en: 'Method 1: Using Scala JUnit test'
+  id: totrans-128
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 方法 1：使用 Scala JUnit 测试
+- en: 'Suppose you have written an application in Scala that can tell you how many
+    words are there in a document or text file as follows:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设你已经用 Scala 编写了一个应用程序，它可以告诉你文档或文本文件中有多少个单词，如下所示：
+- en: '[PRE9]'
+  id: totrans-130
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: The preceding code simply parses a text file and performs a `flatMap` operation
+    by simply splitting the words. Then, it performs another operation to take only
+    the distinct words into consideration. Finally, the `myWordCounter` method counts
+    how many words are there and returns the value of the counter.
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 上述代码仅解析了一个文本文件，并通过简单地分割单词来执行 `flatMap` 操作。然后，它执行另一个操作，只考虑不同的单词。最后，`myWordCounter`
+    方法计算单词数量并返回计数器的值。
+- en: 'Now, before proceeding into formal testing, let''s check if the preceding method
+    works well. Just add the main method and create an object as follows:'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，在进行正式测试之前，让我们先检查一下前述方法是否正常工作。只需添加主方法并按如下方式创建一个对象：
+- en: '[PRE10]'
+  id: totrans-133
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'If you execute the preceding code, you should observe the following output:
+    `Number of words: 214`. Fantastic! It really works as a local application. Now,
+    test the preceding test case using Scala JUnit test case.'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '如果你执行上述代码，你应该观察到以下输出：`Number of words: 214`。太棒了！它确实像本地应用程序一样运行。现在，使用 Scala
+    JUnit 测试用例测试前面的测试用例。'
+- en: '[PRE11]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'If you see the earlier code carefully, I have used the `Test` annotation before
+    the `test()` method. Inside the `test()` method, I invoked the `assert()` method,
+    where the actual testing occurs. Here we tried to check if the return value of
+    the `myWordCounter()` method is equal to 214\. Now run the earlier code as a Scala
+    Unit test as follows (*Figure 7*):'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你仔细查看之前的代码，我在 `test()` 方法前使用了 `Test` 注解。在 `test()` 方法内部，我调用了 `assert()` 方法，实际的测试就在这里发生。我们尝试检查
+    `myWordCounter()` 方法的返回值是否等于 214。现在，按如下方式将之前的代码作为 Scala 单元测试运行（*图 7*）：
+- en: '![](img/00151.jpeg)**Figure 7:** Running Scala code as Scala JUnit Test'
+  id: totrans-137
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00151.jpeg)**图 7：** 以 Scala JUnit 测试运行 Scala 代码'
+- en: 'Now if the test case passes, you should observe the following output on your
+    Eclipse IDE (*Figure 8*):'
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果测试用例通过，你应该在 Eclipse IDE 上观察到以下输出（*图 8*）：
+- en: '![](img/00173.jpeg)**Figure 8:** Word count test case passed'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00173.jpeg)**图 8：** 单词计数测试用例通过'
+- en: 'Now, for example, try to assert in the following way:'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，举个例子，尝试以以下方式进行断言：
+- en: '[PRE12]'
+  id: totrans-141
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'If the preceding test case fails, you should observe the following output (*Figure
+    9*):'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果之前的测试用例失败，你应该观察到以下输出（*图 9*）：
+- en: '![](img/00299.jpeg)**Figure 9:** Test case failed'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00299.jpeg)**图 9：** 测试用例失败'
+- en: Now let's have a look at method 2 and how it helps us for the betterment.
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们看一下方法 2 以及它如何帮助我们改进。
+- en: 'Method 2: Testing Scala code using FunSuite'
+  id: totrans-145
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 方法 2：使用 FunSuite 测试 Scala 代码
+- en: 'Now, let''s redesign the preceding test case by returning only the RDD of the
+    texts in the document, as follows:'
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们通过仅返回文档中文本的 RDD 来重新设计之前的测试用例，如下所示：
+- en: '[PRE13]'
+  id: totrans-147
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: 'So, the `prepareWordCountRDD()` method in the preceding class returns an RDD
+    of string and integer values. Now, if we want to test the `prepareWordCountRDD()`
+    method''s functionality, we can do it more explicit by extending the test class
+    with `FunSuite` and `BeforeAndAfterAll` from the `ScalaTest` package of Scala.
+    The testing works in the following ways:'
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 所以，前述类中的 `prepareWordCountRDD()` 方法返回了一个包含字符串和整数值的 RDD。现在，如果我们想测试 `prepareWordCountRDD()`
+    方法的功能，我们可以通过扩展测试类，使用来自 ScalaTest 包的 `FunSuite` 和 `BeforeAndAfterAll` 来使测试更为明确。测试的工作方式如下：
+- en: Extend the test class with `FunSuite` and `BeforeAndAfterAll` from the `ScalaTest`
+    package of Scala
+  id: totrans-149
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用来自 Scala 的 `ScalaTest` 包中的 `FunSuite` 和 `BeforeAndAfterAll` 扩展测试类
+- en: Override the `beforeAll()` that creates Spark context
+  id: totrans-150
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重写创建 Spark 上下文的 `beforeAll()` 方法
+- en: Perform the test using the `test()` method and use the `assert()` method inside
+    the `test()` method
+  id: totrans-151
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用 `test()` 方法执行测试，并在 `test()` 方法内部使用 `assert()` 方法
+- en: Override the `afterAll()` method that stops the Spark context
+  id: totrans-152
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重写停止 Spark 上下文的 `afterAll()` 方法
+- en: 'Based on the preceding steps, let''s see a class for testing the preceding
+    `prepareWordCountRDD()` method:'
+  id: totrans-153
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 根据前面的步骤，让我们看看用于测试 `prepareWordCountRDD()` 方法的类：
+- en: '[PRE14]'
+  id: totrans-154
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: The first test says that if two RDDs materialize in two different ways, the
+    contents should be the same. Thus, the first test should get passed. We will see
+    this in following example. Now, for the second test, as we have seen previously,
+    the word count of RDD is 214, but let's assume it unknown for a while. If it's
+    214 coincidentally, the test case should pass, which is its expected behavior.
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 第一个测试表明，如果两个 RDD 以两种不同的方式物化，那么它们的内容应该是相同的。因此，第一个测试应该通过。我们将在以下示例中看到这一点。对于第二个测试，正如我们之前所看到的，RDD
+    的单词计数为 214，但我们暂时假设它是未知的。如果它恰好是 214，测试用例应该通过，这就是它的预期行为。
+- en: 'Thus, we are expecting both tests to be passed. Now, on Eclipse, run the test
+    suite as `ScalaTest-File`, as shown in the following figure:'
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 因此，我们预期两个测试都会通过。现在，在 Eclipse 中，将测试套件作为 `ScalaTest-File` 运行，如下图所示：
+- en: '![](img/00342.jpeg) **Figure 10:** running the test suite as ScalaTest-File'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00342.jpeg) **图 10：** 作为 ScalaTest-File 运行测试套件'
+- en: Now you should observe the following output (*Figure 11*). The output shows
+    how many test cases we performed and how many of them passed, failed, canceled,
+    ignored, or were (was) in pending. It also shows the time to execute the overall
+    test.
+  id: totrans-158
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在你应该观察以下输出（*图 11*）。输出显示了我们执行了多少个测试用例，多少个通过、失败、取消、忽略或待处理。它还显示了执行整个测试所需的时间。
+- en: '![](img/00268.jpeg)**Figure 11:** Test result when running the two test suites
+    as ScalaTest-file'
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00268.jpeg)**图 11：** 运行两个测试套件作为 ScalaTest 文件时的测试结果'
+- en: 'Fantastic! The test case passed. Now, let''s try changing the compare value
+    in the assertion in the two separate tests using the `test()` method as follows:'
+  id: totrans-160
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 太棒了！测试用例通过了。现在，让我们尝试在两个独立的测试中使用 `test()` 方法更改断言中的比较值，如下所示：
+- en: '[PRE15]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Now, you should expect that the test case will be failed. Now run the earlier
+    class as `ScalaTest-File` (*Figure 12*):'
+  id: totrans-162
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，你应该预期测试用例将失败。现在作为 `ScalaTest-File` 运行之前的类（*图 12*）：
+- en: '![](img/00029.jpeg)**Figure 12:** Test result when running the preceding two
+    test suites as ScalaTest-File'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00029.jpeg)**图 12：** 运行之前两个测试套件作为 ScalaTest-File 时的测试结果'
+- en: Well done! We have learned how to perform the unit testing using Scala's FunSuite.
+    However, if you evaluate the preceding method carefully, you should agree that
+    there are several disadvantages. For example, you need to ensure an explicit management
+    of `SparkContext` creation and destruction. As a developer or programmer, you
+    have to write more lines of code for testing a sample method. Sometimes, code
+    duplication occurs as the *Before* and the *After* step has to be repeated in
+    all test suites. However, this is debatable since the common code could be put
+    in a common trait.
+  id: totrans-164
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 干得好！我们已经学习了如何使用 Scala 的 FunSuite 进行单元测试。然而，如果你仔细评估前面的方法，你应该同意它有几个缺点。例如，你需要确保显式管理
+    `SparkContext` 的创建和销毁。作为开发者或程序员，你必须为测试一个示例方法编写更多的代码。有时，由于 *Before* 和 *After* 步骤必须在所有测试套件中重复，因此会发生代码重复。然而，这个问题是有争议的，因为公共代码可以放在一个公共特征中。
+- en: Now the question is how could we improve our experience? My recommendation is
+    using the Spark testing base to make life easier and more straightforward. We
+    will discuss how we could perform the unit testing the Spark testing base.
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在的问题是，我们如何改善我们的体验？我的建议是使用 Spark 测试库，让生活变得更轻松、更直观。我们将讨论如何使用 Spark 测试库进行单元测试。
+- en: 'Method 3: Making life easier with Spark testing base'
+  id: totrans-166
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 方法 3：使用 Spark 测试库简化生活
+- en: Spark testing base helps you to test your most of the Spark codes with ease.
+    So, what are the pros of this method then? There are many in fact. For example,
+    using this the code is not verbose but we can get very succinct code. The API
+    is itself richer than that of ScalaTest or JUnit. Multiple languages support,
+    for example, Scala, Java, and Python. It has the support of built-in RDD comparators.
+    You can also use it for testing streaming applications. And finally and most importantly,
+    it supports both local and cluster mode testings. This is most important for the
+    testing in a distributed environment.
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Spark 测试库帮助你轻松地测试大多数 Spark 代码。那么，这个方法的优点是什么呢？其实有很多。例如，使用这个方法，代码不会冗长，我们可以得到非常简洁的代码。它的
+    API 比 ScalaTest 或 JUnit 更加丰富。支持多种语言，例如 Scala、Java 和 Python。它支持内置的 RDD 比较器。你还可以用它来测试流式应用程序。最后，也是最重要的，它支持本地模式和集群模式的测试。这对于分布式环境中的测试至关重要。
+- en: The GitHub repo is located at [https://github.com/holdenk/spark-testing-base](https://github.com/holdenk/spark-testing-base).
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: GitHub 仓库位于 [https://github.com/holdenk/spark-testing-base](https://github.com/holdenk/spark-testing-base)。
+- en: 'Before starting the unit testing with Spark testing base, you should include
+    the following dependency in the Maven friendly `pom.xml` file in your project
+    tree for Spark 2.x as follows:'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用 Spark 测试库进行单元测试之前，您应在项目树中的 Maven 友好型 `pom.xml` 文件中包含以下依赖项，以便支持 Spark 2.x：
+- en: '[PRE16]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'For SBT, you can add the following dependency:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于 SBT，您可以添加以下依赖项：
+- en: '[PRE17]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: Note that it is recommended to add the preceding dependency in the `test` scope
+    by specifying `<scope>test</scope>` for both the Maven and SBT cases. In addition
+    to these, there are other considerations such as memory requirements and OOMs
+    and disabling the parallel execution. The default Java options in the SBT testing
+    are too small to support for running multiple tests. Sometimes it's harder to
+    test Spark codes if the job is submitted in local mode! Now you can naturally
+    understand how difficult it would be in a real cluster mode -i.e. YARN or Mesos.
+  id: totrans-173
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，建议在 `test` 范围内添加上述依赖项，方法是为 Maven 和 SBT 两种情况都指定 `<scope>test</scope>`。除了这些之外，还有其他需要考虑的问题，比如内存需求、OOM（内存溢出）以及禁用并行执行。在
+    SBT 测试中的默认 Java 选项过小，无法支持运行多个测试。有时，如果作业以本地模式提交，测试 Spark 代码会更困难！现在，您可以自然理解在真实集群模式（即
+    YARN 或 Mesos）下的复杂性。
+- en: 'To get rid of this problem, you can increase the amount of memory in your `build.sbt`
+    file in your project tree. Just add the following parameters as follows:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了解决这个问题，您可以增加项目树中 `build.sbt` 文件中的内存量。只需添加以下参数即可：
+- en: '[PRE18]'
+  id: totrans-175
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: 'However, if you are using Surefire, you can add the following:'
+  id: totrans-176
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，如果您使用 Surefire，您可以添加以下内容：
+- en: '[PRE19]'
+  id: totrans-177
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: In your Maven-based build, you can make it by setting the value in the environmental
+    variable. For more on this issue, refer to [https://maven.apache.org/configure.html](https://maven.apache.org/configure.html).
+  id: totrans-178
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在基于 Maven 的构建中，您可以通过设置环境变量中的值来实现。有关此问题的更多信息，请参阅 [https://maven.apache.org/configure.html](https://maven.apache.org/configure.html)。
+- en: 'This is just an example to run spark testing base''s own tests. Therefore,
+    you might need to set bigger value. Finally, make sure that you have disabled
+    the parallel execution in your SBT by adding the following line of code:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这只是一个运行 Spark 测试库自己测试的示例。因此，您可能需要设置更大的值。最后，确保在您的 SBT 中禁用了并行执行，方法是添加以下代码行：
+- en: '[PRE20]'
+  id: totrans-180
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'On the other hand, if you''re using surefire, make sure that `forkCount` and
+    `reuseForks` are set as 1 and true, respectively. Let''s see an example of using
+    Spark testing base. The following source code has three test cases. The first
+    test case is the dummy that compares if 1 is equal to 1 or not, which obviously
+    will be passed. The second test case counts the number of words from the sentence,
+    say `Hello world! My name is Reza`, and compares if this has six words or not.
+    The final and the last test case tries to compare two RDDs:'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，如果您使用 Surefire，请确保 `forkCount` 和 `reuseForks` 分别设置为 1 和 true。让我们来看一下使用
+    Spark 测试库的示例。以下源代码包含三个测试用例。第一个测试用例是一个虚拟测试，用来比较 1 是否等于 1，显然会通过。第二个测试用例计算句子 `Hello
+    world! My name is Reza` 中的单词数，并比较是否有六个单词。最后一个测试用例尝试比较两个 RDD：
+- en: '[PRE21]'
+  id: totrans-182
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'From the preceding source code, we can see that we can perform multiple test
+    cases using Spark testing base. Upon successful execution, you should observe
+    the following output (*Figure 13*):'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从前面的源代码中，我们可以看到我们可以使用 Spark 测试库执行多个测试用例。在成功执行后，您应该观察到以下输出（*图 13*）：
+- en: '![](img/00280.jpeg)![](img/00093.jpeg)**Figure 13:** A successful execution
+    and passed test using Spark testing base'
+  id: totrans-184
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00280.jpeg)![](img/00093.jpeg)**图 13：** 使用 Spark 测试库成功执行并通过的测试'
+- en: Configuring Hadoop runtime on Windows
+  id: totrans-185
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 Windows 上配置 Hadoop 运行时
+- en: We have already seen how to test your Spark applications written in Scala on
+    Eclipse or IntelliJ, but there is another potential issue that should not be overlooked.
+    Although Spark works on Windows, Spark is designed to be run on the UNIX-like
+    operating system. Therefore, if you are working on Windows environment, then extra
+    care needs to be taken.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经了解了如何在 Eclipse 或 IntelliJ 上测试使用 Scala 编写的 Spark 应用程序，但还有另一个潜在问题不容忽视。尽管 Spark
+    可以在 Windows 上运行，但它是为在类 UNIX 操作系统上运行而设计的。因此，如果您在 Windows 环境中工作，您需要特别小心。
+- en: 'While using Eclipse or IntelliJ to develop your Spark applications for solving
+    data analytics, machine learning, data science, or deep learning applications
+    on Windows, you might face an I/O exception error and your application might not
+    compile successfully or may be interrupted. Actually, the thing is that Spark
+    expects that there is a runtime environment for Hadoop on Windows too. For example,
+    if you run a Spark application, say `KMeansDemo.scala`, on Eclipse for the first
+    time, you will experience an I/O exception saying the following:'
+  id: totrans-187
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用Eclipse或IntelliJ开发Spark应用程序时，如果你在Windows平台上解决数据分析、机器学习、数据科学或深度学习应用，你可能会遇到I/O异常错误，应用程序可能无法成功编译或可能会中断。实际上，问题在于Spark期望Windows上也有Hadoop的运行环境。例如，如果你第一次在Eclipse上运行一个Spark应用程序，比如`KMeansDemo.scala`，你会遇到一个I/O异常，显示以下信息：
+- en: '[PRE22]'
+  id: totrans-188
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'The reason is that by default, Hadoop is developed for the Linux environment,
+    and if you are developing your Spark applications on Windows platform, a bridge
+    is required that will provide an environment for the Hadoop runtime for Spark
+    to be properly executed. The details of the I/O exception can be seen in the following
+    figure:'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之所以这样，是因为Hadoop默认是为Linux环境开发的，如果你在Windows平台上开发Spark应用程序，则需要一个桥接工具，为Spark提供Hadoop运行时环境，确保Spark能够正确执行。I/O异常的详细信息可以在下图中看到：
+- en: '![](img/00088.gif)**Figure 14:** I/O exception occurred due to the failure
+    of not to locate the winutils binary in the Hadoop binary path'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00088.gif)**图14：**由于未能在Hadoop二进制路径中找到winutils二进制文件，导致I/O异常发生'
+- en: Now, how to get rid of this problem then? The solution is straightforward. As
+    the error message says, we need to have an executable, namely `winutils.exe`.
+    Now download the `winutils.exe` file from [https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1/bin](https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1/bin),
+    paste it in the Spark distribution directory, and configure Eclipse. More specifically,
+    suppose your Spark distribution containing Hadoop is located at `C:/Users/spark-2.1.0-bin-hadoop2.7`.
+    Inside the Spark distribution, there is a directory named bin. Now, paste the
+    executable there (that is, `path = C:/Users/spark-2.1.0-binhadoop2.7/bin/`).
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 那么，如何解决这个问题呢？解决方案很简单。正如错误信息所示，我们需要一个可执行文件，即`winutils.exe`。现在，从[https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1/bin](https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1/bin)下载`winutils.exe`文件，将其粘贴到Spark分发目录中，并配置Eclipse。更具体地说，假设你的Spark分发包包含Hadoop，位于`C:/Users/spark-2.1.0-bin-hadoop2.7`，在Spark分发包内部有一个名为bin的目录。现在，将可执行文件粘贴到该目录中（即，`path
+    = C:/Users/spark-2.1.0-bin-hadoop2.7/bin/`）。
+- en: 'The second phase of the solution is going to Eclipse and then selecting the
+    main class (that is, `KMeansDemo.scala` in this case), and then going to the Run
+    menu. From the Run menu, go to the Run Configurations option and from there select
+    the Environment tab, as shown in the following figure:'
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 解决方案的第二阶段是进入Eclipse，选择主类（即本例中的`KMeansDemo.scala`），然后进入运行菜单。在运行菜单中，选择运行配置选项，并从中选择环境选项卡，如下图所示：
+- en: '![](img/00049.jpeg)**Figure 15:** Solving the I/O exception occurred due to
+    the absence of winutils binary in the Hadoop binary path'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00049.jpeg)**图15：**解决由于Hadoop二进制路径中缺少winutils二进制文件而导致的I/O异常'
+- en: If you select the tab, you a will have the option to create a new environmental
+    variable for Eclipse suing the JVM. Now create a new environmental variable named
+    `HADOOP_HOME` and put the value as `C:/Users/spark-2.1.0-bin-hadoop2.7/`. Now
+    press on Apply button and rerun your application, and your problem should be resolved.
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果你选择了该标签，你将有一个选项来为Eclipse创建一个新的环境变量，使用JVM。现在创建一个名为`HADOOP_HOME`的新环境变量，并将其值设置为`C:/Users/spark-2.1.0-bin-hadoop2.7/`。然后点击应用按钮，重新运行你的应用程序，问题应该得到解决。
+- en: It is to be noted that while working with Spark on Windows in a PySpark, the
+    `winutils.exe` file is required too. For PySpark reference, refer to the [Chapter
+    19](part0571.html#H0HH61-21aec46d8593429cacea59dbdcd64e1c), *PySpark and SparkR*.
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，在Windows上使用PySpark与Spark时，也需要`winutils.exe`文件。有关PySpark的参考，请参见[第19章](part0571.html#H0HH61-21aec46d8593429cacea59dbdcd64e1c)，*PySpark与SparkR*。
+- en: Please make a note that the preceding solution is also applicable in debugging
+    your applications. Sometimes, even if the preceding error occurs, your Spark application
+    will run properly. However, if the size of the dataset is large, it is most likely
+    that the preceding error will occur.
+  id: totrans-196
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，前述解决方案同样适用于调试你的应用程序。有时，即使出现上述错误，你的Spark应用程序仍然可以正常运行。然而，如果数据集的大小较大，那么前述错误很可能会发生。
+- en: Debugging Spark applications
+  id: totrans-197
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 调试 Spark 应用程序
+- en: In this section, we will see how to debug Spark applications that are running
+    locally (on Eclipse or IntelliJ), standalone or cluster mode in YARN or Mesos.
+    However, before diving deeper, it is necessary to know about logging in the Spark
+    application.
+  id: totrans-198
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将了解如何调试在本地（Eclipse 或 IntelliJ）、独立模式或 YARN 或 Mesos 集群模式下运行的 Spark 应用程序。然而，在深入探讨之前，了解
+    Spark 应用程序中的日志记录是必要的。
+- en: Logging with log4j with Spark recap
+  id: totrans-199
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 log4j 记录 Spark 日志总结
+- en: 'We have already discussed this topic in [Chapter 14](part0434.html#CTSK41-21aec46d8593429cacea59dbdcd64e1c),
+    *Time to Put Some Order - Cluster Your Data with Spark MLlib*. However, let''s
+    replay the same contents to make your brain align with the current discussion
+    *Debugging Spark applications*. As stated earlier, Spark uses log4j for its own
+    logging. If you configured Spark properly, Spark gets logged all the operation
+    to the shell console. A sample snapshot of the file can be seen from the following
+    figure:'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们已经在[第14章](part0434.html#CTSK41-21aec46d8593429cacea59dbdcd64e1c)中讨论过这个话题，*是时候整理一下
+    - 使用 Spark MLlib 对数据进行聚类*。然而，为了让你的思路与当前讨论的主题*调试 Spark 应用程序*对齐，我们将重播相同的内容。如前所述，Spark
+    使用 log4j 进行自己的日志记录。如果你正确配置了 Spark，Spark 会将所有操作记录到 shell 控制台。以下是该文件的样本快照：
+- en: '![](img/00259.jpeg)**Figure 16:** A snap of the log4j.properties file'
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00259.jpeg)**图16：** log4j.properties 文件的快照'
+- en: 'Set the default spark-shell log level to WARN. When running the spark-shell,
+    the log level for this class is used to overwrite the root logger''s log level
+    so that the user can have different defaults for the shell and regular Spark apps.
+    We also need to append JVM arguments when launching a job executed by an executor
+    and managed by the driver. For this, you should edit the `conf/spark-defaults.conf`.
+    In short, the following options can be added:'
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将默认的 spark-shell 日志级别设置为 WARN。在运行 spark-shell 时，这个类的日志级别将覆盖根日志记录器的日志级别，从而让用户可以为
+    shell 和普通的 Spark 应用程序设置不同的默认值。我们还需要在启动由执行器执行并由驱动程序管理的作业时附加 JVM 参数。为此，你应该编辑 `conf/spark-defaults.conf`。简而言之，可以添加以下选项：
+- en: '[PRE23]'
+  id: totrans-203
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'To make the discussion clearer, we need to hide all the logs generated by Spark.
+    We then can redirect them to be logged in the file system. On the other hand,
+    we want our own logs to be logged in the shell and a separate file so that they
+    don''t get mixed up with the ones from Spark. From here, we will point Spark to
+    the files where our own logs are, which in this particular case is `/var/log/sparkU.log`.
+    This `log4j.properties` file is then picked up by Spark when the application starts,
+    so we don''t have to do anything aside of placing it in the mentioned location:'
+  id: totrans-204
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了让讨论更清晰，我们需要隐藏所有 Spark 生成的日志。然后，我们可以将这些日志重定向到文件系统中。同时，我们希望自己的日志能够在 shell 和单独的文件中记录，以避免与
+    Spark 的日志混淆。从这里开始，我们将指向保存自己日志的文件，在此案例中为`/var/log/sparkU.log`。当应用程序启动时，Spark 会加载这个`log4j.properties`文件，因此我们只需要将其放置在指定的位置，无需做其他操作：
+- en: '[PRE24]'
+  id: totrans-205
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'In the preceding code, everything is printed as INFO once the log level is
+    set to `INFO` until you set the level to new level for example `WARN`. However,
+    after that no info or trace and so on, that will note be printed. In addition
+    to that, there are several valid logging levels supported by log4j with Spark.
+    The successful execution of the preceding code should generate the following output:'
+  id: totrans-206
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码中，一旦日志级别设置为`INFO`，所有内容都会以 INFO 级别打印，直到你将日志级别设置为新的级别，比如`WARN`。然而，在此之后，不会再打印任何信息或跟踪等内容。此外，log4j
+    在 Spark 中支持多个有效的日志级别。成功执行前面的代码应该会生成以下输出：
+- en: '[PRE25]'
+  id: totrans-207
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'You can also set up the default logging for Spark shell in `conf/log4j.properties`.
+    Spark provides a template of the log4j as a property file, and we can extend and
+    modify that file for logging in Spark. Move to the `SPARK_HOME/conf` directory
+    and you should see the `log4j.properties.template` file. You should use the following
+    `conf/log4j.properties.template` after renaming it to `log4j.properties`. While
+    developing your Spark application, you can put the `log4j.properties` file under
+    your project directory while working on an IDE-based environment such as Eclipse.
+    However, to disable logging completely, just set the `log4j.logger.org` flags
+    as `OFF` as follows:'
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你还可以在 `conf/log4j.properties` 中设置 Spark shell 的默认日志记录。Spark 提供了一个 log4j 的属性文件模板，我们可以扩展并修改这个文件来进行
+    Spark 的日志记录。进入 `SPARK_HOME/conf` 目录，你应该会看到 `log4j.properties.template` 文件。你应该将其重命名为
+    `log4j.properties` 后使用这个 `conf/log4j.properties.template`。在开发 Spark 应用程序时，你可以将
+    `log4j.properties` 文件放在你的项目目录下，尤其是在像 Eclipse 这样的 IDE 环境中工作时。然而，要完全禁用日志记录，只需将 `log4j.logger.org`
+    的标志设置为 `OFF`，如下所示：
+- en: '[PRE26]'
+  id: totrans-209
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'So far, everything is very easy. However, there is a problem we haven''t noticed
+    yet in the preceding code segment. One drawback of the `org.apache.log4j.Logger`
+    class is that it is not serializable, which implies that we cannot use it inside
+    a closure while doing operations on some parts of the Spark API. For example,
+    suppose we do the following in our Spark code:'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，一切都很简单。然而，在前面的代码段中，我们还没有注意到一个问题。`org.apache.log4j.Logger` 类的一个缺点是它不可序列化，这意味着在进行
+    Spark API 的某些操作时，我们不能在闭包中使用它。例如，假设我们在 Spark 代码中做了如下操作：
+- en: '[PRE27]'
+  id: totrans-211
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'You should experience an exception that says `Task` not serializable as follows:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你应该会遇到如下的异常，提示 `Task` 不可序列化：
+- en: '[PRE28]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'At first, we can try to solve this problem in a naive way. What you can do
+    is just make the Scala class (that does the actual operation) `Serializable` using
+    `extends Serializable` . For example, the code looks as follows:'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们可以尝试用一种简单的方法来解决这个问题。你可以做的是仅使用 `extends Serializable` 使 Scala 类（执行实际操作的类）可序列化。例如，代码如下：
+- en: '[PRE29]'
+  id: totrans-215
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'This section is intended for carrying out a discussion on logging. However,
+    we take the opportunity to make it more versatile for general purpose Spark programming
+    and issues. In order to overcome the `task not serializable` error in a more efficient
+    way, compiler will try to send the whole object (not only the lambda) by making
+    it serializable and forces SPark to accept that. However, it increases shuffling
+    significantly, especially for big objects! The other ways are making the whole
+    class `Serializable` or by declaring the instance only within the lambda function
+    passed in the map operation. Sometimes, keeping the not `Serializable` objects
+    across the nodes can work. Lastly, use the `forEachPartition()` or `mapPartitions()`
+    instead of just `map()` and create the not `Serializable` objects. In summary,
+    these are the ways to solve the problem around:'
+  id: totrans-216
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本节旨在进行日志记录的讨论。然而，我们借此机会将其拓展为更通用的 Spark 编程和问题处理方法。为了更高效地解决 `task not serializable`
+    错误，编译器会尝试通过使整个对象（而不仅仅是 lambda）变为可序列化来发送，并强制 Spark 接受这一做法。然而，这样会显著增加数据洗牌，尤其是对于大对象！其他方法包括使整个类
+    `Serializable` 或者仅在传递给 map 操作的 lambda 函数内声明实例。有时，让不可序列化的对象跨节点传递也能解决问题。最后，使用 `forEachPartition()`
+    或 `mapPartitions()` 而不是仅仅使用 `map()` 来创建不可序列化的对象。总而言之，解决此问题的方法有以下几种：
+- en: Serializable the class
+  id: totrans-217
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使类可序列化
+- en: Declare the instance only within the lambda function passed in the map
+  id: totrans-218
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 仅在传递给 map 操作的 lambda 函数内声明实例
+- en: Make the NotSerializable object as a static and create it once per machine
+  id: totrans-219
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 将不可序列化对象设置为静态，并且每台机器只创建一次
+- en: Call the `forEachPartition ()` or `mapPartitions()` instead of `map()` and create
+    the NotSerializable object
+  id: totrans-220
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 调用 `forEachPartition()` 或 `mapPartitions()` 而不是 `map()` 来创建不可序列化对象
+- en: 'In the preceding code, we have used the annotation `@transient lazy`, which
+    marks the `Logger` class to be nonpersistent. On the other hand, object containing
+    the method apply (i.e. `MyMapperObject`) that instantiate the object of the `MyMapper`
+    class is as follows:'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码中，我们使用了注解 `@transient lazy`，它将 `Logger` 类标记为非持久化。另一方面，包含方法 apply（即 `MyMapperObject`）的对象实例化了
+    `MyMapper` 类的对象，代码如下：
+- en: '[PRE30]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'Finally, the object containing the `main()` method is as follows:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，包含 `main()` 方法的对象如下：
+- en: '[PRE31]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: 'Now, let''s see another example that provides better insight to keep fighting
+    the issue we are talking about. Suppose we have the following class that computes
+    the multiplication of two integers:'
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看一个提供更好见解的例子，以便继续解决我们讨论的问题。假设我们有以下类，它计算两个整数的乘积：
+- en: '[PRE32]'
+  id: totrans-226
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'Now, essentially, if you try to use this class for computing the multiplication
+    in the lambda closure using `map()`, you will get the `Task Not Serializable`
+    error that we described earlier. Now we simply can use `foreachPartition()` and
+    the lambda inside as follows:'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，实际上，如果你尝试使用这个类在 lambda 闭包中通过 `map()` 计算乘法，你将会得到我们之前描述的 `Task Not Serializable`
+    错误。现在，我们可以简单地使用 `foreachPartition()` 和 lambda 代码如下：
+- en: '[PRE33]'
+  id: totrans-228
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'Now, if you compile it, it should return the desired result. For your ease,
+    the complete code with the `main()` method is as follows:'
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，如果你编译它，它应该返回预期的结果。为了方便，你可以查看以下包含 `main()` 方法的完整代码：
+- en: '[PRE34]'
+  id: totrans-230
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'The output is as follows:'
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出结果如下：
+- en: '[PRE35]'
+  id: totrans-232
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: Debugging the Spark application
+  id: totrans-233
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 调试 Spark 应用程序
+- en: "In this section, we will discuss how to debug Spark applications running on\
+    \ locally on Eclipse or IntelliJ, as standalone or cluster mode in YARN or Mesos.\
+    \ Before getting started, you can also read the debugging documentation at [\uFEFF\
+    https://hortonworks.com/hadoop-tutorial/setting-spark-development-environment-scala/](https://hortonworks.com/hadoop-tutorial/setting-spark-development-environment-scala/)."
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: "本节将讨论如何调试本地运行的 Spark 应用程序，使用 Eclipse 或 IntelliJ，作为 YARN 或 Mesos 上的独立模式或集群模式。在开始之前，你还可以阅读调试文档，网址是[\uFEFF\
+    https://hortonworks.com/hadoop-tutorial/setting-spark-development-environment-scala/](https://hortonworks.com/hadoop-tutorial/setting-spark-development-environment-scala/)。"
+- en: Debugging Spark application on Eclipse as Scala debug
+  id: totrans-235
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 Eclipse 中调试 Spark 应用程序作为 Scala 调试
+- en: 'To make this happen, just configure your Eclipse to debug your Spark applications
+    as a regular Scala code debug. To configure select Run | Debug Configuration |
+    Scala Application as shown in the following figure:'
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了实现这一点，只需将 Eclipse 配置为以常规的 Scala 代码调试方式调试你的 Spark 应用程序。配置时选择 运行 | 调试配置 | Scala
+    应用程序，如下图所示：
+- en: '![](img/00022.jpeg)**Figure 17:** Configuring Eclipse to debug Spark applications
+    as a regular Scala code debug'
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00022.jpeg)**图 17：** 配置 Eclipse 以调试 Spark 应用程序作为常规的 Scala 代码调试'
+- en: 'Suppose we want to debug our `KMeansDemo.scala` and ask Eclipse (you can have
+    similar options on InteliJ IDE) to start the execution at line 56 and set the
+    breakpoint in line 95\. To do so, run your Scala code as debugging and you should
+    observe the following scenario on Eclipse:'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们想调试我们的`KMeansDemo.scala`并要求 Eclipse（你在 IntelliJ IDE 上也可以有类似的选项）从第 56 行开始执行，并在第
+    95 行设置断点。为此，运行你的 Scala 代码进行调试，你应该在 Eclipse 上观察到以下场景：
+- en: '![](img/00327.jpeg)**Figure 18:** Debugging Spark applications on Eclipse'
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00327.jpeg)**图 18：** 在 Eclipse 中调试 Spark 应用程序'
+- en: 'Then, Eclipse will pause on the line you ask it to stop the execution in line
+    95, as shown in the following screenshot:'
+  id: totrans-240
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后，Eclipse 将在你要求它在第 95 行停止执行时暂停，如下图所示：
+- en: '![](img/00221.jpeg)**Figure 19:** Debugging Spark applications on Eclipse (breakpoint)'
+  id: totrans-241
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/00221.jpeg)**图 19：** 在 Eclipse 中调试 Spark 应用程序（断点）'
+- en: In summary, to simplify the preceding example, if there is any error between
+    line 56 and line 95, Eclipse will show where the error actually occurs. Otherwise,
+    it will follow the normal workflow if not interrupted.
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结来说，简化前面的示例，如果在第 56 行和第 95 行之间出现任何错误，Eclipse 将显示实际发生错误的位置。否则，如果没有中断，它将遵循正常的工作流程。
+- en: Debugging Spark jobs running as local and standalone mode
+  id: totrans-243
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 调试以本地和独立模式运行的 Spark 作业
+- en: 'While debugging your Spark application locally or as standalone mode, you should
+    know that debugging the driver program and debugging one of the executors is different
+    since using these two types of nodes requires different submission parameters
+    passed to `spark-submit`. Throughout this section, I''ll use port 4000 as the
+    address. For example, if you want to debug the driver program, you can add the
+    following to your `spark-submit` command:'
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本地调试你的 Spark 应用程序或以独立模式调试时，你需要知道调试驱动程序程序和调试某个执行器是不同的，因为使用这两种节点需要传递不同的提交参数给`
+    spark-submit`。在本节中，我将使用端口 4000 作为地址。例如，如果你想调试驱动程序程序，可以在你的` spark-submit`命令中添加以下内容：
+- en: '[PRE36]'
+  id: totrans-245
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: After that, you should set your remote debugger to connect to the node where
+    you have submitted the driver program. For the preceding case, port number 4000
+    was specified. However, if something (that is, other Spark jobs, other applications
+    or services, and so on) is already running on that port, you might also need to
+    customize that port, that is, change the port number.
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 之后，你应该设置远程调试器连接到你提交驱动程序程序的节点。对于前面的情况，已指定端口号 4000。但是，如果该端口已经被其他 Spark 作业、其他应用程序或服务等占用，你可能还需要自定义该端口，也就是说，修改端口号。
+- en: 'On the other hand, connecting to an executor is similar to the preceding option,
+    except for the address option. More specifically, you will have to replace the
+    address with your local machine''s address (IP address or host name with the port
+    number). However, it is always a good practice and recommended to test that you
+    can access your local machine from the Spark cluster where the actual computing
+    occurs. For example, you can use the following options to make the debugging environment
+    enable to your `spark-submit` command:'
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 另一方面，连接到执行器类似于前面的选项，唯一不同的是地址选项。更具体来说，你需要将地址替换为本地计算机的地址（IP 地址或主机名加上端口号）。然而，通常来说，建议测试一下是否能从
+    Spark 集群（实际进行计算的地方）访问本地计算机。例如，你可以使用以下选项来使调试环境能够在你的 `spark-submit` 命令中启用：
+- en: '[PRE37]'
+  id: totrans-248
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'In summary, use the following command to submit your Spark jobs (the `KMeansDemo`
+    application in this case):'
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 总结一下，使用以下命令提交你的 Spark 作业（此处以 `KMeansDemo` 应用为例）：
+- en: '[PRE38]'
+  id: totrans-250
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: 'Now, start your local debugger in a listening mode and start your Spark program.
+    Finally, wait for the executor to attach to your debugger. You will observe the
+    following message on your terminal:'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，启动本地调试器的监听模式并启动 Spark 程序。最后，等待执行器连接到调试器。你会在终端中看到如下消息：
+- en: '[PRE39]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: 'It is important to know that you need to set the number of executors to 1 only.
+    Setting multiple executors will all try to connect to your debugger and will eventually
+    create some weird problems. It is to be noted that sometimes setting the `SPARK_JAVA_OPTS`
+    helps in debugging your Spark applications that are running locally or as standalone
+    mode. The command is as follows:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要的是要知道，你需要将执行器的数量设置为 1。如果设置多个执行器，它们都会尝试连接到调试器，最终会导致一些奇怪的问题。需要注意的是，有时设置 `SPARK_JAVA_OPTS`
+    有助于调试本地运行或独立模式下的 Spark 应用。命令如下：
+- en: '[PRE40]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: However, since Spark release 1.0.0, `SPARK_JAVA_OPTS` has been deprecated and
+    replaced by `spark-defaults.conf` and command line arguments to Spark-submit or
+    Spark-shell. It is also to be noted that setting `spark.driver.extraJavaOptions`
+    and `spark.executor.extraJavaOptions`, which we saw in the previous section, in
+    `spark-defaults.conf` is not a replacement for `SPARK_JAVA_OPTS`. But to be frank,
+    `SPARK_JAVA_OPTS`, it still works pretty well and you can try as well.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，自 Spark 1.0.0 版本起，`SPARK_JAVA_OPTS` 已被弃用，并被 `spark-defaults.conf` 和 Spark-submit
+    或 Spark-shell 的命令行参数所取代。需要注意的是，设置 `spark.driver.extraJavaOptions` 和 `spark.executor.extraJavaOptions`，我们在前一节看到的这些，在
+    `spark-defaults.conf` 中并不是 `SPARK_JAVA_OPTS` 的替代品。但坦率地说，`SPARK_JAVA_OPTS` 仍然非常有效，你可以尝试使用它。
+- en: Debugging Spark applications on YARN or Mesos cluster
+  id: totrans-256
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 YARN 或 Mesos 集群上调试 Spark 应用
+- en: 'When you run a Spark application on YARN, there is an option that you can enable
+    by modifying `yarn-env.sh`:'
+  id: totrans-257
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当你在 YARN 上运行 Spark 应用时，可以通过修改 `yarn-env.sh` 启用一个选项：
+- en: '[PRE41]'
+  id: totrans-258
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'Now, the remote debugging will be available through port 4000 on your Eclipse
+    or IntelliJ IDE. The second option is by setting the `SPARK_SUBMIT_OPTS`. You
+    can use either Eclipse or IntelliJ to develop your Spark applications that can
+    be submitted to be executed on remote multinode YARN clusters. What I do is that
+    I create a Maven project on Eclipse or IntelliJ and package my Java or Scala application
+    as a jar file and then submit it as a Spark job. However, in order to attach your
+    IDE such as Eclipse or IntelliJ debugger to your Spark application, you can define
+    all the submission parameters using the `SPARK_SUBMIT_OPTS` environment variable
+    as follows:'
+  id: totrans-259
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，通过 Eclipse 或 IntelliJ IDE，你可以通过 4000 端口进行远程调试。第二种方法是设置 `SPARK_SUBMIT_OPTS`。你可以使用
+    Eclipse 或 IntelliJ 开发你的 Spark 应用程序，并将其提交到远程的多节点 YARN 集群执行。我通常会在 Eclipse 或 IntelliJ
+    上创建一个 Maven 项目，将我的 Java 或 Scala 应用打包为一个 jar 文件，然后将其提交为 Spark 作业。然而，为了将你的 IDE（如
+    Eclipse 或 IntelliJ）调试器附加到 Spark 应用中，你可以使用如下的 `SPARK_SUBMIT_OPTS` 环境变量来定义所有的提交参数：
+- en: '[PRE42]'
+  id: totrans-260
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'Then submit your Spark job as follows (please change the values accordingly
+    based on your requirements and setup):'
+  id: totrans-261
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后按如下方式提交你的 Spark 作业（请根据你的需求和设置更改相应的值）：
+- en: '[PRE43]'
+  id: totrans-262
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'After running the preceding command, it will wait until you connect your debugger,
+    as shown in the following: `Listening for transport dt_socket at address: 4000`.
+    Now you can configure your Java remote application (Scala application will work
+    too) on the IntelliJ debugger, as shown in the following screenshot:'
+  id: totrans-263
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '在运行上述命令后，系统将等待直到你连接调试器，如下所示：`Listening for transport dt_socket at address:
+    4000`。现在你可以在 IntelliJ 调试器中配置你的 Java 远程应用程序（Scala 应用也可以），如下图所示：'
+- en: '![](img/00331.jpeg)**Figure 20:** Configuring remote debugger on IntelliJ'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00331.jpeg)**图 20：** 在 IntelliJ 上配置远程调试器'
+- en: 'For the preceding case, 10.200.1.101 is the IP address of the remote computing
+    node where your Spark job is basically running. Finally, you will have to start
+    the debugger by clicking on Debug under IntelliJ''s Run menu. Then, if the debugger
+    connects to your remote Spark app, you will see the logging info in the application
+    console on IntelliJ. Now if you can set the breakpoints and the rests of them
+    are normal debugging. The following figure shows an example how will you see on
+    the IntelliJ when pausing a Spark job with a breakpoint:'
+  id: totrans-265
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于前述情况，10.200.1.101 是远程计算节点的 IP 地址，Spark 作业基本上在该节点上运行。最后，你需要通过点击 IntelliJ 的运行菜单下的
+    Debug 来启动调试器。然后，如果调试器成功连接到你的远程 Spark 应用程序，你将看到 IntelliJ 中应用程序控制台的日志信息。现在，如果你可以设置断点，其他的步骤就是正常的调试过程。下图展示了在
+    IntelliJ 中暂停 Spark 作业并设置断点时，你将看到的界面：
+- en: '![](img/00007.jpeg)**Figure 21:** An example how will you see on the IntelliJ
+    when pausing a Spark job with a breakpoint'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00007.jpeg)**图 21：** 在 IntelliJ 中暂停 Spark 作业并设置断点时的示例'
+- en: 'Although it works well, but sometimes I experienced that using `SPARK_JAVA_OPTS`
+    won''t help you much in the debug process on Eclipse or even IntelliJ. Instead,
+    use and export `SPARK_WORKER_OPTS` and `SPARK_MASTER_OPTS` while running your
+    Spark jobs on a real cluster (YARN, Mesos, or AWS) as follows:'
+  id: totrans-267
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管它运行得很好，但有时我发现使用 `SPARK_JAVA_OPTS` 并不会在 Eclipse 或甚至 IntelliJ 的调试过程中提供太多帮助。相反，在实际集群（如
+    YARN、Mesos 或 AWS）上运行 Spark 作业时，应使用并导出 `SPARK_WORKER_OPTS` 和 `SPARK_MASTER_OPTS`，如下所示：
+- en: '[PRE44]'
+  id: totrans-268
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'Then start your Master node as follows:'
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后启动你的主节点，如下所示：
+- en: '[PRE45]'
+  id: totrans-270
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'Now open an SSH connection to your remote machine where the Spark job is actually
+    running and map your localhost at 4000 (aka `localhost:4000`) to `host_name_to_your_computer.org:5000`,
+    assuming the cluster is at `host_name_to_your_computer.org:5000` and listening
+    on port 5000\. Now that your Eclipse will consider that you''re just debugging
+    your Spark application as a local Spark application or process. However, to make
+    this happen, you will have to configure the remote debugger on Eclipse, as shown
+    in the following figure:'
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，打开 SSH 连接到远程机器，该机器上正在实际运行 Spark 作业，并将本地主机的 4000 端口（即 `localhost:4000`）映射到
+    `host_name_to_your_computer.org:5000`，假设集群位于 `host_name_to_your_computer.org:5000`
+    并监听 5000 端口。现在，Eclipse 会认为你仅在调试一个本地 Spark 应用程序或进程。然而，要实现这一点，你需要在 Eclipse 上配置远程调试器，如下图所示：
+- en: '![](img/00141.jpeg)**Figure 22:** Connecting remote host on Eclipse for debugging
+    Spark application'
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![](img/00141.jpeg)**图 22：** 在 Eclipse 中连接远程主机进行 Spark 应用程序调试'
+- en: That's it! Now you can debug on your live cluster as if it were your desktop.
+    The preceding examples are for running with the Spark Master set as YARN-client.
+    However, it should also work when running on a Mesos cluster. If you're running
+    using YARN-cluster mode, you may have to set the driver to attach to your debugger
+    rather than attaching your debugger to the driver since you won't necessarily
+    know in advance what mode the driver will be executing on.
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就是这样！现在你可以像调试桌面上的应用程序一样在实时集群上调试。前述示例适用于将 Spark 主节点设置为 YARN-client 的情况。然而，它在
+    Mesos 集群上运行时也应该可以工作。如果你在 YARN-cluster 模式下运行，你可能需要将驱动程序设置为连接到你的调试器，而不是将调试器连接到驱动程序，因为你不一定能提前知道驱动程序将在哪种模式下执行。
+- en: Debugging Spark application using SBT
+  id: totrans-274
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 SBT 调试 Spark 应用程序
+- en: 'The preceding setting works mostly on Eclipse or IntelliJ using the Maven project.
+    Suppose that you already have your application done and are working on your preferred
+    IDEs such as IntelliJ or Eclipse as follows:'
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前述设置主要适用于 Eclipse 或 IntelliJ 中使用 Maven 项目的情况。假设你已经完成了应用程序并正在使用你偏好的 IDE，如 IntelliJ
+    或 Eclipse，具体如下：
+- en: '[PRE46]'
+  id: totrans-276
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'Now, if you want to get this job to the local cluster (standalone), the very
+    first step is packaging the application with all its dependencies into a fat JAR.
+    For doing this, use the following command:'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，如果你想将此作业部署到本地集群（独立模式），第一步是将应用程序及其所有依赖项打包成一个 fat JAR。为此，请使用以下命令：
+- en: '[PRE47]'
+  id: totrans-278
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'This will generate the fat JAR. Now the task is to submit the Spark job to
+    a local cluster. You need to have spark-submit script somewhere on your system:'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这将生成 fat JAR。现在的任务是将 Spark 作业提交到本地集群。你需要在系统中的某个位置有 spark-submit 脚本：
+- en: '[PRE48]'
+  id: totrans-280
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: 'The preceding command exports a Java argument that will be used to start Spark
+    with the debugger:'
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 前述命令导出了一个 Java 参数，将用于启动带调试器的 Spark：
+- en: '[PRE49]'
+  id: totrans-282
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: In the preceding command, `--class` needs to point to a fully qualified class
+    path to your job. Upon successful execution of this command, your Spark job will
+    be executed without breaking at the breakpoints. Now to get the debugging facility
+    on your IDE, say IntelliJ, you need to configure to connect to the cluster. For
+    more details on the official IDEA documentation, refer to [http://stackoverflow.com/questions/21114066/attach-intellij-idea-debugger-to-a-running-java-process](http://stackoverflow.com/questions/21114066/attach-intellij-idea-debugger-to-a-running-java-process).
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的命令中，`--class`需要指向你的作业的完全限定类路径。成功执行该命令后，你的Spark作业将会在没有中断的情况下执行。现在，要在你的IDE（比如IntelliJ）中获得调试功能，你需要配置以连接到集群。有关IDEA官方文档的详细信息，请参阅[http://stackoverflow.com/questions/21114066/attach-intellij-idea-debugger-to-a-running-java-process](http://stackoverflow.com/questions/21114066/attach-intellij-idea-debugger-to-a-running-java-process)。
+- en: It is to be noted that if you just create a default remote run/debug configuration
+    and leave the default port of 5005, it should work fine. Now, when you submit
+    the job for the next time and see the message to attach the debugger, you have
+    eight seconds to switch to IntelliJ IDEA and trigger this run configuration. The
+    program will then continue to execute and pause at any breakpoint you defined.
+    You can then step through it like any normal Scala/Java program. You can even
+    step into Spark functions to see what it's doing under the hood.
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 需要注意的是，如果你只是创建了一个默认的远程运行/调试配置并保持默认端口5005，它应该可以正常工作。现在，当你下次提交作业并看到附加调试器的提示时，你有八秒钟的时间切换到IntelliJ
+    IDEA并触发此运行配置。程序将继续执行，并在你定义的任何断点处暂停。然后，你可以像调试任何普通的Scala/Java程序一样逐步调试。你甚至可以逐步进入Spark的函数，查看它在背后究竟在做什么。
+- en: Summary
+  id: totrans-285
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, you saw how difficult the testing and debugging your Spark
+    applications are. These can even be more critical in a distributed environment.
+    We also discussed some advanced ways to tackle them altogether. In summary, you
+    learned the way of testing in a distributed environment. Then you learned a better
+    way of testing your Spark application. Finally, we discussed some advanced ways
+    of debugging Spark applications.
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，你看到了测试和调试Spark应用程序是多么困难。这些问题在分布式环境中可能更加严重。我们还讨论了一些高级方法来解决这些问题。总结一下，你学习了在分布式环境中进行测试的方法。接着，你学习了更好的测试Spark应用程序的方法。最后，我们讨论了一些调试Spark应用程序的高级方法。
+- en: We believe that this book will help you to gain some good understanding of Spark.
+    Nevertheless, due to page limitation, we could not cover many APIs and their underlying
+    functionalities. If you face any issues, please don't forget to report this to
+    Spark user mailing list at `user@spark.apache.org`. Before doing so, make sure
+    that you have subscribed to it.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们相信这本书能帮助你对Spark有一个良好的理解。然而，由于篇幅限制，我们无法涵盖许多API及其底层功能。如果你遇到任何问题，请记得将问题报告到Spark用户邮件列表，邮件地址为`user@spark.apache.org`。在此之前，请确保你已订阅该邮件列表。
+- en: This is more or less the end of our little journey with advanced topics on Spark.
+    Now, a general suggestion from our side to you as readers or if you are relatively
+    newer to the data science, data analytics, machine learning, Scala, or Spark is
+    that you should at first try to understand what types of analytics you want to
+    perform. To be more specific, for example, if your problem is a machine learning
+    problem, try to guess what type of learning algorithms should be the best fit,
+    that is, classification, clustering, regression, recommendation, or frequent pattern
+    mining. Then define and formulate the problem, and after that, you should generate
+    or download the appropriate data based on the feature engineering concept of Spark
+    that we have discussed earlier. On the other hand, if you think that you can solve
+    your problem using deep learning algorithms or APIs, you should use other third-party
+    algorithms and integrate with Spark and work straight away.
+  id: totrans-288
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这差不多就是我们关于Spark高级主题的整个旅程的结束。现在，作为读者，或者如果你相对较新于数据科学、数据分析、机器学习、Scala或Spark，我们有一个一般性的建议：你应该首先尝试理解你想要执行哪种类型的分析。更具体地说，例如，如果你的问题是一个机器学习问题，试着猜测哪种类型的学习算法最适合，即分类、聚类、回归、推荐或频繁模式挖掘。然后定义和构建问题，之后，你应该根据我们之前讨论的Spark特征工程概念生成或下载适当的数据。另一方面，如果你认为你可以使用深度学习算法或API来解决问题，你应该使用其他第三方算法并与Spark集成，直接进行工作。
+- en: Our final recommendation to the readers is to browse the Spark website (at [http://spark.apache.org/](http://spark.apache.org/))
+    regularly to get the updates and also try to incorporate the regular Spark-provided
+    APIs with other third-party applications or tools to get the best result of the
+    collaboration.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们对读者的最终建议是定期浏览Spark网站（[http://spark.apache.org/](http://spark.apache.org/)），以获取最新更新，并尝试将Spark提供的常规API与其他第三方应用程序或工具结合使用，以获得最佳的协作效果。

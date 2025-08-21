@@ -1,0 +1,942 @@
+- en: '7'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '7'
+- en: Viewing Data Lineage Using Unity Catalog
+  id: totrans-1
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Unity Catalog 查看数据血缘
+- en: In this chapter, we’ll dive into the critical role that data lineage plays within
+    the Databricks Data Intelligence Platform. You’ll learn how to trace data origins,
+    visualize dataset transformations, identify upstream and downstream dependencies,
+    and document lineage using the lineage graph capabilities of the Catalog Explorer.
+    By the end of the chapter, you’ll be equipped with the skills needed to ensure
+    data is coming from trusted sources, and spot breaking changes before they happen.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中，我们将深入探讨数据血缘在 Databricks 数据智能平台中的关键作用。你将学习如何追踪数据来源、可视化数据集转换、识别上下游依赖关系，并使用
+    Catalog Explorer 的血缘图功能来记录血缘。到本章结束时，你将掌握确保数据来自可信来源、并在问题发生前识别出破坏性变化的技能。
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下主要主题：
+- en: Introducing data lineage in Unity Catalog
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在 Unity Catalog 中引入数据血缘
+- en: Tracing data origins using the Data Lineage REST API
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用数据血缘 REST API 跟踪数据来源
+- en: Visualizing upstream and downstream data transformations
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 可视化上下游数据转换
+- en: Identifying dependencies and impacts
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 确定依赖关系和影响
+- en: Hands-on lab – documenting data lineage across an organization
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实操实验 – 记录整个组织的数据血缘
+- en: Technical requirements
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: To follow along with the examples provided in this chapter, you’ll need Databricks
+    workspace permissions to create and start an all-purpose cluster so that you can
+    import and execute the chapter’s accompanying notebooks. All code samples can
+    be downloaded from this chapter’s GitHub repository, located at [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)
+    . This chapter will create and run several new notebooks using an all-purpose
+    cluster and is estimated to consume around 5-10 **Databricks** **units** ( **DBUs**
+    ).
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 要跟随本章提供的示例，你需要拥有 Databricks 工作区的权限，以便创建和启动一个通用集群，从而导入并执行本章配套的笔记本。所有代码示例可以从本章的
+    GitHub 仓库下载，地址是 [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)。本章将使用通用集群创建并运行多个新的笔记本，预计将消耗大约
+    5-10 **Databricks** **单位**（**DBUs**）。
+- en: Introducing data lineage in Unity Catalog
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 在 Unity Catalog 中引入数据血缘
+- en: '**Data lineage** refers to the ability to trace relationships across securable
+    objects, such as tables, in **Unity Catalog** ( **UC** ) so that users can view
+    how data assets are formed from upstream sources and verify downstream dependencies.'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**数据血缘**是指在 **Unity Catalog**（**UC**）中追踪可安全访问对象之间关系的能力，例如表格，使用户能够查看数据资产如何从上游来源形成，并验证下游的依赖关系。'
+- en: '![Figure 7.1 – Data lineage traces the flow of data and how it gets transformed
+    over time by internal processes](img/B22011_07_001.jpg)'
+  id: totrans-13
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.1 – 数据血缘追踪数据流动及其在内部过程中的转化](img/B22011_07_001.jpg)'
+- en: Figure 7.1 – Data lineage traces the flow of data and how it gets transformed
+    over time by internal processes
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.1 – 数据血缘追踪数据流动及其在内部过程中的转化
+- en: In Databricks, users can trace the lineage of data assets in near real time
+    so that data stewards can ensure that they are working with the latest assets.
+    Furthermore, data lineage in Unity Catalog spans across multiple workspaces that
+    are attached to the same Unity Catalog metastore, allowing data professionals
+    to get a *complete* , holistic view into how datasets are transformed and are
+    related to one another.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在 Databricks 中，用户可以几乎实时地追踪数据资产的血缘，这样数据管理员就能确保他们使用的是最新的资产。此外，Unity Catalog 中的数据血缘跨越多个工作区，这些工作区连接到同一个
+    Unity Catalog 元存储，使得数据专业人士能够获得一个*完整*的、全面的视图，了解数据集如何被转化并相互关联。
+- en: 'Data lineage can be traced across a variety of securable objects in the Databricks
+    Data Intelligence Platform, including the following objects:'
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据血缘可以跨越 Databricks 数据智能平台中的多种可安全访问对象进行追踪，以下是一些例子：
+- en: Queries
+  id: totrans-17
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 查询
+- en: Tables
+  id: totrans-18
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 表格
+- en: Table columns
+  id: totrans-19
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 表格列
+- en: Notebooks
+  id: totrans-20
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 笔记本
+- en: Workflows
+  id: totrans-21
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 工作流
+- en: Machine learning models
+  id: totrans-22
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 机器学习模型
+- en: '**Delta Live Tables** ( **DLT** ) pipelines'
+  id: totrans-23
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '**Delta Live Tables**（**DLT**）管道'
+- en: Dashboards
+  id: totrans-24
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 仪表板
+- en: Like many objects within the Databricks Data Intelligence Platform, you can
+    trace the lineage through a variety of mechanisms, including the Databricks UI,
+    using Catalog Explorer, or by consuming the Data Lineage REST API. In fact, data
+    lineage is automatically captured by the Databricks Data Intelligence Platform
+    and recorded in the system tables (covered in [*Chapter 5*](B22011_05.xhtml#_idTextAnchor126)
+    ). Like other system information that gets preserved in the Databricks system
+    tables, lineage information can accumulate quite a bit. To preserve storage costs,
+    this information is retained for one year by default. For longer lineage storage
+    requirements, it’s recommended to set up an alternate process that will append
+    the lineage information to longer-term archival storage. For example, say that
+    an organization needs to retain system auditing information on the order of years,
+    then a long-term archival ETL pipeline would be needed to copy the lineage data
+    into archival storage.
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 就像 Databricks 数据智能平台中的许多对象一样，你可以通过多种机制追踪血缘信息，包括通过 Databricks UI 使用 Catalog Explorer，或者通过消费
+    Data Lineage REST API。实际上，数据血缘信息会自动由 Databricks 数据智能平台捕获并记录在系统表中（详见[*第 5 章*](B22011_05.xhtml#_idTextAnchor126)）。与其他保存在
+    Databricks 系统表中的系统信息一样，血缘信息可能会累积不少。为了节省存储成本，默认情况下，这些信息会保留一年。对于更长期的血缘存储需求，建议建立一个替代流程，将血缘信息附加到长期归档存储中。例如，假设一个组织需要保留多年的系统审计信息，那么就需要一个长期归档的
+    ETL 管道，将血缘数据复制到归档存储中。
+- en: In the coming sections, we’ll cover all varieties for viewing lineage across
+    data assets in Databricks.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的章节中，我们将介绍在 Databricks 中查看数据资产血缘的各种方式。
+- en: Tracing data origins using the Data Lineage REST API
+  id: totrans-27
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用 Data Lineage REST API 跟踪数据来源
+- en: Like many securable objects in the Databricks Data Intelligence Platform, there
+    are a variety of ways to retrieve detailed lineage information pertaining to the
+    object. One common pattern for retrieving lineage information about a particular
+    object in Databricks is through the Data Lineage REST API. At the moment, the
+    Data Lineage REST API is limited to retrieving a read-only view of table lineage
+    information as well as column lineage information.
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像 Databricks 数据智能平台中的许多可安全访问的对象一样，存在多种方式可以检索与对象相关的详细血缘信息。Databricks 中检索某个特定对象血缘信息的一种常见方式是通过
+    Data Lineage REST API。目前，Data Lineage REST API 仅限于检索表血缘信息的只读视图以及列血缘信息。
+- en: '| **UC Object** | **HTTP Verb** | **Endpoint** | **Description** |'
+  id: totrans-29
+  prefs: []
+  type: TYPE_TB
+  zh: '| **UC 对象** | **HTTP 动词** | **端点** | **描述** |'
+- en: '| Table | **GET** | **/** **api/2.0/lineage-tracking/table-lineage** | Given
+    a UC table name, retrieves a list of upstream and downstream table connections,
+    as well as information about their related notebook connections |'
+  id: totrans-30
+  prefs: []
+  type: TYPE_TB
+  zh: '| 表 | **GET** | **/** **api/2.0/lineage-tracking/table-lineage** | 给定一个 UC
+    表名称，检索上游和下游表连接的列表，以及它们相关的笔记本连接信息 |'
+- en: '| Column | **GET** | **/** **api/2.0/lineage-tracking/column-lineage** | Given
+    a UC table name and column name, retrieves a list of upstream and downstream column
+    connections |'
+  id: totrans-31
+  prefs: []
+  type: TYPE_TB
+  zh: '| 列 | **GET** | **/** **api/2.0/lineage-tracking/column-lineage** | 给定一个 UC
+    表名称和列名称，检索上游和下游列连接的列表 |'
+- en: Table 7.1 – Data Lineage REST API fetches information pertaining to upstream
+    and downstream connections for UC table and column objects
+  id: totrans-32
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 7.1 – Data Lineage REST API 获取与 UC 表和列对象的上游和下游连接相关的信息
+- en: However, it’s expected that the Data Lineage REST API will evolve over time,
+    adding additional capabilities for data stewards to retrieve information and even
+    manipulate the end-to-end lineage of data assets within the platform.
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，预计 Data Lineage REST API 将随着时间的推移不断发展，增加更多的功能，使数据管理员能够检索信息，甚至操作平台内数据资产的端到端血缘信息。
+- en: Let’s look at how we might use the Lineage Tracking API to retrieve information
+    about the upstream and downstream connections for a table created by the dataset
+    generator notebook in this chapter’s accompanying GitHub repository, located at
+    [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)
+    .
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们来看一下如何使用 Lineage Tracking API 来检索本章附带的 GitHub 仓库中，由数据集生成器笔记本创建的表的上游和下游连接信息，仓库地址为[https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)。
+- en: 'First, we’ll begin by creating a brand-new notebook in our Databricks workspace
+    and importing the **requests** Python library. We’ll be exclusively using the
+    Python **requests** library to send data lineage requests to the Databricks REST
+    API and parse the response from the Databricks control plane:'
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们将在 Databricks 工作空间中创建一个全新的笔记本，并导入 **requests** Python 库。我们将专门使用 Python
+    的 **requests** 库来向 Databricks REST API 发送数据溯源请求，并解析来自 Databricks 控制平面的响应：
+- en: '[PRE0]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: Create and start an all-purpose cluster to attach the notebook to and run the
+    notebook cells. You’ll need to generate a **personal access token** ( **PAT**
+    ) to authenticate with the Databricks REST endpoints and send Data Lineage API
+    requests. It’s strongly recommended to store the PAT in a Databricks secret object
+    ( [https://docs.databricks.com/en/security/secrets/secrets.html](https://docs.databricks.com/en/security/secrets/secrets.html)
+    ) to avoid accidentally leaking the authentication details to your Databricks
+    workspace.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 创建并启动一个通用集群，以便将笔记本附加到该集群并运行笔记本单元格。你需要生成一个 **个人访问令牌**（**PAT**），用于与 Databricks
+    REST 端点进行身份验证并发送数据溯源 API 请求。强烈建议将 PAT 存储在 Databricks 秘密对象中（[https://docs.databricks.com/en/security/secrets/secrets.html](https://docs.databricks.com/en/security/secrets/secrets.html)），以避免不小心泄露身份验证信息到你的
+    Databricks 工作空间。
+- en: Important note
+  id: totrans-38
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: The following code snippets are for illustration purposes only. You’ll need
+    to update the workspace name to match the name of your Databricks workspace, as
+    well as the value for the API token.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 以下代码片段仅用于示范。你需要更新工作空间名称以匹配你 Databricks 工作空间的名称，并设置 API 令牌的值。
+- en: 'Let’s use the **requests** library to send a request to the Data Lineage API
+    by specifying the fully qualified endpoint:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用 **requests** 库通过指定完全合格的端点，向数据溯源 API 发送请求：
+- en: '[PRE1]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'Next, let’s include a few helper functions for parsing the response from the
+    Data Lineage API and printing the connection information in a nicely formatted
+    manner that’s easy to understand. Add a new cell to your notebook and paste the
+    following helper functions:'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，让我们添加一些辅助函数，用于解析来自数据溯源 API 的响应，并以易于理解的格式打印连接信息。请在你的笔记本中添加一个新的单元格，并粘贴以下辅助函数：
+- en: '[PRE2]'
+  id: totrans-43
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'Now, let’s update the response section of our previous code snippet for fetching
+    table lineage information, but this time, we’ll invoke these helper functions:'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们更新我们之前用于获取表格溯源信息的代码片段的响应部分，但这次我们将调用这些辅助函数：
+- en: '[PRE3]'
+  id: totrans-45
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: The output should now be a much more legible response from our Data Lineage
+    API, allowing us to clearly view the upstream and downstream table connections
+    from our table in Unity Catalog.
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 输出现在应该是来自我们数据溯源 API 的更加易读的响应，允许我们清晰地查看来自 Unity Catalog 中表的上游和下游表连接。
+- en: '![Figure 7.2 – Table lineage response output from the Databricks Data Lineage
+    REST API](img/B22011_07_002.jpg)'
+  id: totrans-47
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.2 – 来自 Databricks Data Lineage REST API 的表格溯源响应输出](img/B22011_07_002.jpg)'
+- en: Figure 7.2 – Table lineage response output from the Databricks Data Lineage
+    REST API
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.2 – 来自 Databricks Data Lineage REST API 的表格溯源响应输出
+- en: 'The Data Lineage API is great for tracing connections between datasets in Unity
+    Catalog. However, we can also retrieve finer-grained lineage information about
+    the *columns* of our table as well. In the next example, let’s retrieve information
+    about the **description** column of our table. Let’s also define another helper
+    function to nicely display the column connection information:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据溯源 API 非常适合追踪 Unity Catalog 中数据集之间的连接。然而，我们还可以检索有关我们表的 *列* 的更精细的溯源信息。在下一个示例中，让我们检索有关我们表的
+    **description** 列的信息。我们还将定义另一个辅助函数，以便更好地显示列连接信息：
+- en: '[PRE4]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: In this scenario, the **description** column in our table is particularly interesting,
+    as it’s the result of a concatenation of a text string with two different columns.
+    If you update the previous column lineage requests with a different column name,
+    you’ll notice that the number of upstream sources will change to reflect the number
+    of connections specific to that column.
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，我们表中的 **description** 列尤其引人注目，因为它是将两个不同列的文本字符串连接起来的结果。如果你使用不同的列名更新之前的列溯源请求，你会注意到上游源的数量会发生变化，以反映该列特有的连接数量。
+- en: '![Figure 7.3 – Column lineage response output from the Databricks Lineage API](img/B22011_07_003.jpg)'
+  id: totrans-52
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.3 – 来自 Databricks Lineage API 的列溯源响应输出](img/B22011_07_003.jpg)'
+- en: Figure 7.3 – Column lineage response output from the Databricks Lineage API
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.3 – 来自 Databricks Lineage API 的列溯源响应输出
+- en: By now, you should feel comfortable working with the Databricks Data Lineage
+    API to trace connections between datasets and even fine-grained data transformations,
+    such as column connections. As you’ve seen, the requests and responses from the
+    Data Lineage API require experience working with JSON payloads. For some responses,
+    we needed to create helper functions to parse the response into a more readable
+    form.
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，你应该已经能够熟练地使用 Databricks 数据血缘 API 来追踪数据集之间的连接，甚至是更精细的数据转换，如列连接。正如你所见，Data
+    Lineage API 的请求和响应需要有处理 JSON 数据的经验。对于一些响应，我们需要创建辅助函数，将响应解析为更易读的格式。
+- en: In the next section, we’ll look at using the Databricks UI for tracing dataset
+    relationships, allowing non-technical data stewards the ability to view upstream
+    and downstream sources with just the click of a button.
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将探讨如何使用 Databricks 用户界面来追踪数据集之间的关系，使得非技术数据管理员也能通过点击按钮轻松查看上下游数据源。
+- en: Visualizing upstream and downstream transformations
+  id: totrans-56
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 可视化上下游转换
+- en: In this section, we’ll be leveraging the dataset generator notebook to create
+    several datasets in Unity Catalog for working with the Databricks UI to trace
+    dataset lineage. If you haven’t done so already, clone this chapter’s accompanying
+    GitHub repository, which is located at [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)
+    . Next, either start an existing all-purpose cluster or create a new cluster and
+    begin by attaching the data generator notebook to the cluster. Click the **Run
+    all** button in the top-right corner of the Databricks workspace to execute all
+    the notebook cells, verifying that all cells execute successfully. If you encounter
+    runtime errors, verify that you have the correct metastore permissions to create
+    new catalogs, schemas, and tables in your Unity Catalog metastore.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将利用数据集生成器笔记本，在 Unity Catalog 中创建多个数据集，以便通过 Databricks 用户界面追踪数据集血缘。如果你还没有这样做，请克隆本章附带的
+    GitHub 仓库，仓库地址是 [https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07](https://github.com/PacktPublishing/Building-Modern-Data-Applications-Using-Databricks-Lakehouse/tree/main/chapter07)。接下来，启动一个现有的通用集群，或创建一个新的集群，并开始将数据生成器笔记本附加到该集群。在
+    Databricks 工作区的右上角点击 **Run all** 按钮，执行所有笔记本单元格，验证所有单元格都成功执行。如果遇到运行时错误，请验证你是否拥有正确的元存储权限，以在
+    Unity Catalog 元存储中创建新的目录、架构和表格。
+- en: Important note
+  id: totrans-58
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: You will need to be granted permission to create a new catalog and schema in
+    your Unity Catalog metastore. If this isn’t possible, feel free to reuse an existing
+    catalog and schema to generate the sample tables. You will need to update the
+    DDL and DML statements accordingly to match the value within your own Databricks
+    workspace.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 你需要获得创建新的目录和架构的权限，才能在你的 Unity Catalog 元存储中进行操作。如果无法获得此权限，可以重新使用现有的目录和架构来生成示例表格。你需要相应地更新
+    DDL 和 DML 语句，以匹配你自己 Databricks 工作区中的值。
+- en: 'The result of the data generator notebook should be three tables in total:
+    **youtube_channels** , **youtube_channel_artists** , and **combined_table** .
+    Data lineage can easily be traced in the Databricks Data Intelligence Platform
+    in a variety of ways. In this example, let’s trace the data lineage of a data
+    asset, the **combined_table** table, using the Databricks UI. From your Databricks
+    workspace, click on the **Catalog Explorer** menu tab from the left-hand side
+    navigation menu of the Databricks Data Intelligence Platform. Next, either drill
+    down to the catalog and schema to locate the **combined_table** table, or simply
+    type **combined_table** into the search box at the top of the Catalog Explorer,
+    which will filter the list of data assets matching the text string. Click on the
+    **combined_table** table, which will open the data asset **Overview** details
+    in a separate pane on the right-hand side of the UI.'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 数据生成器笔记本的结果应包含三张表格：**youtube_channels**、**youtube_channel_artists** 和 **combined_table**。在
+    Databricks 数据智能平台中，数据血缘可以通过多种方式轻松追踪。在这个示例中，让我们使用 Databricks 用户界面来追踪一个数据资产——**combined_table**
+    表的血缘。从你的 Databricks 工作区中，点击左侧导航菜单中的 **Catalog Explorer** 菜单选项。接下来，可以深入目录和架构以找到
+    **combined_table** 表，或者直接在 Catalog Explorer 顶部的搜索框中输入 **combined_table**，该框会过滤出匹配文本的所有数据资产。点击
+    **combined_table** 表，这将会在用户界面的右侧面板中打开数据资产的 **概览** 详情。
+- en: '![Figure 7.4 – The data lineage can be traced directly from the Catalog Explorer
+    in Databricks](img/B22011_07_004.jpg)'
+  id: totrans-61
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.4 – 数据血缘可以直接从 Databricks 的 Catalog Explorer 中追溯](img/B22011_07_004.jpg)'
+- en: Figure 7.4 – The data lineage can be traced directly from the Catalog Explorer
+    in Databricks
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.4 – 数据血缘可以直接从 Databricks 的 Catalog Explorer 中追溯
+- en: From the UI pane, click on the **Lineage** tab to expose the details of the
+    data lineage for our table. After navigating to the **Lineage** tab, you should
+    see a summary of all connections related to the **combined_table** dataset, clearly
+    identifying all the upstream sources that are used to construct this table, as
+    well as any downstream dependencies that leverage this table.
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从 UI 面板中，点击**血缘**标签以显示表的血缘详情。导航到**血缘**标签后，你应该能看到与**combined_table**数据集相关的所有连接的摘要，清晰地标识出构建此表所使用的所有上游源，以及任何利用此表的下游依赖项。
+- en: '![Figure 7.5 – The Lineage tab in the Catalog Explorer contains lineage information
+    about a table](img/B22011_07_005.jpg)'
+  id: totrans-64
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.5 – Catalog Explorer 中的血缘标签包含关于表的血缘信息](img/B22011_07_005.jpg)'
+- en: Figure 7.5 – The Lineage tab in the Catalog Explorer contains lineage information
+    about a table
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.5 – Catalog Explorer 中的血缘标签包含关于表的血缘信息
+- en: In this case, there should be two rows containing information about the upstream
+    sources – the **youtube_channels** parent table and the **youtube_channel_artists**
+    table. Since we’ve only recently created this table using our data generator notebook,
+    there shouldn’t be any rows with downstream dependencies. As you can imagine,
+    this table will be updated in near real time with a list of all objects that use
+    the dataset in some fashion, clearly identifying any downstream dependents of
+    the data.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，应该有两行包含有关上游源的信息——**youtube_channels**父表和**youtube_channel_artists**表。由于我们刚刚使用数据生成器笔记本创建了这个表，所以不应该有任何带有下游依赖关系的行。正如你可以想象的，这个表将实时更新，列出所有以某种方式使用该数据集的对象，明确标识出数据的任何下游依赖项。
+- en: Lastly, let’s visualize what our table lineage relationships look like. Click
+    on the blue button labeled **See lineage graph** to open the lineage visualization.
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，让我们可视化我们的表格血缘关系。点击标有**查看血缘图**的蓝色按钮，打开血缘可视化。
+- en: You should now clearly see that two upstream tables join to form the **combined_table**
+    table.
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在你应该清楚地看到，两个上游表连接形成了**combined_table**表。
+- en: '![Figure 7.6 – Lineage connection information can be generated by clicking
+    on connection links on a lineage graph](img/B22011_07_006.jpg)'
+  id: totrans-69
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.6 – 可以通过点击血缘图中的连接链接生成血缘连接信息](img/B22011_07_006.jpg)'
+- en: Figure 7.6 – Lineage connection information can be generated by clicking on
+    connection links on a lineage graph
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.6 – 可以通过点击血缘图中的连接链接生成血缘连接信息
+- en: Next, click on the arrow connecting the upstream table with the downstream table,
+    **combined_table** , to reveal more details about the lineage connection. You
+    will notice that a side pane will open displaying information about the lineage
+    connection, such as the source and target tables, but it will also display how
+    these data assets are used across various other objects in the Databricks Data
+    Intelligence Platform. For instance, the UI pane will list how these datasets
+    are currently being leveraged across notebooks, workflows, DLT pipelines, and
+    DBSQL queries. In this case, we’ve only generated these tables using our data
+    generator notebook, so it is the only object listed in the lineage connection
+    information.
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，点击连接上游表和下游表**combined_table**的箭头，揭示有关血缘连接的更多详细信息。你会注意到，侧边面板会打开，显示关于血缘连接的信息，如源表和目标表，但它还会显示这些数据资产如何在
+    Databricks 数据智能平台的各种其他对象中被使用。例如，UI 面板将列出这些数据集当前是如何在笔记本、工作流、DLT 管道和 DBSQL 查询中被利用的。在这种情况下，我们只是通过数据生成器笔记本生成了这些表，所以它是血缘连接信息中唯一列出的对象。
+- en: '![Figure 7.7 – Connection details between datasets can be viewed from the lineage
+    graph](img/B22011_07_007.jpg)'
+  id: totrans-72
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.7 – 可以从血缘图中查看数据集之间的连接详情](img/B22011_07_007.jpg)'
+- en: Figure 7.7 – Connection details between datasets can be viewed from the lineage
+    graph
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.7 – 可以从血缘图中查看数据集之间的连接详情
+- en: Column lineage can also be traced using the Catalog Explorer. In the same lineage
+    graph, click on various columns in the **combined_table** table to reveal lineage
+    information. For example, by clicking on the **description** table column, the
+    lineage graph will be updated to clearly visualize how the **description** column
+    is calculated. In this case, the column is calculated by concatenating a string
+    of text with the category column from our parent table as well as the artist’s
+    name from the child table.
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 列的血缘关系也可以通过 Catalog Explorer 来追踪。在相同的血缘图中，点击 **combined_table** 表中的不同列以显示血缘信息。例如，通过点击
+    **description** 表列，血缘图将更新并清晰地展示 **description** 列的计算方式。在这个例子中，列是通过将一串文本与父表的类别列以及子表中的艺术家名称连接起来计算得出的。
+- en: '![Figure 7.8 – Column lineage can be traced by clicking the column to expose
+    upstream lineage connections](img/B22011_07_008.jpg)'
+  id: totrans-75
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.8 – 可以通过点击列来追踪血缘关系，揭示上游血缘连接](img/B22011_07_008.jpg)'
+- en: Figure 7.8 – Column lineage can be traced by clicking the column to expose upstream
+    lineage connections
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.8 – 可以通过点击列来追踪血缘关系，揭示上游血缘连接
+- en: As you can see, generating a lineage graph from the Catalog Explorer provides
+    an accurate snapshot of the latest relationships between datasets in Unity Catalog.
+    These relationships can help us identify the impact data changes have on downstream
+    dependencies, such as changing the data type of a column or dropping a dataset,
+    for example.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如您所见，从 Catalog Explorer 生成血缘图提供了 Unity Catalog 中数据集之间最新关系的准确快照。这些关系可以帮助我们识别数据变更对下游依赖关系的影响，例如更改列的数据类型或删除数据集等。
+- en: In the next section, we’ll look at how data lineage can help us identify relationships
+    between our datasets, spot dependent notebooks that leverage these datasets, and
+    avoid introducing breaking changes across our organization.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一部分，我们将了解数据血缘如何帮助我们识别数据集之间的关系，发现利用这些数据集的依赖笔记本，并避免在整个组织中引入破坏性更改。
+- en: Identifying dependencies and impacts
+  id: totrans-79
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 确定依赖关系和影响
+- en: In this section, we’ll leverage the lineage graph UI from the Catalog Explorer
+    again to better understand how changing the data type and value of a particular
+    column will impact downstream datasets and downstream processes, such as notebooks
+    and workflows, across our Databricks workspaces.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这一部分，我们将再次利用 Catalog Explorer 中的血缘图 UI，深入了解更改某一列的数据类型和数值将如何影响下游数据集和下游流程（如笔记本和工作流），并在我们的
+    Databricks 工作区中查看这些影响。
+- en: 'Let’s first begin by creating a new notebook in our Databricks workspace that
+    will contain the definition of a new DLT pipeline. The first dataset in our DLT
+    pipeline will ingest raw CSV files containing commercial airline flight information
+    stored in the default **Databricks Filesystem** ( **DBFS** ) under the **/databricks-datasets**
+    directory. Every Databricks workspace will have access to this dataset. Create
+    a new notebook cell and add the following code snippet for the definition of a
+    bronze table in our dat a pipeline:'
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，在我们的 Databricks 工作区创建一个新的笔记本，其中包含一个新的 DLT 流水线的定义。我们 DLT 流水线中的第一个数据集将导入存储在默认**Databricks
+    文件系统**（**DBFS**）中的商业航空公司航班信息原始 CSV 文件，这些文件位于**/databricks-datasets**目录下。每个 Databricks
+    工作区都可以访问这个数据集。创建一个新的笔记本单元，并添加以下代码片段，用于在我们的数据流水线中定义一个 bronze 表：
+- en: '[PRE5]'
+  id: totrans-82
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'We’d like to augment the flight data with information about the commercial
+    airliner jet. Create a new notebook cell and add the following code snippet, which
+    defines a static reference table with information about popular commercial airline
+    jets, including the manufacturer name, airplane model, country of origin, and
+    fuel capacity, to name a few:'
+  id: totrans-83
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们希望通过商业喷气式飞机的信息来增强航班数据。创建一个新的笔记本单元，并添加以下代码片段，定义一个静态参考表，包含有关流行商业航空公司喷气式飞机的信息，包括制造商名称、飞机型号、原产国和燃油容量等：
+- en: '[PRE6]'
+  id: totrans-84
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Next, we’ll save the airline jet reference table to the schema created earlier
+    in Unity Catalog:'
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将把航空公司喷气式飞机参考表保存到之前在 Unity Catalog 中创建的模式中：
+- en: '[PRE7]'
+  id: totrans-86
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'Let’s add another step to our data pipeline, which will join our static, commercial
+    jet airline reference table with our stream of airline flight data. In a new notebook
+    cell, create the following **user-defined function** ( **UDF** ), which will generate
+    a tail number for each entry in the commercial airline dataset:'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们向数据流水线添加另一个步骤，这将把我们的静态商业喷气机航空公司参考表与我们的航空航班数据流连接起来。在新的笔记本单元中，创建以下**用户定义函数**（**UDF**），它将为商业航空数据集中的每个条目生成一个尾号：
+- en: '[PRE8]'
+  id: totrans-88
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Lastly, create one more notebook cell and add the following DLT dataset defin
+    ition for our silver table:'
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，创建一个新的笔记本单元，并添加以下 DLT 数据集定义，用于我们的银表：
+- en: '[PRE9]'
+  id: totrans-90
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: When prompted, let’s create a new DLT pipeline by clicking on the blue button
+    at the bottom of the notebook cell output titled **Create pipeline** . Give the
+    pipeline a meaningful name, such as **Commercial Airliner Flights Pipeline** .
+    Select **Triggered** as the execution mode and **Core** for the product edition.
+    Next, select the target catalog and schema in the previous code sample as a target
+    dataset location for our DLT pipeline. Finally, click the **Start** button to
+    trigger a pipeline update.
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 当出现提示时，点击笔记本单元输出底部的蓝色按钮 **创建管道** 来创建一个新的 DLT 管道。为管道命名一个有意义的名字，例如 **商业航班管道**。选择
+    **触发式** 作为执行模式，并选择 **Core** 作为产品版本。接下来，选择之前代码示例中的目标目录和模式，作为我们 DLT 管道的目标数据集位置。最后，点击
+    **开始** 按钮以触发管道更新。
+- en: '![Figure 7.9 – The DLT pipeline created for ingesting commercial airline flight
+    data](img/B22011_07_009.jpg)'
+  id: totrans-92
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.9 – 用于获取商业航班数据的 DLT 管道](img/B22011_07_009.jpg)'
+- en: Figure 7.9 – The DLT pipeline created for ingesting commercial airline flight
+    data
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.9 – 用于获取商业航班数据的 DLT 管道
+- en: Let’s imagine for a second that there’s an external process that aims to calculate
+    the carbon footprint for each commercial flight. In this example, the process
+    is another Databricks notebook that reads the output of our silver table and calculates
+    the carbon dioxide emission for each flight taken across the United States.
+  id: totrans-94
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设有一个外部过程，旨在计算每个商业航班的碳足迹。在这个例子中，该过程是另一个 Databricks 笔记本，它读取我们银表的输出，并计算美国境内每个航班的二氧化碳排放量。
+- en: 'Create another notebook within your Databricks workspace and give the notebook
+    a meaningful name, such as **Calculating Commercial Airliner Carbon Footprint**
+    . Next, let’s add a new notebook cell that reads the silver table and calculates
+    the carbon dioxide output using a simple formula:'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在您的 Databricks 工作区内创建另一个笔记本，并为笔记本起一个有意义的名字，比如 **计算商业航班碳足迹**。接下来，添加一个新的笔记本单元，读取银表并使用简单公式计算二氧化碳排放量：
+- en: '*Carbon footprint = amount of fuel burned * coefficient / number* *of passengers*'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*碳足迹 = 燃烧的燃料量 * 系数 / 乘客人数*'
+- en: 'In this case, we are only interested in calculating the carbon footprint per
+    airliner jet; so, we will avoid dividing by the number of passengers. Add the
+    following code snippet to the newly created notebook, which will assign a calculated
+    carbon footprint per flight entry:'
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这种情况下，我们只关心计算每架航班的碳足迹；因此，我们将避免除以乘客人数。将以下代码片段添加到新创建的笔记本中，该代码将为每个航班条目分配计算出的碳足迹：
+- en: '[PRE10]'
+  id: totrans-98
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: Let’s imagine again that the fuel capacity amount in the silver table of our
+    DLT pipeline is currently measured in gallons. However, our European business
+    partners want to work with the dataset using liters instead. Let’s use the Catalog
+    Explorer to explore the lineage graph of our silver table to better understand
+    what type of impact, converting the unit of measure for the **fuel_capacity**
+    column, would have on the consumers of the dataset. Navigate to the lineage graph
+    by clicking on the Catalog Explorer in the left-hand side navigation bar, filtering
+    the catalogs by entering the name of the catalog in the search text field, and
+    finally clicking on the silver table, **commercial_airliner_flights_silver** .
+  id: totrans-99
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们再次假设我们 DLT 管道中的银表的燃料容量目前是以加仑为单位。然而，我们的欧洲业务合作伙伴希望改用升作为数据集的单位。让我们使用目录浏览器来查看银表的血缘关系图，以更好地理解将
+    **fuel_capacity** 列的度量单位转换为升会对数据集的使用者产生什么影响。通过点击左侧导航栏中的目录浏览器，按目录名称在搜索框中过滤，然后点击银表
+    **commercial_airliner_flights_silver** 来进入血缘关系图。
+- en: '![Figure 7.10 – Column lineage can help us understand how changing columns
+    will impact downstream dependencies – an overview](img/B22011_07_010.jpg)'
+  id: totrans-100
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.10 – 列的血缘关系有助于我们理解更改列将如何影响下游依赖关系 – 概览](img/B22011_07_010.jpg)'
+- en: Figure 7.10 – Column lineage can help us understand how changing columns will
+    impact downstream dependencies – an overview
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.10 – 列的血缘关系有助于我们理解更改列将如何影响下游依赖关系 – 概览
+- en: By generating the lineage graph, we were able to see in near real time all the
+    downstream columns that might depend on this column. Furthermore, we can also
+    see a real-time list of all the Unity Catalog objects that depend on this column,
+    such as notebooks, workflows, DLT pipelines, and machine-learning models. So,
+    in effect, we can quickly understand what type of impact changing the unit of
+    measure could have across our organization sharing this dataset.
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过生成血缘图，我们能够实时查看所有可能依赖此列的下游列。此外，我们还可以看到所有依赖此列的 Unity Catalog 对象的实时列表，例如笔记本、工作流、DLT
+    管道和机器学习模型。因此，实际上，我们可以快速了解更改计量单位可能对共享该数据集的组织产生的影响。
+- en: In the next section, we’ll continue with this example to determine an alternative
+    way for updating this dataset to include fuel capacity, distance travel, and arrival
+    times to be European-friendly without impacting any existing consumers of our
+    data.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一节中，我们将继续这个示例，找出更新该数据集的另一种方法，以包含燃料容量、行驶距离和到达时间，使其适应欧洲标准，而不会影响任何现有的数据消费者。
+- en: Hands-on lab – documenting data lineage across an organization
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实操实验 – 跨组织文档化数据血缘
+- en: In this section, we’ll look at how the system tables in Databricks automatically
+    document how the relationships between our datasets and other data assets change
+    over time. As previously mentioned, Unity Catalog will preserve data lineage across
+    all workspaces that attach to the same Unity Catalog metastore. This is particularly
+    useful in scenarios when organizations need to have strong end-to-end auditing
+    of their data assets.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本节中，我们将查看 Databricks 中的系统表是如何自动记录数据集和其他数据资产之间关系随时间变化的情况。正如之前提到的，Unity Catalog
+    会在所有连接到同一 Unity Catalog 元存储的工作空间中保留数据血缘。这在组织需要对其数据资产进行强有力的端到端审计时尤其有用。
+- en: Let’s again begin by creating a new notebook within our Databricks workspace
+    and giving it a meaningful title, such as **Viewing Documented Data Lineage**
+    . Next, let’s create a new all-purpose cluster or attach the notebook to an already
+    running cluster to begin executing notebook cells.
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们再次从在 Databricks 工作空间中创建一个新的笔记本开始，并为其设置一个有意义的标题，例如**查看文档化的数据血缘**。接下来，创建一个新的通用集群，或者将笔记本附加到一个已经运行的集群上，以开始执行笔记本单元格。
+- en: Like the Data Lineage API, there are two system tables that provide a read-only
+    view of lineage information in Unity Catalog – the **system.access.table_lineage**
+    table and the **system.access.column_lineage** table. Data lineage system tables
+    automatically document information pertaining to upstream and downstream connections
+    for UC table and column objects.
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与数据血缘 API 类似，Unity Catalog 中有两个系统表提供血缘信息的只读视图——**system.access.table_lineage**
+    表和 **system.access.column_lineage** 表。数据血缘系统表会自动记录与 UC 表和列对象的上游和下游连接相关的信息。
+- en: '| **UC Object** | **Table Name** | **Description** |'
+  id: totrans-108
+  prefs: []
+  type: TYPE_TB
+  zh: '| **UC 对象** | **表名** | **描述** |'
+- en: '| Table | **system.access.table_lineage** | Contains a list of upstream and
+    downstream table connections, as well as information about their related notebook
+    connections |'
+  id: totrans-109
+  prefs: []
+  type: TYPE_TB
+  zh: '| 表格 | **system.access.table_lineage** | 包含上游和下游表连接的列表，以及与其相关的笔记本连接信息 |'
+- en: '| Column | **system.access.column_lineage** | Contains a list of upstream and
+    downstream column connections |'
+  id: totrans-110
+  prefs: []
+  type: TYPE_TB
+  zh: '| 列 | **system.access.column_lineage** | 包含上游和下游列连接的列表 |'
+- en: Table 7.2 – Data lineage system tables capture connections info about tables
+    and columns
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 表 7.2 – 数据血缘系统表捕获有关表和列的连接信息
+- en: 'Let’s query the upstream and downstream lineage information in the previous
+    example. In a new notebook cell, add the following query and execute the cell:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们查询前面示例中的上游和下游血缘信息。在一个新的笔记本单元格中，添加以下查询并执行单元格：
+- en: '[PRE11]'
+  id: totrans-113
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'We get the following output:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们得到如下输出：
+- en: '![Figure 7.11 – Lineage information can be queried from the system tables](img/B22011_07_011.jpg)'
+  id: totrans-115
+  prefs: []
+  type: TYPE_IMG
+  zh: '![图 7.11 – 可以从系统表中查询血缘信息](img/B22011_07_011.jpg)'
+- en: Figure 7.11 – Lineage information can be queried from the system tables
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 7.11 – 可以从系统表中查询血缘信息
+- en: As you can see from the output, the system table automatically documents connection
+    information about the upstream and downstream sources. In addition, the system
+    tables will automatically capture auditing information, including information
+    about the dataset’s creator and the event timestamp of the object creation. This
+    is a great way to document, review, or even report on data lineage across your
+    organization’s datasets.
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从输出结果可以看出，系统表自动记录了上下游数据源的连接信息。此外，系统表还会自动捕获审计信息，包括数据集创建者的信息以及对象创建事件的时间戳。这是记录、审查甚至报告组织数据集血统的绝佳方式。
+- en: Summary
+  id: totrans-118
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In this chapter, we covered the various ways that data lineage can be traced
+    across datasets in the Databricks Data Intelligence Platform. We saw how the Data
+    Lineage REST API allowed us to quickly view the upstream and downstream connections
+    of a particular table or column in Unity Catalog. Next, we look at how easy it
+    was to generate a lineage graph using the Catalog Explorer in Unity Catalog. The
+    lineage graph was essential for enabling greater insight into how changes to datasets
+    could impact downstream consumers of the dataset. Lastly, we looked at how the
+    system tables in Unity Catalog provided a way for our organization to document
+    the evolving flow of data asset relationships.
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们介绍了在 Databricks 数据智能平台中追踪数据血统的各种方法。我们看到，Data Lineage REST API 使我们能够快速查看
+    Unity Catalog 中特定表格或列的上下游连接。接下来，我们展示了使用 Unity Catalog 中的 Catalog Explorer 生成血统图的简便方法。血统图对于深入了解数据集的变化如何影响下游数据消费者至关重要。最后，我们介绍了如何通过
+    Unity Catalog 中的系统表来记录数据资产关系的演变。
+- en: In the next chapter, we’ll turn our attention to deploying our data pipelines
+    and all their dependencies in an automated fashion using tools such as Terraform.
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章中，我们将重点介绍如何使用工具（如 Terraform）自动化部署数据管道及其所有依赖项。
+- en: Part 3:Continuous Integration, Continuous Deployment, and Continuous Monitoring
+  id: totrans-121
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第三部分：持续集成、持续部署与持续监控
+- en: In the final part of this book, we’ll look at how we can automate the deployment
+    of pipeline changes using popular automation tools such as **Terraform** and **Databricks
+    Asset Bundles** ( **DABs** ). We conclude the book with a lesson on how you can
+    continuously monitor your DLT pipelines using a variety of tools in the Databricks
+    Data Intelligence Platform.
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本书的最后部分，我们将探讨如何使用流行的自动化工具，如 **Terraform** 和 **Databricks Asset Bundles**（**DABs**），自动化管道变更的部署。我们将以如何使用
+    Databricks 数据智能平台中的各种工具持续监控 DLT 管道的教程作为本书的总结。
+- en: 'This part contains the following chapters:'
+  id: totrans-123
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本部分包含以下章节：
+- en: '[*Chapter 8*](B22011_08.xhtml#_idTextAnchor185) , *Deploying, Maintaining,
+    and Administrating* *DLT* *Pipelines Using Terraform*'
+  id: totrans-124
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[*第8章*](B22011_08.xhtml#_idTextAnchor185)，*使用 Terraform 部署、维护和管理 DLT 管道*'
+- en: '[*Chapter 9*](B22011_09.xhtml#_idTextAnchor222) , *Leveraging Databricks Asset
+    Bundles to Streamline Data Pipeline Deployment*'
+  id: totrans-125
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[*第9章*](B22011_09.xhtml#_idTextAnchor222)，*利用 Databricks Asset Bundles 简化数据管道的部署*'
+- en: '[*Chapter 10*](B22011_10.xhtml#_idTextAnchor249) *,* *Monitoring Data Pipelines
+    in Production*'
+  id: totrans-126
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[*第10章*](B22011_10.xhtml#_idTextAnchor249)，*生产环境中的数据管道监控*'

@@ -1,0 +1,718 @@
+- en: 'Chapter 10: Scaling Out Single-Node Machine Learning Using PySpark'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 第10章：使用PySpark扩展单节点机器学习
+- en: In [*Chapter 5*](B16736_05_Final_JM_ePub.xhtml#_idTextAnchor094)*, Scalable
+    Machine Learning with PySpark*, you learned how you could use the power of **Apache**
+    **Spark**'s distributed computing framework to train and score **machine learning**
+    (**ML**) models at scale. Spark's native ML library provides good coverage of
+    standard tasks that data scientists typically perform; however, there is a wide
+    variety of functionality provided by standard single-node **Python** libraries
+    that were not designed to work in a distributed manner. This chapter deals with
+    techniques for horizontally scaling out standard Python data processing and ML
+    libraries such as **pandas**, **scikit-learn,** **XGBoost**, and more. It also
+    covers scaling out of typical data science tasks such as **exploratory data analysis**
+    (**EDA**), **model training**, **model inferencing**, and, finally, also covers
+    a scalable Python library named **Koalas** that lets you effortlessly write **PySpark**
+    code using the very familiar and easy-to-use pandas-like syntax.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在[*第5章*](B16736_05_Final_JM_ePub.xhtml#_idTextAnchor094)*，使用PySpark进行可扩展的机器学习*中，你学习了如何利用**Apache**
+    **Spark**的分布式计算框架进行大规模的**机器学习**（**ML**）模型训练和评分。Spark的本地ML库涵盖了数据科学家通常执行的标准任务；然而，还有许多标准的单节点**Python**库提供了丰富的功能，这些库并不是为分布式工作方式设计的。本章讨论了如何将标准Python数据处理和ML库（如**pandas**、**scikit-learn**、**XGBoost**等）水平扩展到分布式环境。它还涵盖了典型数据科学任务的扩展，如**探索性数据分析**（**EDA**）、**模型训练**、**模型推断**，最后，还介绍了一种名为**Koalas**的可扩展Python库，它允许你使用熟悉且易于使用的pandas类似语法编写**PySpark**代码。
+- en: 'In this chapter, we''re going to cover the following main topics:'
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将涵盖以下主要主题：
+- en: Scaling out EDA
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 扩展EDA
+- en: Scaling out model inferencing
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 扩展模型推断
+- en: Distributed hyperparameter tuning
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 分布式超参数调优
+- en: Model training using **embarrassingly parallel computing**
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用**极易并行计算**进行模型训练
+- en: Upgrading pandas to PySpark using Koalas
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用Koalas将pandas升级到PySpark
+- en: Some of the skills gained in this chapter will be performing EDA at scale, performing
+    model inferencing and scoring in a scalable fashion, hyperparameter tuning, and
+    best model selection at scale for single-node models. You will also learn to horizontally
+    scale out pretty much any single-node ML model and finally Koalas that lets us
+    use pandas-like API to write scalable PySpark code.
+  id: totrans-8
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章中获得的一些技能包括大规模执行EDA、大规模执行模型推断和评分、超参数调优，以及单节点模型的最佳模型选择。你还将学习如何水平扩展几乎所有的单节点ML模型，最后使用Koalas，它让我们能够使用类似pandas的API编写可扩展的PySpark代码。
+- en: Technical requirements
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 技术要求
+- en: 'In this chapter, we will be using the Databricks Community Edition to run our
+    code:'
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将使用Databricks社区版运行代码：
+- en: '[https://community.cloud.databricks.com](https://community.cloud.databricks.com)'
+  id: totrans-11
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: '[https://community.cloud.databricks.com](https://community.cloud.databricks.com)'
+- en: Sign-up instructions can be found at [https://databricks.com/try-databricks](https://databricks.com/try-databricks).
+  id: totrans-12
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: 注册说明可以在[https://databricks.com/try-databricks](https://databricks.com/try-databricks)找到。
+- en: The code and data used in this chapter can be downloaded from [https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter10](https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter10).
+  id: totrans-13
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 本章中使用的代码和数据可以从[https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter10](https://github.com/PacktPublishing/Essential-PySpark-for-Scalable-Data-Analytics/tree/main/Chapter10)下载。
+- en: Scaling out EDA
+  id: totrans-14
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 扩展EDA
+- en: EDA is a data science process that involves analysis of a given dataset to understand
+    its main characteristics, sometimes graphically using visualizations and other
+    times just by aggregating and slicing data. You have already learned some visual
+    EDA techniques in [*Chapter 11*](B16736_11_Final_JM_ePub.xhtml#_idTextAnchor188)*,
+    Data Visualization with PySpark*. In this section, we will explore non-graphical
+    EDA using pandas and compare it with the same process using PySpark and Koalas.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: EDA是一种数据科学过程，涉及对给定数据集的分析，以了解其主要特征，有时通过可视化图表，有时通过数据聚合和切片。你已经在[*第11章*](B16736_11_Final_JM_ePub.xhtml#_idTextAnchor188)*，使用PySpark进行数据可视化*中学习了一些可视化的EDA技术。在这一节中，我们将探索使用pandas进行非图形化的EDA，并将其与使用PySpark和Koalas执行相同过程进行比较。
+- en: EDA using pandas
+  id: totrans-16
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用pandas进行EDA
+- en: 'Typical EDA in standard Python involves using pandas for data manipulation
+    and `matplotlib` for data visualization. Let''s take a sample dataset that comes
+    with scikit-learn and perform some basic EDA steps on it, as shown in the following
+    code example:'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 标准 Python 中的典型 EDA 涉及使用 pandas 进行数据处理，使用 `matplotlib` 进行数据可视化。我们以一个来自 scikit-learn
+    的示例数据集为例，执行一些基本的 EDA 步骤，如以下代码示例所示：
+- en: '[PRE0]'
+  id: totrans-18
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'In the previous code example, we perform the following steps:'
+  id: totrans-19
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码示例中，我们执行了以下步骤：
+- en: We import the pandas library and import the sample dataset, `load_boston`, that
+    comes with scikit-learn.
+  id: totrans-20
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们导入 pandas 库并导入 scikit-learn 提供的示例数据集 `load_boston`。
+- en: Then, we convert the scikit-learn dataset into a pandas DataFrame using the
+    `pd.DataFrame()` method.
+  id: totrans-21
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用 `pd.DataFrame()` 方法将 scikit-learn 数据集转换为 pandas DataFrame。
+- en: Now that we have a pandas DataFrame, we can perform analysis on it, starting
+    with the `info()` method, which prints information about the pandas DataFrame
+    such as its column names and their data types.
+  id: totrans-22
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在我们有了一个 pandas DataFrame，可以对其进行分析，首先使用 `info()` 方法，打印关于 pandas DataFrame 的信息，如列名及其数据类型。
+- en: The `head()` function on the pandas DataFrame prints a few rows and columns
+    of the actual DataFrame and helps us visually examine some sample data from the
+    DataFrame.
+  id: totrans-23
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: pandas DataFrame 上的 `head()` 函数打印出实际 DataFrame 的几行几列，并帮助我们从 DataFrame 中直观地检查一些示例数据。
+- en: The `shape` attribute on the pandas DataFrame prints the number of rows and
+    columns.
+  id: totrans-24
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: pandas DataFrame 上的 `shape` 属性打印出行和列的数量。
+- en: The `isnull()` method shows the number of NULL values in each column in the
+    DataFrame.
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`isnull()` 方法显示 DataFrame 中每一列的 NULL 值数量。'
+- en: Finally, the `describe()` method prints some statistics on each column sum as
+    the mean, median, and standard deviation.
+  id: totrans-26
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，`describe()` 方法打印出每一列的统计数据，如均值、中位数和标准差。
+- en: This code snippet shows some typical EDA steps performed using the Python pandas
+    data processing library. Now, let's see how you can perform similar EDA steps
+    using PySpark.
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码展示了使用 Python pandas 数据处理库执行的一些典型 EDA 步骤。现在，让我们看看如何使用 PySpark 执行类似的 EDA 步骤。
+- en: EDA using PySpark
+  id: totrans-28
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用 PySpark 进行 EDA
+- en: 'PySpark also has a DataFrame construct similar to pandas DataFrames, and you
+    can perform EDA using PySpark, as shown in the following code example:'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: PySpark 也有类似于 pandas DataFrame 的 DataFrame 构造，你可以使用 PySpark 执行 EDA，如以下代码示例所示：
+- en: '[PRE1]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'In the previous code example, we perform the following steps:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码示例中，我们执行了以下步骤：
+- en: We first convert the pandas DataFrame created in the previous section to a Spark
+    DataFrame using the `createDataFrame()` function.
+  id: totrans-32
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们首先使用 `createDataFrame()` 函数将前一部分创建的 pandas DataFrame 转换为 Spark DataFrame。
+- en: Then, we use the `show()` function to display a small sample of data from the
+    Spark DataFrame. While the `head()` function is available, `show()` shows the
+    data in a better formatted and more readable way.
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用 `show()` 函数展示 Spark DataFrame 中的一小部分数据。虽然也有 `head()` 函数，但 `show()` 能以更好的格式和更易读的方式展示数据。
+- en: Spark DataFrames do not have a built-in function to display the shape of the
+    Spark DataFrame. Instead, we use the `count()` function on the rows and the `len()`
+    method on the columns to accomplish the same functionality.
+  id: totrans-34
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Spark DataFrame 没有内置的函数来显示 Spark DataFrame 的形状。相反，我们使用 `count()` 函数计算行数，使用 `len()`
+    方法计算列数，以实现相同的功能。
+- en: Similarly, Spark DataFrames also do not support a pandas-equivalent `isnull()`
+    function to count NULL values in all columns. Instead, a combination of `isNull()`
+    and `where()` is used to filter out NULL values from each column individually
+    and then count them.
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 同样，Spark DataFrame 也不支持类似 pandas 的 `isnull()` 函数来统计所有列中的 NULL 值。相反，我们使用 `isNull()`
+    和 `where()` 的组合，逐列过滤掉 NULL 值并进行计数。
+- en: Spark DataFrames do support a `describe()` function that can calculate basic
+    statistics on each of the DataFrames' columns in a distributed manner by running
+    a Spark job behind the scenes. This may not seem very useful for small datasets
+    but can be very useful when describing very large datasets.
+  id: totrans-36
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Spark DataFrame 确实支持 `describe()` 函数，可以在分布式模式下计算每列的基本统计数据，通过后台运行一个 Spark 作业来实现。对于小型数据集这可能看起来不太有用，但对于描述非常大的数据集来说，它非常有用。
+- en: This way, by using the built-in functions and operations available with Spark
+    DataFrames, you can easily scale out your EDA. Since Spark DataFrames inherently
+    support **Spark** **SQL**, you can also perform your scalable EDA using Spark
+    SQL in addition to using DataFrame APIs.
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用 Spark DataFrame 提供的内置函数和操作，你可以轻松地扩展你的 EDA。由于 Spark DataFrame 本身支持**Spark**
+    **SQL**，你可以在使用 DataFrame API 进行 EDA 的同时，也通过 Spark SQL 执行可扩展的 EDA。
+- en: Scaling out model inferencing
+  id: totrans-38
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 扩展模型推理
+- en: Another important aspect of the whole ML process, apart from data cleansing
+    and model training and tuning, is the productionization of models itself. Despite
+    having access to huge amounts of data, sometimes it is useful to downsample the
+    data and train models on a smaller subset of the larger dataset. This could be
+    due to reasons such as low signal-to-noise ratio, for example. In this, it is
+    not necessary to scale up or scale out the model training process itself. However,
+    since the raw dataset size is very large, it becomes necessary to scale out the
+    actual model inferencing process to keep up with the large amount of raw data
+    that is being generated.
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 除了数据清洗、模型训练和调优外，整个ML过程的另一个重要方面是模型的生产化。尽管有大量的数据可供使用，但有时将数据下采样，并在较小的子集上训练模型是有用的。这可能是由于信噪比低等原因。在这种情况下，不需要扩展模型训练过程本身。然而，由于原始数据集的大小非常庞大，因此有必要扩展实际的模型推理过程，以跟上生成的大量原始数据。
+- en: 'Apache Spark, along with **MLflow**, can be used to score models trained using
+    standard, non-distributed Python libraries like scikit-learn. An example of a
+    model trained using scikit-learn and then productionized at scale using Spark
+    is shown in the following code example:'
+  id: totrans-40
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Apache Spark与**MLflow**一起，可以用来对使用标准非分布式Python库（如scikit-learn）训练的模型进行评分。以下代码示例展示了一个使用scikit-learn训练的模型，随后使用Spark进行大规模生产化的示例：
+- en: '[PRE2]'
+  id: totrans-41
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'In the previous code example, we perform the following steps:'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一个代码示例中，我们执行了以下步骤：
+- en: We intend to train a linear regression model using scikit-learn that predicts
+    the median house value (given a set of features) on the sample Boston housing
+    dataset that comes with scikit-learn.
+  id: totrans-43
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们打算使用scikit-learn训练一个线性回归模型，该模型在给定一组特征的情况下预测波士顿房价数据集中的中位数房价。
+- en: First, we import all the required scikit-learn modules, and we also import MLflow,
+    as we intend to log the trained model to the **MLflow** **Tracking** **Server**.
+  id: totrans-44
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们导入所有需要的scikit-learn模块，同时我们还导入了MLflow，因为我们打算将训练好的模型记录到**MLflow** **Tracking**
+    **Server**。
+- en: Then, we define the feature columns as a variable, `X`, and the label column
+    as `y`.
+  id: totrans-45
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们将特征列定义为变量`X`，标签列定义为`y`。
+- en: Then, we invoke an MLflow experiment using the `with mlflow.start_run()` method.
+  id: totrans-46
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用`with mlflow.start_run()`方法调用一个MLflow实验。
+- en: Then, we train the actual linear regression model by using the `LinearRegression`
+    class and calling the `fit()` method on the training pandas DataFrame.
+  id: totrans-47
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用`LinearRegression`类训练实际的线性回归模型，并在训练的pandas DataFrame上调用`fit()`方法。
+- en: Then, we log the resultant model to the MLflow Tracking Server using the `mlflow.sklearn.log_model()`
+    method. The `sklearn` qualifier specifies that the model being logged is of a
+    scikit-learn flavor.
+  id: totrans-48
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们使用`mlflow.sklearn.log_model()`方法将结果模型记录到MLflow追踪服务器。`sklearn`限定符指定记录的模型是scikit-learn类型。
+- en: 'Once we have the trained linear regression model logged to the MLflow Tracking
+    Server, we need to convert it into a PySpark **user-defined function** (**UDF**)
+    to allow it to be used for inferencing in a distributed manner. The code required
+    to achieve this is presented in the following code example:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一旦我们将训练好的线性回归模型记录到MLflow追踪服务器，我们需要将其转换为PySpark的**用户定义函数**（**UDF**），以便能够以分布式方式进行推理。实现这一目标所需的代码如下所示：
+- en: '[PRE3]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'In the previous code example, we perform the following steps:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在上一个代码示例中，我们执行了以下步骤：
+- en: We import the `pyfunc` method used to convert the mlflow model into a PySpark
+    UDF from the mlflow library.
+  id: totrans-52
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们从mlflow库中导入`pyfunc`方法，用于将mlflow模型转换为PySpark UDF。
+- en: Then, we construct the `model_uri` from MLflow using the `run_id` experiment.
+  id: totrans-53
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们通过`run_id`实验从MLflow构建`model_uri`。
+- en: Once we have the `model_uri`, we register the model as a PySpark UDF using the
+    `mlflow.pyfunc()` method. We specify the model flavor as `spark` as we intend
+    to use this with a Spark DataFrame.
+  id: totrans-54
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 一旦我们拥有了`model_uri`，我们使用`mlflow.pyfunc()`方法将模型注册为PySpark UDF。我们指定模型类型为`spark`，因为我们打算在Spark
+    DataFrame中使用它。
+- en: Now that the model has been registered as a PySpark UDF, we use it to make predictions
+    on a Spark DataFrame. We do this by using it to create a new column in the Spark
+    DataFrame, then pass in all the feature columns as input. The result is a new
+    DataFrame with a new column that consists of the predictions for each row.
+  id: totrans-55
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，模型已经作为PySpark的UDF注册，我们可以用它对Spark DataFrame进行预测。我们通过使用该模型创建一个新的Spark DataFrame列，并将所有特征列作为输入。结果是一个包含每一行预测值的新列的数据框。
+- en: It should be noted that when the `show` action is called it invokes a Spark
+    job and performs the model scoring in a distributed way.
+  id: totrans-56
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 需要注意的是，当调用`show`操作时，它会启动一个Spark作业，并以分布式方式执行模型评分。
+- en: In this way, using the `pyfunc` method of MLflow along with Spark DataFrame
+    operations, a model built using a standard, single-node Python ML library like
+    scikit-learn can also be used to derive inferences at scale in a distributed manner.
+    Furthermore, the inferencing Spark job can be made to write predictions to a persistent
+    storage method like a database, data warehouse, or data lake, and the job itself
+    can be scheduled to run periodically. This can also be easily extended to perform
+    model inferencing in near real-time by using **structured streaming** to perform
+    predictions on a streaming DataFrame.
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过这种方式，结合使用MLflow的`pyfunc`方法和Spark DataFrame操作，使用像scikit-learn这样的标准单节点Python机器学习库构建的模型，也可以以分布式方式进行推理推导，从而实现大规模推理。此外，推理的Spark作业可以被配置为将预测结果写入持久化存储方法，如数据库、数据仓库或数据湖，且该作业本身可以定期运行。这也可以通过使用**结构化流处理**轻松扩展，以近实时方式通过流式DataFrame进行预测。
+- en: Model training using embarrassingly parallel computing
+  id: totrans-58
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用令人尴尬的并行计算进行模型训练
+- en: As you learned previously, Apache Spark follows the **data parallel processing**
+    paradigm of **distributed computing**. In data parallel processing, the data processing
+    code is moved to where the data resides. However, in traditional computing models,
+    such as those used by standard Python and single-node ML libraries, data is processed
+    on a single machine and the data is expected to be present locally. Algorithms
+    designed for single-node computing can be designed to be multiprocessed, where
+    the process makes use of multiprocessing and multithreading techniques offered
+    by the local CPUs to achieve some level of parallel computing. However, these
+    algorithms are not inherently capable of being distributed and need to be rewritten
+    entirely to be capable of distributed computing. **Spark** **ML** **library**
+    is an example where traditional ML algorithms have been completely redesigned
+    to work in a distributed computing environment. However, redesigning every existing
+    algorithm would be very time-consuming and impractical as well. Moreover, a rich
+    set of standard-based Python libraries for ML and data processing already exist
+    and it would be useful if there was a way to leverage them in a distributed computing
+    setting. This is where the embarrassingly parallel computing paradigm comes into
+    play.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如你之前所学，Apache Spark遵循**数据并行处理**的**分布式计算**范式。在数据并行处理中，数据处理代码被移动到数据所在的地方。然而，在传统的计算模型中，如标准Python和单节点机器学习库所使用的，数据是在单台机器上处理的，并且期望数据存在于本地。为单节点计算设计的算法可以通过多进程和多线程技术利用本地CPU来实现某种程度的并行计算。然而，这些算法本身并不具备分布式能力，需要完全重写才能支持分布式计算。**Spark**
+    **ML** **库**就是一个例子，传统的机器学习算法已被完全重新设计，以便在分布式计算环境中工作。然而，重新设计每个现有的算法将是非常耗时且不切实际的。此外，已经存在丰富的基于标准的Python机器学习和数据处理库，如果能够在分布式计算环境中利用这些库，将会非常有用。这就是令人尴尬的并行计算范式发挥作用的地方。
+- en: In distributed computing, the same compute process executes on different chunks
+    of data residing on different machines, and these compute processes need to communicate
+    with each other to achieve the overall compute task at hand. However, in embarrassingly
+    parallel computing, the algorithm requires no communication between the various
+    processes, and they can run completely independently. There are two ways of exploiting
+    embarrassingly parallel computing for ML training within the Apache Spark framework,
+    and they are presented in the following sections.
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在分布式计算中，同一计算过程在不同机器上执行数据的不同部分，这些计算过程需要相互通信，以完成整体计算任务。然而，在令人尴尬的并行计算中，算法不需要各个进程之间的通信，它们可以完全独立地运行。在Apache
+    Spark框架内，有两种方式可以利用令人尴尬的并行计算进行机器学习训练，接下来的部分将介绍这两种方式。
+- en: Distributed hyperparameter tuning
+  id: totrans-61
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 分布式超参数调优
+- en: One of the critical steps of ML processes is model tuning, where data scientists
+    train several models by varying the model hyperparameters. This technique is commonly
+    known as hyperparameter tuning. A common technique for hyperparameter tuning is
+    called **grid search**, which is a method to find the best combination of hyper-parameters
+    that yield the best-performing model. Grid search selects the best model out of
+    all the trained models using **cross-validation**, where data is split into train
+    and test sets, and the trained model's performance is evaluated using the test
+    dataset. In grid search, since multiple models are trained on the same dataset,
+    they can all be trained independently of each other, making it a good candidate
+    for embarrassingly parallel computing.
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 机器学习过程中的一个关键步骤是模型调优，数据科学家通过调整模型的超参数来训练多个模型。这种技术通常被称为超参数调优。超参数调优的常见方法叫做**网格搜索**，它是一种寻找能够产生最佳性能模型的超参数组合的方法。网格搜索通过**交叉验证**选择最佳模型，交叉验证将数据分为训练集和测试集，并通过测试数据集评估训练模型的表现。在网格搜索中，由于多个模型是在相同数据集上训练的，它们可以独立地进行训练，这使得它成为一个适合显式并行计算的候选方法。
+- en: 'A typical grid search implementation using standard scikit-learn is illustrated
+    using the following code example:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用标准scikit-learn进行网格搜索的典型实现，通过以下代码示例进行了说明：
+- en: '[PRE4]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'In the previous code example, we perform the following steps:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码示例中，我们执行了以下步骤：
+- en: First, we import the `GridSearchCV` module and `load_digits` sample dataset,
+    and the `RandomForestClassifier` related modules from scikit-learn.
+  id: totrans-66
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们导入`GridSearchCV`模块、`load_digits`样本数据集，以及scikit-learn中与`RandomForestClassifier`相关的模块。
+- en: Then, we load the `load_digits` data from the scikit-learn sample datasets,
+    and map the features to the `X` variable and the label column to the `y` variable.
+  id: totrans-67
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们从scikit-learn样本数据集中加载`load_digits`数据，并将特征映射到`X`变量，将标签列映射到`y`变量。
+- en: Then, we define the parameter grid space to be searched by specifying various
+    values for the hyperparameters used by the `RandomForestClassifier` algorithm,
+    such as `max_depth`, `max_features`, and so on.
+  id: totrans-68
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们通过指定`RandomForestClassifier`算法使用的各种超参数的值，如`max_depth`、`max_features`等，定义需要搜索的参数网格空间。
+- en: Then, we invoke the grid search cross validator by invoking the `GridSearchCV()`
+    method, and perform the actual grid search using the `fit()` method.
+  id: totrans-69
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们通过调用`GridSearchCV()`方法来启动网格搜索交叉验证，并使用`fit()`方法执行实际的网格搜索。
+- en: 'In this way, using the built-in grid search and cross validator methods of
+    scikit-learn, you can perform model hyperparameter tuning and identify the best
+    model among the many models trained. However, this process runs on a single machine,
+    so the models are trained one after another instead of being trained in parallel.
+    Using Apache Spark and a third-party Spark package named `spark_sklearn`, you
+    can easily implement an embarrassingly parallel implementation of grid search,
+    as shown in the following code example:'
+  id: totrans-70
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 通过使用scikit-learn的内置网格搜索和交叉验证器方法，你可以执行模型超参数调优，并从多个训练模型中识别出最佳模型。然而，这个过程是在单台机器上运行的，因此模型是一个接一个地训练，而不是并行训练。使用Apache
+    Spark和名为`spark_sklearn`的第三方Spark包，你可以轻松实现网格搜索的显式并行实现，以下代码示例演示了这一点：
+- en: '[PRE5]'
+  id: totrans-71
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: The previous code snippet for grid search using `spark_sklearn` is almost the
+    same as the code for grid search using standard scikit-learn. However, instead
+    of using scikit-learn's grid search and cross validators, we make use of the `spark_sklearn`
+    package's grid search and cross validators. This helps run the grid search in
+    a distributed manner, training a different model with a different combination
+    of hyperparameters on the same dataset but on different machines. This helps speed
+    up the model tuning process by orders of magnitude, helping you choose a model
+    from a much larger pool of trained models than was possible using just a single
+    machine. In this way, using the concept of embarrassingly parallel computing on
+    Apache Spark, you can scale out your model tuning task while still using Python's
+    standard single-node machine libraries.
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`grid_sklearn`进行网格搜索的前面代码片段与使用标准scikit-learn进行网格搜索的代码几乎相同。然而，我们不再使用scikit-learn的网格搜索和交叉验证器，而是使用`grid_sklearn`包中的网格搜索和交叉验证器。这有助于以分布式方式运行网格搜索，在不同的机器上对相同数据集进行不同超参数组合的模型训练。这显著加快了模型调优过程，使你能够从比仅使用单台机器时更大的训练模型池中选择模型。通过这种方式，利用Apache
+    Spark上的显式并行计算概念，你可以在仍然使用Python的标准单节点机器库的情况下，扩展模型调优任务。
+- en: In the following section, we will see how you can scale out the actual model
+    training using Apache Spark's pandas UDFs, and not just the model tuning part.
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在接下来的部分中，我们将看到如何使用Apache Spark的pandas UDF来扩展实际的模型训练，而不仅仅是模型调优部分。
+- en: Scaling out arbitrary Python code using pandas UDF
+  id: totrans-74
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 使用pandas UDF扩展任意Python代码
+- en: A UDF, in general, lets you execute arbitrary code on Spark's executors. Thus,
+    UDFs can be used to scale out any arbitrary Python code, including feature engineering
+    and model training, within data science workflows. They can also be used for scaling
+    out data engineering tasks using standard Python. However, UDFs execute code one
+    row at a time, and incur **serialization** and **deserialization** costs between
+    the JVM and the Python processes running on the Spark executors. This limitation
+    makes UDFs less lucrative in scaling out arbitrary Python code onto Spark executors.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一般来说，UDF允许你在Spark的执行器上执行任意代码。因此，UDF可以用于扩展任意Python代码，包括特征工程和模型训练，适用于数据科学工作流。它们还可以用于使用标准Python扩展数据工程任务。然而，UDF每次只能执行一行代码，并且在JVM与运行在Spark执行器上的Python进程之间会产生**序列化**和**反序列化**的开销。这个限制使得UDF在将任意Python代码扩展到Spark执行器时不太具备吸引力。
+- en: 'With `groupby` operator, apply the UDF to each group and finally combine the
+    individual DataFrames produced by each group into a new Spark DataFrame and return
+    it. Examples of scalar, as well as grouped pandas UDFs, can be found on Apache
+    Spark''s public documentation:'
+  id: totrans-76
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`groupby`操作符，将UDF应用于每个组，最终将每个组生成的单独DataFrame合并成一个新的Spark DataFrame并返回。标量以及分组的pandas
+    UDF示例可以在Apache Spark的公开文档中找到：
+- en: '[https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.functions.pandas_udf.html](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.functions.pandas_udf.html)'
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '[https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.functions.pandas_udf.html](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.functions.pandas_udf.html)'
+- en: So far, you have seen how to scale the EDA process, or the model tuning process,
+    or to scale out arbitrary Python functions using different techniques supported
+    by Apache Spark. In the following section, we will explore a library built on
+    top of Apache Spark that lets us use pandas-like API for writing PySpark code.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，你已经看到如何使用Apache Spark支持的不同技术来扩展EDA过程、模型调优过程，或者扩展任意Python函数。在接下来的部分中，我们将探索一个建立在Apache
+    Spark之上的库，它让我们可以使用类似pandas的API来编写PySpark代码。
+- en: Upgrading pandas to PySpark using Koalas
+  id: totrans-79
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用Koalas将pandas升级到PySpark
+- en: pandas is the defacto standard for data processing in standard Python, the same
+    as Spark has become the defacto standard for distributed data processing. The
+    pandas API is Python-related and leverages a coding style that makes use of Python's
+    unique features to write code that is readable and beautiful. However, Spark is
+    based on the JVM, and even the PySpark draws heavily on the Java language, including
+    in naming conventions and function names. Thus, it is not very easy or intuitive
+    for a pandas user to switch to PySpark, and a considerable learning curve is involved.
+    Moreover, PySpark executes code in a distributed manner and the user needs to
+    understand the nuances of how distributed code works when intermixing PySpark
+    code with standard single-node Python code. This is a deterrent to an average
+    pandas user to pick up and use PySpark. To overcome this issue, the Apache Spark
+    developer community came up with another open source library on top of PySpark,
+    called Koalas.
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: pandas是标准Python中数据处理的事实标准，Spark则成为了分布式数据处理的事实标准。pandas API是与Python相关的，并利用Python独特的特性编写可读且优雅的代码。然而，Spark是基于JVM的，即使是PySpark也深受Java语言的影响，包括命名约定和函数名称。因此，pandas用户转向PySpark并不容易或直观，且涉及到相当的学习曲线。此外，PySpark以分布式方式执行代码，用户需要理解如何在将PySpark代码与标准单节点Python代码混合时，分布式代码的工作原理。这对普通的pandas用户来说，是使用PySpark的一大障碍。为了解决这个问题，Apache
+    Spark开发者社区基于PySpark推出了另一个开源库，叫做Koalas。
+- en: The Koalas project is an implementation of the pandas API on top of Apache Spark.
+    Koalas helps data scientists to be immediately productive with Spark, instead
+    of needing to learn a new set of APIs altogether. Moreover, Koalas helps developers
+    maintain a single code base for both pandas and Spark without having to switch
+    between the two frameworks. Koalas comes bundled with the `pip`.
+  id: totrans-81
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Koalas项目是基于Apache Spark实现的pandas API。Koalas帮助数据科学家能够立即使用Spark，而不需要完全学习新的API集。此外，Koalas帮助开发人员在不需要在两个框架之间切换的情况下，维护一个同时适用于pandas和Spark的单一代码库。Koalas随`pip`一起打包发布。
+- en: 'Let''s look at a few code examples to see how Koalas presents a pandas-like
+    API for working with Spark:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看几个代码示例，了解 Koalas 如何提供类似 pandas 的 API 来与 Spark 一起使用：
+- en: '[PRE6]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: In the previous code snippet, we perform the same basic EDA steps that we have
+    performed earlier in this chapter. The only difference here is that instead of
+    creating a pandas DataFrame from the scikit-learn dataset, we create a Koalas
+    DataFrame after importing the Koalas library. You can see that the code is exactly
+    the same as the pandas code written earlier, however, behind the scenes, Koalas
+    converts this code to PySpark code and executes it on the cluster in a distributed
+    manner. Koalas also supports visualization using the `DataFrame.plot()` method,
+    just like pandas. This way you can leverage Koalas to scale out any existing pandas-based
+    ML code, such as feature engineering, or custom ML code, without first having
+    to rewrite the code using PySpark.
+  id: totrans-84
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们执行了本章早些时候所进行的相同的基本 EDA 步骤。唯一的不同是，这里我们没有直接从 scikit-learn 数据集创建 pandas
+    DataFrame，而是导入 Koalas 库后创建了一个 Koalas DataFrame。你可以看到，代码和之前写的 pandas 代码完全相同，然而，在幕后，Koalas
+    会将这段代码转换为 PySpark 代码，并在集群上以分布式方式执行。Koalas 还支持使用 `DataFrame.plot()` 方法进行可视化，就像
+    pandas 一样。通过这种方式，你可以利用 Koalas 扩展任何现有的基于 pandas 的机器学习代码，比如特征工程或自定义机器学习代码，而无需先用
+    PySpark 重写代码。
+- en: Koalas is an active open source project with good community support. However,
+    Koalas is still in a nascent state and comes with its own set of limitations.
+    Currently, only about *70%* of pandas APIs are available in Koalas, which means
+    that some pandas code might not be readily implementable using Koalas. There are
+    a few implementation differences between Koalas and pandas, and it would not make
+    sense to implement certain pandas APIs in Koalas. A common workaround for dealing
+    with missing Koalas functionality is to convert Koalas DataFrames to pandas or
+    PySpark DataFrames, and then apply either pandas or PySpark code to solve the
+    problem. Koalas DataFrames can be easily converted to pandas and PySpark DataFrames
+    using `DataFrame.to_pandas()` and `DataFrame.to_spark()` functions respectively.
+    However, do keep in mind that Koalas does use Spark DataFrames behind the scenes,
+    and a Koalas DataFrame might be too large to fit into a pandas DataFrame on a
+    single machine, causing an out-of-memory error.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Koalas 是一个活跃的开源项目，得到了良好的社区支持。然而，Koalas 仍处于初期阶段，并且有一些局限性。目前，只有大约 *70%* 的 pandas
+    API 在 Koalas 中可用，这意味着一些 pandas 代码可能无法直接使用 Koalas 实现。Koalas 和 pandas 之间存在一些实现差异，并且在
+    Koalas 中实现某些 pandas API 并不合适。处理缺失的 Koalas 功能的常见方法是将 Koalas DataFrame 转换为 pandas
+    或 PySpark DataFrame，然后使用 pandas 或 PySpark 代码来解决问题。Koalas DataFrame 可以通过 `DataFrame.to_pandas()`
+    和 `DataFrame.to_spark()` 函数分别轻松转换为 pandas 和 PySpark DataFrame。然而，需注意的是，Koalas
+    在幕后使用的是 Spark DataFrame，Koalas DataFrame 可能过大，无法在单台机器上转换为 pandas DataFrame，从而导致内存溢出错误。
+- en: Summary
+  id: totrans-86
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 摘要
+- en: In this chapter, you learned a few techniques to horizontally scale out standard
+    Python-based ML libraries such as scikit-learn, XGBoost, and more. First, techniques
+    for scaling out EDA using a PySpark DataFrame API were introduced and presented
+    along with code examples. Then, techniques for distributing ML model inferencing
+    and scoring were presented using a combination of MLflow pyfunc functionality
+    and Spark DataFrames. Techniques for scaling out ML models using embarrassingly
+    parallel computing techniques using Apache Spark were also presented. Distributed
+    model tuning of models, trained using standard Python ML libraries using a third-party
+    package called `spark_sklearn`, were presented. Then, pandas UDFs were introduced
+    to scale out arbitrary Python code in a vectorized manner for creating high-performance,
+    low-overhead Python user-defined functions right within PySpark. Finally, Koalas
+    was introduced as a way for pandas developers to use a pandas-like API without
+    having to learn the PySpark APIs first, while still leveraging Apache Spark's
+    power and efficiency for data processing at scale.
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，你学习了一些技术来水平扩展基于 Python 的标准机器学习库，如 scikit-learn、XGBoost 等。首先，介绍了使用 PySpark
+    DataFrame API 扩展 EDA（探索性数据分析）的方法，并通过代码示例进行了展示。接着，介绍了结合使用 MLflow pyfunc 功能和 Spark
+    DataFrame 来分布式处理机器学习模型的推断和评分技术。还介绍了使用 Apache Spark 进行令人尴尬的并行计算技术扩展机器学习模型的方法。此外，还介绍了使用名为
+    `spark_sklearn` 的第三方包对标准 Python 机器学习库训练的模型进行分布式调优的方法。然后，介绍了 pandas UDF（用户定义函数），它可以以向量化的方式扩展任意
+    Python 代码，用于在 PySpark 中创建高性能、低开销的 Python 用户定义函数。最后，Koalas 被介绍为一种让 pandas 开发者无需首先学习
+    PySpark API，就能使用类似 pandas 的 API，同时仍能利用 Apache Spark 在大规模数据处理中的强大性能和效率的方法。

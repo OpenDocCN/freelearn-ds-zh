@@ -1,0 +1,2364 @@
+- en: '*Chapter 11*: Machine Learning Anomaly Detection'
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: '*第11章*：机器学习异常检测'
+- en: For our final application chapter, we will be revisiting **anomaly detection**
+    on login attempts. Let's imagine we work for a company that launched its web application
+    at the beginning of 2018\. This web application has been collecting log events
+    for all login attempts since it launched. We know the IP address that the attempt
+    was made from, the result of the attempt, when it was made, and which username
+    was entered. What we don't know is whether the attempt was made by one of our
+    valid users or a nefarious party.
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于我们的最终应用章节，我们将重新审视登录尝试中的**异常检测**。假设我们为一家公司工作，该公司在2018年初推出了其Web应用程序。自推出以来，此Web应用程序一直收集所有登录尝试的日志事件。我们知道尝试是从哪个IP地址发起的，尝试的结果是什么，何时进行的以及输入了哪个用户名。我们不知道的是尝试是由我们的有效用户之一还是由一个不良方尝试。
+- en: Our company has been expanding and, since data breaches seem to be in the news
+    every day, has created an information security department to monitor the traffic.
+    The CEO saw our rule-based approach to identifying hackers from [*Chapter 8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172),
+    *Rule-Based Anomaly Detection*, and was intrigued by our initiative, but wants
+    us to move beyond using rules and thresholds for such a vital task. We have been
+    tasked with developing a machine learning model for anomaly detection of the login
+    attempts on the web application.
+  id: totrans-2
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的公司正在扩展，并且由于数据泄露似乎每天都在新闻中，已创建了一个信息安全部门来监控流量。CEO看到我们在[*第8章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)中识别黑客的基于规则的方法，*基于规则的异常检测*，并对我们的举措感到好奇，但希望我们超越使用规则和阈值来执行如此重要的任务。我们被委托开发一个机器学习模型，用于Web应用程序登录尝试的异常检测。
+- en: Since this will require a good amount of data, we have been given access to
+    all the logs from January 1, 2018 through December 31, 2018\. In addition, the
+    newly formed **security operations center** (**SOC**) will be auditing all this
+    traffic now and will indicate which time frames contain nefarious users based
+    on their investigations. Since the SOC members are subject matter experts, this
+    data will be exceptionally valuable to us. We will be able to use the labeled
+    data they provide to build a supervised learning model for future use; however,
+    it will take them some time to sift through all the traffic, so we should get
+    started with some unsupervised learning until they have that ready for us.
+  id: totrans-3
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于这将需要大量数据，我们已获得从2018年1月1日至2018年12月31日的所有日志的访问权限。此外，新成立的**安全运营中心**（**SOC**）现在将审核所有这些流量，并根据他们的调查指示哪些时间段包含恶意用户。由于SOC成员是专业领域的专家，这些数据对我们来说将非常宝贵。我们将能够利用他们提供的标记数据构建未来使用的监督学习模型；然而，他们需要一些时间来筛选所有的流量，因此在他们为我们准备好之前，我们应该开始一些无监督学习。
+- en: 'In this chapter, we will cover the following topics:'
+  id: totrans-4
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主题：
+- en: Exploring the simulated login attempts data
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 探索模拟登录尝试数据
+- en: Utilizing unsupervised methods of anomaly detection
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 利用无监督方法进行异常检测
+- en: Implementing supervised anomaly detection
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 实施监督异常检测
+- en: Incorporating a feedback loop with online learning
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 结合在线学习的反馈循环
+- en: Chapter materials
+  id: totrans-9
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 章节材料
+- en: The materials for this chapter can be found at [https://github.com/stefmolin/Hands-On-Data-Analysis-with-Pandas-2nd-edition/tree/master/ch_11](https://github.com/stefmolin/Hands-On-Data-Analysis-with-Pandas-2nd-edition/tree/master/ch_11).
+    In this chapter, we will be revisiting attempted login data; however, the `simulate.py`
+    script has been updated to allow additional command-line arguments. We won't be
+    running the simulation this time, but be sure to take a look at the script and
+    check out the process that was followed to generate the data files and create
+    the database for this chapter in the `0-simulating_the_data.ipynb` notebook. The
+    `user_data/` directory contains the files used for this simulation, but we won't
+    be using them directly in this chapter.
+  id: totrans-10
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此章节的材料可在[https://github.com/stefmolin/Hands-On-Data-Analysis-with-Pandas-2nd-edition/tree/master/ch_11](https://github.com/stefmolin/Hands-On-Data-Analysis-with-Pandas-2nd-edition/tree/master/ch_11)找到。在本章中，我们将重新审视尝试登录数据；但是，`simulate.py`脚本已更新，以允许附加命令行参数。这次我们不会运行模拟，但请确保查看脚本并查看生成数据文件和为本章创建数据库所遵循的过程，详见`0-simulating_the_data.ipynb`笔记本。`user_data/`目录包含此模拟使用的文件，但在本章中我们不会直接使用它们。
+- en: The simulated log data we will be using for this chapter can be found in the
+    `logs/` directory. The `logs_2018.csv` and `hackers_2018.csv` files are logs of
+    login attempts and a record of hacker activity from all 2018 simulations, respectively.
+    Files with the `hackers` prefix are treated as the labeled data we will receive
+    from the SOC, so we will pretend we don't have them initially. The files with
+    `2019` instead of `2018` in the name are the data from simulating the first quarter
+    of 2019, rather than the full year. In addition, the CSV files have been written
+    to the `logs.db` SQLite database. The `logs` table contains the data from `logs_2018.csv`
+    and `logs_2019.csv`; the `attacks` table contains the data from `hackers_2018.csv`
+    and `hackers_2019.csv`.
+  id: totrans-11
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章将使用的模拟日志数据可以在`logs/`目录下找到。`logs_2018.csv`和`hackers_2018.csv`文件分别是2018年所有模拟中的登录尝试日志和黑客活动记录。带有`hackers`前缀的文件被视为我们将从SOC接收到的标记数据，因此我们一开始假设没有这些数据。文件名中包含`2019`而非`2018`的文件是模拟2019年第一季度的数据，而不是整年的数据。此外，CSV文件已写入`logs.db`
+    SQLite数据库。`logs`表包含来自`logs_2018.csv`和`logs_2019.csv`的数据；`attacks`表包含来自`hackers_2018.csv`和`hackers_2019.csv`的数据。
+- en: 'The parameters of the simulation vary per month, and in most months, the hackers
+    are varying their IP addresses for each username they attempt to log in with.
+    This will make our method from [*Chapter 8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172),
+    *Rule-Based Anomaly Detection*, useless because we were looking for IP addresses
+    with many attempts and high failure rates. If the hackers now vary their IP addresses,
+    we won''t have many attempts associated with them. Therefore, we won''t be able
+    to flag them with that strategy, so we will have to find another way around this:'
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 仿真参数每月都不同，在大多数月份中，黑客会针对每个尝试登录的用户名更换IP地址。这将使我们在[*第8章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)中的方法，*基于规则的异常检测*，变得无效，因为我们曾试图寻找那些有大量尝试和高失败率的IP地址。如果黑客现在更换他们的IP地址，我们就不会有与他们关联的多次尝试。因此，我们将无法用这种策略标记他们，所以我们必须找到另一种方法来应对：
+- en: '![Figure 11.1 – Simulation parameters'
+  id: totrans-13
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.1 – 仿真参数'
+- en: '](img/Figure_11.1_B16834.jpg)'
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.1_B16834.jpg)'
+- en: Figure 11.1 – Simulation parameters
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.1 – 仿真参数
+- en: Important note
+  id: totrans-16
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: The `merge_logs.py` file contains the Python code to merge the logs from each
+    of the individual simulations, and `run_simulations.sh` contains a Bash script
+    for running the entire process. These are provided for completeness, but we don't
+    need to use them (or worry about Bash).
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`merge_logs.py`文件包含合并各个仿真日志的Python代码，`run_simulations.sh`包含用于运行整个过程的Bash脚本。这些文件提供完整性，但我们不需要使用它们（也不需要关心Bash）。'
+- en: Our workflow for this chapter has been split across several notebooks, which
+    are all preceded by a number indicating their order. Before we have the labeled
+    data, we will conduct some EDA in the `1-EDA_unlabeled_data.ipynb` notebook, and
+    then move on to the `2-unsupervised_anomaly_detection.ipynb` notebook to try out
+    some unsupervised anomaly detection methods. Once we have the labeled data, we
+    will perform some additional EDA in the `3-EDA_labeled_data.ipynb` notebook, and
+    then move on to the `4-supervised_anomaly_detection.ipynb` notebook for supervised
+    methods. Finally, we will use the `5-online_learning.ipynb` notebook for our discussion
+    of online learning. As usual, the text will indicate when it is time to switch
+    between notebooks.
+  id: totrans-18
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本章的工作流程被拆分成几个笔记本，每个笔记本前面都有一个数字，表示它们的顺序。在获得标记数据之前，我们将在`1-EDA_unlabeled_data.ipynb`笔记本中进行一些EDA分析，然后转到`2-unsupervised_anomaly_detection.ipynb`笔记本，尝试一些无监督异常检测方法。获得标记数据后，我们将在`3-EDA_labeled_data.ipynb`笔记本中进行一些额外的EDA分析，然后转到`4-supervised_anomaly_detection.ipynb`笔记本进行有监督方法的实验。最后，我们将使用`5-online_learning.ipynb`笔记本来讨论在线学习。像往常一样，文本中会指示何时切换笔记本。
+- en: Exploring the simulated login attempts data
+  id: totrans-19
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 探索模拟登录尝试数据
+- en: We don't have labeled data yet, but we can still examine the data to see whether
+    there is something that stands out. This data is different from the data in [*Chapter
+    8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172), *Rule-Based Anomaly Detection*.
+    The hackers are smarter in this simulation—they don't always try as many users
+    or stick with the same IP address every time. Let's see whether we can come up
+    with some features that will help with anomaly detection by performing some EDA
+    in the `1-EDA_unlabeled_data.ipynb` notebook.
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还没有标签化的数据，但我们仍然可以检查数据，看看是否有一些显著的特点。这些数据与[*第8章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)中的数据不同，*基于规则的异常检测*。在这个模拟中，黑客更加聪明——他们不总是尝试很多用户，也不会每次都使用相同的IP地址。我们来看看是否可以通过在`1-EDA_unlabeled_data.ipynb`笔记本中进行一些EDA，找出一些有助于异常检测的特征。
+- en: 'As usual, we begin with our imports. These will be the same for all notebooks,
+    so it will be reproduced in this section only:'
+  id: totrans-21
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 像往常一样，我们从导入开始。这些导入在所有笔记本中都是相同的，所以只在这一部分中重复：
+- en: '[PRE0]'
+  id: totrans-22
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: 'Next, we read in the 2018 logs from the `logs` table in the SQLite database:'
+  id: totrans-23
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们从SQLite数据库中的`logs`表中读取2018年的日志：
+- en: '[PRE1]'
+  id: totrans-24
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: Tip
+  id: totrans-25
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: If the SQLAlchemy package ([https://www.sqlalchemy.org/](https://www.sqlalchemy.org/))
+    is installed in the environment we are working with (as is the case for us), we
+    have the option of providing the database `pd.read_sql()`, eliminating the need
+    for the `with` statement. In our case, this would be `sqlite:///logs/logs.db`,
+    where `sqlite` is the dialect and `logs/logs.db` is the path to the file. Note
+    that there are three `/` characters in a row.
+  id: totrans-26
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们正在使用的环境中已安装SQLAlchemy包（如我们所用环境），我们可以选择通过`pd.read_sql()`提供数据库，而无需使用`with`语句。在我们的案例中，这将是`sqlite:///logs/logs.db`，其中`sqlite`是方言，`logs/logs.db`是文件的路径。请注意，路径中有三个连续的`/`字符。
+- en: 'Our data looks like this:'
+  id: totrans-27
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据如下所示：
+- en: '![Figure 11.2 – Login attempt logs for 2018'
+  id: totrans-28
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.2 - 2018年登录尝试日志'
+- en: '](img/Figure_11.2_B16834.jpg)'
+  id: totrans-29
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.2_B16834.jpg)'
+- en: Figure 11.2 – Login attempt logs for 2018
+  id: totrans-30
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.2 - 2018年登录尝试日志
+- en: 'Our data types will be the same as in [*Chapter 8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172),
+    *Rule-Based Anomaly Detection*, with the exception of the `success` column. SQLite
+    doesn''t support Boolean values, so this column was converted to the binary representation
+    of its original form (stored as an integer) upon writing the data to the database:'
+  id: totrans-31
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据类型将与[*第8章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)中的数据类型相同，*基于规则的异常检测*，唯一的例外是`success`列。SQLite不支持布尔值，因此这个列在写入数据到数据库时被转换为其原始形式的二进制表示（存储为整数）：
+- en: '[PRE2]'
+  id: totrans-32
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: Important note
+  id: totrans-33
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: We are using a SQLite database here because the Python standard library provides
+    the means to make the connection already (`sqlite3`). If we want to use another
+    type of database, such as MySQL or PostgreSQL, we will need to install SQLAlchemy
+    (and possibly additional packages, depending on the database dialect). More information
+    can be found at [https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html#sql-queries](https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html#sql-queries).
+    Check the *Further reading* section at the end of this chapter for a SQLAlchemy
+    tutorial.
+  id: totrans-34
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里使用SQLite数据库，因为Python标准库已经提供了连接工具（`sqlite3`）。如果我们想使用其他类型的数据库，如MySQL或PostgreSQL，就需要安装SQLAlchemy（并且可能需要安装其他包，具体取决于数据库方言）。更多信息可以参考[https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html#sql-queries](https://pandas.pydata.org/pandas-docs/stable/user_guide/io.html#sql-queries)。有关SQLAlchemy的教程，请查看本章末尾的*进一步阅读*部分。
+- en: 'Using the `info()` method, we see that `failure_reason` is the only column
+    with nulls. It is null when the attempt is successful. When looking to build a
+    model, we should also pay attention to the memory usage of our data. Some models
+    will require increasing the dimensionality of our data, which can quickly get
+    too large to hold in memory:'
+  id: totrans-35
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`info()`方法，我们可以看到`failure_reason`是唯一一个包含空值的列。当尝试成功时，这个字段为空。在构建模型时，我们还应该关注数据的内存使用情况。某些模型可能需要增加数据的维度，这可能会迅速导致内存占用过大：
+- en: '[PRE3]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'Running the `describe()` method tells us that the most common reason for failure
+    is providing the wrong password. We can also see that the number of unique usernames
+    tried (1,797) is well over the number of users in our user base (133), indicating
+    some suspicious activity. The most frequent IP address made 314 attempts, but
+    since that isn''t even one per day (remember we are looking at the full year of
+    2018), we can''t make any assumptions:'
+  id: totrans-37
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 运行 `describe()` 方法告诉我们，失败的最常见原因是提供了错误的密码。我们还可以看到，尝试的独立用户名数量（1,797）远超过我们的用户基数（133），这表明存在可疑活动。最多尝试的
+    IP 地址进行了 314 次尝试，但由于这不足以每天一次（记住，我们是在看 2018 年的全年数据），所以我们无法做出任何假设：
+- en: '[PRE4]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'We can look at the unique usernames with attempted logins per IP address, as
+    in [*Chapter 8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172), *Rule-Based
+    Anomaly Detection*, which shows us that most of the IP addresses have a few usernames,
+    but there is at least one with many:'
+  id: totrans-39
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以查看每个 IP 地址的尝试登录的独立用户名，正如在 [*第 8 章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)《基于规则的异常检测》中所示，这显示大多数
+    IP 地址只有几个用户名，但至少有一个包含了很多：
+- en: '[PRE5]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'Let''s calculate the metrics per IP address:'
+  id: totrans-41
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们计算每个 IP 地址的指标：
+- en: '[PRE6]'
+  id: totrans-42
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'The top five IP addresses with the most attempts appear to be valid users since
+    they have relatively high success rates:'
+  id: totrans-43
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尝试次数最多的前五个 IP 地址似乎是有效用户，因为它们的成功率相对较高：
+- en: '![Figure 11.3 – Metrics per IP address'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.3 – 每个 IP 地址的指标'
+- en: '](img/Figure_11.3_B16834.jpg)'
+  id: totrans-45
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.3_B16834.jpg)'
+- en: Figure 11.3 – Metrics per IP address
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.3 – 每个 IP 地址的指标
+- en: 'Let''s use this dataframe to plot successes versus attempts per IP address
+    to see whether there is a pattern we can exploit to separate valid activity from
+    malicious activity:'
+  id: totrans-47
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用这个数据框绘制每个 IP 地址的成功与尝试次数，以查看是否存在我们可以利用的模式来区分有效活动与恶意活动：
+- en: '[PRE7]'
+  id: totrans-48
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'There appear to be a few points at the bottom that don''t belong, but notice
+    the scales on the axes don''t perfectly line up. The majority of the points are
+    along a line that is slightly less than a 1:1 relationship of attempts to successes.
+    Recall that this chapter''s simulation is more realistic than the one we used
+    in [*Chapter 8*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172), *Rule-Based
+    Anomaly Detection*; as such, if we compare *Figure 8.11* to this plot, we can
+    observe that it is much more difficult to separate valid from malicious activity
+    here:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 底部似乎有一些不属于该组的点，但请注意坐标轴的刻度并没有完全对齐。大多数点都沿着一条线分布，这条线的尝试与成功的比例稍微低于 1:1。回想一下，本章的模拟比我们在
+    [*第 8 章*](B16834_08_Final_SK_ePub.xhtml#_idTextAnchor172)《基于规则的异常检测》中使用的模拟更具现实性；因此，如果我们将
+    *图 8.11* 与这个图进行比较，可以观察到在这里将有效活动与恶意活动分开要困难得多：
+- en: '![Figure 11.4 – Scatter plot of successes versus attempts per IP address'
+  id: totrans-50
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.4 – 每个 IP 地址的成功与尝试次数散点图'
+- en: '](img/Figure_11.4_B16834.jpg)'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.4_B16834.jpg)'
+- en: Figure 11.4 – Scatter plot of successes versus attempts per IP address
+  id: totrans-52
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.4 – 每个 IP 地址的成功与尝试次数散点图
+- en: 'Remember, this is a binary classification problem where we want to find a way
+    to distinguish between valid user and attacker login activity. We want to build
+    a model that will learn some decision boundary that separates valid users from
+    attackers. Since valid users have a higher probability of entering their password
+    correctly, the relationship between attempts and successes will be closer to 1:1
+    compared to the attackers. Therefore, we may imagine the separation boundary looking
+    something like this:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，这是一个二分类问题，我们希望找到一种方法来区分有效用户和攻击者的登录活动。我们希望构建一个模型，学习一些决策边界，将有效用户与攻击者分开。由于有效用户更有可能正确输入密码，尝试与成功之间的关系将更接近
+    1:1，相对于攻击者。因此，我们可以想象分隔边界看起来像这样：
+- en: '![Figure 11.5 – A possible decision boundary'
+  id: totrans-54
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.5 – 可能的决策边界'
+- en: '](img/Figure_11.5_B16834.jpg)'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.5_B16834.jpg)'
+- en: Figure 11.5 – A possible decision boundary
+  id: totrans-56
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.5 – 可能的决策边界
+- en: 'Now, the question is, which of those two groups is the attackers? Well, if
+    more of the IP addresses are the attackers (since they use different IP addresses
+    for each username they attempt), then the valid users would be considered outliers,
+    and the attackers would be considered "inliers" with a box plot. Let''s create
+    one to see if that is what is happening:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，问题是，这两组中哪个是攻击者？如果更多的 IP 地址是攻击者（因为他们为每个尝试的用户名使用不同的 IP 地址），那么有效用户将被视为异常值，而攻击者将被视为“内点”，并且通过箱型图来看。我们来创建一个看看是否真的是这样：
+- en: '[PRE8]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Indeed, this appears to be what is happening. Our valid users have more successes
+    than the attackers because they only use 1-3 different IP addresses:'
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 确实，情况好像是这样。我们的有效用户成功的次数比攻击者更多，因为他们只使用了 1-3 个不同的 IP 地址：
+- en: '![Figure 11.6 – Looking for outliers using metrics per IP address'
+  id: totrans-60
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.6 – 使用每个 IP 地址的度量寻找离群值'
+- en: '](img/Figure_11.6_B16834.jpg)'
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.6_B16834.jpg)'
+- en: Figure 11.6 – Looking for outliers using metrics per IP address
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.6 – 使用每个 IP 地址的度量寻找离群值
+- en: 'Clearly, looking at the data like this isn''t helping too much, so let''s see
+    whether a smaller granularity can help us. Let''s visualize the distributions
+    of attempts, the number of usernames, and the number of failures per IP address
+    on a minute-by-minute resolution for January 2018:'
+  id: totrans-63
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 显然，像这样查看数据并没有太大帮助，所以让我们看看能否通过更细粒度的方式来帮助我们。让我们可视化 2018 年 1 月每分钟内的登录尝试分布、用户名数量和每个
+    IP 地址的失败次数：
+- en: '[PRE9]'
+  id: totrans-64
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'It looks like most of the IP addresses have just a single username associated
+    with them; however, some IP addresses also have multiple failures for their attempts:'
+  id: totrans-65
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 看起来大多数 IP 地址只有一个用户名关联；不过，也有一些 IP 地址在尝试时出现了多个失败：
+- en: '![Figure 11.7 – Distribution of metrics per minute per IP address'
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.7 – 每分钟每个 IP 地址的度量分布'
+- en: '](img/Figure_11.7_B16834.jpg)'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.7_B16834.jpg)'
+- en: Figure 11.7 – Distribution of metrics per minute per IP address
+  id: totrans-68
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.7 – 每分钟每个 IP 地址的度量分布
+- en: 'Perhaps a combination of unique usernames and failures will give us something
+    that doesn''t rely on the IP address being constant. Let''s visualize the number
+    of usernames with failures per minute over 2018:'
+  id: totrans-69
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 也许将唯一用户名和失败次数结合起来，能够提供一些不依赖于 IP 地址恒定性的特征。让我们可视化 2018 年每分钟内带有失败的用户名数量：
+- en: '[PRE10]'
+  id: totrans-70
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: 'This looks promising; we should definitely be looking into spikes in usernames
+    with failures. It could be an issue with our website, or something malicious:'
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这看起来很有前景；我们肯定应该关注带有失败的用户名的峰值。这可能是我们网站的问题，或者是恶意攻击：
+- en: '![Figure 11.8 – Usernames with failures over time'
+  id: totrans-72
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.8 – 随时间变化的带有失败的用户名'
+- en: '](img/Figure_11.8_B16834.jpg)'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.8_B16834.jpg)'
+- en: Figure 11.8 – Usernames with failures over time
+  id: totrans-74
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.8 – 随时间变化的带有失败的用户名
+- en: After a thorough exploration of the data we will be working with, we have an
+    idea of what features we could use when building machine learning models. Since
+    we don't yet have the labeled data, let's try out some unsupervised models next.
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在对我们将要处理的数据进行了彻底探索后，我们已经有了一些思路，知道在构建机器学习模型时可以使用哪些特征。由于我们还没有标签数据，接下来让我们尝试一些无监督模型。
+- en: Utilizing unsupervised methods of anomaly detection
+  id: totrans-76
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 利用无监督的异常检测方法
+- en: If the hackers are conspicuous and distinct from our valid users, unsupervised
+    methods may prove pretty effective. This is a good place to start before we have
+    labeled data, or if the labeled data is difficult to gather or not guaranteed
+    to be representative of the full spectrum we are looking to flag. Note that, in
+    most cases, we won't have labeled data, so it is crucial that we are familiar
+    with some unsupervised methods.
+  id: totrans-77
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果黑客与我们的有效用户显著不同，且容易被识别，使用无监督方法可能会非常有效。在我们获得标签数据之前，或者如果标签数据很难收集或不保证能代表我们希望标记的完整范围时，这是一个很好的起点。请注意，在大多数情况下，我们没有标签数据，因此熟悉一些无监督方法至关重要。
+- en: In our initial EDA, we identified the number of usernames with a failed login
+    attempt in a given minute as a feature for anomaly detection. We will now test
+    out some unsupervised anomaly detection algorithms, using this feature as the
+    jumping-off point. Scikit-learn provides a few such algorithms. In this section,
+    we will look at isolation forest and local outlier factor; a third method, using
+    a one-class **support vector machine** (**SVM**), is in the *Exercises* section.
+  id: totrans-78
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们初步的数据探索分析（EDA）中，我们将每分钟内尝试登录失败的用户名数量作为异常检测的特征。接下来，我们将测试一些无监督的异常检测算法，以这个特征为出发点。Scikit-learn
+    提供了几种这样的算法。在本节中，我们将重点讨论隔离森林（isolation forest）和局部离群因子（local outlier factor）；另一种方法，使用一类**支持向量机**（**SVM**），在*习题*部分有介绍。
+- en: Before we can try out these methods, we need to prepare our training data. Since
+    the SOC will be sending over the labeled data for January 2018 first, we will
+    use just the January 2018 minute-by-minute data for our unsupervised models. Our
+    features will be the day of the week (one-hot encoded), the hour of the day (one-hot
+    encoded), and the number of usernames with failures. See the *Encoding data* section
+    in *Chapter 9*, *Getting Started with Machine Learning in Python*, for a refresher
+    on one-hot encoding, if needed.
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在我们尝试这些方法之前，我们需要准备训练数据。由于SOC将首先传输2018年1月的标签数据，我们将仅使用2018年1月的逐分钟数据进行无监督模型。我们的特征将是星期几（独热编码）、一天中的小时（独热编码）以及失败用户名的数量。如果需要复习独热编码，可以参考《第9章，Python中的机器学习入门》中的*编码数据*部分。
+- en: 'Let''s turn to the `2-unsupervised_anomaly_detection.ipynb` notebook and write
+    a utility function to grab this data easily:'
+  id: totrans-80
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们转到`2-unsupervised_anomaly_detection.ipynb`笔记本，并编写一个实用函数，轻松获取这些数据：
+- en: '[PRE11]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'Now, we can grab January and store it in `X`:'
+  id: totrans-82
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们可以抓取1月的数据并将其存储在`X`中：
+- en: '[PRE12]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: Isolation forest
+  id: totrans-84
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 隔离森林
+- en: The **isolation forest** algorithm uses splitting techniques to isolate outliers
+    from the rest of the data; therefore, it can be used for anomaly detection. Under
+    the hood, it is a random forest where the splits are made on randomly chosen features.
+    A random value of that feature between its maximum and its minimum is selected
+    to split on. Note that this range is from the range of the feature at that node
+    in the tree, not the starting data.
+  id: totrans-85
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '**隔离森林**算法利用分割技术将异常值从其余数据中隔离开来，因此可以用于异常检测。从内部实现来看，它是一个随机森林，其中的分割是在随机选择的特征上进行的。选择该特征在最大值和最小值之间的一个随机值来进行分割。请注意，这个范围是基于树中该节点特征的范围，而不是起始数据的范围。'
+- en: 'A single tree in the forest will look something like the following:'
+  id: totrans-86
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 森林中的一棵树大致如下所示：
+- en: '![Figure 11.9 – Example of a single tree in an isolation forest'
+  id: totrans-87
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.9 – 隔离森林中单棵树的示例'
+- en: '](img/Figure_11.9_B16834.jpg)'
+  id: totrans-88
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.9_B16834.jpg)'
+- en: Figure 11.9 – Example of a single tree in an isolation forest
+  id: totrans-89
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.9 – 隔离森林中单棵树的示例
+- en: The average length of the path that must be traveled from the top of each tree
+    in the forest to the leaf containing a given point is used to score a point as
+    an outlier or inlier. The outliers have much shorter paths, since they will be
+    one of the few on a given side of a split and have less in common with other points.
+    Conversely, points with many dimensions in common will take more splits to separate.
+  id: totrans-90
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从森林中每棵树的顶部到包含给定点的叶节点的路径长度平均值，用于对点进行异常值或内点的评分。异常值的路径较短，因为它们通常会位于某个分割的某一侧，并且与其他点的相似性较低。相反，具有许多公共维度的点需要更多的分割来将其分开。
+- en: Important note
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: More information on this algorithm can be found at [https://scikit-learn.org/stable/modules/outlier_detection.html#isolation-forest](https://scikit-learn.org/stable/modules/outlier_detection.html#isolation-forest).
+  id: totrans-92
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 更多关于此算法的信息，请访问[https://scikit-learn.org/stable/modules/outlier_detection.html#isolation-forest](https://scikit-learn.org/stable/modules/outlier_detection.html#isolation-forest)。
+- en: 'Let''s implement an isolation forest with a pipeline that first standardizes
+    our data:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们实现一个带有管道的隔离森林模型，首先对我们的数据进行标准化处理：
+- en: '[PRE13]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: We had to specify how much of the data was expected to be outliers (`contamination`),
+    which we estimated to be 5%; this will be difficult to choose since we don't have
+    labeled data. There is an `auto` option that will determine a value for us but,
+    in this case, it gives us no outliers, so it's clear that that value isn't the
+    one we want. In practice, we could perform a statistical analysis on the data
+    to determine an initial value or consult domain experts.
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们需要指定预计为异常值的数据比例（`contamination`），我们估计为5%；选择这个值会有些困难，因为我们没有标签数据。有一个`auto`选项可以为我们确定一个值，但在这种情况下，它没有给出任何异常值，所以很明显这个值不是我们想要的。实际上，我们可以对数据进行统计分析来确定一个初始值，或者咨询领域专家。
+- en: 'The `predict()` method can be used to check whether each data point is an outlier.
+    Anomaly detection algorithms implemented in `scikit-learn` typically return `1`
+    or `-1` if the point is an inlier or outlier, respectively:'
+  id: totrans-96
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`predict()`方法可用于检查每个数据点是否为异常值。`scikit-learn`中实现的异常检测算法通常会返回`1`或`-1`，分别表示该点为内点或异常值：'
+- en: '[PRE14]'
+  id: totrans-97
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: Since we don't have the labeled data yet, we will come back to evaluate this
+    later; for now, let's take a look at the second unsupervised algorithm that we
+    will discuss in this chapter.
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们还没有标签数据，我们稍后会回来评估；现在，让我们来看一下本章讨论的第二个无监督算法。
+- en: Local outlier factor
+  id: totrans-99
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 局部异常因子
+- en: While inliers are typically located in denser regions of the dataset (32-dimensional
+    here), outliers tend to be located in sparser, more isolated regions with few
+    neighboring points. The **local outlier factor** (**LOF**) algorithm looks for
+    these sparsely populated regions to identify outliers. It scores all points based
+    on the ratio of the density around each point to that of its nearest neighbors.
+    Points that are considered normal will have similar densities to their neighbors;
+    those with few others nearby will be considered abnormal.
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虽然内点通常位于数据集的密集区域（这里是32维空间），但异常值往往位于稀疏且更为孤立的区域，附近的点较少。**局部异常因子**（**LOF**）算法会寻找这些稀疏的区域来识别异常值。它根据每个点周围密度与其最近邻居的密度比率来对所有点进行评分。被认为是正常的点，其密度与邻居相似；而那些周围点较少的点则被视为异常。
+- en: Important note
+  id: totrans-101
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要说明
+- en: More information on this algorithm can be found at [https://scikit-learn.org/stable/modules/outlier_detection.html#local-outlier-factor](https://scikit-learn.org/stable/modules/outlier_detection.html#local-outlier-factor).
+  id: totrans-102
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有关该算法的更多信息，请访问[https://scikit-learn.org/stable/modules/outlier_detection.html#local-outlier-factor](https://scikit-learn.org/stable/modules/outlier_detection.html#local-outlier-factor)。
+- en: 'Let''s build another pipeline, but swap out the isolation forest for LOF. Note
+    that we have to guess the best value for the `n_neighbors` parameter, because
+    `GridSearchCV` has nothing to score models on if we don''t have labeled data.
+    We are using the default value for this parameter, which is `20`:'
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们再构建一个管道，不过将隔离森林换成LOF。请注意，我们必须猜测`n_neighbors`参数的最佳值，因为如果没有标记数据，`GridSearchCV`没有任何模型评分的依据。我们使用该参数的默认值，即`20`：
+- en: '[PRE15]'
+  id: totrans-104
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'Now, let''s see how many outliers we have this time. LOF doesn''t have a `predict()`
+    method, so we have to check the `negative_outlier_factor_` attribute of the LOF
+    object to see the scores of each of the data points we fit it with:'
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看这次有多少个异常值。LOF没有`predict()`方法，因此我们必须检查LOF对象的`negative_outlier_factor_`属性，查看我们拟合的数据点的评分：
+- en: '[PRE16]'
+  id: totrans-106
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'There is another difference between LOF and isolation forests: the values for
+    the `negative_outlier_factor_` attribute aren''t strictly `-1` or `1`. In fact,
+    they can be any number—take a look at the first and last values in the previous
+    result, and you''ll see that they are way less than `-1`. This means we can''t
+    use the method we used with the isolation forest to count the inliers and outliers.
+    Instead, we need to compare the `negative_outlier_factor_` attribute to the `offset_`
+    attribute of the LOF model, which tells us the cutoff value as determined by the
+    LOF model during training (using the `contamination` parameter):'
+  id: totrans-107
+  prefs: []
+  type: TYPE_NORMAL
+  zh: LOF和隔离森林之间还有另一个区别：`negative_outlier_factor_`属性的值不是严格的`-1`或`1`。事实上，它们可以是任何数字——看一下前一个结果中的第一个和最后一个值，你会发现它们远小于`-1`。这意味着我们不能像使用隔离森林时那样，使用方法来计算内点和异常值。相反，我们需要将`negative_outlier_factor_`属性与LOF模型的`offset_`属性进行比较，后者告诉我们在训练过程中（使用`contamination`参数）由LOF模型确定的截断值：
+- en: '[PRE17]'
+  id: totrans-108
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: Now that we have two unsupervised models, we need to compare them to see which
+    one would be more beneficial to our stakeholders.
+  id: totrans-109
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们有了两个无监督模型，我们需要比较它们，看看哪个对我们的利益相关者更有益。
+- en: Comparing models
+  id: totrans-110
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 比较模型
+- en: 'LOF indicates fewer outliers than the isolation forest, but perhaps they don''t
+    even agree with each other. As we learned in [*Chapter 10*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217),
+    *Making Better Predictions – Optimizing Models*, we can use the `cohen_kappa_score()`
+    function from `sklearn.metrics` to check their level of agreement:'
+  id: totrans-111
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与隔离森林相比，LOF表示的异常值较少，但它们可能并不完全一致。正如我们在[*第10章*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217)《做出更好的预测
+    – 优化模型》中学到的那样，我们可以使用`sklearn.metrics`中的`cohen_kappa_score()`函数来检查它们的一致性水平：
+- en: '[PRE18]'
+  id: totrans-112
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: They have a low level of agreement, indicating that it's not so obvious which
+    data points are anomalies. Without labeled data, however, it really is impossible
+    for us to tell which one is better. We would have to work with the consumers of
+    the results to determine which model gives them the most useful data. Thankfully,
+    the SOC has just sent over the January 2018 labeled data, so we can determine
+    which of our models is better and let them start using it until we get a supervised
+    model ready.
+  id: totrans-113
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 它们的一致性水平较低，表明哪些数据点是异常值并不是显而易见的。然而，没有标记数据，我们真的无法判断哪个更好。我们需要与结果的使用者合作，确定哪个模型能提供最有用的数据。幸运的是，SOC刚刚发送了2018年1月的标记数据，因此我们可以确定哪个模型更好，并让他们开始使用，直到我们准备好监督学习模型。
+- en: 'First, we will read in the labeled data they wrote to the database in the `attacks`
+    table and add some columns indicating the minute the attack started, the duration,
+    and when it ended:'
+  id: totrans-114
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们将读取他们写入数据库的标记数据，位于`attacks`表，并添加一些列，指示攻击开始的分钟、持续时间以及攻击结束的时间：
+- en: '[PRE19]'
+  id: totrans-115
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: 'Note that the SOC only has a single IP address for the ones involved in each
+    attack, so it''s a good thing we aren''t relying on that anymore. Instead, the
+    SOC wants us to tell them at which minute there was suspicious activity so that
+    they can investigate further. Also note that while the attacks are quick in duration,
+    our minute-by-minute data means we will trigger many alerts per attack:'
+  id: totrans-116
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，SOC只有每次攻击涉及的单一IP地址，因此我们不再依赖它。相反，SOC希望我们告诉他们在何时有可疑活动，以便他们进一步调查。还请注意，尽管攻击持续时间短，但我们按分钟的数据意味着每次攻击都会触发许多警报：
+- en: '![Figure 11.10 – Labeled data for evaluating our models'
+  id: totrans-117
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Figure 11.10 – 用于评估我们模型的标记数据'
+- en: '](img/Figure_11.10_B16834.jpg)'
+  id: totrans-118
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.10_B16834.jpg)'
+- en: Figure 11.10 – Labeled data for evaluating our models
+  id: totrans-119
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Figure 11.10 – 用于评估我们模型的标记数据
+- en: 'Using the `start_floor` and `end_ceil` columns, we can create a range of datetimes
+    and can check whether the data we marked as outliers falls within that range.
+    For this, we will use the following function:'
+  id: totrans-120
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`start_floor`和`end_ceil`列，我们可以创建一个时间范围，并检查我们标记为异常值的数据是否落在该范围内。为此，我们将使用以下函数：
+- en: '[PRE20]'
+  id: totrans-121
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'Now, let''s find the datetimes in our `X` data that had hacker activity:'
+  id: totrans-122
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们找出`X`数据中发生黑客活动的时间：
+- en: '[PRE21]'
+  id: totrans-123
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: 'We now have everything we need to make a classification report and a confusion
+    matrix. Since we will be passing in the `is_hacker` series a lot, we will make
+    some partials to reduce our typing a bit:'
+  id: totrans-124
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在拥有了制作分类报告和混淆矩阵所需的一切。由于我们将频繁传入`is_hacker`系列，我们将制作一些部分函数，以减少打字量：
+- en: '[PRE22]'
+  id: totrans-125
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: 'Let''s start with the classification reports, which indicate that the isolation
+    forest is much better in terms of recall:'
+  id: totrans-126
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们从分类报告开始，它们表明隔离森林在召回率方面要好得多：
+- en: '[PRE23]'
+  id: totrans-127
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'To better understand the results in the classification report, let''s create
+    confusion matrices for our unsupervised methods and place them side-by-side for
+    comparison:'
+  id: totrans-128
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了更好地理解分类报告中的结果，让我们为我们的无监督方法创建混淆矩阵，并将它们并排放置以进行比较：
+- en: '[PRE24]'
+  id: totrans-129
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'The isolation forest has more true positives and a greater number of false
+    positives compared to LOF, but it has fewer false negatives:'
+  id: totrans-130
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 隔离森林的真阳性更多，假阳性也更多，但它的假阴性较少：
+- en: '![Figure 11.11 – Confusion matrices for our unsupervised models'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![Figure 11.11 – 我们的无监督模型的混淆矩阵'
+- en: '](img/Figure_11.11_B16834.jpg)'
+  id: totrans-132
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.11_B16834.jpg)'
+- en: Figure 11.11 – Confusion matrices for our unsupervised models
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Figure 11.11 – 我们的无监督模型的混淆矩阵
+- en: The SOC has informed us that false negatives are much more costly than false
+    positives. However, they would like us to keep false positives in check to avoid
+    bogging down the team with an excessive number of false alarms. This tells us
+    that recall (the **true positive rate** (**TPR**)) is more valuable than precision
+    as a performance metric. The SOC wants us to target a *recall of at least 70%*.
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SOC告知我们，假阴性比假阳性更为昂贵。然而，他们希望我们能控制假阳性，以避免因过多的错误警报而影响团队工作。这告诉我们，召回率（**真阳性率**（**TPR**））作为性能指标比精度更为重要。SOC希望我们把目标定为*至少70%的召回率*。
+- en: Since we have a very large class imbalance, the **false positive rate** (**FPR**)
+    won't be too informative for us. Remember, the FPR is the ratio of false positives
+    to the sum of false positives and true negatives (everything belonging to the
+    negative class). Due to the nature of the attacks being rare, we will have a very
+    large number of true negatives and, therefore, our FPR will remain very low. Consequently,
+    the secondary metric determined by the SOC is to attain a *precision of 85% or
+    greater*.
+  id: totrans-135
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们有一个非常大的类别不平衡，**假阳性率**（**FPR**）对我们来说并不会提供太多信息。记住，FPR是假阳性与假阳性和真阴性之和的比率（即所有属于负类的部分）。由于攻击事件的稀有性，我们将拥有非常多的真阴性，因此FPR会保持在一个非常低的水平。因此，SOC决定的次要指标是达到*85%以上的精度*。
+- en: The isolation forest model exceeds our target recall, but the precision is too
+    low. Since we were able to obtain some labeled data, we can now use supervised
+    learning to find the minutes with suspicious activity (note that this won't always
+    be the case). Let's see whether we can use this extra information to find the
+    minutes of interest more precisely.
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 隔离森林模型超出了我们的召回率目标，但精确度过低。由于我们能够获取一些标记数据，现在可以使用监督学习来找到发生可疑活动的分钟数（请注意，这并不总是适用）。让我们看看能否利用这些额外信息更精确地找到感兴趣的分钟。
+- en: Implementing supervised anomaly detection
+  id: totrans-137
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 实现监督学习的异常检测
+- en: 'The SOC has finished up labeling the 2018 data, so we should revisit our EDA
+    to make sure our plan of looking at the number of usernames with failures on a
+    minute resolution does separate the data. This EDA is in the `3-EDA_labeled_data.ipynb`
+    notebook. After some data wrangling, we are able to create the following scatter
+    plot, which shows that this strategy does indeed appear to separate the suspicious
+    activity:'
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SOC已经完成了2018年数据的标记，因此我们应该重新审视我们的EDA，确保我们查看每分钟失败用户名数量的计划能有效地区分数据。这部分EDA在`3-EDA_labeled_data.ipynb`笔记本中。经过一些数据清洗后，我们成功创建了以下散点图，这表明这一策略确实能够有效地区分可疑活动：
+- en: '![Figure 11.12 – Confirming that our features can help form a decision boundary'
+  id: totrans-139
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.12 – 确认我们的特征能够帮助形成决策边界'
+- en: '](img/Figure_11.12_B16834.jpg)'
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.12_B16834.jpg)'
+- en: Figure 11.12 – Confirming that our features can help form a decision boundary
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.12 – 确认我们的特征能够帮助形成决策边界
+- en: 'In the `4-supervised_anomaly_detection.ipynb` notebook, we will create some
+    supervised models. This time we need to read in all the labeled data for 2018\.
+    Note that the code for reading in the logs is omitted since it is the same as
+    in the previous section:'
+  id: totrans-142
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`4-supervised_anomaly_detection.ipynb`笔记本中，我们将创建一些监督学习模型。这次我们需要读取2018年的所有标记数据。请注意，读取日志的代码被省略了，因为它与上一节中的代码相同：
+- en: '[PRE25]'
+  id: totrans-143
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Before we build our models, however, let''s create a new function that will
+    create both `X` and `y` at the same time. The `get_X_y()` function will use the
+    `get_X()` and `get_y()` functions we made earlier, returning both `X` and `y`:'
+  id: totrans-144
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，在构建模型之前，让我们创建一个新函数，它可以同时生成`X`和`y`。`get_X_y()`函数将使用我们之前创建的`get_X()`和`get_y()`函数，返回`X`和`y`：
+- en: '[PRE26]'
+  id: totrans-145
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Now, let''s make a training set with January 2018 data and a testing set with
+    February 2018 data, using our new function:'
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们使用2018年1月的数据创建一个训练集，并使用2018年2月的数据创建一个测试集，使用我们的新函数：
+- en: '[PRE27]'
+  id: totrans-147
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: Important note
+  id: totrans-148
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: While we have a very large class imbalance, we don't jump right to balancing
+    the training sets. It's crucial to try out the model without premature optimization.
+    If we build our model and see that it is being affected by the class imbalance,
+    then we can try those techniques. Remember to be very cautious with over-/under-sampling
+    techniques, as some make assumptions of the data that aren't always applicable
+    or realistic. Think about SMOTE—would we really expect all future attackers to
+    be similar to the ones we have in the data?
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管我们面临着非常大的类别不平衡问题，但我们不会直接去平衡训练集。尝试模型时避免过早优化是至关重要的。如果我们构建的模型发现受到了类别不平衡的影响，那么我们可以尝试这些技术。记住，对过采样/欠采样技术要非常小心，因为有些方法对数据做出假设，这些假设并不总是适用或现实的。以SMOTE为例——我们真的能指望未来的攻击者和我们数据中的攻击者相似吗？
+- en: Let's use this data to build some supervised anomaly detection models. Remember
+    that the SOC has given us the performance requirements in terms of recall (at
+    least 70%) and precision (85% or greater), so we will use those metrics to evaluate
+    our models.
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用这些数据来构建一些监督异常检测模型。请记住，SOC已经为我们设定了召回率（至少70%）和精确度（85%或更高）的性能要求，因此我们将使用这些指标来评估我们的模型。
+- en: Baselining
+  id: totrans-151
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 基准化
+- en: 'Our first step will be to build some baseline models, so we know that our machine
+    learning algorithms are performing better than some simpler models and have predictive
+    value. We will build two such models:'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的第一步是构建一些基准模型，以确保我们的机器学习算法优于一些简单的模型，并且具有预测价值。我们将构建两个这样的模型：
+- en: A dummy classifier that will predict labels based on the stratification in the
+    data.
+  id: totrans-153
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个虚拟分类器，它将根据数据中的分层来预测标签。
+- en: A Naive Bayes model that will predict the labels leveraging Bayes' theorem.
+  id: totrans-154
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 一个朴素贝叶斯模型，它将利用贝叶斯定理预测标签。
+- en: Dummy classifier
+  id: totrans-155
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 虚拟分类器
+- en: A dummy classifier will give us a model that is equivalent to the baseline we
+    have been drawing on our ROC curves. The results will be poor on purpose. We will
+    never use this classifier to actually make predictions; rather, we can use it
+    to see whether the models we are building are better than random guessing strategies.
+    In the `dummy` module, `scikit-learn` provides the `DummyClassifier` class precisely
+    for this purpose.
+  id: totrans-156
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 一个虚拟分类器将为我们提供一个与我们在 ROC 曲线中绘制的基准相当的模型。结果将故意很差。我们永远不会使用这个分类器来实际进行预测；而是可以用它来查看我们构建的模型是否比随机猜测策略更好。在
+    `dummy` 模块中，`scikit-learn` 提供了 `DummyClassifier` 类，正是为了这个目的。
+- en: 'Using the `strategy` parameter, we can specify how the dummy classifier will
+    make its predictions. Some interesting options are as follows:'
+  id: totrans-157
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用 `strategy` 参数，我们可以指定虚拟分类器将如何做出预测。以下是一些有趣的选项：
+- en: '`uniform`: The classifier will guess each time whether or not the observation
+    belongs to a hacking attempt.'
+  id: totrans-158
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`uniform`: 分类器每次都会猜测观察结果是否属于黑客攻击尝试。'
+- en: '`most_frequent`: The classifier will always predict the most frequent label,
+    which, in our case, will result in never marking anything as nefarious. This will
+    achieve high accuracy, but be useless since the minority class is the class of
+    interest.'
+  id: totrans-159
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`most_frequent`: 分类器将始终预测最频繁的标签，在我们的案例中，这将导致永远不会标记任何内容为恶意。这将达到较高的准确度，但毫无用处，因为少数类才是我们关心的类别。'
+- en: '`stratified`: The classifier will use the class distribution from the training
+    data and maintain that ratio with its guesses.'
+  id: totrans-160
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`stratified`: 分类器将使用训练数据中的类别分布，并将这种比例保持在其猜测中。'
+- en: 'Let''s build a dummy classifier with the `stratified` strategy:'
+  id: totrans-161
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用 `stratified` 策略构建一个虚拟分类器：
+- en: '[PRE28]'
+  id: totrans-162
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'Now that we have our first baseline model, let''s measure its performance for
+    comparisons. We will be using both the ROC curve and the precision-recall curve
+    to show how the class imbalance can make the ROC curve optimistic of performance.
+    To reduce typing, we will once again make some partials:'
+  id: totrans-163
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经有了第一个基准模型，接下来让我们衡量其性能以便进行比较。我们将同时使用 ROC 曲线和精度-召回曲线来展示类别不平衡如何让 ROC 曲线对性能过于乐观。为了减少输入，我们将再次创建一些部分：
+- en: '[PRE29]'
+  id: totrans-164
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: 'Recall from our initial discussion of ROC curves in *Chapter 9*, *Getting Started
+    with Machine Learning in Python*, that the diagonal line was random guessing of
+    a dummy model. If our performance isn''t better than this line, our model has
+    no predictive value. The dummy model we just created is equivalent to this line.
+    Let''s visualize the baseline ROC curve, precision-recall curve, and confusion
+    matrix using subplots:'
+  id: totrans-165
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 回想一下我们在 *第 9 章* 《用 Python 开始机器学习》中最初讨论的 ROC 曲线，斜线代表虚拟模型的随机猜测。如果我们的性能不比这条线好，那么我们的模型就没有预测价值。我们刚刚创建的虚拟模型相当于这条线。让我们使用子图来可视化基准
+    ROC 曲线、精度-召回曲线和混淆矩阵：
+- en: '[PRE30]'
+  id: totrans-166
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'The dummy classifier wasn''t able to flag any of the attackers. The ROC curve
+    (TPR versus FPR) indicates that the dummy model has no predictive value, with
+    an **area under the curve** (**AUC**) of 0.5\. Note that the area under the precision-recall
+    curve is nearly zero:'
+  id: totrans-167
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 虚拟分类器无法标记任何攻击者。ROC 曲线（TPR 与 FPR）表明，虚拟模型没有预测价值，其 **曲线下面积** (**AUC**) 为 0.5。请注意，精度-召回曲线下的面积几乎为零：
+- en: '![Figure 11.13 – Baselining with a dummy classifier'
+  id: totrans-168
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.13 – 使用虚拟分类器进行基准测试'
+- en: '](img/Figure_11.13_B16834.jpg)'
+  id: totrans-169
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.13_B16834.jpg)'
+- en: Figure 11.13 – Baselining with a dummy classifier
+  id: totrans-170
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.13 – 使用虚拟分类器进行基准测试
+- en: 'Since we have a very large class imbalance, the stratified random guessing
+    strategy should perform horrendously on the minority class and very well on the
+    majority class. We can observe this by examining the classification report:'
+  id: totrans-171
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们有非常严重的类别不平衡，分层随机猜测策略应该在少数类上表现糟糕，而在多数类上表现非常好。我们可以通过查看分类报告来观察这一点：
+- en: '[PRE31]'
+  id: totrans-172
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: Naive Bayes
+  id: totrans-173
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: Naive Bayes
+- en: Our last baseline model will be a Naive Bayes classifier. Before we discuss
+    this model, we need to review a few concepts of probability. The first is conditional
+    probability. When dealing with two events, *A* and *B*, the probability of event
+    *A* happening *given* that event *B* happened is the **conditional probability**
+    and is written as *P(A|B)*. When events *A* and *B* are independent, meaning *B*
+    happening doesn't tell us anything about *A* happening and vice versa, *P(A|B)*
+    is *P(A)*.
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的最后一个基准模型将是朴素贝叶斯分类器。在我们讨论这个模型之前，我们需要回顾几个概率学的概念。第一个是条件概率。当处理两个事件 *A* 和 *B*
+    时，事件 *A* 在事件 *B* 发生的条件下发生的概率叫做 **条件概率**，记作 *P(A|B)*。当事件 *A* 和 *B* 是独立的，即 *B* 的发生并不告诉我们
+    *A* 的发生与否，反之亦然，*P(A|B)* 就等于 *P(A)*。
+- en: 'The conditional probability is defined as the **joint probability** of both
+    *A* and *B* occurring (which is the intersection of these events), written as
+    *P(A* *∩* *B)*, divided by the probability of *B* occurring (provided this is
+    not zero):'
+  id: totrans-175
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 条件概率被定义为**联合概率**，即 *A* 和 *B* 同时发生的概率（这两个事件的交集），写作 *P(A* *∩* *B)*，除以 *B* 发生的概率（前提是这个概率不为零）：
+- en: '![](img/Formula_11_001.jpg)'
+  id: totrans-176
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_001.jpg)'
+- en: 'This equation can be rearranged as follows:'
+  id: totrans-177
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个方程可以重新排列如下：
+- en: '![](img/Formula_11_002.png)'
+  id: totrans-178
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_002.png)'
+- en: 'The joint probability of *A* *∩* *B* is equivalent to *B* *∩* *A*; therefore,
+    we get the following equation:'
+  id: totrans-179
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '*A* *∩* *B* 的联合概率等同于 *B* *∩* *A*；因此，我们得到以下方程：'
+- en: '![](img/Formula_11_003.jpg)'
+  id: totrans-180
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_003.jpg)'
+- en: 'It then follows that we can change the first equation to use conditional probabilities
+    instead of the joint probability. This gives us **Bayes'' theorem**:'
+  id: totrans-181
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由此，我们可以将第一个方程改为使用条件概率而不是联合概率。这给出了**贝叶斯定理**：
+- en: '![](img/Formula_11_004.jpg)'
+  id: totrans-182
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_004.jpg)'
+- en: 'When working with the previous equation, *P(A)* is referred to as the **prior
+    probability**, or initial degree of belief that event *A* will happen. After accounting
+    for event *B* occurring, this initial belief gets updated; this is represented
+    as *P(A|B)* and is called the **posterior probability**. The **likelihood** of
+    event *B* given event *A* is *P(B|A)*. The support that event *B* occurring gives
+    to our belief of observing event *A* is the following:'
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用前述方程时，*P(A)* 被称为**先验概率**，即事件 *A* 发生的初步信念程度。在考虑事件 *B* 发生后，这个初步信念会被更新；这个更新后的概率表示为
+    *P(A|B)*，称为**后验概率**。事件 *A* 给定时事件 *B* 的**似然**是 *P(B|A)*。事件 *B* 发生所支持的事件 *A* 发生的信念为：
+- en: '![](img/Formula_11_005.jpg)'
+  id: totrans-184
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_005.jpg)'
+- en: Let's take a look at an example—say we are building a spam filter, and we find
+    that 10% of emails are spam. This 10% is our prior, or *P(spam)*. We want to know
+    the probability an email we just received is spam given that it contains the word
+    *free*—we want to find *P(spam|free)*. In order to find this, we need the probability
+    that the word *free* is in an email given that it is spam, or *P(free|spam)*,
+    and the probability of the word *free* being in an email, or *P(free)*.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们来看一个例子——假设我们正在构建一个垃圾邮件过滤器，并且发现10%的电子邮件是垃圾邮件。这10%是我们的先验，或者*P(spam)*。我们想知道在邮件中包含单词*free*的情况下，刚收到的邮件是垃圾邮件的概率——我们想要找的是*P(spam|free)*。为了找到这个概率，我们需要知道在邮件是垃圾邮件的情况下，单词*free*出现在邮件中的概率，或者*P(free|spam)*，以及单词*free*出现在邮件中的概率，或者*P(free)*。
+- en: 'Suppose we learned that 12% of emails contained the word *free* and 20% of
+    the emails that were determined to be spam contained the word *free*. Plugging
+    all this into the equation from before, we see that once we know an email contains
+    the word *free*, our belief that it is spam increases from 10% to 16.7%, which
+    is our posterior probability:'
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们得知12%的电子邮件包含单词*free*，而20%被判定为垃圾邮件的电子邮件包含单词*free*。将这些信息代入前面的方程中，我们可以看到，一旦我们知道一封电子邮件包含单词*free*，我们认为它是垃圾邮件的概率从10%增加到16.7%，这就是我们的后验概率：
+- en: '![](img/Formula_11_006.jpg)'
+  id: totrans-187
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_006.jpg)'
+- en: Bayes' theorem can be leveraged in a type of classifier called `X` features,
+    given the `y` variable (meaning *P(x*i*|y,x*1*...x*n*)* is equivalent to *P(x*i*|y)*).
+    They are called *naive* because this assumption is often incorrect; however, these
+    classifiers have traditionally worked well in building spam filters.
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 贝叶斯定理可以在一种称为`X`特征的分类器中得到应用，给定`y`变量（即 *P(x*i*|y,x*1*...x*n*)* 等同于 *P(x*i*|y)*）。它们被称为*朴素*分类器，因为这种假设通常是错误的；然而，这些分类器在构建垃圾邮件过滤器时通常表现良好。
+- en: 'Let''s say we also find multiple dollar signs in the email and the word *prescription*,
+    and we want to know the probability of it being spam. While some of these features
+    may depend on each other, the Naive Bayes model will treat them as conditionally
+    independent. This means our equation for the posterior probability is now the
+    following:'
+  id: totrans-189
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们在电子邮件中也找到了多个美元符号和单词*处方*，我们想知道它是垃圾邮件的概率。虽然这些特征可能相互依赖，但朴素贝叶斯模型会将它们视为条件独立。这意味着我们现在的后验概率方程如下：
+- en: '![](img/Formula_11_007_New.jpg)'
+  id: totrans-190
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_007_New.jpg)'
+- en: 'Suppose we find out that 5% of spam emails contain multiple dollar signs, 55%
+    of spam emails contain the word *prescription*, 25% of emails contain multiple
+    dollar signs, and the word *prescription* is found in 2% of emails overall. This
+    means that our belief of the email being spam, given that it has the words *free*
+    and *prescription* and multiple dollar signs, increases from 10% to 91.7%:'
+  id: totrans-191
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 假设我们发现 5% 的垃圾邮件包含多个美元符号，55% 的垃圾邮件包含单词 *prescription*，25% 的邮件包含多个美元符号，而单词 *prescription*
+    在 2% 的邮件中出现。 这意味着，考虑到邮件中有 *free* 和 *prescription* 以及多个美元符号，我们认为它是垃圾邮件的概率从 10%
+    提升到了 91.7%：
+- en: '![](img/Formula_11_008.jpg)'
+  id: totrans-192
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/Formula_11_008.jpg)'
+- en: 'Now that we understand the basics of the algorithm, let''s build a Naive Bayes
+    classifier. Note that `scikit-learn` provides various Naive Bayes classifiers
+    that differ by the assumed distributions of the likelihoods of the features, which
+    we defined as *P(x*i*|y,x*1*...x*n*)*. We will use the version that assumes they
+    are normally distributed, `GaussianNB`:'
+  id: totrans-193
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经理解了该算法的基础，接下来构建一个 Naive Bayes 分类器。请注意，`scikit-learn` 提供了各种 Naive Bayes
+    分类器，这些分类器在假定特征似然的分布上有所不同，我们将其定义为 *P(x*i*|y,x*1*...x*n*)*。我们将使用假设特征是正态分布的版本，即 `GaussianNB`：
+- en: '[PRE32]'
+  id: totrans-194
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: 'We can retrieve the class priors from the model, which, in this case, tells
+    us that the prior for a minute containing normal activity is 99.91% versus 0.09%
+    for abnormal activity:'
+  id: totrans-195
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以从模型中获取类的先验信息，在这个例子中，告诉我们包含正常活动的分钟数的先验概率为 99.91%，异常活动的先验概率为 0.09%：
+- en: '[PRE33]'
+  id: totrans-196
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: 'Naive Bayes makes a nice baseline model because we don''t have to tune any
+    hyperparameters, and it is quick to train. Let''s see how it performs on the test
+    data (February 2018):'
+  id: totrans-197
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Naive Bayes 是一个很好的基线模型，因为我们不需要调整任何超参数，而且它训练速度很快。让我们看看它在测试数据上的表现（2018年2月）：
+- en: '[PRE34]'
+  id: totrans-198
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'The Naive Bayes classifier finds all five attackers and is above the baseline
+    (the dashed line) in both the ROC curve and precision-recall curve, meaning this
+    model has some predictive value:'
+  id: totrans-199
+  prefs: []
+  type: TYPE_NORMAL
+  zh: Naive Bayes 分类器找到了所有五个攻击者，并且在 ROC 曲线和精确度-召回曲线中都超过了基线（虚线），这意味着该模型具有一定的预测价值：
+- en: '![Figure 11.14 – Performance of the Naive Bayes classifier'
+  id: totrans-200
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.14 – Naive Bayes 分类器的性能'
+- en: '](img/Figure_11.14_B16834.jpg)'
+  id: totrans-201
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.14_B16834.jpg)'
+- en: Figure 11.14 – Performance of the Naive Bayes classifier
+  id: totrans-202
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.14 – Naive Bayes 分类器的性能
+- en: 'Unfortunately, we are triggering an enormous quantity of false positives (8,218).
+    For the month of February, roughly 1 out of every 1,644 attack classifications
+    was indeed an attack. This has the effect of desensitizing the users of these
+    classifications. They may choose to always ignore our classifications because
+    they are too noisy and, consequently, miss a real issue. This trade-off can be
+    captured in the metrics of the classification report:'
+  id: totrans-203
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 不幸的是，我们触发了大量的假阳性（8,218）。在 2 月份，大约每 1,644 次攻击分类中，就有 1 次确实是攻击。这导致了用户对这些分类变得不敏感。他们可能会选择始终忽略我们的分类，因为这些分类太嘈杂，从而错过了真正的问题。这种权衡可以通过分类报告中的指标来捕捉：
+- en: '[PRE35]'
+  id: totrans-204
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: While the Naive Bayes classifier outperforms the dummy classifier, it does not
+    meet the requirements of our stakeholders. Precision rounds to zero for the target
+    class because we have lots of false positives. Recall is higher than precision
+    because the model is better with false negatives than false positives (since it
+    isn't very discerning). This leaves the F1 score at zero. Now, let's try to beat
+    these baseline models.
+  id: totrans-205
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 尽管 Naive Bayes 分类器的表现超过了虚拟分类器，但它未能满足我们利益相关者的要求。由于有大量假阳性，目标类的精确度接近零。召回率高于精确度，因为该模型对于假阴性比假阳性更敏感（因为它不是很挑剔）。这使得
+    F1 分数为零。现在，让我们尝试超越这些基线模型。
+- en: Logistic regression
+  id: totrans-206
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 逻辑回归
+- en: Since logistic regression is another simple model, let's try it out next. We
+    used logistic regression in *Chapter 9*, *Getting Started with Machine Learning
+    in Python*, for classification problems, so we already know how it works. As we
+    learned in [*Chapter 10*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217), *Making
+    Better Predictions – Optimizing Models*, we will use a grid search to find a good
+    value for the regularization hyperparameter in our desired search space, using
+    `recall_macro` for scoring. Remember there is a large cost associated with false
+    negatives, so we are focusing on recall. The `_macro` suffix indicates that we
+    want to average the recall between the positive and negative classes, instead
+    of looking at it overall (due to the class imbalance).
+  id: totrans-207
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于逻辑回归是另一个简单的模型，我们接下来试试看。在*第9章*《使用Python进行机器学习入门》中，我们已经使用逻辑回归解决了分类问题，因此我们已经知道它是如何工作的。正如我们在[*第10章*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217)《做出更好的预测——优化模型》中所学到的，我们将使用网格搜索来在期望的搜索空间中找到正则化超参数的最佳值，并使用`recall_macro`作为评分标准。请记住，假阴性会带来很大的代价，因此我们重点关注召回率。`_macro`后缀表示我们希望计算正负类的召回率的平均值，而不是总体召回率（因为类别不平衡）。
+- en: Tip
+  id: totrans-208
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: If we know exactly how much more valuable recall is to us over precision, we
+    can replace this with a custom scorer made using the `make_scorer()` function
+    in `sklearn.metrics`. The notebook we are working in has an example.
+  id: totrans-209
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们确切知道召回率对我们来说比精确度更重要，我们可以用`sklearn.metrics`中的`make_scorer()`函数自定义评分器来替代。在我们正在使用的笔记本中有一个示例。
+- en: 'When using grid search, warnings from `scikit-learn` may be printed at each
+    iteration. Therefore, to avoid having to scroll through all that, we will use
+    the `%%capture` magic command to capture everything that would have been printed,
+    keeping our notebook clean:'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在使用网格搜索时，`scikit-learn`可能会在每次迭代时打印警告。因此，为了避免我们需要滚动查看所有信息，我们将使用`%%capture`魔法命令来捕获所有将被打印的内容，以保持笔记本的整洁：
+- en: '[PRE36]'
+  id: totrans-211
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: Tip
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: With `%%capture`, all errors and output will be captured by default. We have
+    the option of writing `--no-stderr` to hide errors only and `--no-stdout` to hide
+    output only. These go after `%%capture`; for example, `%%capture --no-stderr`.
+  id: totrans-213
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`%%capture`，所有的错误和输出默认都会被捕获。我们可以选择使用`--no-stderr`仅隐藏错误，使用`--no-stdout`仅隐藏输出。这些选项在`%%capture`后面使用；例如，`%%capture
+    --no-stderr`。
+- en: 'If we want to hide specific errors, we can use the `warnings` module, instead.
+    For example, after importing `filterwarnings` from the `warnings` module, we can
+    run the following to ignore warnings of future deprecations: `filterwarnings(''ignore'',
+    category=DeprecationWarning)`'
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们想要隐藏特定的错误，可以改用`warnings`模块。例如，在从`warnings`模块导入`filterwarnings`后，我们可以运行以下命令来忽略未来的弃用警告：`filterwarnings('ignore',
+    category=DeprecationWarning)`
+- en: 'Now that we have our logistic regression model trained, let''s check on the
+    performance:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经训练好了逻辑回归模型，让我们检查一下性能：
+- en: '[PRE37]'
+  id: totrans-216
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'This model has no false positives and is much better than the baselines. The
+    ROC curve is significantly closer to the top-left corner, as is the precision-recall
+    curve to the top-right corner. Notice that the ROC curve is a bit more optimistic
+    about the performance:'
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该模型没有假阳性，表现明显优于基准模型。ROC曲线显著更接近左上角，精确率-召回率曲线也更接近右上角。注意，ROC曲线对性能的评估略显乐观：
+- en: '![Figure 11.15 – Performance using logistic regression'
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.15 – 使用逻辑回归的性能'
+- en: '](img/Figure_11.15_B16834.jpg)'
+  id: totrans-219
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.15_B16834.jpg)'
+- en: Figure 11.15 – Performance using logistic regression
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.15 – 使用逻辑回归的性能
+- en: 'This model meets the requirements of the SOC. Our recall is at least 70% and
+    our precision is at least 85%:'
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该模型满足SOC的要求。我们的召回率至少为70%，精确度至少为85%：
+- en: '[PRE38]'
+  id: totrans-222
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: The SOC has given us data for January and February 2019, and they want us to
+    update our model. Unfortunately, our model has already been trained, so we have
+    the choice of rebuilding from scratch or ignoring this new data. Ideally, we would
+    build a model with a feedback loop to incorporate this (and future) new data.
+    In the next section, we will discuss how to do this.
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SOC已经为我们提供了2019年1月和2月的数据，他们希望我们更新模型。不幸的是，我们的模型已经训练完毕，因此我们可以选择从头开始重新构建模型，或者忽略这些新数据。理想情况下，我们应该建立一个具有反馈循环的模型，以便能够融入这些（以及未来的）新数据。在下一节中，我们将讨论如何做到这一点。
+- en: Incorporating a feedback loop with online learning
+  id: totrans-224
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将在线学习与反馈循环相结合
+- en: There are some big issues with the models we have built so far. Unlike the data
+    we worked with in *Chapter 9*, *Getting Started with Machine Learning in Python*,
+    and [*Chapter 10*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217), *Making Better
+    Predictions – Optimizing Models*, we wouldn't expect the attacker behavior to
+    be static over time. There is also a limit to how much data we can hold in memory,
+    which limits how much data we can train our model on. Therefore, we will now build
+    an online learning model to flag anomalies in usernames with failures per minute.
+    An **online learning** model is constantly getting updated (in near real time
+    via streaming, or in batches). This allows us to learn from new data as it comes
+    and then get rid of it (to keep space in memory).
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 到目前为止，我们构建的模型存在一些重大问题。与我们在*第9章*，*Python中的机器学习入门*，和 [*第10章*](B16834_10_Final_SK_ePub.xhtml#_idTextAnchor217)
+    ，*优化模型 – 做出更好的预测* 中使用的数据不同，我们不应该期望攻击者的行为随着时间的推移保持静态。同时，我们能够在内存中存储的数据量也有限，这限制了我们可以用来训练模型的数据量。因此，我们现在将构建一个在线学习模型，用于标记每分钟失败次数异常的用户名。**在线学习**模型会不断更新（通过流式传输的近实时更新，或批量更新）。这使得我们能够在新数据到达时进行学习，然后将其丢弃（以保持内存空间）。
+- en: In addition, the model can evolve over time and adapt to changes in the underlying
+    distribution of the data. We will also be providing our model with feedback as
+    it learns so that we are able to make sure it stays robust to changes in the hacker
+    behavior over time. This is called `scikit-learn` support this kind of behavior;
+    so, we are limited to the models that offer a `partial_fit()` method (models without
+    this need to be trained from scratch with new data).
+  id: totrans-226
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，模型可以随着时间的推移发展，并适应数据底层分布的变化。我们还将为模型提供反馈，以便它在学习过程中能够确保对攻击者行为的变化保持鲁棒性。这就是`scikit-learn`支持这种行为的原因；因此，我们仅能使用提供`partial_fit()`方法的模型（没有这个方法的模型需要用新数据从头开始训练）。
+- en: Tip
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 提示
+- en: Scikit-learn refers to models implementing the `partial_fit()` method as **incremental
+    learners**. More information, including which models support this, can be found
+    at [https://scikit-learn.org/stable/computing/scaling_strategies.html#incremental-learning](https://scikit-learn.org/stable/computing/scaling_strategies.html#incremental-learning).
+  id: totrans-228
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`scikit-learn`将实现`partial_fit()`方法的模型称为**增量学习器**。更多信息，包括哪些模型支持此方法，可以在[https://scikit-learn.org/stable/computing/scaling_strategies.html#incremental-learning](https://scikit-learn.org/stable/computing/scaling_strategies.html#incremental-learning)中找到。'
+- en: Our data is currently being rolled up to the minute and then passed to the model,
+    so this will be batch learning, not streaming; however, note that if we were to
+    put this into production, we could update our model each minute, if desired.
+  id: totrans-229
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的数据目前是按分钟汇总的，然后传递给模型，因此这将是批量学习，而非流式学习；但是请注意，如果我们将其投入生产环境，我们可以每分钟更新一次模型（如果需要的话）。
+- en: Creating the PartialFitPipeline subclass
+  id: totrans-230
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 创建PartialFitPipeline子类
+- en: We saw in *Chapter 9*, *Getting Started with Machine Learning in Python*, that
+    the `Pipeline` class made streamlining our machine learning processes a cinch,
+    but unfortunately, we can't use it with the `partial_fit()` method. To get around
+    this, we can create our own `PartialFitPipeline` class, which is a subclass of
+    the `Pipeline` class but supports calling `partial_fit()`. The `PartialFitPipeline`
+    class is located in the `ml_utils.partial_fit_pipeline` module.
+  id: totrans-231
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在*第9章*，*Python中的机器学习入门*中看到，`Pipeline`类使得简化我们的机器学习流程变得轻而易举，但不幸的是，我们无法在`partial_fit()`方法中使用它。为了绕过这个问题，我们可以创建自己的`PartialFitPipeline`类，它是`Pipeline`类的子类，但支持调用`partial_fit()`。`PartialFitPipeline`类位于`ml_utils.partial_fit_pipeline`模块中。
+- en: 'We simply inherit from `sklearn.pipeline.Pipeline` and define a single new
+    method—`partial_fit()`—which will call `fit_transform()` on all the steps except
+    the last one, and `partial_fit()` on the last step:'
+  id: totrans-232
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们只需从`sklearn.pipeline.Pipeline`继承，并定义一个新的方法——`partial_fit()`——该方法会对除最后一步之外的所有步骤调用`fit_transform()`，并对最后一步调用`partial_fit()`：
+- en: '[PRE39]'
+  id: totrans-233
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: Now that we have the `PartialFitPipeline` class, the last piece that remains
+    is to select a model capable of online learning.
+  id: totrans-234
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们已经有了`PartialFitPipeline`类，剩下的最后一部分就是选择一个能够进行在线学习的模型。
+- en: Stochastic gradient descent classifier
+  id: totrans-235
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+  zh: 随机梯度下降分类器
+- en: Our logistic regression model performed well—it met the requirements for recall
+    and precision. However, the `LogisticRegression` class does not support online
+    learning because the method it uses to calculate the coefficients is a closed-form
+    solution. We have the option of using an optimization algorithm, such as gradient
+    descent, to determine the coefficients instead; this will be capable of online
+    learning.
+  id: totrans-236
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的逻辑回归模型表现良好——它满足了召回率和精确度的要求。然而，`LogisticRegression` 类不支持在线学习，因为它计算系数的方法是一个封闭解。我们可以选择使用优化算法，如梯度下降，来代替计算系数；这样就可以实现在线学习。
+- en: Rather than use a different incremental learner, we can train a new logistic
+    regression model with the `SGDClassifier` class. It uses **stochastic gradient
+    descent** (**SGD**) to optimize the loss function of our choice. For this example,
+    we will be using log loss, which gives us a logistic regression where the coefficients
+    are found using SGD.
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以训练一个新的逻辑回归模型，使用`SGDClassifier`类，而不是使用不同的增量学习器。它使用**随机梯度下降**（**SGD**）来优化我们选择的损失函数。在这个示例中，我们将使用对数损失，它让我们得到一个通过SGD找到系数的逻辑回归模型。
+- en: 'Whereas standard gradient descent optimization looks at all the samples or
+    batches to estimate the gradient, SGD reduces the computational cost by selecting
+    samples at random (stochastically). How much the model learns from each sample
+    is determined by the **learning rate**, with earlier updates having more of an
+    effect than later ones. A single iteration of SGD is carried out as follows:'
+  id: totrans-238
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与标准梯度下降优化方法需要查看所有样本或批次来估算梯度不同，SGD通过随机选择样本（随机性）来减少计算成本。模型从每个样本学习的多少取决于**学习率**，早期更新的影响大于后期更新。SGD的单次迭代过程如下：
+- en: Shuffle the training data.
+  id: totrans-239
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 洗牌训练数据。
+- en: For each sample in the training data, estimate the gradient and update the model
+    with decreasing strength as determined by the learning rate.
+  id: totrans-240
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 对于训练数据中的每个样本，估计梯度并根据学习率所确定的递减强度更新模型。
+- en: Repeat *step 2* until all samples have been used.
+  id: totrans-241
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 重复*步骤2*，直到所有样本都已使用。
+- en: In machine learning, we use **epochs** to refer to the number of times the full
+    training set is used. The process of SGD we just outlined is for a single epoch.
+    When we train for multiple epochs, we repeat the preceding steps for the desired
+    number of epochs, continuing each time from where we left off.
+  id: totrans-242
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在机器学习中，我们使用**epoch**来表示完整训练集使用的次数。我们刚才概述的SGD过程是一个单一的epoch。当我们训练多个epoch时，我们会重复前述步骤，直到达到预定的epoch次数，并每次从上次停止的地方继续。
+- en: 'Now that we understand how SGD works, we are ready to build our model. Here''s
+    an overview of the process we will follow before presenting it to the SOC:'
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在我们理解了SGD的工作原理，准备好构建我们的模型了。以下是我们在向SOC展示之前将遵循的过程概述：
+- en: '![Figure 11.16 – Process for preparing our online learning model'
+  id: totrans-244
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.16 – 准备我们的在线学习模型的过程'
+- en: '](img/Figure_11.16_B16834.jpg)'
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.16_B16834.jpg)'
+- en: Figure 11.16 – Process for preparing our online learning model
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.16 – 准备我们的在线学习模型的过程
+- en: Let's now turn to the `5-online_learning.ipynb` notebook to build our online
+    learning model.
+  id: totrans-247
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在让我们转到`5-online_learning.ipynb`笔记本，构建我们的在线学习模型。
+- en: Building our initial model
+  id: totrans-248
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 构建我们的初始模型
+- en: 'First, we will use the `get_X_y()` function to get our `X` and `y` training
+    data using the full year of 2018:'
+  id: totrans-249
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们将使用`get_X_y()`函数，利用2018年的完整数据获取`X`和`y`训练数据：
+- en: '[PRE40]'
+  id: totrans-250
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'Since we will be updating this model in batches, our test set will always be
+    the data we are using for our current predictions. After we do so, it will become
+    the training set and be used to update the model. Let''s build our initial model
+    trained on the 2018 labeled data. Note that the `PartialFitPipeline` object is
+    created in the same way we create a `Pipeline` object:'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们将以批量更新该模型，我们的测试集将始终是我们当前预测所使用的数据。更新之后，它将成为训练集并用于更新模型。让我们构建一个基于2018年标注数据训练的初始模型。请注意，`PartialFitPipeline`对象的创建方式与我们创建`Pipeline`对象的方式相同：
+- en: '[PRE41]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: Our pipeline will first standardize the data, and then pass it to the model.
+    We start building our model using the `fit()` method so that we have a good starting
+    point for our updates with `partial_fit()` later. The `max_iter` parameter defines
+    the number of epochs for the training. The `tol` parameter (tolerance) specifies
+    when to stop iterating, which occurs when the loss from the current iteration
+    is greater than the previous loss minus the tolerance (or we have reached `max_iter`
+    iterations). We specified `loss='log'` to use logistic regression; however, there
+    are many other options for the loss functions, including the default value of
+    `'hinge'` for a linear SVM.
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的管道首先会对数据进行标准化，然后将其传递给模型。我们使用`fit()`方法开始构建我们的模型，这样我们就能为稍后使用`partial_fit()`进行更新奠定一个良好的起点。`max_iter`参数定义了训练的迭代次数。`tol`参数（容忍度）指定了停止迭代的条件，当当前迭代的损失大于前一次损失减去容忍度时（或者我们已经达到`max_iter`次迭代），迭代就会停止。我们指定了`loss='log'`以使用逻辑回归；然而，损失函数有许多其他选项，包括线性SVM的默认值`'hinge'`。
+- en: 'Here, we also passed in a value for the `average` parameter, telling the `SGDClassifier`
+    object to store the coefficients as averages of the results once 1,000 samples
+    have been seen; note that this parameter is optional and, by default, this won''t
+    be calculated. Examining these coefficients can be achieved as follows:'
+  id: totrans-254
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们还传入了`average`参数的值，告诉`SGDClassifier`对象在看到1,000个样本后将系数存储为结果的平均值；注意，这个参数是可选的，默认情况下不会进行计算。可以通过以下方式检查这些系数：
+- en: '[PRE42]'
+  id: totrans-255
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: Lastly, we passed in `eta0=0.01` for our starting learning rate and specified
+    to only adjust the learning rate when we have failed to improve our loss by the
+    tolerance defined for a given number of consecutive epochs (`learning_rate='adaptive'`).
+    This number of epochs is defined by the `n_iter_no_change` parameter, which will
+    be `5` (the default), since we aren't setting it explicitly.
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们传入了`eta0=0.01`作为初始学习率，并指定只有在连续若干个epoch内未能改善损失超过容忍度时，才调整学习率（`learning_rate='adaptive'`）。这个连续的epoch数量由`n_iter_no_change`参数定义，默认为5，因为我们没有明确设置它。
+- en: Evaluating the model
+  id: totrans-257
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 评估模型
+- en: 'Since we now have labeled data for January and February 2019, we can evaluate
+    how the model performs each month. First, we read in the 2019 data from the database:'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们现在有了2019年1月和2月的标注数据，我们可以评估模型在每个月的表现。首先，我们从数据库中读取2019年的数据：
+- en: '[PRE43]'
+  id: totrans-259
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'Next, we isolate the January 2019 data:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们将1月2019年的数据提取出来：
+- en: '[PRE44]'
+  id: totrans-261
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: 'The classification report indicates that this model performs pretty well, but
+    our recall for the positive class is lower than our target:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 分类报告显示这个模型表现得相当不错，但我们对正类的召回率低于目标值：
+- en: '[PRE45]'
+  id: totrans-263
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'Remember, our stakeholders have specified we must achieve a recall (TPR) of
+    at least 70% and a precision of at least 85%. Let''s write a function that will
+    show us the ROC curve, confusion matrix, and precision-recall curve and indicate
+    the region we need to be in as well as where we currently are:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 记住，我们的利益相关者已经指定，召回率（TPR）必须至少达到70%，精确度必须至少达到85%。让我们写一个函数，展示ROC曲线、混淆矩阵和精确度-召回曲线，并指出我们需要达到的区域以及我们当前的位置：
+- en: '[PRE46]'
+  id: totrans-265
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: 'Now, let''s call the function to see how we are doing:'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们调用该函数，看看我们的表现如何：
+- en: '[PRE47]'
+  id: totrans-267
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'Notice we are not currently meeting the specifications of our stakeholders;
+    our performance is not in the target region:'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 请注意，我们目前没有达到利益相关者的要求；我们的性能没有达到目标区域：
+- en: '![Figure 11.17 – Model performance with a default threshold'
+  id: totrans-269
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图 11.17 – 使用默认阈值的模型性能'
+- en: '](img/Figure_11.17_B16834.jpg)'
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.17_B16834.jpg)'
+- en: Figure 11.17 – Model performance with a default threshold
+  id: totrans-271
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图 11.17 – 使用默认阈值的模型性能
+- en: Our resulting recall (TPR) is 63.64%, which doesn't meet the goal of 70% or
+    better. By default, when we use the `predict()` method, our probability threshold
+    is 50%. If we are targeting a specific precision/recall or TPR/FPR region, we
+    may have to change the threshold and use `predict_proba()` to get the desired
+    performance.
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的召回率（TPR）为63.64%，没有达到70%或更高的目标。默认情况下，当我们使用`predict()`方法时，概率阈值是50%。如果我们目标是特定的精确度/召回率或TPR/FPR区域，可能需要调整阈值并使用`predict_proba()`来获得理想的性能。
+- en: 'The `ml_utils.classification` module contains the `find_threshold_roc()` and
+    `find_threshold_pr()` functions, which will help us pick a threshold along the
+    ROC curve or precision-recall curve, respectively. Since we are targeting a specific
+    precision/recall region, we will use the latter. This function uses the `precision_recall_curve()`
+    function from `scikit-learn` also, but instead of plotting the resulting precision
+    and recall data, we use it to select the thresholds that meet our criteria:'
+  id: totrans-273
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`ml_utils.classification`模块包含`find_threshold_roc()`和`find_threshold_pr()`函数，它们分别帮助我们在ROC曲线或精确度-召回率曲线上选择阈值。由于我们针对的是特定的精确度/召回率区域，因此我们将使用后者。该函数也使用了`scikit-learn`中的`precision_recall_curve()`函数，但与其绘制精确度和召回率数据不同，我们用它来选择满足我们标准的阈值：'
+- en: '[PRE48]'
+  id: totrans-274
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Important note
+  id: totrans-275
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: The notebook also shows an example of finding a threshold for a TPR/FPR goal.
+    Our current target precision/recall happens to give the same threshold as targeting
+    a TPR (recall) of at least 70% and an FPR of at most 10%.
+  id: totrans-276
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 该笔记本还展示了一个为TPR/FPR目标寻找阈值的例子。我们当前的目标精确度/召回率恰好与目标至少70%的TPR（召回率）和最多10%的FPR相同，从而得出了相同的阈值。
+- en: 'Let''s use this function to find a threshold that meets our stakeholders''
+    specifications. We take the max of the probabilities that fall in the desired
+    region to pick the least sensitive of the candidate thresholds:'
+  id: totrans-277
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们使用这个函数找到一个符合我们利益相关者规格的阈值。我们选择位于目标区域内的最大概率值来挑选最不敏感的候选阈值：
+- en: '[PRE49]'
+  id: totrans-278
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: 'This result tells us that we can reach the desired precision and recall if
+    we flag results that have a 0.52% chance of being in the positive class. No doubt
+    this seems like a very low probability, or that the model isn''t sure of itself,
+    but we can think about it this way: if the model thinks there is even a slight
+    chance that the login activity is suspicious, we want to know. Let''s see how
+    our performance looks using this threshold:'
+  id: totrans-279
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个结果告诉我们，如果我们将有0.52%机会属于正类的结果标记出来，就可以达到所需的精确度和召回率。毫无疑问，这看起来像是一个非常低的概率，或者模型并不完全自信，但我们可以这样思考：如果模型认为登录活动有任何微小的可能性是可疑的，我们希望知道。让我们看看使用这个阈值时我们的性能表现如何：
+- en: '[PRE50]'
+  id: totrans-280
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: 'This threshold gives us a recall of 70.45%, satisfying our stakeholders. Our
+    precision is in the acceptable range as well:'
+  id: totrans-281
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个阈值使我们的召回率达到了70.45%，满足了我们的利益相关者要求。我们的精确度也在可接受范围内：
+- en: '![Figure 11.18 – Model performance using a custom threshold'
+  id: totrans-282
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.18 – 使用自定义阈值的模型性能'
+- en: '](img/Figure_11.18_B16834.jpg)'
+  id: totrans-283
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.18_B16834.jpg)'
+- en: Figure 11.18 – Model performance using a custom threshold
+  id: totrans-284
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.18 – 使用自定义阈值的模型性能
+- en: Using the custom threshold, we have correctly identified another three cases,
+    reducing our false negatives, which are very costly for the SOC. Here, this improvement
+    didn't come at the cost of additional false positives, but remember, there is
+    often a trade-off between reducing false negatives (**type II error**) and reducing
+    false positives (**type I error**). In some cases, we have a very low tolerance
+    for type I errors (the FPR must be very small), whereas in others, we are more
+    concerned with finding all the positive cases (the TPR must be high). In information
+    security, we have a low tolerance for false negatives because they are very costly;
+    therefore, we will move forward with the custom threshold.
+  id: totrans-285
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用自定义阈值后，我们正确地识别出了另外三个案例，减少了我们的假阴性，这对SOC来说是非常昂贵的。在这里，这一改进并没有导致额外的假阳性，但请记住，在减少假阴性（**类型
+    II 错误**）和减少假阳性（**类型 I 错误**）之间通常存在权衡。在某些情况下，我们对类型 I 错误的容忍度非常低（FPR必须非常小），而在其他情况下，我们更关心找到所有的正类案例（TPR必须很高）。在信息安全中，我们对假阴性的容忍度较低，因为它们代价非常高；因此，我们将继续使用自定义阈值。
+- en: Important note
+  id: totrans-286
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 重要提示
+- en: Sometimes, the requirements of a model's performance aren't feasible. It's important
+    to maintain an open line of communication with stakeholders to explain the issues
+    and discuss relaxing criteria when necessary.
+  id: totrans-287
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 有时，模型性能的要求可能并不现实。与利益相关者保持开放的沟通，解释问题并在必要时讨论放宽标准是非常重要的。
+- en: Updating the model
+  id: totrans-288
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 更新模型
+- en: 'Continuous updating will help the model adapt to changes in hacker behavior
+    over time. Now that we have evaluated our January predictions, we can use them
+    to update the model. To do so, we use the `partial_fit()` method and the labeled
+    data for January, which will run a single epoch on the January data:'
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 持续更新将帮助模型适应随着时间推移黑客行为的变化。既然我们已经评估了1月的预测结果，就可以使用这些结果来更新模型。为此，我们使用`partial_fit()`方法和1月的标注数据，这将对1月的数据运行一个训练周期：
+- en: '[PRE51]'
+  id: totrans-290
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: 'Our model has now been updated, so we can test its performance on the February
+    data now. Let''s grab the February data first:'
+  id: totrans-291
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的模型现在已更新，因此我们可以开始测试它在2月数据上的表现。让我们首先获取2月的数据：
+- en: '[PRE52]'
+  id: totrans-292
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'February had fewer attacks, but we caught a higher percentage of them (80%):'
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 2月的攻击较少，但我们捕获了更高比例的攻击（80%）：
+- en: '[PRE53]'
+  id: totrans-294
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'Let''s look at the performance plots for February to see how they changed:'
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们看看2月的性能图，看看它们是如何变化的：
+- en: '[PRE54]'
+  id: totrans-296
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: 'Notice the area under the precision-recall curve has increased and more of
+    the curve is in the target region:'
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 注意，精确度-召回率曲线下的面积有所增加，并且更多的曲线处于目标区域：
+- en: '![Figure 11.19 – Model performance after one update'
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.19 – 一次更新后的模型性能'
+- en: '](img/Figure_11.19_B16834.jpg)'
+  id: totrans-299
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.19_B16834.jpg)'
+- en: Figure 11.19 – Model performance after one update
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.19 – 一次更新后的模型性能
+- en: Presenting our results
+  id: totrans-301
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 展示我们的结果
+- en: The SOC has finished up the March data. They want us to implement into our model
+    the feedback they gave on our February predictions, and then make predictions
+    for the March data for them to review. They will be evaluating our performance
+    on each minute in March, using the classification report, ROC curve, confusion
+    matrix, and precision-recall curve. It's time to put our model to the test.
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SOC已经完成了3月数据的处理。他们希望我们将他们对2月预测的反馈融入我们的模型中，然后为他们提供3月数据的预测，以便他们进行审核。他们将基于每一分钟的表现，使用分类报告、ROC曲线、混淆矩阵和精确度-召回率曲线来评估我们的表现。现在是时候测试我们的模型了。
+- en: 'First, we need to update our model for the February data:'
+  id: totrans-303
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 首先，我们需要更新2月数据的模型：
+- en: '[PRE55]'
+  id: totrans-304
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: 'Next, we grab the March data and make our predictions, using a threshold of
+    0.52%:'
+  id: totrans-305
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，我们获取3月数据并做出预测，使用0.52%的阈值：
+- en: '[PRE56]'
+  id: totrans-306
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'Our classification report looks good. We have a recall of 76%, a precision
+    of 88%, and a solid F1 score:'
+  id: totrans-307
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的分类报告看起来不错。我们的召回率为76%，精确度为88%，F1分数也很稳定：
+- en: '[PRE57]'
+  id: totrans-308
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'Now, let''s see how the plots look:'
+  id: totrans-309
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，让我们看看图表的表现：
+- en: '[PRE58]'
+  id: totrans-310
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: 'Our AUC for the ROC curve is slightly higher now, while it dropped for the
+    precision-recall curve:'
+  id: totrans-311
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，ROC曲线的AUC略有上升，而精确度-召回率曲线的AUC下降了：
+- en: '![Figure 11.20 – Model performance after two updates'
+  id: totrans-312
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '![图11.20 – 两次更新后的模型性能'
+- en: '](img/Figure_11.20_B16834.jpg)'
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '](img/Figure_11.20_B16834.jpg)'
+- en: Figure 11.20 – Model performance after two updates
+  id: totrans-314
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 图11.20 – 两次更新后的模型性能
+- en: Further improvements
+  id: totrans-315
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+  zh: 进一步改进
+- en: The SOC is pleased with our results and now wants us to provide predictions
+    each minute. They have also promised to provide feedback within an hour. We won't
+    implement this request here, but we will briefly discuss how we could go about
+    this.
+  id: totrans-316
+  prefs: []
+  type: TYPE_NORMAL
+  zh: SOC对我们的结果很满意，现在希望我们每分钟提供一次预测。他们还承诺将在一小时内提供反馈。我们在此不实现这个请求，但我们将简要讨论如何操作。
+- en: 'We have been using batch processing to update the model each month; however,
+    in order to provide our stakeholders with what they want, we will need to shorten
+    our feedback loop by performing the following actions:'
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们一直在使用批处理更新模型每月的数据；然而，为了提供利益相关者所需的内容，我们需要通过执行以下操作来缩短反馈周期：
+- en: Running `predict_proba()` on our model every single minute and having the predictions
+    sent to our stakeholders. This will require setting up a process to pass the logs
+    one minute at a time to a preprocessing function, and then to the model itself.
+  id: totrans-318
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 每分钟运行`predict_proba()`并将预测结果发送给我们的利益相关者。这需要设置一个过程，将日志每分钟传递给预处理函数，然后再传递给模型本身。
+- en: Delivering the results to our stakeholders via an agreed-upon medium.
+  id: totrans-319
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 通过约定的媒介将结果交付给我们的利益相关者。
+- en: Updating the model with `partial_fit()` every hour using the feedback we receive
+    from the stakeholders (once we have determined how to have them share this information
+    with us).
+  id: totrans-320
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用`partial_fit()`每小时更新模型，利用我们从利益相关者处收到的反馈（当我们确定如何让他们与我们共享这些信息时）。
+- en: After the aforementioned actions are implemented, all that remains is for us
+    to put the model into production and determine the update and prediction frequencies
+    everyone will be accountable for meeting.
+  id: totrans-321
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在实施上述操作之后，剩下的就是将模型投入生产，并确定每个人需要遵守的更新和预测频率。
+- en: Summary
+  id: totrans-322
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 总结
+- en: In practice, detecting attackers isn't easy. Real-life hackers are much savvier
+    than the ones in this simulation. Attacks are also much less frequent, creating
+    a huge class imbalance. Building machine learning models that will catch everything
+    just isn't possible. That is why it is so vital that we work with those who have
+    domain knowledge; they can help us squeeze some extra performance out of our models
+    by really understanding the data and its peculiarities. No matter how experienced
+    we become with machine learning, we should never turn down help from someone who
+    often works with the data in question.
+  id: totrans-323
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在实践中，检测攻击者并不容易。现实中的黑客远比本模拟中的更狡猾。攻击事件也更加少见，导致了极大的类别不平衡。建立能够捕获所有攻击的机器学习模型几乎是不可能的。这就是为什么与具有领域知识的人合作如此重要；他们可以通过真正理解数据及其特殊性，帮助我们从模型中挤出更多的性能。无论我们在机器学习领域有多经验丰富，我们都不应该拒绝来自那些经常与相关数据打交道的人的帮助。
+- en: Our initial attempts at anomaly detection were unsupervised while we waited
+    for the labeled data from our subject matter experts. We tried LOF and isolation
+    forest using `scikit-learn`. Once we received the labeled data and performance
+    requirements from our stakeholders, we determined that the isolation forest model
+    was better for our data.
+  id: totrans-324
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们最初的异常检测尝试是无监督的，因为我们在等待来自领域专家的标注数据。我们使用`scikit-learn`尝试了 LOF 和孤立森林方法。一旦我们收到了标注数据和利益相关者的性能要求，我们确定孤立森林模型更适合我们的数据。
+- en: However, we didn't stop there. Since we had just been given the labeled data,
+    we tried our hand at supervised methods. We learned how to build baseline models
+    using dummy classifiers and Naive Bayes. Then, we revisited logistic regression
+    to see whether it could help us. Our logistic regression model performed well;
+    however, since it used a closed-form solution to find the coefficients, we were
+    unable to incorporate a feedback loop without retraining the model from scratch.
+  id: totrans-325
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们并没有止步于此。由于我们刚刚获得了标注数据，我们尝试了监督学习方法。我们学习了如何使用虚拟分类器和朴素贝叶斯构建基准模型。然后，我们重新审视了逻辑回归，看看它是否能帮助我们。我们的逻辑回归模型表现良好；然而，由于它使用封闭式解法来找到系数，我们无法在不重新训练模型的情况下融入反馈循环。
+- en: This limitation led us to build an online learning model, which is constantly
+    updated. First, we had to make a subclass to allow pipelines to use the `partial_fit()`
+    method. Then, we tried SGD classification with log loss. We were able to train
+    on an entire year of data at once, and then update our model when we received
+    new labeled data. This allows the model to adjust to changes in the distributions
+    of the features over time.
+  id: totrans-326
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这一限制促使我们构建了一个在线学习模型，该模型不断更新。首先，我们必须创建一个子类，以便让管道使用`partial_fit()`方法。接着，我们尝试了带有对数损失的
+    SGD 分类。我们能够一次性训练整整一年的数据，然后在收到新的标注数据时更新我们的模型。这使得模型能够随时间调整特征分布的变化。
+- en: In the next chapter, we will recap what we have learned throughout the book
+    and introduce additional resources for finding data, as well as working with it
+    in Python.
+  id: totrans-327
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在下一章，我们将回顾整本书中学到的内容，并介绍一些额外的资源，用于查找数据以及在 Python 中处理数据。
+- en: Exercises
+  id: totrans-328
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 练习
+- en: 'Complete the following exercises for some practice with the machine learning
+    workflow and exposure to some additional anomaly detection strategies:'
+  id: totrans-329
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 完成以下练习，练习机器学习工作流程，并接触一些额外的异常检测策略：
+- en: A one-class SVM is another model that can be used for unsupervised outlier detection.
+    Build a one-class SVM with the default parameters, using a pipeline with a `StandardScaler`
+    object followed by a `OneClassSVM` object. Train the model on the January 2018
+    data, just as we did for the isolation forest. Make predictions on that same data.
+    Count the number of inliers and outliers this model identifies.
+  id: totrans-330
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 一类 SVM 也是一个可以用于无监督离群点检测的模型。使用默认参数构建一类 SVM，使用一个包含`StandardScaler`对象和`OneClassSVM`对象的管道。就像我们为孤立森林所做的那样，在
+    2018 年 1 月的数据上训练模型，并对同一数据进行预测。计算该模型识别出的内点和外点的数量。
+- en: Using the 2018 minutely data, build a k-means model with two clusters after
+    standardizing the data with a `StandardScaler` object. With the labeled data in
+    the `attacks` table in the SQLite database (`logs/logs.db`), see whether this
+    model gets a good Fowlkes-Mallows score (use the `fowlkes_mallows_score()` function
+    in `sklearn.metrics`).
+  id: totrans-331
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用 2018 年的分钟级数据，在对数据进行`StandardScaler`标准化后，构建一个包含两个簇的 k-means 模型。使用 SQLite 数据库（`logs/logs.db`）中`attacks`表的标注数据，查看这个模型是否能够获得一个好的
+    Fowlkes-Mallows 分数（使用`sklearn.metrics`中的`fowlkes_mallows_score()`函数）。
+- en: Evaluate the performance of a random forest classifier for supervised anomaly
+    detection. Set `n_estimators` to `100` and use the remaining defaults, including
+    the prediction threshold. Train on January 2018 and test on February 2018.
+  id: totrans-332
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 评估随机森林分类器在监督异常检测中的表现。将`n_estimators`设置为`100`，并使用其余默认设置，包括预测阈值。使用2018年1月的数据进行训练，使用2018年2月的数据进行测试。
+- en: 'The `partial_fit()` method isn''t available with the `GridSearchCV` class.
+    Instead, we can use its `fit()` method with a model that has a `partial_fit()`
+    method (or a `PartialFitPipeline` object) to find the best hyperparameters in
+    our search space. Then, we can grab the best model from the grid search (`best_estimator_`)
+    and use `partial_fit()` on it. Try this with the `PassiveAggressiveClassifier`
+    class from the `sklearn.linear_model` module and a `PartialFitPipeline` object.
+    This online learning classifier is passive when it makes a correct prediction,
+    but aggressive in correcting itself when it makes an incorrect prediction. Don''t
+    worry about selecting a custom threshold. Be sure to follow these steps:'
+  id: totrans-333
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`partial_fit()`方法在`GridSearchCV`类中不可用。相反，我们可以使用它的`fit()`方法和一个具有`partial_fit()`方法（或`PartialFitPipeline`对象）的模型，在我们的搜索空间中找到最佳超参数。然后，我们可以从网格搜索中获取最佳模型(`best_estimator_`)，并在其上使用`partial_fit()`。尝试使用`sklearn.linear_model`模块中的`PassiveAggressiveClassifier`类和一个`PartialFitPipeline`对象。这个在线学习分类器在做出正确预测时是被动的，但在做出错误预测时会积极纠正自己。无需担心选择自定义阈值。请确保按照以下步骤操作：'
+- en: a) Run a grid search using the January 2018 data for the initial training.
+  id: totrans-334
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: a) 使用2018年1月的数据进行初始训练并执行网格搜索。
+- en: b) Grab the tuned model with the `best_estimator_` attribute.
+  id: totrans-335
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: b) 使用`best_estimator_`属性获取调优后的模型。
+- en: c) Evaluate the best estimator with the February 2018 data.
+  id: totrans-336
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: c) 使用2018年2月的数据评估最佳估计器。
+- en: d) Make updates with the February 2018 data.
+  id: totrans-337
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: d) 使用2018年2月的数据进行更新。
+- en: e) Evaluate the final model on March through June 2018 data.
+  id: totrans-338
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+  zh: e) 使用2018年3月至6月的数据评估最终模型。
+- en: Further reading
+  id: totrans-339
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 深入阅读
+- en: 'Check out the following resources for more information on the topics covered
+    in this chapter:'
+  id: totrans-340
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 查阅以下资源以获取更多关于本章内容的信息：
+- en: '*Deploying scikit-learn Models at Scale*: [https://towardsdatascience.com/deploying-scikit-learn-models-at-scale-f632f86477b8](https://towardsdatascience.com/deploying-scikit-learn-models-at-scale-f632f86477b8)'
+  id: totrans-341
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*大规模部署scikit-learn模型*: [https://towardsdatascience.com/deploying-scikit-learn-models-at-scale-f632f86477b8](https://towardsdatascience.com/deploying-scikit-learn-models-at-scale-f632f86477b8)'
+- en: '*Local Outlier Factor for Anomaly Detection*: [https://towardsdatascience.com/local-outlier-factor-for-anomaly-detection-cc0c770d2ebe](https://towardsdatascience.com/local-outlier-factor-for-anomaly-detection-cc0c770d2ebe)'
+  id: totrans-342
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*局部异常因子用于异常检测*: [https://towardsdatascience.com/local-outlier-factor-for-anomaly-detection-cc0c770d2ebe](https://towardsdatascience.com/local-outlier-factor-for-anomaly-detection-cc0c770d2ebe)'
+- en: '*Model Persistence* (*from the scikit-learn user guide*): [https://scikit-learn.org/stable/modules/model_persistence.html](https://scikit-learn.org/stable/modules/model_persistence.html)'
+  id: totrans-343
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*模型持久化* (*来自scikit-learn用户指南*): [https://scikit-learn.org/stable/modules/model_persistence.html](https://scikit-learn.org/stable/modules/model_persistence.html)'
+- en: '*Novelty and Outlier Detection* (*from the* *scikit-learn user guide*): [https://scikit-learn.org/stable/modules/outlier_detection.html](https://scikit-learn.org/stable/modules/outlier_detection.html)'
+  id: totrans-344
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*新颖性与异常值检测* (*来自* *scikit-learn用户指南*): [https://scikit-learn.org/stable/modules/outlier_detection.html](https://scikit-learn.org/stable/modules/outlier_detection.html)'
+- en: '*Naive Bayes* (*from the scikit-learn user guide*): [https://scikit-learn.org/stable/modules/naive_bayes.html](https://scikit-learn.org/stable/modules/naive_bayes.html)'
+  id: totrans-345
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*朴素贝叶斯* (*来自scikit-learn用户指南*): [https://scikit-learn.org/stable/modules/naive_bayes.html](https://scikit-learn.org/stable/modules/naive_bayes.html)'
+- en: '*Outlier Detection with Isolation Forest*: [https://towardsdatascience.com/outlier-detection-with-isolation-forest-3d190448d45e](https://towardsdatascience.com/outlier-detection-with-isolation-forest-3d190448d45e)'
+  id: totrans-346
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*使用孤立森林进行异常值检测*: [https://towardsdatascience.com/outlier-detection-with-isolation-forest-3d190448d45e](https://towardsdatascience.com/outlier-detection-with-isolation-forest-3d190448d45e)'
+- en: '*Passive Aggressive Algorithm* (*video explanation*): [https://www.youtube.com/watch?v=uxGDwyPWNkU](https://www.youtube.com/watch?v=uxGDwyPWNkU)'
+  id: totrans-347
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*被动攻击算法* (*视频讲解*): [https://www.youtube.com/watch?v=uxGDwyPWNkU](https://www.youtube.com/watch?v=uxGDwyPWNkU)'
+- en: '*Python Context Managers and the "with" Statement*: [https://blog.ramosly.com/python-context-managers-and-the-with-statement-8f53d4d9f87](https://blog.ramosly.com/python-context-managers-and-the-with-statement-8f53d4d9f87)'
+  id: totrans-348
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*Python上下文管理器与“with”语句*: [https://blog.ramosly.com/python-context-managers-and-the-with-statement-8f53d4d9f87](https://blog.ramosly.com/python-context-managers-and-the-with-statement-8f53d4d9f87)'
+- en: '*Seeing Theory –* [*Chapter 5*](B16834_05_Final_SK_ePub.xhtml#_idTextAnchor106)*,
+    Bayesian Inference*: [https://seeing-theory.brown.edu/index.html#secondPage/chapter5](https://seeing-theory.brown.edu/index.html#secondPage/chapter5)'
+  id: totrans-349
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*Seeing Theory –* [*第五章*](B16834_05_Final_SK_ePub.xhtml#_idTextAnchor106)*,
+    贝叶斯推断*: [https://seeing-theory.brown.edu/index.html#secondPage/chapter5](https://seeing-theory.brown.edu/index.html#secondPage/chapter5)'
+- en: '*SQLAlchemy — Python Tutorial*: [https://towardsdatascience.com/sqlalchemy-python-tutorial-79a577141a91](https://towardsdatascience.com/sqlalchemy-python-tutorial-79a577141a91)'
+  id: totrans-350
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*SQLAlchemy — Python教程*: [https://towardsdatascience.com/sqlalchemy-python-tutorial-79a577141a91](https://towardsdatascience.com/sqlalchemy-python-tutorial-79a577141a91)'
+- en: '*Stochastic Gradient Descent* (*from the scikit-learn user guide*): [https://scikit-learn.org/stable/modules/sgd.html](https://scikit-learn.org/stable/modules/sgd.html)'
+  id: totrans-351
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*随机梯度下降* (*来自scikit-learn用户指南*): [https://scikit-learn.org/stable/modules/sgd.html](https://scikit-learn.org/stable/modules/sgd.html)'
+- en: '*Strategies to scale computationally: bigger data* (*from the scikit-learn
+    user guide*): [https://scikit-learn.org/stable/computing/scaling_strategies.html](https://scikit-learn.org/stable/computing/scaling_strategies.html)'
+  id: totrans-352
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*计算扩展策略：更大的数据* (*来自scikit-learn用户指南*): [https://scikit-learn.org/stable/computing/scaling_strategies.html](https://scikit-learn.org/stable/computing/scaling_strategies.html)'
+- en: '*Unfair Coin Bayesian Simulation*: [https://github.com/xofbd/unfair-coin-bayes](https://github.com/xofbd/unfair-coin-bayes)'
+  id: totrans-353
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '*不公平硬币贝叶斯模拟*: [https://github.com/xofbd/unfair-coin-bayes](https://github.com/xofbd/unfair-coin-bayes)'
