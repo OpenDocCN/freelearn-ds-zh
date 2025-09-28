@@ -1,0 +1,1171 @@
+- en: '7'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using iSAX to Approximate MPdist
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far in this book, we have seen the use of iSAX for searching subsequences
+    and joining iSAX indexes based on SAX representations but no other applications
+    of it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to use iSAX indexes to approximately calculate
+    the **Matrix Profile** vectors as well as the **MPdist** distance between two
+    time series – we are still going to use iSAX for searching and joining, but the
+    end results are going to be more sophisticated. The idea that governs this chapter
+    is the perception that *terminal nodes in an iSAX index group have similar subsequences*
+    from a SAX representation perspective – this is what we are trying to take advantage
+    of for our approximate computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the Matrix Profile
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Computing the Matrix Profile using iSAX
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding MPdist
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculating MPdist using iSAX
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing the MPdist calculation in Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the Python code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The GitHub repository for the book is at [https://github.com/PacktPublishing/Time-Series-Indexing](https://github.com/PacktPublishing/Time-Series-Indexing).
+    The code for each chapter is in its own directory. Therefore, the code for [*Chapter
+    7*](B14769_07.xhtml#_idTextAnchor160) can be found in the `ch07` folder of the
+    GitHub repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the Matrix Profile
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Time series are everywhere, and there are many tasks that we might need to perform
+    on large time series including similarity search, outlier detection, classification,
+    and clustering. Dealing directly with a large time series is very time-consuming
+    and is going to slow down the process. Most of the aforementioned tasks are based
+    on the computation of the nearest neighbor of subsequences using a given sliding
+    window size. This is where the **Matrix Profile** comes into play because it helps
+    you perform the previous tasks once you have computed them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We already saw the Matrix Profile in [*Chapter 1*](B14769_01.xhtml#_idTextAnchor015),
+    but in this section, we are going to discuss it in more detail in order to understand
+    better the reason that it is so slow to compute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Various research papers exist that present and extend the Matrix Profile, including
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Matrix Profile I: All Pairs Similarity Joins for Time Series: A Unifying View
+    That Includes Motifs, Discords and Shapelets*, written by Chin-Chia Michael Yeh,
+    Yan Zhu, Liudmila Ulanova, Nurjahan Begum, Yifei Ding, Hoang Anh Dau, Diego Furtado
+    Silva, Abdullah Mueen, and Eamonn J. Keogh ([https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Matrix Profile II: Exploiting a Novel Algorithm and GPUs to Break the One
+    Hundred Million Barrier for Time Series Motifs and Joins*, written by Yan Zhu,
+    Zachary Zimmerman, Nader Shakibay Senobari, Chin-Chia Michael Yeh, Gareth Funning,
+    Abdullah Mueen, Philip Brisk, and Eamonn Keogh ([https://ieeexplore.ieee.org/abstract/document/7837898](https://ieeexplore.ieee.org/abstract/document/7837898))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Matrix profile goes MAD: variable-length motif and discord discovery in data
+    series*, written by Michele Linardi, Yan Zhu, Themis Palpanas, and Eamonn J. Keogh
+    ([https://doi.org/10.1007/s10618-020-00685-w](https://doi.org/10.1007/s10618-020-00685-w))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: About normalization
+  prefs: []
+  type: TYPE_NORMAL
+- en: As it happens with the SAX representation, all Euclidean distances that are
+    going to be computed in this chapter use normalized subsequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection shows what the Matrix Profile computation returns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What does the Matrix Profile compute?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to explain what the Matrix Profile calculates.
+    Imagine having a time series and a sliding window size that is smaller than the
+    time series length. The Matrix Profile computes *two vectors*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first vector contains the *Euclidean distances of the nearest neighbor*
+    of each subsequence. The value at index `0` is the Euclidean distance of the nearest
+    neighbor of the subsequence that begins at index `0`, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the second vector, the value at each place of the vector is the index of
+    the subsequence that is the nearest neighbor and corresponds to the Euclidean
+    distance stored in the previous vector. So, if the value at index `0` is `123`,
+    this means that the nearest neighbor of the subsequence that begins at index `0`
+    in the original time series is the subsequence that begins at index `123` in the
+    original time series. The first vector is going to contain that Euclidean distance
+    value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is very important to understand that when computing the Matrix Profile for
+    a time series using a self-join – that is, by looking for the nearest neighbor
+    at the subsequences of the same time series – we need to *exclude the subsequences
+    that are close* to the subsequence that we are examining. This is required because
+    subsequences that share many elements in the same order tend to have smaller Euclidean
+    distances by default. However, when dealing with a subsequence that is from another
+    time series, we do not need to exclude any subsequences from the calculations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A naïve implementation of the computation of the Matrix Profile vectors is to
+    get the first subsequence, compare it to all other subsequences (excluding the
+    subsequences that are close), find its nearest neighbor, and put the Euclidean
+    distance and the index of the nearest neighbor at index `0` of the two vectors.
+    Then, do the same for all other subsequences. Although this works for smaller
+    time series, it is not very efficient as its algorithmic complexity is O(n 2).
+    This means that for a time series with 10,000 subsequences, we need to perform
+    10,000 times 10,000 computations (100,000,000). We are going to implement that
+    algorithm to understand how slow it can be in real life.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The authors of the original Matrix Profile paper created a clever technique
+    that involves **Fast Fourier** transforms that compute the Matrix Profile vectors
+    with a viable complexity – the name of the algorithm is **Mueen’s Algorithm for
+    Similarity Search** (**MASS**). If you want to learn more about the details of
+    the MASS algorithm and the ideas behind the Matrix Profile, you should read the
+    *Matrix Profile I: All Pairs Similarity Joins for Time Series: A Unifying View
+    That Includes Motifs, Discords and Shapelets* paper ([https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section presents an implementation of the naïve algorithm for computing
+    the Matrix Profile vectors. The naivete of the algorithm lies in its complexity,
+    not its accuracy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manually computing the exact Matrix Profile
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to manually compute the exact Matrix Profile
+    to show how slow the process can be, especially when working with large time series.
+    We are using the word *exact* to differentiate this from the approximate Matrix
+    Profile computation that we are going to implement in the *Computing Matrix Profile
+    using iSAX* section of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last Python statements in the `main()` function of `mp.py` are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first statement runs the `mp()` function, which returns two values, both
+    of them being lists (vectors), which are the two Matrix Profile vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementation of the `mp()` function is where we compute the two vectors
+    and is presented in two parts. The first part comes with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the previous code, we iterate over all the subsequences of the given time
+    series. For each such subsequence, we define the indexes of the exclusion zone
+    as specified in the *Matrix Profile I: All Pairs Similarity Joins for Time Series:
+    A Unifying View That Includes Motifs, Discords and* *Shapelets* paper.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a sliding window size of `16`, the exclusion zone is `4` elements (`16 //
+    4`) on the left and `4` elements (`16 // 4`) on the right side of the subsequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `mp()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this part of the section, we compare each subsequence from the first part
+    of the code with all the subsequences of the time series while taking into account
+    the exclusion zone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bad thing about `mp()` is that it contains two `for` loops, which makes
+    its computational complexity *O(n*2*)*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `mp.py` when working with the `ts.gz` time series from [*Chapter
+    6*](B14769_06.xhtml#_idTextAnchor145) (which is found in the `ch06` directory
+    of the GitHub repository of the book) is similar to the following for a sliding
+    window of `16` – we are going to use the output to test the correctness of our
+    implementation by comparing it to the original Matrix Profile algorithm and its
+    output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Naively thinking, the subsequences with the smallest and largest Euclidean distances
+    can be considered outliers as they differ from all other subsequences – this is
+    an example of the use of the Matrix Profile for anomaly detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using a sliding window size of `32`, `mp.py` produces the following kind of
+    output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, using a sliding window size of `64`, the produced output is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason for having a smaller output here is that the bigger the sliding window
+    size, the fewer the number of subsequences that are created from a time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let us experiment with a time series with 25,000 elements that was created
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The results for `25k.gz` with the same sliding window sizes as before are as
+    follows (only the times are shown – the rest of the output is omitted for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, we should be aware of the fact that computing the Matrix Profile
+    vectors can be really slow as it took `mp.py` 45,113 seconds to compute the Matrix
+    Profile in the last run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Can you think of the reason that even a small increase in the sliding window
+    size also increases the overall times? The answer is that the bigger the sliding
+    window size, the bigger the subsequence length, and therefore, the more time it
+    takes to compute the Euclidean distance between two subsequences. Here is the
+    time it takes to compute the Matrix Profile vectors for a sliding window size
+    of `2048`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Have in mind that *the MASS algorithm does not have such an issue* as it computes
+    the Euclidean distances in its own clever way. As a result, its performance depends
+    on the time series length only.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let us present a Python script that computes the exact Matrix Profile
+    using the MASS algorithm with the help of the `stumpy` Python package. We are
+    using the `realMP.py` script for computing the Matrix Profile vectors, which has
+    the following implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The return value of `stumpy.stump()` is a multi-dimensional array. The first
+    column (`[:,0]`) is the vector of distances, and the second column (`[:,1]`) is
+    the vector of indexes. In the previous code, we print both these vectors, which
+    is not very handy when dealing with large time series – comment out these two
+    `print()` statements if you want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order to verify the correctness of `mp.py`, we present the output of `realMP.py`
+    for the `ts.gz` time series and a sliding window size of `64`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we are sure about the correctness of `mp.py`, let us experiment with
+    the `25k.gz` time series to see how much time it takes to compute the exact Matrix
+    Profile vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The time it takes `realMP.py` and the `stumpy.stump()` function to compute
+    the Matrix Profile vectors *on a single CPU core* for the `25k.gz` time series
+    is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The time it takes `realMP.py` to compute the Matrix Profile vectors for the
+    `25k.gz` time series on an Intel i7 with 8 CPU cores is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Moreover, the time it takes `realMP.py` and the `stumpy.stump()` function to
+    compute the Matrix Profile vectors *on a single CPU core* for the `ch06/100k.gz`
+    time series and sliding window size of `1024` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, let us try `realMP.py` on a *single CPU core* on the `500k.gz` time
+    series from [*Chapter 4*](B14769_04.xhtml#_idTextAnchor102):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The conclusion from the previous output is that computing the Matrix Profile
+    gets slower as the length of the time series gets bigger, which is the main reason
+    for thinking about an approximate computation of it. What we lose in accuracy,
+    we gain in time. We cannot have everything!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section explains the technique that we are going to use to approximately
+    compute the Matrix Profile vectors with the help of iSAX.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computing the Matrix Profile using iSAX
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First of all, let us make something clear: we are going to present *an approximate
+    method*. If you want to calculate the exact Matrix Profile, then you should use
+    an implementation that uses the original algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The idea behind the used technique is the following: *it is more likely that
+    the nearest neighbor of a subsequence is going to be found in the subsequences
+    stored in the same terminal node as the subsequence under examination*. Therefore,
+    we do not need to check all the subsequences of the time series, just a small
+    subset of them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection discusses and resolves an issue that might come up in our
+    calculations, which is what are we going to do if we cannot find a proper match
+    for a subsequence in a terminal node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What happens if there is not a valid match?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we are going to clarify the problematic cases of the process.
+    There exist two conditions that might end up in an undesired situation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A terminal node contains a single subsequence only
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For a given subsequence, all the remaining subsequences of the terminal node
+    are in the exclusion zone
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In both cases, we are not going to be able to find the approximate nearest neighbor
+    of a subsequence. Can we resolve these issues?
+  prefs: []
+  type: TYPE_NORMAL
+- en: There exist multiple answers to that question, including doing nothing or choosing
+    a different subsequence and using that to compute the Euclidean distance of the
+    nearest neighbor. We are going with the latter solution, but instead of randomly
+    choosing a subsequence, we are going for the subsequence that is next to the left
+    side of the exclusion zone. If there is no space on the left side of the exclusion
+    zone, we are going to choose the subsequence that is next to the right side of
+    the exclusion zone. As these two conditions cannot happen at the same time, we
+    are good!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection discusses how to compute the error of the approximate Matrix
+    Profile vector of distances compared to the real Matrix Profile vector of distances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating the error
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As explained earlier, we are computing an approximate Matrix Profile vector.
+    In such cases, we need a way to compute how far we are from the real values. There
+    exist various ways to compute an error value between two quantities. As a Matrix
+    Profile is a list of values, we need to find a way to compute an error value that
+    supports a list of values, not single values only.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most common way is to find the Euclidean distance between the approximate
+    vector and the exact vector. However, this does not always tell the whole truth.
+    A good alternative would be to use the **Root Mean Square** **Error** (**RMSE**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The formula for the RMSE is a little complex at first. It is presented in *Figure
+    7**.1*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.1 – The RMSE formula](img/Figure_7.1_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.1 – The RMSE formula
+  prefs: []
+  type: TYPE_NORMAL
+- en: In practice, this means that we find the difference between the actual value
+    and the approximate one and we square that. We do that for all the pairs and then
+    add all these values – this is the purpose of the big Greek Sigma letter. After
+    that, we divide by the number of the pairs. Lastly, we find the square root of
+    that last value and we are done. If you are not good at mathematics, bear in mind
+    that you do not need to remember that formula – we are going to implement it in
+    Python in a while.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The desired property that the RMSE has is that it takes into account the number
+    of elements that we compare. Put simply, the RMSE takes the *average*, whereas
+    the Euclidean distance takes the *sum*. In our case, using the average error looks
+    more appropriate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an example, the Euclidean distance between `(0, 0, 0, 2, 2)` and `(2, 1,
+    0, 0, 0)` is equal to `3.6055`. On the other hand, the RMSE of these two vectors
+    is equal to `1.61245`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With all that in mind, we are ready to present our approximate implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Approximate Matrix Profile implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we present the Python script that approximately computes
+    the Matrix Profile vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The important code for `apprMP.py` can be found in `approximateMP()`, which
+    is presented in four parts. The first part of the function is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code splits the time series into subsequences and creates the iSAX
+    index. It also initializes the `vDist` and `vIndex` variables, for keeping the
+    list of distances and the list of indexes, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `approximateMP()` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the previous code, we take each node of the iSAX index and determine whether
+    it is a terminal node or not – we are only interested in terminal nodes. If we
+    are dealing with a terminal node, we process each subsequence stored there. First,
+    we define the indexes of the exclusion zone making sure that the minimum value
+    of the left side of the exclusion zone is `0` – this is the index of the first
+    element of the time series – and the maximum value of the right side of the exclusion
+    zone is not bigger than the length of the time series minus 1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third part of it is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: We compare each subsequence of the selected terminal node with the rest of the
+    subsequences it contains because we expect that there is a high probability of
+    the nearest neighbor being in the same node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we make sure that the index of the subsequence that is going to be compared
+    with the initial subsequence is not in the exclusion zone. If we find such a subsequence,
+    we compute the Euclidean distance and keep the relevant index value. From all
+    these subsequences that are outside the exclusion zone and are located in the
+    terminal node, we keep the minimum Euclidean distance and the related index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We do that for all the subsequences in all the terminal nodes of the iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last part of the `approximateMP()` function is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: If, at this point, we do not have a valid Euclidean distance value (`None`),
+    we compare the initial subsequence with the subsequence next to the left side
+    of the exclusion zone, if it exists – this means if the left side of the exclusion
+    zone is not `0`. Otherwise, we compare it with the subsequence next to the right
+    side of the exclusion zone. We put the relevant index and Euclidean distance into
+    the `vIndex` and `vDist` variables, respectively. However, if we already have
+    an index and Euclidean distance from earlier, we use these values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection compares the accuracy of our approximate technique when
+    using different iSAX parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Comparing the accuracy of two different parameter sets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to compute the approximate Matrix Profile vector
+    of a single time series using two different sets of iSAX parameters and check
+    the accuracy of the results using the RMSE.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To make things simpler, we have created a Python script that computes the two
+    approximate Matrix Profile vectors of Euclidean distances, as well as the exact
+    Matrix Profile vectors, and calculates the RMSE – the name of the script is `rmse.py`.
+    We are not going to present the entire Python code of `rmse.py`, just the important
+    Python statements, starting from the function that computes the RMSE:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code implements the computation of the RMSE value according to
+    the formula presented in *Figure 7**.1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The remaining relevant Python code is located in the `main()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we compute the real Matrix Profile vector with `stumpy.stump()`, and
+    then we compute the approximate Matrix Profile vector with the Euclidean distances
+    using `approximateMP()`. After that, we call the `RMSE()` function and get the
+    numeric result, which we print on the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, let us run `rmse.py` and see what we get:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let us use `rmse.py` another time, but this time, with different iSAX
+    parameters, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What do the previous results tell us? First, the results tell us that our approximate
+    technique does not leave any subsequence without a Euclidean distance. If there
+    was such a case, then `rmse.py` would have generated an error message like the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: As, in the initialization of `vDist`, all its elements are set equal to `None`,
+    the previous error means that the value of at least one of the elements was not
+    reset. Therefore, it is still equal to `None` and our code fails to subtract a
+    floating point value, calculated by `stumpy.stump()`, from `None`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apart from that, the results tell us that bigger threshold values produce more
+    accurate results, which makes perfect sense, as there are more subsequences in
+    each terminal node. However, this makes the computation of the approximate Matrix
+    Profile slower. As a general rule, the closer the number of subsequences at each
+    terminal node is to the threshold value, the better the accuracy – we do not want
+    terminal nodes with a small number of subsequences stored in them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know about the Matrix Profile, let us discuss MPdist, how it is
+    computed, and the role of the Matrix Profile in this computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding MPdist
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we know about the Matrix Profile, we are ready to learn about MPdist
+    and how the Matrix Profile is used in the calculation of MPdist. The paper that
+    defines the MPdist distance is *Matrix Profile XII: MPdist: A Novel Time Series
+    Distance Measure to Allow Data Mining in More Challenging Scenarios*, written
+    by S. Gharghabi, S. Imani, A. Bagnall, A. Darvishzadeh, and E. Keogh ([https://ieeexplore.ieee.org/abstract/document/8594928](https://ieeexplore.ieee.org/abstract/document/8594928)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The intuition behind MPdist is that two time series can be considered similar
+    if they *have similar patterns throughout their duration*. Such patterns are extracted
+    in the form of subsequences using a sliding window. This is illustrated in *Figure
+    7**.2*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.2 – Grouping time series](img/Figure_7.2_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.2 – Grouping time series
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 7**.2*, we see that MPdist *(c)* understands the similarity between
+    time series that follow the same pattern better, whereas Euclidean distance *(b)*
+    compares time series based on time, and therefore groups the presented time series
+    differently. In my opinion, the grouping that is based on MPdist is more accurate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The advantages of MPdist (according to the people that created it) are that
+    the MPdist distance measure tries to be more flexible than most available distance
+    measures, including the Euclidean distance, and it takes into account similarities
+    that may not take place at the same time. Additionally, MPdist can compare time
+    series of different sizes –Euclidean distance cannot do that – and requires just
+    a single parameter (the sliding window size) to operate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection discusses the way MPdist is computed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to compute MPdist
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to discuss the way the real MPdist is computed
+    in order to better understand the complexity of the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The computation of MPdist is based on the Matrix Profile. First, we are given
+    two time series, A and B, and a sliding window size. Then, for each subsequence
+    of the first time series, we find its nearest neighbor in the second time series,
+    and we put the related Euclidean distance into a list of values. We do that for
+    all the subsequences of the first time series. This is also called the **AB join**.
+    Then, we do the same but for the second time series – this is called the **BA
+    join**. So, in the end, we calculated the **ABBA join** and we have a list of
+    Euclidean distances that we sort from the smallest to the biggest. From that list,
+    we get the Euclidean distance found at the index value that is equal to *5% of
+    the length of the list* – the authors of MPdist decided to use the Euclidean distance
+    at that index as the MPdist value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For both the AB join and BA join, the authors of MPdist use the MASS algorithm
+    to compute the nearest neighbor of each subsequence, in order to avoid the inefficient
+    algorithmic complexity of O(n 2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next subsection, we will create a Python script that manually computes
+    the MPdist distance between two time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manually computing MPdist
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to show how to manually compute the MPdist
+    value between two time series. The idea behind the implementation is based on
+    the code found in `mp.py` – however, fundamental differences exist as the Matrix
+    Profile returns a vector of values instead of a single value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The logic code of `mpdist.py` is implemented in two functions, named `mpdist()`
+    and `JOIN()`. `mpdist()` is implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses the `JOIN()` function to compute `AB Join` and `BA Join`.
+    Then, it concatenates the numeric results, which are all Euclidean distances,
+    and sorts them. Based on the length of the concatenation, it computes `index`,
+    which is used for selecting a value from the `JABBA` array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`JOIN()` is implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is where the join is implemented. For every subsequence in the `ts1` time
+    series, we find the nearest neighbor in the `ts2` time series – there is no need
+    for an exclusion zone in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bad thing about `mpdist.py` is that it contains two `for` loops, which makes
+    its computational complexity O(n 2) – this is no surprise, as MPdist is based
+    on the Matrix Profile. Therefore, the previous technique is viable for small time
+    series only. In general, **brute-force algorithms** usually do not work well for
+    large amounts of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At this point, we are going to create two time series with 10,000 elements
+    each:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of `mpdist.py` when working with `10k1.gz` and `10k2.gz` and a sliding
+    window size of `128` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: It took `mpdist.py` approximately 12,026 seconds to compute MPdist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `mpdist.py` when working with `10k1.gz` and `10k2.gz` and a sliding
+    window size of `2048` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why do you think the calculation of the `2048` sliding window ran faster than
+    the same calculation for the sliding window size of `128`? It most likely has
+    to do with the fact that the `2048` sliding window needs fewer iterations (1,920
+    times 1,920, which is equal to 3,686,400) due to the larger sliding window size,
+    which also compensates for the cost of computing Euclidean distances for larger
+    subsequences in the `2048` sliding window case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us now see how much time it takes the MASS algorithm to compute MPdist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The time it takes the `stumpy.mpdist()` function to compute the previous MPdist
+    distances on a single CPU core is the following – we are using the `mpdistance.py`
+    script from [*Chapter 1*](B14769_01.xhtml#_idTextAnchor015):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, it takes the `stumpy.mpdist()` function about 10 seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The time it takes the `stumpy.mpdist()` function to compute the previous MPdist
+    distances on four CPU cores is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why are the times almost the same when using a single CPU core? The answer is
+    that with small time series, `stumpy.mpdist()` *does not have enough time* to
+    use all CPU cores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lastly, the time it takes the `stumpy.mpdist()` function to compute the two
+    MPdist distances on eight CPU cores is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why are the times the same when using four CPU cores? As before, for very small
+    time series, the number of CPU cores used does not make any difference to the
+    computation time as there is not enough time to use them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are now ready to use the existing knowledge to approximately compute MPdist
+    with the help of iSAX.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating MPdist using iSAX
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to discuss our views and ideas regarding using
+    iSAX indexes to *approximately* *compute MPdist*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We know that iSAX keeps together subsequences with the same SAX representation.
+    As before, our feeling is that it is more likely to find the nearest neighbor
+    of a subsequence from a given time series in the subsequences with the same SAX
+    representation from another time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section is about putting our thoughts into practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the MPdist calculation in Python
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will discuss two ways to approximately compute MPdist with
+    the help of iSAX.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first way is much simpler than the second one and is slightly based on the
+    approximate calculation of the Matrix Profile. We take each subsequence from the
+    first time series, and we match it with a terminal node with the same SAX representation
+    from the iSAX index of the second time series in order to get the approximate
+    nearest neighbor – if a subsequence does not have a match *based on its SAX representation*,
+    we ignore that subsequence. So, in this case, we do not join iSAX indexes, which
+    makes the process much slower – our experiments are going to show how much slower
+    this technique is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the second way, we just use the **similarity join** of two iSAX indexes,
+    which we first saw in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection shows the implementation of the first technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the approximate Matrix Profile way
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Although we do not return any Matrix Profile vectors, this technique looks like
+    computing the Matrix Profile because *we examine subsequences one by one* and
+    not in groups, and return their Euclidean distance with the approximate nearest
+    neighbor. In this technique, *there is no exclusion zone* in the computation because
+    we are comparing subsequences from two different time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The important code within `apprMPdist.py` is the following – we assume that
+    we have already generated the two iSAX indexes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: For each subsequence of the first time series, search the iSAX index of the
+    second time series for the approximate nearest neighbor using the `NN()` function.
+    Then, do the same for the subsequences of the second time series and the iSAX
+    index of the first time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What is interesting is the implementation of the `NN()` function, used in the
+    previous code. We are going to present `NN()` in three parts. The first part is
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the previous code, we try to find an iSAX node with the same SAX representation
+    as the subsequence we are examining – we begin with the children of the root node
+    of the iSAX. If such a child of the root node cannot be found, then we have a
+    miss and we ignore that particular subsequence. As the final list of Euclidean
+    distances is large (this depends on the lengths of the time series), missing some
+    subsequences has no real effect on the end result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `NN()` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the previous code, we try to locate the iSAX node with the desired SAX representation
+    by traversing the iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last part of `NN()` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: After locating the desired terminal node, we compare its subsequences with the
+    given subsequence and return the minimum Euclidean distance found. The main program
+    puts all these minimum Euclidean distances into a list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let us discuss the second technique, which joins two iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the join of two iSAX indexes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The second way is much faster than the first one. In this way, we *join the
+    two iSAX indexes* based on the technique from [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124),
+    and we get the list of Euclidean distances. From that list, we choose a value
+    to be the approximate MPdist.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What happens if there is not a match among iSAX nodes?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In some rare cases that depend on the time series data and the iSAX parameters,
+    some nodes from one iSAX might end up not having a match in the other iSAX, and
+    vice versa. In our case, we *ignore those nodes*, which means that we end up having
+    a smaller-than-expected list of Euclidean distances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The important code within `joinMPdist.py` is the following – we assume that
+    we have already generated the two iSAX indexes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses the `Join()` function from `isax.iSAXjoin`, which we
+    implemented and saw in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124). We have
+    already seen the join of two iSAX indexes. However, this is the first time that
+    we actually use the results of that join for something.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are now going to start using the existing implementations and see their performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the Python code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to use the Python scripts that we have created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `apprMPdist.py` using the two time series with 10,000 elements each
+    that we created earlier in this chapter generates the following kind of output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using a bigger sliding window size generates the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, bigger sliding window sizes require more time. As before, this is because
+    calculating Euclidean distances for bigger sliding window sizes is slower.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Executing `joinMPdist.py` produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As before, using a bigger sliding window produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: It looks like `joinMPdist.py` is a lot faster than `apprMPdist.py`, which makes
+    perfect sense as it is *using two iSAX indexes at the same time* to construct
+    the list of Euclidean distances. Put simply, the running of `joinMPdist.py` requires
+    fewer computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection compares the accuracy and the speed of the two methods when
+    working with larger time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Comparing the accuracy and the speed of the methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Both methods are far from perfect. However, in this subsection, we are going
+    to compare their accuracy and speed in relation to the MPdist implementation found
+    in the `stumpy` Python package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want to test our code on bigger time series, as this is where our technique
+    might be faster than the exact MPdist function of `stumpy`. In this case, we are
+    going to use two time series with around 500,000 elements each – we already created
+    such time series in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For `apprMPdist.py`, the results for sliding window sizes of `120`, `600`,
+    and `1200` are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the `joinMPdist.py` script, the output for sliding window sizes of `120`,
+    `600`, and `1200` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: The results of `joinMPdist.py` are really promising when working with larger
+    time series. Although it looks like the bigger the sliding window size, the faster
+    the technique, this is not completely true because as the sliding window gets
+    bigger, we have more nodes without a match, and therefore, the list of values
+    gets smaller, which means that we compute fewer Euclidean distances as the sliding
+    window increases. This is not always the case, as this depends on the time series
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lastly, the result from the `stumpy` Python package when running on a single
+    CPU core is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Figure 7**.3* shows the accuracy of the approximate methods, which are named
+    **Search** and **Join**, compared to the real MPdist value, which is named **Real**,
+    for the three sliding window sizes used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.3 – Comparing the accuracy of the approximate methods to the real
+    MPdist](img/Figure_7.3_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.3 – Comparing the accuracy of the approximate methods to the real MPdist
+  prefs: []
+  type: TYPE_NORMAL
+- en: What does the output of *Figure 7**.3* tell us? First of all, the approximate
+    methods performed pretty well because the approximate values are really close
+    to the real MPdist values. So, at least for our example time series, the approximate
+    techniques are very accurate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly, *Figure 7**.4* compares the times of the approximate methods to the
+    time of the `stumpy` computation when running on a single CPU core for the three
+    sliding window sizes used – the presented times for the approximate methods *do
+    not include the time it takes to create the two* *iSAX indexes*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.4 – Comparing the times of the approximate methods to the real MPdist](img/Figure_7.4_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.4 – Comparing the times of the approximate methods to the real MPdist
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What does the output of *Figure 7**.4* tell us? The first technique is really
+    slow and should not be used – that is the purpose of experimentation: to find
+    out what works well and what does not. On the other hand, the performance of the
+    second approximate technique is very good. Additionally, *Figure 7**.4* shows
+    that the `stumpy` computation takes the same time regardless of the sliding window
+    size – this is a good and desirable feature of the MASS algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although the main purpose of iSAX is to help us search for subsequences by indexing
+    them, there are other ways to use an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we presented a way to approximately compute the Matrix Profile
+    vectors and two ways to approximately compute the MPdist distance between two
+    time series. All these techniques use iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We presented two ways to approximately compute MPdist. Out of the two methods,
+    the one that joins two iSAX indexes is much more efficient than the other – so
+    the use of an iSAX index by itself does not guarantee efficiency; we have to use
+    an iSAX index the right way to get better results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a small chapter left to finish this book, which is about the next steps
+    you can follow if you are really into time series and databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Useful links
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `stumpy` Python package: [https://pypi.org/project/stumpy/](https://pypi.org/project/stumpy/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `numba` Python package: [https://pypi.org/project/numba/](https://pypi.org/project/numba/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The RMSE: [https://en.wikipedia.org/wiki/Root-mean-square_deviation](https://en.wikipedia.org/wiki/Root-mean-square_deviation)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The UCR Matrix Profile page: [https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml](https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'SAX home page: [https://www.cs.ucr.edu/~eamonn/SAX.htm](https://www.cs.ucr.edu/~eamonn/SAX.htm)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Try to do the following exercises:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Try to use `mp.py` with a time series with 50,000 elements and see how much
+    time it takes to complete for sliding window sizes of `16`, `2048`, and `4096`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Try to use `mp.py` with a time series with 65,000 elements and see how much
+    time it takes to complete.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Experiment with the exclusion zone limits of `mp.py` and see what you get.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use `realMP.py` and `stumpy.stump()` to compute the Matrix Profile vectors for
+    a time series with 200,000 elements – create that time series if you do not have
+    one.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use `realMP.py` and `stumpy.stump()` to compute the Matrix Profile vectors for
+    a time series with 500,000 elements. Now, consider that a time series with 500,000
+    elements is on the small side!
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Try `realMP.py` on the `2M.gz` time series from [*Chapter 4*](B14769_04.xhtml#_idTextAnchor102)
+    using a single CPU code. As you can see, `realMP.py` starts getting really slow
+    with larger time series. Now, consider that a time series with 2,000,000 elements
+    is not big.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We can make `mp.py` a little faster by storing the normalized versions of the
+    subsequences and using the normalized versions when calculating the Euclidean
+    distances, instead of computing the normalized versions inside the `euclidean()`
+    function every time we call `euclidean()`. Try to implement that functionality.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Similarly, we can make `mpdist.py` faster by storing the normalized versions
+    of the subsequences and using them for the Euclidean distance computations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create an image similar to *Figure 7**.4* but for larger time series. Begin
+    with time series with 1,000,000 elements and see what you get.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

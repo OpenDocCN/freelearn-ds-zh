@@ -1,0 +1,1075 @@
+- en: Working with Vector Data – Advanced Recipes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN – advanced
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rotating geometries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving ST_Polygonize
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Translating, scaling, and rotating geometries – advanced
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Detailed building footprints from LiDAR
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a fixed number of clusters from a set of points
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculating a Voronoi diagrams
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Beyond being a spatial database with the capacity to store and query spatial
+    data, PostGIS is a very powerful analytical tool. What this means to the user
+    is a tremendous capacity to expose and encapsulate deep spatial analyses right
+    within a PostgreSQL database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The recipes in this chapter can roughly be divided into four main sections:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Highly optimized queries:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN – advanced
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Using the database to create and modify geometries:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rotating geometries
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving ST_Polygonize
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Translating, scaling, and rotating geometries – advanced
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Getting detailed building footprints from LiDAR
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Creating a fixed number of clusters from a set of points:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the PostGIS function, `ST_ClusterKMeans`, to create K clusters from a
+    set of points
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using a minimum bounding circle to visually represent the clusters with the `ST_
+    MinimumBoundingCircle` function
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Calculating a Voronoi diagram:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the `ST_VoronoiPolygon` function in order to calculate Voronoi diagrams
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The basic question that we seek to answer in this recipe is the fundamental
+    distance question, *which are the five coffee shops closest to me?* It turns out
+    that while it is a fundamental question, it's not always easy to answer, though
+    we will make this possible in this recipe. We will approach this in two steps.
+    The first step with which we'll approach this is in a simple heuristic way, which
+    will allow us to come to a solution quickly. Then, we'll take advantage of the
+    deeper PostGIS functionality to make the solution faster and more general with
+    a **k-Nearest Neighbor** (**KNN**) approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A concept that we need to understand from the outset is that of a spatial index.
+    A spatial index, like other database indexes, functions like a book index. It
+    is a special construct to make looking for things inside our table easier, much
+    in the way a book index helps us find content in a book faster. In the case of
+    a spatial index, it helps us find faster ways, when things are in space. Therefore,
+    by using a spatial index in our geographic searches, we can speed up our searches
+    by orders of magnitude.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To learn more about spatial indexes, see [http://en.wikipedia.org/wiki/Spatial_index#Spatial_index](http://en.wikipedia.org/wiki/Spatial_index#Spatial_index).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will start by loading our data. Our data is the address records from Cuyahoga
+    County, Ohio, USA:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As this dataset may take a while to load, you can alternatively load a subset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We specified the `-I` flag in order to request that a spatial index be created
+    upon the import of this data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us start by seeing how many records we are dealing with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have, in this address table, almost half a million address records, which
+    is not an insubstantial number to perform a query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: KNN is an approach of searching for an arbitrary number of points closest to
+    a given point. Without the right tools, this can be a very slow process that requires
+    testing the distance between the point of interest and all the possible neighbors.
+    The problem with this approach is that the search becomes exponentially slower
+    with a greater number of points. Let's start with this naive approach and then
+    improve on it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Suppose we were interested in finding the 10 records closest to the geographic
+    location -81.738624, 41.396679\. The naive approach would be to transform this
+    value into our local coordinate system and compare the distance to each point
+    in the database from the search point, order those values by distance, and limit
+    the search to the first 10 closest records (it is not recommended that you run
+    the following query as it could run indefinitely):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a fine approach for smaller datasets. This is a logical, simple, fast
+    approach for a relatively small numbers of records; however, this approach scales
+    very poorly, getting exponentially slower with the addition of records (with 500,000
+    points, this would take a very long time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An alternative is to only compare the point of interest to the ones known to
+    be close by setting a search distance. So, for example, in the following diagram,
+    we have a star that represents the current location, and we want to know the 10
+    closest addresses. The grid in the diagram is 100 feet long, so we can search
+    for the points within 200 feet, then measure the distance to each of these points,
+    and return the closest 10 points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f955df93-9fac-4334-9970-590159d7af79.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Thus, our approach to answer this question is to limit the search using the
+    `ST_DWithin` operator to only search for records within a certain distance. `ST_DWithin`
+    uses our spatial index, so the initial distance search is fast and the list of
+    returned records should be short enough to do the same pair-wise distance comparison
+    we did earlier in this section. In our case here, we could limit the search to
+    within 200 feet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output for the previous query is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/d5dd72ff-d4fd-453d-965a-1ef237c81bba.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: This approach performs well so long as our search window, `ST_DWithin`, is the
+    right size for the data. The problem with this approach is that, in order to optimize
+    it, we need to know how to set a search window that is about the right size. Any
+    larger than the right size and the query will run more slowly than we'd like.
+    Any smaller than the right size and we might not get all the points back that
+    we need. Inherently, we don't know this ahead of time, so we can only hope for
+    the best guess.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this same dataset, if we apply the same query in another location, the output
+    will return no points because the 10 closest points are further than 200 feet
+    away. We can see this in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/5adf9ef6-709d-4f4f-9d36-289a4e6b6d01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Fortunately, for PostGIS 2.0+ we can leverage the distance operators (`<->`
+    and `<#>`) to do indexed nearest neighbor searches. This makes for very fast KNN
+    searches that don't require us to guess ahead of time how far away we need to
+    search. Why are the searches fast? The spatial index helps of course, but in the
+    case of the distance operator, we are using the structure of the index itself,
+    which is hierarchical, to very quickly sort our neighbors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When used in an `ORDER BY` clause, the distance operator uses the index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: This approach requires no prior knowledge of how far the nearest neighbors might
+    be. It also scales very well, returning thousands of records in not more than
+    the time it takes to return a few records. It is sometimes slower than using `ST_DWithin`,
+    depending on how small our search distance is and how large the dataset we are
+    dealing with is. But the trade-off is that we don't need to make a guess of our
+    search distance and for large queries, it can be much faster than the naive approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What makes this magic possible is that PostGIS uses an R-tree index. This means
+    that the index itself is sorted hierarchically based on spatial information. As
+    demonstrated, we can leverage the structure of the index in sorting distances
+    from a given arbitrary location, and thus use the index to directly return the
+    sorted records. This means that the structure of the spatial index itself helps
+    us answer such fundamental questions quickly and inexpensively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More information about KNN and R-tree can be found at [http://workshops.boundlessgeo.com/postgis-intro/knn.html](http://workshops.boundlessgeo.com/postgis-intro/knn.html)
+    and [https://en.wikipedia.org/wiki/R-tree](https://en.wikipedia.org/wiki/R-tree).
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *Improving proximity filtering with KNN – advanced* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving proximity filtering with KNN – advanced
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the preceding recipe, we wanted to answer the simple question of which are
+    the nearest 10 locations to a given point. There is another simple question with
+    a surprisingly sophisticated answer. The question is how do we approach this problem
+    when we want to traverse an entire dataset and test each record for its nearest
+    neighbors?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our problem is as follows: for each point in our table, we are interested in
+    the angle to the nearest object in another table. A case demonstrating this scenario
+    is if we want to represent address points as building-like squares rotated to
+    align with an adjacent road, similar to the historic **United States Geological
+    Survey** (**USGS**) quadrangle maps, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/7a57964b-3e25-475a-a04b-49fb729b4a2f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: For larger buildings, USGS quads show the buildings' footprints, but for residential
+    buildings below their minimum threshold, the points are just rotated squares—a
+    nice cartographic effect that could easily be replicated with address points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As in the previous recipe, we will start off by loading our data. Our data
+    is the address records from Cuyahoga County, Ohio, USA. If you loaded this in
+    the previous recipe, there is no need to reload the data. If you have not loaded
+    the data yet, run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As this dataset may take a while to load, you can alternatively load a subset
+    using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The address points will serve as a proxy for our building structures. However,
+    to align our structure to the nearby streets, we will need a `streets` layer.
+    We will use Cuyahoga County''s street centerline data for this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we commence, we have to consider another aspect of using indexes, which
+    we didn't need to consider in our previous KNN recipe. When our KNN approach used
+    only points, our indexing was exact—the bounding box of a point is effectively
+    a point. As bounding boxes are what indexes are built around, our indexing estimates
+    of distance perfectly reflected the actual distances between our points. In the
+    case of non-point geometries, as is our example here, the bounding box is an approximation
+    of the lines to which we will be comparing our points. Put another way, what this
+    means is that our nearest neighbor may not be our very nearest neighbor, but is
+    likely our approximate nearest neighbor, or one of our nearest neighbors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In practice, we apply a heuristic approach: we simply gather slightly more
+    than the number of nearest neighbors we are interested in and then sort them based
+    on the actual distance in order to gather only the number we are interested in.
+    In this way, we only need to sort a small number of records.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Insofar as KNN is a nuanced approach to these problems, forcing KNN to run on
+    all the records in a dataset takes what I like to call a venerable and age-old
+    approach. In other words, it requires a bit of a hack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More on the general solution to using KNN within a function can be found in
+    Alexandre Neto''s post on the PostGIS users list at the following link:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://lists.osgeo.org/pipermail/postgis-users/2012-May/034017.html](http://lists.osgeo.org/pipermail/postgis-users/2012-May/034017.html)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In SQL, the typical way to loop is to use a `SELECT` statement. For our case,
+    we don't have a function that does KNN looping through the records in a table
+    to use; we simply have an operator that allows us to efficiently order our returning
+    records by distance from a given record. The workaround is to write a temporary
+    function and thus be able to use `SELECT` to loop through the records for us.
+    The cost is the creation and deletion of the function, plus the work done by the
+    query, and the combination of costs is well worth the *hackiness* of the approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, consider the following function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can use this function quite easily:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you have loaded the whole address dataset, this will take a while.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we choose to, we can optionally drop the function so that extra functions
+    are not left in our database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next recipe, *Rotating geometries*, the calculated angle will be used
+    to build new geometries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our function is simple, KNN magic aside. As an input to the function, we allow
+    geometry, as shown in the following query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding function returns a floating-point value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then use a `WITH` statement to create a temporary table, which returns the
+    five closest lines to our point of interest. Remember, as the index uses bounding
+    boxes, we don''t really know which line is the closest, so we gather a few extra
+    points and then filter them based on distance. This idea is implemented in the
+    following query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we are actually returning to columns. The first column is `dist,`
+    in which we calculate the distance to the nearest five road lines. Note that this
+    operation is performed after the `ORDER BY` and `LIMIT` functions have been used
+    as filters, so this does not take much computation. Then, we use `ST_Azimuth`
+    to calculate the angle from our point to the closest points (`ST_ClosestPoint`)
+    on each of our nearest five lines. In summary, what returns with our temporary
+    `index_query` table is the distance to the nearest five lines and the respective
+    rotation angles to the nearest five lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we recall, however, we were not looking for the angle to the nearest five
+    but to the true nearest road line. For this, we order the results by distance
+    and further use `LIMIT 1`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *Improving proximity filtering with KNN* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rotating geometries
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Among the many functions that PostGIS provides, geometry manipulation is a very
+    powerful addition. In this recipe, we will explore a simple example of using the
+    `ST_Rotate` function to rotate geometries. We will use a function from the *Improving
+    proximity filtering with KNN – advanced* recipe to calculate our rotation values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`ST_Rotate` has a few variants: `ST_RotateX`, `ST_RotateY`, and `ST_RotateZ`,
+    with the `ST_Rotate` function serving as an alias for `ST_RotateZ`. Thus, for
+    two-dimensional cases, `ST_Rotate` is a typical use case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the *Improving proximity filtering with KNN – advanced* recipe, our function
+    calculated the angle to the nearest road from a building's centroid or address
+    point. We can symbolize that building's point according to that rotation factor
+    as a square symbol, but more interestingly, we can explicitly build the area of
+    that footprint in real space and rotate it to match our calculated rotation angle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Recall our function from the *Improving proximity filtering with KNN – advanced*
+    recipe:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This function will calculate the geometry''s angle to the nearest road line.
+    Now, to construct geometries using this calculation, run the following function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the first step, we are taking each of the points and first applying a buffer
+    of 20 feet to them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we calculate the envelope of the buffer, providing us with a square around
+    that buffered area. This is a quick and easy way to create a square geometry of
+    a specified size from a point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we use `ST_Rotate` to rotate the geometry to the appropriate angle.
+    Here is where the query becomes harder to read. The `ST_Rotate` function takes
+    two arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The geometry we are using is the newly calculated geometry from the buffering
+    and envelope creation. The angle is the one we calculate using our `chp04.angle_to_street`
+    function. Finally, the origin around which we rotate is the input point itself,
+    resulting in the following portion of our query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This gives us some really nice cartography, as shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/c7bef09c-e81c-4b13-bd96-394873f1a030.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *Improving proximity filtering with KNN – advanced* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The *Translating, scaling, and rotating geometries – advanced* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving ST_Polygonize
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this short recipe, we will be using a common coding pattern in use when geometries
+    are being constructed with `ST_Polygonize` and formalizing it into a function
+    for reuse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ST_Polygonize` is a very useful function. You can pass a set of *unioned*
+    lines or an array of lines to `ST_Polygonize`, and the function will construct
+    polygons from the input. `ST_Polygonize` does so aggressively insofar as it will
+    construct all possible polygons from the inputs. One frustrating aspect of the
+    function is that it does not return a multi-polygon, but instead returns a geometry
+    collection. Geometry collections can be problematic in third-party tools for interacting
+    with PostGIS as so many third party tools don''t have mechanisms in place for
+    recognizing and displaying geometry collections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pattern we will formalize here is the commonly recommended approach for
+    changing geometry collections into mutlipolygons when it is appropriate to do
+    so. This approach will be useful not only for `ST_Polygonize`, which we will use
+    in the subsequent recipe, but can also be adapted for other cases where a function
+    returns geometry collections, which are, for all practical purposes, multi-polygons.
+    Hence, this is why it merits its own dedicated recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The basic pattern for handling geometry collections is to use `ST_Dump` to convert
+    them to a dump type, extract the geometry portion of the dump, collect the geometry,
+    and then convert this collection into a multi-polygon. The dump type is a special
+    PostGIS type that is a combination of the geometries and an index number for the
+    geometries. It's typical to use `ST_Dump` to convert from a geometry collection
+    to a dump type and then do further processing on the data from there. Rarely is
+    a dump object used directly, but it is typically an intermediate type of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We expect this function to take a geometry and return a multi-polygon geometry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For readability, we will use a `WITH` statement to construct the series of
+    transformations in geometry. First, we will polygonize:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we will dump:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can collect and construct a multi-polygon from our result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Put this together into a single function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we can polygonize directly from a set of closed lines and skip the typical
+    intermediate step when we use the `ST_Polygonize` function of having to handle
+    a geometry collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *Translating, scaling, and rotating geometries – advanced* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Translating, scaling, and rotating geometries – advanced
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Often, in a spatial database, we are interested in making explicit the representation
+    of geometries that are implicit in the data. In the example that we will use here,
+    the explicit portion of the geometry is a single point coordinate where a field
+    survey plot has taken place. In the following screenshot, this explicit location
+    is the dot. The implicit geometry is the actual extent of the field survey, which
+    includes 10 subplots arranged in a 5 x 2 array and rotated according to a bearing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These subplots are the purple squares in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/b4f9a6f4-68fb-4557-a442-c966ba78e9b3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are a number of ways for us to approach this problem. In the interest
+    of simplicity, we will first construct our grid and then rotate it in place. Also,
+    we could in principle use a `ST_Buffer` function in combination with `ST_Extent`
+    to construct the squares in our resultant geometry, but, as `ST_Extent` uses floating-point
+    approximations of the geometry for the sake of efficiency, this could result in
+    some mismatches at the edges of our subplots.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The approach we will use for the construction of the subplots is to construct
+    the grid with a series of `ST_MakeLine` and use `ST_Node` to *flatten* or node
+    the results. This ensures that we have all of our lines properly intersecting
+    each other. `ST_Polygonize` will then construct our multi-polygon geometry for
+    us. We will leverage this function through our wrapper function from the *Improving
+    ST_Polygonize* recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our plots are 10 units on a side, in a 5 x 2 array. As such, we can imagine
+    a function to which we pass our plot origin, and the function returns a multi-polygon
+    of all the subplot geometries. One additional element to consider is that the
+    orientation of the layout of our plots is rotated to a bearing. We expect the
+    function to actually use two inputs, so origin and rotation will be the variables
+    that we will pass to our function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We can consider geometry and a float value as the inputs, and we want the function
+    to return geometry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In order to construct the subplots, we will require three lines running parallel
+    to the *X* axis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And we will require six lines running parallel to the *Y* axis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To use these for polygon construction, we will require them to have nodes where
+    they cross and touch. A `UNION ALL` function will combine these lines in a single
+    record; `ST_Union` will provide the geometric processing necessary to construct
+    the nodes of interest and will combine our lines into a single entity ready for
+    `chp04.polygonize_to_multi`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But we have not created polygons yet, just lines. The final step, using our
+    `polygonize_to_multi` function, finishes the work for us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The combined query is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This function, shown in the preceding section, essentially draws the geometry
+    from a single input point and rotation value. It does so by using nine instances
+    of `ST_MakeLine`. Typically, one might use `ST_MakeLine` in combination with `ST_MakePoint`
+    to accomplish this. We bypass this need by having the function consume a point
+    geometry as an input. We can, therefore, use `ST_Translate` to move this point
+    geometry to the endpoints of the lines of interest in order to construct our lines
+    with `ST_MakeLine`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One final step, of course, is to test the use of our new geometry constructing
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The different grids generated by the previous functions are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/ac3d5118-8daf-44eb-8849-6361be7f277a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The *Improving ST_Polygonize* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The *Improving proximity filtering with KNN – advanced* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Detailed building footprints from LiDAR
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Frequently, with spatial analyses, we receive data in one form that seems quite
+    promising but we need it in another more extensive form. LiDAR is an excellent
+    solution for such problems; LiDAR data is laser scanned either from an airborne
+    platform, such as a fixed-wing plane or helicopter, or from a ground unit. LiDAR
+    devices typically return a cloud of points referencing absolute or relative positions
+    in space. As a raw dataset, they are often not as useful as they are once they
+    have been processed. Many LiDAR datasets are classified into land cover types,
+    so a LiDAR dataset, in addition to having data that contains *x*, *y*, and *z*
+    values for all the points sampled across a space, will often contain LiDAR points
+    that are classified as ground, vegetation, tall vegetation, buildings, and so
+    on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As useful as this is, the data is intensive, that is, it has discreet points,
+    rather than extensive, as polygon representations of such data would be. This
+    recipe was developed as a simple method to use PostGIS to transform the intensive
+    LiDAR samples of buildings into extensive building footprints:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/6e57df89-b74d-4a2a-a83a-b6cbc28a6b75.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The LiDAR dataset we will use is a 2006 collection, which was classified into
+    ground, tall vegetation (> 20 feet), buildings, and so on. One characteristic
+    of the analysis that follows is that we assume the classification to be correct,
+    and so we are not revisiting the quality of the classification or attempting to
+    improve it within PostGIS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A characteristic of the LiDAR dataset is that a sample point exists for relatively
+    flat surfaces at approximately no fewer than 1 for every 5 feet. This will inform
+    you about how we manipulate the data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s load our dataset using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The simplest way to convert point data to polygon data would be to buffer the
+    points by their known separation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can imagine, however, that such a simplistic approach might look strange:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/3cce7f71-f083-4a35-9990-3a393b100a05.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As such, it would be good to perform a union of these geometries in order to
+    dissolve the internal boundaries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can see the start of some simple building footprints:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/312afb52-48b9-4d06-8316-e3218c7dea96.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'While this is marginally better, the result is quite lumpy. We will use the
+    `ST_Simplify_PreserveTopology` function to simplify the polygons and then grab
+    just the external ring to remove the internal holes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we have simplified versions of our buffered geometries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e1acae8e-9162-4d4b-9563-ef7281bac776.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: There are two things to note here. The larger the building, relative to the
+    density of the sampling, the better it looks. We might query to eliminate smaller
+    buildings, which are likely to degenerate when this approach is used, depending
+    on the density of our LiDAR data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To put it informally, our buffering technique effectively lumps together or
+    clusters adjacent samples. This is possible only because we have regularly sampled
+    data, but that is OK. The density and scan patterns for the LiDAR data are typical
+    of such datasets, so we can expect this approach to be applicable to other datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ST_Union` function converts these discreet buffered points into a single
+    record with dissolved internal boundaries. To complete the clustering, we simply
+    need to use `ST_Dump` to convert these boundaries back to discreet polygons so
+    that we can utilize individual building footprints. Finally, we simplify the pattern
+    with `ST_SimplifyPreserveTopology` and extract the external ring, or use `ST_ExteriorRing`
+    outside these polygons, which removes the holes inside the building footprints.
+    Since `ST_ExteriorRing` returns a line, we have to reconstruct our polygon. We
+    use `chp04.polygonize_to_multi`, a function we wrote in the *Improving ST_Polygonize*
+    recipe, to handle just such occasions. In addition, you can check the *Normalizing
+    internal overlays* recipe in [Chapter 2](dec6904b-477f-4c16-a90f-7563a36c4652.xhtml), *Structures
+    That Work*, in order to learn how to correct polygons with possible geographical
+    errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a fixed number of clusters from a set of points
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In PostGIS version 2.3, some cluster functionalities were introduced. In this
+    recipe, we will explore `ST_ClusterKMeans`, a function that aggregates geometries
+    into *k* clusters and retrieves the *id* of the assigned cluster for each geometry
+    in the input. The general syntax for the function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this recipe, we will use the earthquake dataset included in the source from
+    [Chapter 3](68d3e400-24be-4757-ab79-5b395dd79f3c.xhtml), *Working with Vector
+    Data – The Basics*, as our input geometries for the function. We also need to
+    define the number of clusters that the function will output; the value of *k*
+    for this example will be 10\. You could play with this value and see the different
+    cluster arrangements the function outputs; the greater the value for *k*, the
+    smaller the number of geometries each cluster will contain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you have not previously imported the earthquake data into the [Chapter 3](68d3e400-24be-4757-ab79-5b395dd79f3c.xhtml),
+    *Working with Vector Data – The Basics*, schema, refer to the *Getting ready*
+    section of the *GIS analysis with spatial joins* recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we have created the `chp03.earthquake` table, we will need two tables.
+    The first one will contain the centroid geometries of the clusters and their respective
+    IDs, which the `ST_ClusterKMeans` function retrieves. The second table will have
+    the geometries for the minimum bounding circle for each cluster. To do so, run
+    the following SQL commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will then populate the centroid table by generating the cluster ID for each
+    geometry in `chp03.earthquakes` using the `ST_ClusterKMeans` function, and then
+    we will use the `ST_Centroid` function to calculate the 10 centroids for each
+    cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we check the inserted rows with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/44c789c0-15a0-49db-8617-fb7727593e18.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Then, insert the corresponding minimum bounding circles for the clusters in
+    the `chp04.earthq_circ` table. Execute the following SQL command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In a desktop GIS, import all three tables as layers (`chp03.earthquakes`, `chp04.earthq_cent`,
+    and `chp04.earthq_circ`) in order to visualize them and understand the clustering.
+    Note that circles may overlap; however, this does not mean that clusters do as
+    well, since each point belongs to one and only one cluster, but the minimum bounding
+    circle for a cluster may overlap with another minimum bounding circle for another
+    cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/60c745cb-ede9-418c-af5e-9f1d49a93198.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Calculating Voronoi diagrams
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the 2.3 version, PostGIS provides a way to create Voronoi diagrams from the
+    vertices of a geometry; this will work only with versions of GEOS greater than
+    or equal to 3.5.0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is a Voronoi diagram generated from a set of address points.
+    Note how the points from which the diagram was generated are equidistant to the
+    lines that divide them. Packed soap bubbles viewed from above form a similar network
+    of shapes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/1cce9415-80d2-4771-93f1-4da9254591e3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Voronoi diagrams are a space-filling approach that are useful for a variety
+    of spatial analysis problems. We can use these to create space filling polygons
+    around points, the edges of which are equidistant from all the surrounding points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More information about Voronoi diagrams can be found at the following link:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://en.wikipedia.org/wiki/Voronoi_diagram](http://en.wikipedia.org/wiki/Voronoi_diagram)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The PostGIS function `ST_VoronoiPolygons()`, receives the following parameters:
+    a geometry from which to build the Voronoi diagram, a tolerance, which is a float
+    that will tell the function the distance within which vertices will be treated
+    as equivalent for the output, and an `extent_to` geometry that will tell the extend
+    of the diagram if this geometry is bigger than the calculated output from the
+    input vertices. For this recipe, we will not use tolerance, which defaults to
+    0.0 units, `nor extend_to`, which is set to `NULL` by default.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will create a small arbitrary point dataset to feed into our function around
+    which we will calculate the Voronoi diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'With preparations in place, now we are ready to create the Voronoi diagram.
+    First, we will create the table that will contain the `MultiPolygon`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, to calculate the Voronoi diagram, we use `ST_Collect` in order to provide
+    a `MultiPoint` object for the `ST_VoronoiPolygons` function. The output of this
+    alone would be a `GeometryCollection`; however, we are interested in getting a
+    `MultiPolygon` instead, so we need to use the `ST_CollectionExtract` function,
+    which when given the number `3` as the second parameter, extracts all polygons
+    from a `GeometryCollection`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we import the layers for `voronoi_test_points` and `voronoi_diagram` into
+    a desktop GIS, we get the following Voronoi diagram of the randomly generated
+    points:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/5ce90b85-864c-4b16-853d-b4be6f6f7c7b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Now we can process much larger datasets. The following is a Voronoi diagram
+    derived from the address points from the *Improving proximity filtering with KNN
+    – advanced* recipe, with the coloration based on the azimuth to the nearest street,
+    also calculated in that recipe:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/8925a02c-213f-409e-be59-8116de57596c.png)'
+  prefs: []
+  type: TYPE_IMG

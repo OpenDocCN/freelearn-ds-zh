@@ -1,0 +1,1082 @@
+- en: 'Chapter 7: Customizing spaCy Models'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you will learn how to train, store, and use custom statistical
+    pipeline components. First, we will discuss when exactly we should perform custom
+    model training. Then, you will learn a fundamental step of model training – how
+    to collect and label your own data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you will also learn how to make the best use of **Prodigy**,
+    the annotation tool. Next, you will learn how to update an existing statistical
+    pipeline component with your own data. We will update the spaCy pipeline's **named
+    entity recognizer** (**NER**) component with our own labeled data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, you will learn how to create a statistical pipeline component from
+    scratch with your own data and labels. For this purpose, we will again train an
+    NER model. This chapter takes you through a complete machine learning practice,
+    including collecting data, annotating data, and training a model for information
+    extraction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By the end of this chapter, you''ll be ready to train spaCy models on your
+    own data. You''ll have the full skillset of collecting data, preprocessing data
+    in to the format that spaCy can recognize, and finally, training spaCy models
+    with this data. In this chapter, we''re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting started with data preparation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Annotating and preparing data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Updating an existing pipeline component
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Training a pipeline component from scratch
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The chapter code can be found at the book''s GitHub repository: [https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07](https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting started with data preparation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapters, we saw how to make the best of spaCy's pre-trained
+    statistical models (including the **POS tagger**, NER, and **dependency parser**)
+    in our applications. In this chapter, we will see how to customize the statistical
+    models for our custom domain and data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: spaCy models are very successful for general NLP purposes, such as understanding
+    a sentence's syntax, splitting a paragraph into sentences, and extracting some
+    entities. However, sometimes, we work on very specific domains that spaCy models
+    didn't see during training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the Twitter text contains many non-regular words, such as hashtags,
+    emoticons, and mentions. Also, Twitter sentences are usually just phrases, not
+    full sentences. Here, it's entirely reasonable that spaCy's POS tagger performs
+    in a substandard manner as the POS tagger is trained on full, grammatically correct
+    English sentences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another example is the medical domain. The medical domain contains many entities,
+    such as drug, disease, and chemical compound names. These entities are not expected
+    to be recognized by spaCy's NER model because it has no disease or drug entity
+    labels. NER does not know anything about the medical domain at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Training your custom models requires time and effort. Before even starting
+    the training process, you should decide *whether the training is really necessary*.
+    To determine whether you really need custom training, you will need to ask yourself
+    the following questions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Do spaCy models perform well enough on your data?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Does your domain include many labels that are absent in spaCy models?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Is there a pre-trained model/application in GitHub or elsewhere already? (We
+    wouldn't want to reinvent the wheel.)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let's discuss these questions in detail in the following sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Do spaCy models perform well enough on your data?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If the model performs well enough (above 0.75 accuracy), then you can customize
+    the model output by means of another spaCy component. For example, let''s say
+    we work on the navigation domain and we have utterances such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s see what entities spaCy''s NER model outputs for these sentences:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `home` isn't recognized as an entity at all, but we want it to be recognized
+    as a location entity. Also, spaCy's NER model labels `Oxford Street` as `FAC`,
+    which means a building/highway/airport/bridge type entity, which is not what we
+    want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want this entity to be recognized as `GPE`, a location. Here, we can train
+    NER further to recognize street names as `GPE`, as well as also recognizing some
+    location words, such as *work*, *home*, and *my mama's house*, as `GPE`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another example is the newspaper domain. In this domain, person, place, date,
+    time, and organization entities are extracted, but you need one more entity type
+    – `vehicle` (car, bus, airplane, and so on). Hence, instead of training from scratch,
+    you can add a new entity type by using spaCy's `EntityRuler` (explained in [*Chapter
+    4*](B16570_04_Final_JM_ePub.xhtml#_idTextAnchor069), *Rule-Based Matching*). Always
+    examine your data first and calculate the spaCy models' success rate. If the success
+    rate is satisfying, then use other spaCy components to customize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Does your domain include many labels that are absent in spaCy models?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For instance, in the preceding newspaper example, only one entity label, `vehicle`,
+    is missing from the spaCy's NER model's labels. Other entity types are recognized.
+    In this case, you don't need custom training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider the medical domain again. The entities are diseases, symptoms, drugs,
+    dosages, chemical compound names, and so on. This is a specialized and long list
+    of entities. Obviously, for the medical domain, you require custom model training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we need custom model training, we usually follow these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collect your data.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Annotate your data.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Decide to update an existing model or train a model from scratch.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the data collection step, we decide how much data to collect: 1,000 sentences,
+    5,000 sentences, or more. The amount of data depends on the complexity of your
+    task and domain. Usually, we start with an acceptable amount of data, make a first
+    model training, and see how it performs; then we can add more data and retrain
+    the model.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After collecting your dataset, you need to annotate your data in such a way
+    that the spaCy training code recognizes it. In the next section, we will see the
+    training data format and how to annotate data with spaCy's Prodigy tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third point is to decide on training a blank model from scratch or make
+    updates to an existing model. Here, the rule of thumb is as follows: if your entities/labels
+    are present in the existing model but you don''t see a very good performance,
+    then update the model with your own data, such as in the preceding navigation
+    example. If your entities are not present in the current spaCy model at all, then
+    most probably you need custom training.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don't rush into training your own models. First, examine if you really need
+    to customize the models. Always keep in mind that training a model from scratch
+    requires data preparation, training a model, and saving it, which means spending
+    your time, money, and effort. Good engineering is about spending your resources
+    wisely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We''ll start our journey of building a model with the first step: preparing
+    our training data. Let''s move on to the next section and see how to prepare and
+    annotate our training data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotating and preparing data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first step of training a model is always preparing training data. You usually
+    collect data from customer logs and then turn them into a dataset by dumping the
+    data as a CSV file or a JSON file. spaCy model training code works with JSON files,
+    so we will be working with JSON files in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After collecting our data, we **annotate** our data. Annotation means labeling
+    the intent, entities, POS tags, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is an example of annotated data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you see, we point the statistical algorithm to *what we want the model to
+    learn*. In this example, we want the model to learn about the entities, hence,
+    we feed examples with entities annotated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing down JSON files manually can be error-prone and time-consuming. Hence,
+    in this section, we'll also see spaCy's annotation tool, Prodigy, along with an
+    open source data annotation tool, **Brat**. Prodigy is not open source or free,
+    but we will go over how it works to give you a better view of how annotation tools
+    work in general. Brat is open source and immediately available for your use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotating data with Prodigy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Prodigy is a modern tool for data annotation. We will be using the Prodigy web
+    demo ([https://prodi.gy/demo](https://prodi.gy/demo)) to exhibit how an annotation
+    tool works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s get started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We navigate to the Prodigy web demo and view an example text by Prodigy, to
+    be annotated as seen in the following screenshot:![Figure 7.1 – Prodigy interface;
+    photo taken from their web demo page
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_1.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 7.1 – Prodigy interface; photo taken from their web demo page
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The preceding screenshot shows an example text that we want to annotate. The
+    buttons at the bottom of the screenshot showcase the means to accept this training
+    example, to reject this example, or to ignore this example. If the example is
+    irrelevant to our domain/task (but involved in the dataset somehow), we ignore
+    this example. If the text is relevant and the annotation is good, then we accept
+    this example, and it joins our dataset.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Next, we''ll label the entities. Labeling an entity is easy. First, we select
+    an entity type from the upper bar (here, this corpus includes two types of entities,
+    `PERSON` and `ORG`. Which entities you want to annotate depends on you; these
+    are the labels you provide to the tool.) Then, we''ll just select the words we
+    want to label as an entity with the cursor, as seen in the following screenshot:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![ Figure 7.2 – Annotating PERSON entities on the web demo'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_2.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.2 – Annotating PERSON entities on the web demo
+  prefs: []
+  type: TYPE_NORMAL
+- en: After we're finished with annotating the text, we click the accept button. Once
+    the session is finished, you can dump the annotated data as a JSON file. When
+    you're finished with your annotation job, you can click the **Save** button to
+    finish the session properly. Clicking **Save** will dump the annotated data as
+    a JSON file automatically. That's it. Prodigy offers a really efficient way of
+    annotating your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Annotating data with Brat
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Another annotation tool is **Brat**, which is a free and web-based tool for
+    text annotation ([https://brat.nlplab.org/introduction.html](https://brat.nlplab.org/introduction.html)).
+    It''s possible to annotate relations as well as entities in Brat. You can also
+    download Brat onto your local machine and use it for annotation tasks. Basically,
+    you upload your dataset to Brat and annotate the text on the interface. The following
+    screenshot shows an annotated sentence from an example of a CoNLL dataset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![  Figure 7.3 – An example annotated sentence'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_3.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.3 – An example annotated sentence
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can play with example datasets on the Brat demo website ([https://brat.nlplab.org/examples.html](https://brat.nlplab.org/examples.html%20))
+    or get started by uploading a small subset of your own data. After the annotation
+    session is finished, Brat dumps a JSON of annotated data as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: spaCy training data format
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we remarked earlier, spaCy training code works with JSON file format. Let's
+    see the details of training the data format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the NER, you need to provide a list of pairs of sentences and their annotations.
+    Each annotation should include the entity type, the start position of the entity
+    in terms of characters, and the end position of the entity in terms of characters.
+    Let''s see an example of a dataset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This dataset consists of three example pairs. Each example pair includes a sentence
+    as the first element. The second element of the pair is a list of annotated entities.
+    In the first example sentence, there is only one entity, `Munich`. This entity's
+    label is `GPE` and starts at the 20th character position in the sentence and ends
+    at the 25th character. Similarly, the second sentence includes two entities; one
+    is `PERSON`, `Victoria's`, and the second entity is `GPE`, `house`. The third
+    sentence does not include any entities, hence the list is empty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We cannot feed the raw text and annotations directly to spaCy. Instead, we
+    need to create an `Example` object for each training example. Let''s see the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code segment, first, we created a doc object from the example sentence.
+    Then we fed the doc object and its annotations in a dictionary form to create
+    an `Example` object. We'll use `Example` objects in the next section's training
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating example sentences for training the dependency parser is a bit different,
+    and we'll cover this in the *Training a pipeline component from scratch* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we're ready to train our own spaCy models. We'll first see how to update
+    an NLP pipeline statistical model. For this purpose, we'll train the NER component
+    further with the help of our own examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating an existing pipeline component
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, we will train spaCy''s NER component further with our own
+    examples to recognize the navigation domain. We already saw some examples of navigation
+    domain utterances and how spaCy''s NER model labeled entities of some example
+    utterances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Obviously, we want NER to perform better and recognize location entities, such
+    as street names, district names, and other location names, such as home, work,
+    and office. Now, we''ll feed our examples to the NER component and will do more
+    training. We will train NER in three steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we'll disable all the other statistical pipeline components, including
+    the POS tagger and the dependency parser.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We'll feed our domain examples to the training procedure.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We'll evaluate the new NER model.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Also, we will learn how to do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Save the updated NER model to disk.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Read the updated NER model when we want to use it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let's get started and dive into training the NER model procedure. As we pointed
+    out in the preceding list, we'll train the NER model in several steps. We'll start
+    with the first step, disabling the other statistical models of the spaCy NLP pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Disabling the other statistical models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Before starting the training procedure, we disable the other pipeline components,
+    hence we train **only** the intended component. The following code segment disables
+    all the pipeline components except NER. We call this code block before starting
+    the training procedure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another way of writing this code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the preceding code block, we made use of the fact that `nlp.disable_pipes`
+    returns a context manager. Using a `with` statement makes sure that our code releases
+    the allocated sources (such as file handlers, database locks, or multiple threads).
+    If you''re not familiar with statements, you can read more at this Python tutorial:
+    [https://book.pythontips.com/en/latest/context_managers.html](https://book.pythontips.com/en/latest/context_managers.html).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have completed the first step of the training code. Now, we are ready to
+    make the model training procedure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Model training procedure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we mentioned in [*Chapter 3*](B16570_03_Final_JM_ePub.xhtml#_idTextAnchor055),
+    *Linguistic Features*, in the *Introducing named entity recognition* section,
+    spaCy's NER model is a neural network model. To train a neural network, we need
+    to configure some parameters as well as provide training examples. Each prediction
+    of the neural network is a sum of its **weight** values; hence, the training procedure
+    adjusts the weights of the neural network with our examples. If you want to learn
+    more about how neural networks function, you can read the excellent guide at [http://neuralnetworksanddeeplearning.com/](http://neuralnetworksanddeeplearning.com/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the training procedure, we'll go over the training set *several times* and
+    show each example several times (one iteration is called one **epoch**) because
+    showing an example only once is not enough. At each iteration, we shuffle the
+    training data so that the order of the training data does not matter. This shuffling
+    of training data helps train the neural network thoroughly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In each epoch, the training code updates the weights of the neural network with
+    a small number. Optimizers are functions that update the neural network weights
+    subject to a loss. At epoch, a loss value is calculated by comparing the actual
+    label with the neural network's current output. Then, the optimizer function can
+    update the neural network's weight with respect to this loss value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following code, we used the **stochastic gradient descent** (**SGD**)
+    algorithm as the optimizer. SGD itself is also an iterative algorithm. It aims
+    to minimize a function (for neural networks, we want to minimize the loss function).
+    SGD starts from a random point on the loss function and travels down its slope
+    in steps until it reaches the lowest point of that function. If you want to learn
+    more about SGD, you can visit Stanford's excellent neural network class at [http://deeplearning.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/](http://deeplearning.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Putting it all altogether, here''s the code to train spaCy''s NER model for
+    the navigation domain. Let''s go step by step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the first three lines, we make the necessary imports. `random` is a Python
+    library that includes methods for pseudo-random generators for several distributions,
+    including uniform, gamma, and beta distributions. In our code, we''ll use `random.shuffle`
+    to shuffle our dataset. `shuffle` shuffles sequences into place:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we will create a language pipeline object, `nlp`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, we will define our navigation domain training set sentences. Each example
+    contains a sentence and its annotation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We want to iterate our data 20 times, hence the number of epochs is `20`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the next 2 lines, we disable the other pipeline components and leave NER
+    for training. We use `with statement` to invoke `nlp.disable_pipe` as a context
+    manager:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We create an `optimizer` object, as we discussed previously. We''ll feed this
+    `optimizer` object to the training method as a parameter:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, for each epoch, we will shuffle our dataset by `random.shuffle`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'For each example sentence in the dataset, we will create an `Example` object
+    from the sentence and its annotation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We will feed the `Example` object and `optimizer` object to `nlp.update`. The
+    actual training method is `nlp.update`. This is the place where the NER model
+    gets trained:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Once the epochs are complete, we save the newly trained NER component to disk
+    under a directory called `navi_ner`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '`nlp.update` outputs a loss value each time it is called. After invoking this
+    code, you should see an output similar to the following screenshot (the loss values
+    might be different):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.4 – NER training''s output'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_4.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.4 – NER training's output
+  prefs: []
+  type: TYPE_NORMAL
+- en: That's it! We trained the NER component for the navigation domain! Let's try
+    some example sentences and see whether it really worked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evaluating the updated NER
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now we can test our brand-new updated NER component. We can try some examples
+    with synonyms and paraphrases to test whether the neural network really learned
+    the navigation domain, instead of memorizing our examples. Let''s see how it goes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are the training sentences:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Let''s use the synonym `house` for `home` and also add two more words to `to
+    my`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'It worked! `House` is recognized as a `GPE` type entity. How about we replace
+    `navigate` with a similar verb, `drive me`, and create a paraphrase of the first
+    example sentence:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we try a slightly different sentence. In the next sentence, we won''t
+    use a synonym or paraphrase. We''ll replace `Oxford Street` with a district name,
+    `Soho`. Let''s see what happens this time:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'As we remarked before, we updated the statistical model, hence, the NER model
+    didn''t forget about the entities it already knew. Let''s do a test with another
+    entity type to see whether the NER model really didn''t forget the other entity
+    types:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Great! spaCy's neural networks can recognize not only synonyms but entities
+    of the same type. This is one of the reasons why we use spaCy for NLP. Statistical
+    models are incredibly powerful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we'll learn how to save the model we trained and load a
+    model into our Python scripts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Saving and loading custom models
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the preceding code segment, we already saw how to serialize the updated
+    NER component as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We serialize models so that we can upload them in other Python scripts whenever
+    we want. When we want to upload a custom-made spaCy component, we perform the
+    following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are the steps that we follow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We first load the pipeline components without the NER, because we want to add
+    our custom NER. This way, we make sure that the default NER doesn't override our
+    custom NER component.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Next, we create an NER pipeline component object. Then we load our custom NER
+    component from the directory we serialized to this newly created component object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We then add our custom NER component to the pipeline.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We print the metadata of the pipeline to make sure that loading our custom component
+    worked.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Now, we also learned how to serialize and load custom components. Hence, we
+    can move forward to a bigger mission: training a spaCy statistical model from
+    scratch. We''ll again train the NER component, but this time we''ll start from
+    scratch.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training a pipeline component from scratch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we saw how to update the existing NER component according
+    to our data. In this section, we will create a brand-new NER component for the
+    medicine domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s start with a small dataset to understand the training procedure. Then
+    we''ll be experimenting with a real medical NLP dataset. The following sentences
+    belong to the medicine domain and include medical entities such as drug and disease
+    names:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following code block shows how to train an NER component from scratch.
+    As we mentioned before, it''s better to create our own NER rather than updating
+    spaCy''s default NER model as medical entities are not recognized by spaCy''s
+    NER component at all. Let''s see the code and also compare it to the code from
+    the previous section. We''ll go step by step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the first three lines, we made the necessary imports. We imported `spacy`
+    and `spacy.training.Example`. We also imported `random` to shuffle our dataset:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We defined our training set of three examples. For each example, we included
+    a sentence and its annotated entities:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also listed the set of entities we want to recognize – `DIS` for disease
+    names, and `DRUG` for drug names:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We created a blank model. This is different from what we did in the previous
+    section. In the previous section, we used spaCy''s pre-trained English language
+    pipeline:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also created a blank NER component. This is also different from the previous
+    section''s code. We used the pre-trained NER component in the previous section:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we add each medical label to the blank NER component by using `ner.add_label`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We define the number of epochs as `25`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The next two lines disable the other components other than the NER:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We created an optimizer object by calling `nlp.begin_training`. This is different
+    from the previous section. In the previous section, we created an optimizer object
+    by calling `nlp.create_optimizer`, so that NER doesn''t forget the labels it already
+    knows. Here, `nlp.begin_training` initializes the NER model''s weights with `0`,
+    hence, the NER model forgets everything it learned before. This is what we want;
+    we want a blank NER model to train from scratch:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'For each epoch, we shuffle our small training set and train the NER component
+    with our examples:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Here''s what this code segment outputs (the loss values may be different):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.5 – Loss values during training'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_5.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.5 – Loss values during training
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Did it really work? Let''s test the newly trained NER component:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Great – it worked! Let''s also test some negative examples, entities that are
+    recognized by spaCy''s pre-trained NER model but not ours:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This looks good, too. Our brand new NER recognizes only medical entities. Let''s
+    visualize our first example sentence and see how displaCy exhibits new entities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code block generates the following visualization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.6 – Visualization of the example sentence'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_6.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.6 – Visualization of the example sentence
+  prefs: []
+  type: TYPE_NORMAL
+- en: We successfully trained the NER model on small datasets. Now it's time to work
+    with a real-world dataset. In the next section, we'll dive into processing a very
+    interesting dataset regarding a hot topic; mining Corona medical texts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with a real-world dataset
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we will train on a real-world corpus. We will train an NER
+    model on the CORD-19 corpus provided by the *Allen Institute for AI* ([https://allenai.org/](https://allenai.org/)).
+    This is an open challenge for text miners to extract information from this dataset
+    to help medical professionals around the world fight against Corona disease. CORD-19
+    is an open source dataset that is collected from over 500,000 scholarly articles
+    about Corona disease. The training set consists of 20 annotated medical text samples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s get started by having a look at an example training text:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: As we see from this example, real-world medical text can be quite long, and
+    it can include many medical terms and entities. Nouns, verbs, and entities are
+    all related to the medicine domain. Entities can be numbers (`91%`), number and
+    units (`100 ng/ml`, `25 microg/ml`), number-letter combinations (`H3N2`), abbreviations
+    (`CDC`), and also compound words (`qRT-PCR`, `PE-labeled`).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The medical entities come in several shapes (numbers, number and letter combinations,
+    and compounds) as well as being very domain-specific. Hence, a medical text is
+    very different from everyday spoken/written language and definitely needs custom
+    training.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Entity labels can be compound words as well. Here''s the list of entity types
+    that this corpus includes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We transformed the dataset so that it''s ready to use with spaCy training.
+    The dataset is available under the book''s GitHub repository: [https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07/data](https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07/data).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Let''s go ahead and download the dataset. Type the following command into your
+    terminal:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This will download the dataset into your machine. If you wish, you can manually
+    download the dataset from GitHub, too.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Now, we''ll preprocess the dataset a bit to recover some format changes that
+    happened while dumping the dataset as `json`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This code segment will read the dataset's `JSON` file and format it according
+    to the spaCy training data conventions.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Next, we''ll do the statistical model training:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'a) First, we''ll do the related imports:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'b) Secondly, we''ll initialize a blank spaCy English model and add an NER component
+    to this blank model:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'c) Next, we define the labels we''d like the NER component to recognize and
+    introduce these labels to it:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'd) Finally, we''re ready to define the training loop:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This code block is identical to the training code from the previous section,
+    except for the value of the `epochs` variable. This time, we iterated for `100`
+    epochs, because the entity types, entity values, and the training sample text
+    are semantically more complicated. We recommend you do at least 500 iterations
+    for this dataset if you have the time. 100 iterations over the data are sufficient
+    to get good results, but 500 iterations will take the performance further.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Let''s visualize some sample texts to see how our newly trained medical NER
+    model handled the medical entities. We''ll visualize our medical entities with
+    `displaCy` code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The following screenshot highlights two entities – `tuberculosis` and the name
+    of the bacteria that causes it as the pathogen entity:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Figure 7.7 – Highlighted entities of the sample medical text](img/B16570_7_7.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_IMG
+- en: Figure 7.7 – Highlighted entities of the sample medical text
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'This time, let''s look at entities of a text concerning pathogenic bacteria.
+    This sample text contains many entities, including several diseases and pathogen
+    names. All the disease names, such as `pneumonia`, `tetanus`, and `leprosy`, are
+    correctly extracted by our medical NER model. The following `displaCy` code highlights
+    the entities:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Here is the visual generated by the preceding code block:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![Figure 7.8 – Sample text with disease and pathogen entities highlighted'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B16570_7_8.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.8 – Sample text with disease and pathogen entities highlighted
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looks good! We successfully trained spaCy's NER model for the medicine domain
+    and now the NER can extract information from medical text. This concludes our
+    section. We learned how to train a statistical pipeline component as well as prepare
+    the training data and test the results. These are great steps in both mastering
+    spaCy and machine learning algorithm design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we explored how to customize spaCy statistical models according
+    to our own domain and data. First, we learned the key points of deciding whether
+    we really need custom model training. Then, we went through an essential part
+    of statistical algorithm design – data collection, and labeling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here we also learned about two annotation tools – Prodigy and Brat. Next, we
+    started model training by updating spaCy's NER component with our navigation domain
+    data samples. We learned the necessary model training steps, including disabling
+    the other pipeline components, creating example objects to hold our examples,
+    and feeding our examples to the training code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we learned how to train an NER model from scratch on a small toy dataset
+    and on a real medical domain dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this chapter, we took a step into the statistical NLP playground. In the
+    next chapter, we will take more steps in statistical modeling and learn about
+    text classification with spaCy. Let's move forward and see what spaCy brings us!
+  prefs: []
+  type: TYPE_NORMAL

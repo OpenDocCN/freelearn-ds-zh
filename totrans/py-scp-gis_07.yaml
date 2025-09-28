@@ -1,0 +1,879 @@
+- en: Geoprocessing with Geodatabases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 3](42c1ea5a-7372-4688-bb7f-fc3822248562.xhtml), *Introduction to
+    Geospatial Databases*, you learned how to install PostGIS, create a table, add
+    data, and perform basic spatial queries. In this chapter, you will learn how to
+    work with geospatial databases to answer questions and make maps. This chapter
+    will have you load crime data into tables. Once you have populated your geodatabase
+    with real-world data, you will learn how to perform common crime analysis tasks.
+    You will learn how to map queries, query by date ranges, and perform basic geoprocessing
+    tasks such as buffers, point in polygon, and nearest neighbor. You will learn
+    how to add widgets to your Jupyter Notebooks to allow queries to be interactive.
+    Lastly, you will learn how to use Python to create charts from your geospatial
+    queries. As a crime analyst, you will make maps, but not all GIS-related tasks
+    are map-based. Analysts use GIS data to answer questions and create reports. Executives
+    are often more familiar with charts and graphs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, you will learn:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to use spatial queries to perform geoprocessing tasks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to add triggers to your tables
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to map your geospatial query results
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to graph geospatial queries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to use Jupyter to interact with and connect widgets to your queries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A crime dashboard
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To build an interactive **crime dashboard**, you will need to collect data to
+    build a database. Then, you will query the data and add widgets to allow users
+    to modify the queries without needing to code. Lastly, you will graph and map
+    the query results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a crime database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To build the components for a crime dashboard, we will use the City of Albuquerque's
+    open data. Albuquerque has datasets for crime incidents, as well as area commands
+    and `beats`. By combining the areas with `incidents`, you will be able to report
+    on two geographic areas. You could then extend the analysis using neighborhood
+    associations or any other boundary—Census blocks, groups, or tracts, and get demographic
+    information as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find links to the data on the main open data site located at: [http://www.cabq.gov/abq-data/](http://www.cabq.gov/abq-data/).
+    Scroll to the bottom of the page and look for the Safety Data Sets heading.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the tables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will need to create three tables to hold the crime data. We need a table
+    for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Area commands
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Beats
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Incidents
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'To create the tables, we need to import the required libraries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The precious code imports `psycopg2` for connecting to PostGIS, `requests` to
+    make the call to the service so you can grab the data, `Point`, `Polygon`, and
+    `MultiPolygon` from `shapely.geometry` to make converting the `GeoJSON` to objects
+    easier, and `datetime` because the `incidents` have a `date` field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [Chapter 3](42c1ea5a-7372-4688-bb7f-fc3822248562.xhtml), *Introduction to
+    Geospatial Databases*, you created a database named `pythonspatial` with a user
+    called `postgres`. We will create the tables in that database. To populate the
+    tables, we will copy some of the fields from the service. The layer page of the
+    service has a list of fields at the bottom.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The URL to the layer is linked to the root page of the service or the layer
+    number. For incidents, the URL to the layer is: [http://coagisweb.cabq.gov/arcgis/rest/services/public/APD_Incidents/MapServer/0](http://coagisweb.cabq.gov/arcgis/rest/services/public/APD_Incidents/MapServer/0).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Each of the fields has a type and length for the `incidents` layer as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`OBJECTID` (type: esriFieldTypeOID, alias: Object_ID)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Shape` (type: esriFieldTypeGeometry, alias: Geometry)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CV_BLOCK_ADD` (type: esriFieldTypeString, alias: Location, length: 72)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`CVINC_TYPE` (type: esriFieldTypeString, alias: Description, length: 255)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`date` (type: esriFieldTypeDate, alias: Date, length: 8)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Supported operations**: Query, Generate Renderer, Return updates.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create the tables using the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code starts by creating the connection and getting the `cursor`.
+    It then creates the `areacommand` table, with a field for the `name` and a `GEOMETRY`
+    field. In the **ArcServer** service, the area command field has a length of `20`,
+    so the code created a field called `name` as a `VARCHAR(20)`. The next two lines
+    create the tables for `beats` and `incidents`, and lastly, the code commits, making
+    the changes permanent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Populating the data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'With the tables in place, we need to grab the data and populate them. The following
+    code will grab the area commands and insert them into our table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses `requests` to query the URL passing parameters. The parameters
+    just grab all the data (`1=1`), and grab all the fields (`*`) in reference `4326`
+    and as `json`. The results are loaded in the variable `data` using the `json()`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To learn about the** Environmental Systems Research Institute** (**ESRI**)
+    ArcServer query parameters, see the API reference here: [http://coagisweb.cabq.gov/arcgis/sdk/rest/index.html#/Query_Map_Service_Layer/02ss0000000r000000/](http://coagisweb.cabq.gov/arcgis/sdk/rest/index.html#/Query_Map_Service_Layer/02ss0000000r000000/)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next block of code is the `for` loop that will insert the data. The service
+    returns `json`, and the data we need is stored in the features array. For each
+    area command (`acmd`) in the `features` array (`data['features']`), we will grab
+    the `name` and `geometry`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `geometry` is comprised of multiple `rings`—in this case, because our data
+    is comprised of polygons. We need to loop through the `rings`. To do so, the code
+    has another `for` loop that iterates through each `ring`, creates a polygon, and
+    adds it to `polys[]`. When all the `rings` are collected as polygons, the code
+    creates a single `MultiPolygon` with the name of the area command and inserts
+    it into the table using `cursor.execute()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The SQL is the basic insert command but uses a parameterized query and `ST_GeometryFromText()`.
+    Do not get distracted by those additions. Build the query by using the base query
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: To pass the values, the code uses `.format()`. It passes the string name and
+    uses Shapely to convert the coordinates to WKT (`p.wkt`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will need to do the same thing for the `beats` table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code is the same as the code for area commands, only passing additional
+    fields using multiple placeholders (`'{}'`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Lastly, we need to add the `incidents`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code grabs the data using `requests`. It then iterates through
+    the `features`. This code block has some error checking because there are `features`
+    with blank dates and some with no coordinates. The code passes if there is no
+    `date` and uses a `try`, with the `catch` block accepting a `KeyError`, which
+    will catch the missing coordinates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the data is loaded into the tables, we can start to query the data
+    and present it in maps and charts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping queries
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [Chapter 3](42c1ea5a-7372-4688-bb7f-fc3822248562.xhtml), *Introduction to
+    Geospatial Databases*, you queried the database and got text back. The `geometry`
+    came back as **well-known text** (**WKT**). These are the results we asked for,
+    but I cannot visualize geographic data by reading a list of coordinates. I need
+    to see it on a map. In this section, you will use `ipyleaflet` and Jupyter to
+    map the results of your queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To map the queries in Jupyter, you need to install `ipyleaflet`. You can do
+    this using `pip` at your OS''s command prompt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then you may need to enable the extension, depending on your environment. At
+    the command prompt, type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the code, and examples of using `ipyleaflet`, you can view the GitHub repository
+    at: [https://github.com/ellisonbg/ipyleaflet](https://github.com/ellisonbg/ipyleaflet)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you receive an error in your mapping, you may need to enable the `widgetsnbextension`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you have Jupyter running, you will need to restart it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With `ipyleaflet` installed and enabled, you can map your queries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code imports the libraries we need to query and map the data.
+    Let''s make the `connection` and get the `cursor`, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In [Chapter 3](42c1ea5a-7372-4688-bb7f-fc3822248562.xhtml), *Introduction to
+    Geospatial Databases*, the queries all used `ST_AsText()` to return `geometry`.
+    Now that we will map the results, it will be easier if we have them returned as
+    `GeoJSON`. In the following code, you will use `ST_AsGeoJSON()` to get the `geometry`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous query grabs all the records in the `areacommand` table, with their
+    `name` and `geometry` as `GeoJSON`, then prints the first record (`c[0]`). The
+    result is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`ST_AsText` and `ST_AsGeoJSON` are two of the 17 ways to get `geometry` out
+    of PostGIS. For a full list of available return types, see the PostGIS reference
+    at: [https://postgis.net/docs/reference.html#Geometry_Accessors](https://postgis.net/docs/reference.html#Geometry_Accessors)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that you have some `GeoJSON`, it is time to create a map to display it.
+    To make the leaflet map, use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code defines the `center` of the map which, for Albuquerque, I
+    always use the intersections of I-25 and I-40\. This intersection splits the city
+    into quadrants. The code then defines the `zoom` level—the higher the number,
+    the closer the `zoom`. Lastly, it prints the map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will have a blank basemap with `OpenStreetMap` tiles. In Jupyter, when you
+    add data to the map, you can scroll back to the original print of the map to see
+    the data; you do not need to reprint the map every time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `GeoJSON` of the area commands is stored in variable `c`. For every item
+    `c[x]`, the `GeoJSON` is in position `1` `(c[x][1]`). The following code will
+    iterate through `c` and add the `GeoJSON` to the map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code assigns the `GeoJSON` to a layer using `json.loads()`. This
+    will make the returned `GeoJSON` string a dictionary in Python. Next, the code
+    calls the `ipyleaflet GeoJSON()` method on the layer, and passes it to the variable
+    `layergeojson`. Finally, `add_layer()` is called on the map and passes `layergeojson`.
+    There are other ways to draw maps in Jupyter; for example, you could plot them
+    using Matplotlib, Plotly, or Bokeh. If you come from web mapping, you are probably
+    already familiar with the Leaflet JavaScript library, which will make using `ipyleaflet`
+    familiar. Also, `ipyleaflet` loads a basemap and provides interactivity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you scroll up to the map, you should see the screenshot as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/fb3cfccb-7d9a-438e-a919-5461df1c5137.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Changing the SQL query in `cursor.execute()`, you can map the `beats`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You should see the `beats` drawn as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e89910fa-5868-48ea-8593-74ee198937a5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: You can do the same for `incidents`, but we will hold on to that for now, because
+    there are almost 30,000 `incidents` in the data set and it would overwhelm our
+    map. To map `incidents`, we will use spatial queries to limit our selection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Incidents by date
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'One of the ways you can limit the results of an incident query is by `date`.
+    Using the Python `datetime` library, you can specify a `date`, then query `incidents`
+    on that `date`, and get the `geometry` of the results as `GeoJSON` and add it
+    to your map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code specifies a `date` (YYYYMD) of August 1, 2017\. It queries
+    the `incidents` table we're using, where `date = d` and returns the `geometry`
+    as `GeoJSON`. It then uses the `for` loop you used for area commands, and `beats`
+    to map the `incidents`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you create a map in a Jupyter Notebook, further blocks of code will modify
+    that map. You may need to scroll back up to your map to see the changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The map you created earlier will now look like the screenshot as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e3a40684-3088-4091-8c8d-f01267967508.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Besides specifying a specific `date`, you could get all the `incidents` where
+    the `date` was greater than a specific day:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Or, you could query dates at an `interval` earlier than today and now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses the `NOW()` method and a `10 day` interval. By specifying
+    `>=`, you will get all the crimes that are 10 days old, and newer from the current
+    day. I wrote this on November 24, 2017, so the results will be all `incidents`
+    from November 14^(th) until today.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Incidents in a polygon
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our crime database has a polygon area—area commands and `beats`—as well as
+    incident points. To build a crime dashboard, we want to be able to map `incidents`
+    within a specific area command or `beat`. We can do that by using `JOIN` and `ST_Intersects`.
+    The following code shows you how:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code selects the `geometry` from `incidents` as `GeoJSON` (`ST_AsGeoJSON(i.geom)`
+    from `incidents`), where the incident `ST_Intersects` the polygon area command,
+    specifically where the name of the area command is `FOOTHILLS`. The code is joining
+    the incident and area command tables where the intersection is true. The code
+    limits the results by selecting only the last 10 days of crimes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code then iterates through the results and maps them as in the previous
+    examples. You should see the screenshot as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/7d335f59-7618-4ed3-804c-5a466a398938.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The preceding screenshot overlays the `incidents` on the `Foothills` area command.
+    Notice all the `incidents` are within the polygon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can do the same thing for specific `beats` by changing the SQL query. The
+    following code will map specific `beats`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses an array of the `beats.beat` field. In Python, the array
+    is `[]`, but in the SQL statement, use parentheses. The results are the specified
+    `beats`. Then, the code maps them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the same specified `beats`, we can select the `incidents` using a join
+    on `ST_Intersects()` with the `beats`, and mapping the `incidents` as shown in
+    the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code passes the `beats` array and filters again by the last 10
+    days. It then maps the `incidents`, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/2ec522a6-b36a-4490-b562-50d31cca930d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Buffers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You have mapped data from tables, but now you will map the results of a geoprocessing
+    task—buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To code a buffer example, we must first create a point. The following code
+    will do that for us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code creates a point using Shapely. It then converts it to `GeoJSON`
+    using `shapely.geometry.mapping()`. The next two lines allow us to display it
+    on the map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PostGIS allows you to send data to the database and get data back, none of
+    which has to be in a table. For example, examine the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code uses `ST_Buffer()` to get a polygon back from PostGIS. `ST_Buffer()`
+    can take a point geography and a radius in meters to return the polygon. The code
+    wraps the result in `ST_AsGeoJSON` so we can map it. In this example, the result
+    set is a single item, so we don't need the `for` loop. The code loads the result
+    `buff[0][0]`and maps it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The result of the previous code is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9905bae8-76cc-4352-8b76-f5585ab4033f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We now have a polygon that we can use to select `incidents` from. The following
+    code will execute the same query as earlier, but instead of `ST_AsGeoJSON`, we
+    will use `ST_AsText`. We are not mapping the polygon, but using it as a parameter
+    for a point in the polygon operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the previous code, the query result is passed to a `shapely` polygon named
+    `b` using `loads()`. Now, you can pass that polygon to another query using `ST_Intersects()`,
+    as in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code selects the `incidents` as `GeoJSON`, where they intersect
+    the `buffer` (`b.wkt`), and where they are within the last 10 days. The results
+    are mapped. The following map shows the output of the previous code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/72a6e62b-94ac-4701-9580-fe7e703099f9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Nearest neighbor
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using a `buffer`, you can get all the `incidents` within a specified radius
+    of the point of interest. But what if you only want the 5, 10, or 15 closest incidents?
+    To do that, you can use the `<->` operator or k-nearest neighbor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can use the following code to select the `15` closest points to a specified
+    point, `p`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code creates a point using Shapely, and uses it in the SQL query.
+    The query selects the incident `geometry` as `GeoJSON`, and then calculates the
+    distance of each incident from the specified point. The `ORDER BY` clause, `<->`
+    operator, and limit clause make sure that we get the `15` nearest points in order
+    of closeness.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last block of code is our code for adding the results to the map. The results
+    are shown in the following screenshot. The point in the center of the screenshot
+    is the specified point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/bbf19a2f-97a6-4d7a-a3b2-304570e2c7d2.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now that you know how to map the results of your spatial queries, let's add
+    interactive widgets to modify the queries and change the map without writing new
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interactive widgets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'At the beginning of the chapter, you learned how to query and map `incidents`
+    based on a `date`. In Jupyter, you can use interactive widgets to change values.
+    The code will help us in how you can use `ipywidgets` to import `interact`, which
+    will allow you to insert a `DatePicker` so that you can select a `date` to interact
+    with the Notebook:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/21e217ae-4e75-4102-a6f2-947fe5623420.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The previous code imports `interact` and the `DatePicker` widget. At its simplest,
+    the previous screenshot shows a decorator and function to allow interactively
+    selecting a `date` and displaying it as a string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the `DatePicker` changes, `x` (the `DatePicker`) is sent to the function
+    `theDate(x)`, and `x` is printed as a string. The actual return value is `datetime.date`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the `DatePicker` widget, you can pass a `date` value to an SQL query,
+    and then map the results. When the `DatePicker` changes, you can erase the map
+    and then display the new results. The following code will show you how:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code creates an interactive `DatePicker` widget. The code has an
+    `if...else` statement because, on the first pass, `x` will be none. The `DatePicker`
+    is not selected, so we `pass` on the first go around.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, the code grabs all the layers on the map, and removes them using `map.remove_layer()`,
+    starting at the second (`[1:]`) layer. Why the second layer? Because the first
+    layer on the map is the `TileLayer`—the basemap. We want that to stay, and only
+    remove the markers that were added from the SQL query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code then strips the hyphens from the `date` string and converts it into
+    a `datetime`. Once it is a `datetime`, you can pass it to the SQL query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next code block is the same block you have used throughout this chapter
+    to add the query results to the map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Selecting a `date` of November 2, 2017, is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/ed83f731-e64d-49ca-ab8a-ca09926047fc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'And when selecting November 8, 2017, the map is redrawn and shown in the following
+    screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/573d8ec3-9954-4981-82bc-c25e4e341f90.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: These screenshots were generated immediately following the reselection of a
+    `date`. A user can use a `DatePicker` drop-down to requery the data in your PostGIS
+    database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In Jupyter, if you set the value of a variable to a string or an integer, you
+    will get a number slider or a text box. In the following screenshot, the decorator
+    has `x="None"`, with `None` being a string. The text `None` is a placeholder to
+    create the text box. This creates a text box with the word `None` in it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/bd28f970-d507-45b6-9ae6-e943bad6d1cc.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The code in the previous screenshot is presented as follows. The code will
+    allow you to type the name of an area command, and then display the `incidents`
+    within that area command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code starts with the decorator and a string. This will draw the
+    text box. The `areaCommand()` function acts exactly as the `date` example mentioned
+    earlier, but passes a string to the SQL query. It returns the results of the query,
+    and draws the `incidents` on the map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot shows the return values for `NORTHWEST`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/47fdc251-03f1-4ff6-a9f6-a9ae6abb3548.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The following screenshot shows the map when the user types `NORTHWEST` in the
+    text box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e398e0e1-7be4-48eb-ab99-caa76341fcf9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In this section, you have learned how to perform queries on your spatial data,
+    and how to map the results. In the next section, you will learn how to chart the
+    results of your queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Charts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Maps are a great data visualization tool, but sometimes a bar chart will do
+    the trick. In this section, you will learn how to chart your data using `pandas.DataFrame`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `DataFrame` stores two-dimensional tabular data (think of a spreadsheet).
+    Data frames can be loaded with data from many different sources and data structures,
+    but what interests us is that it can load data from SQL queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code loads an SQL query into a `DataFrame`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code selects the `date`, and then counts the occurrence of each
+    `date` in `incidents` where the `date` is greater than October 1, 2017\. The `DataFrame`
+    is then populated using `DataFrame` (SQL, columns). In this case, the code passes
+    `cursor.fetchall()`*,* and `columns=["date","count"]`. The resulting five records
+    are displayed using `df.head()`. You could use `df.tial()` to see the last five
+    records, or `df` to see it all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot shows `df.head()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/1c74eb97-d105-424a-9e1d-6ebbef910774.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The preceding screenshot shows that on 2017-10-17, there were 175 `incidents`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can plot a `DataFrame` by calling the `plot()` method from the `pandas`
+    library. The following code will plot a bar chart of the `DataFrame` `df`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code sorts the data frame by `date`. This is so that the dates
+    are in chronological order in our bar chart. It then plots the data using a bar
+    chart, with the *x*-axis being the `date`, and the *y*-axis is the `count`. I
+    specified the figure size to make it fit on the screen. For smaller data sets,
+    the default figure size tends to work well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot is the result of the `plot`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9da3f2f5-50e5-4513-a167-494f2b73bb9d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: This chart shows us what a map cannot—that crimes seem to decrease on Friday
+    and Saturday.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s walk through another example using `beats`. The following code will
+    load crimes by `beat`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code selects the `beat`, `agency`, and count of `incidents` from
+    the `beats` table. Notice the `left join`. The `left join` will give us `beats`
+    that may have zero `incidents`. The join is based on an incident being in a `beat`
+    polygon. We group by each field we selected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The query is loaded into a `DataFrame`, and the `head()` is displayed. The
+    result is in the screenshot as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/a10108e4-06b6-4ea6-a6f7-d41e7a9fd2d6.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Notice that we have `beats` with no crimes instead of missing beats. There
+    are too many `beats` to scroll through, so let''s chart the `DataFrame`. We will
+    use the plot function again, passing an `x`, `y`, `kind`, and `figsize` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result of the plot is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/e31d97c2-6256-4473-9748-7d23f9830bc0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'That is a lot of data to look through, but certain `beats` stand out as high
+    crime. This is where data frames can help. You can query the `DataFrame` instead
+    of requerying the database. The following code will plot the selection of `beats`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code passes an expression to the area. The expression selects
+    records in the `DataFrame` column `Crimes`, where the value is over `800`; `Crimes`
+    is the `count` column. The result is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/82ad4c02-e28a-45a5-9c19-eef2d798574a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Loading your queries into a `DataFrame` will allow you to plot the data, but
+    also to slice and query the data again without having to requery the database.
+    You can also use the interactive widgets to allow users to modify the charts as
+    you learned with the maps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Triggers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In any database, when data is inserted, updated, or deleted, you can have the
+    table launch a **trigger**. For example, if a user inserts a record, you could
+    launch a trigger to make sure that the record meets some specified criteria—no
+    null values. Spatial databases allow you to use the same triggers. You can create
+    these in several languages, including Python and SQL. The following example will
+    use `PL/pgsql`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You create triggers using SQL expressions. The following code will create a
+    trigger to prevent entering an incomplete incident:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code creates a new function named `newcrime()`. The function is
+    an `if` statement that checks if the `NEW.crimetype` is null. If it is, the record
+    is not added, and an exception is raised. The exception will state that `NEW.address`
+    must include a crime type. The assumption is being made that the address is not
+    null.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that you have a function, you can create a trigger that calls that function.
+    The following code shows you how:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code executes the SQL statement that creates the trigger. It is
+    created `BEFORE INSERT OR UPDATE`. To test the trigger, let''s insert a point
+    with no crime type. The following code will attempt to enter the incident:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous code creates an incident with only an `address` and a `geom`.
+    The result of executing the previous code is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/4cae4022-c224-4c5b-8834-d4352df0b5ad.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In the previous screenshot, the InternalError states that 123 Sesame St Must
+    Include Crime Type. Our trigger successfully blocked bad data from being entered.
+    To double-check, we can query for `"123 Sesame St."` The results are shown in
+    the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f85d2d8f-fb99-4010-b4ac-5fdc0988b275.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: A trigger can be used to prevent bad data from being loaded for emailing or
+    texting when changes have occurred. For example, you could allow users to enter
+    polygons they are interested in, and their phone number. On a new incident being
+    added to the database, you could see if it is within a polygon, and if so, text
+    the phone number associated with the polygon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To install other languages for triggers, open **Stack Builder** and add the
+    add-on shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/6623adda-2f3b-49fc-8396-4342f7a6fba5.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to use spatial queries to perform geoprocessing
+    tasks. You also learned how to map and chart the results of your queries using
+    `ipyleaflet` and data frames. You learned how to modify the maps and queries using
+    interactive widgets in Jupyter. Lastly, you learned about how triggers work, and
+    were shown a quick example of data checking using trigger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, you will learn how to perform geoprocessing tasks using
+    QGIS. You will learn how to use toolboxes that are already included in QGIS. You
+    will learn how to write your own toolboxes that you can use and share with other
+    QGIS users, and you will learn how to use QGIS to map the results. The results
+    can be saved as a QGIS project, or as one of many spatial data formats from QGIS.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,813 @@
+- en: '*Chapter 13*: Streaming Data with Apache Kafka'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Apache Kafka opens up the world of real-time data streams. While there are fundamental
+    differences in stream processing and batch processing, how you build data pipelines
+    will be very similar. Understanding the differences between streaming data and
+    batch processing will allow you to build data pipelines that take these differences
+    into account.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we''re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding logs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how Kafka uses logs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building data pipelines with Kafka and NiFi
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Differentiating stream processing from batch processing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Producing and consuming with Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding logs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you have written code, you may be familiar with software logs. Software
+    developers use logging to write output from applications to a text file to store
+    different events that happen within the software. They then use these logs to
+    help debug any issues that arise. In Python, you have probably implemented code
+    similar to the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code is a basic logging example that logs different levels –
+    `debug`, `warning`, and `error` – to a file named `python-log.log`. The code will
+    produce the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The messages are logged to the file in the order in which they occur. You do
+    not, however, know the exact time the event happened. You can improve on this
+    log by adding a timestamp, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The results of the preceding code are shown in the following code block. Notice
+    that now there is a timestamp. The log is ordered, as was the previous log. However,
+    the exact time is known in this log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding logs, you should notice that they follow a very specific format,
+    or schema, which is defined in `basicConfig`. Another common log that you are
+    probably familiar with is the `web` log.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Web server logs are like software logs; they report events – usually requests
+    – in chronological order, with a timestamp and the event. These logs follow a
+    very specific format and have many tools available for parsing them. Databases
+    also use logs internally to help in replication and to record modifications in
+    a transaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If applications, web servers, and databases all use logs, and they are all slightly
+    different, what exactly is a log?
+  prefs: []
+  type: TYPE_NORMAL
+- en: A **log** is an ordered collection of events, or records, that is append only.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That is all there is to it. Simple. To the point. And yet an extremely powerful
+    tool in software development and data processing. The following diagram shows
+    a sample log:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.1 – An example of a log'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.1_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.1 – An example of a log
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding diagram shows individual records as blocks. The first record is
+    on the left. Time is represented by the position of records in the log. The record
+    to the right of another record is newer. So, record **3** is newer than record
+    **2**. Records are not removed from the log but appended to the end. Record **9**
+    is added to the far right of the log, as it is the newest record – until record
+    10 comes along.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding how Kafka uses logs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Kafka maintains logs that are written to by producers and read by consumers.
+    The following sections will explain topics, consumers, and producers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Topics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Apache Kafka uses logs to store data – records. Logs in Kafka are called `dataengineering`.
+    The topic is saved to disk as a log file. Topics can be a single log, but usually
+    they are scaled horizontally into partitions. Each partition is a log file that
+    can be stored on another server. In a topic with partitions, the message order
+    guarantee no longer applies to the topic, but only each partition. The following
+    diagram shows a topic split into three partitions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.2 – A Kafka topic with three partitions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.2_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.2 – A Kafka topic with three partitions
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding topic – **Transactions** – has three partitions labeled **P1**,
+    **P2**, and **P3**. Within each partition, the records are ordered, with the records
+    to the left being older than the records to the right – the larger the number
+    in the box, the newer the record. You will notice that the records have **K:A**
+    in **P1** and **K:B** and **K:C** in **P2** and **P3**, respectively. Those are
+    the keys associated with the records. By assigning a key, you guarantee that the
+    records containing the same keys will go to the same partition. While the order
+    of records in the topic may be out of order, each partition is in order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kafka producers and consumers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Kafka producers send data to a topic and a partition. Records can be sent round-robin
+    to partitions or you can use a key to send data to specific partitions. When you
+    send messages with a producer, you can do it in one of three ways:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Fire and Forget**: You send a message and move on. You do not wait for an
+    acknowledgment back from Kafka. In this method, records can get lost.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Synchronous**: Send a message and wait for a response before moving on.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Asynchrous**: Send a message and a callback. You move on once the message
+    is sent, but will get a response at some point that you can handle.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Producers are fairly straightforward – they send messages to a topic and partition,
+    maybe request an acknowledgment, retry if a message fails – or not – and continue.
+    Consumers, however, can be a little more complicated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consumers read messages from a topic. Consumers run in a poll loop that runs
+    indefinitely waiting for messages. Consumers can read from the beginning – they
+    will start at the first message in the topic and read the entire history. Once
+    caught up, the consumer will wait for new messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If a consumer reads five messages, the offset is five. The offset is the position
+    of the consumer in the topic. It is a bookmark for where the consumer left off.
+    A consumer can always start reading a topic from the offset, or a specified offset
+    – which is stored by Zookeeper.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What happens when you have a consumer on the `dataengineering` topic, but the
+    topic has three partitions and is writing records faster than you can read it?
+    The following diagram shows a single consumer trying to consume three partitions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.3 – Single consumer reading multiple partitions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.3_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.3 – Single consumer reading multiple partitions
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using consumer groups, you can scale the reading of Kafka topics. In the preceding
+    diagram, the consumer **C1** is in a consumer group, but is the only consumer.
+    By adding additional consumers, the topics can be distributed. The following diagram
+    shows what that looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.4 – Two consumers in a consumer group consuming three partitions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.4_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.4 – Two consumers in a consumer group consuming three partitions
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The preceding diagram shows that there are still more partitions than consumers
+    in the group, meaning that one consumer will be handling multiple partitions.
+    You can add more consumers, as shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.5 – More consumers than partitions leave one idle'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.5_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.5 – More consumers than partitions leave one idle
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding diagram, there are more consumers in the consumer group than
+    partitions. When there are more consumers than partitions, consumers will sit
+    idle. Therefore, it is not necessary to create more consumers than the number
+    of partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can, however, create more than one consumer group. The following diagram
+    shows what this looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.6 – Multiple consumer groups reading from a single topic'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.6_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.6 – Multiple consumer groups reading from a single topic
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple consumer groups can read from the same partition. It is good practice
+    to create a consumer group for every application that needs access to the topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that you understand the basics of working with Kafka, the next section will
+    show you how to build data pipelines using NiFi and Kafka.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building data pipelines with Kafka and NiFi
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To build a data pipeline with Apache Kafka, you will need to create a producer
+    since we do not have any production Kafka clusters to connect to. With the producer
+    running, you can read the data like any other file or database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Kafka producer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Kafka producer will take advantage of the production data pipeline from
+    [*Chapter 11*](B15739_11_ePub_AM.xhtml#_idTextAnchor118)*, Project — Building
+    a Production Data Pipeline*. The producer data pipeline will do little more than
+    send the data to the Kafka topic. The following screenshot shows the completed
+    producer data pipeline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.7 – The NiFi data pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.7_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.7 – The NiFi data pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create the data pipeline, perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Open a terminal. You need to create the topic before you can send messages
+    to it in NiFi. Enter the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Drag an input port and connect it to the output from the `ReadDataLake` processor
+    group, as shown in the following screenshot:![Figure 13.8 – Connecting the input
+    port to an output port
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.8_B15739.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 13.8 – Connecting the input port to an output port
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Next, drag and drop the `ControlRate` processor to the canvas. The `ControlRate`
+    processor will allow us to slow down the data flow with more control than just
+    using backpressure in the queue. This will allow you to make it appear that data
+    is streaming into the Kafka topic instead of just being there all at once. If
+    you did write it all in one pass, once you had read it, the pipeline would stop
+    until you added more data.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To configure the `ControlRate` processor, set the `flowfile count`. Set `1`.
+    These two properties allow you to specify the amount of data passing through.
+    Since you used the flowfile count, the maximum rate will be an integer of the
+    number of flowfiles to let through. If you used the default option, you would
+    set `1 MB`. Lastly, specify how frequently to allow the maximum rate through in
+    the **Time Duration** property. I have left it at 1 minute. Every minute, one
+    flowfile will be sent to the user's Kafka topic.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To send the data to Kafka, drag and drop the `PublishKafka_2_0` processor to
+    the canvas. There are multiple Kafka processors for different versions of Kafka.
+    To configure the processor, you will set the `localhost:9092`, `localhost:9093`,
+    and `localhost:9094`. A Kafka broker is a Kafka server. Since you are running
+    a cluster, you will enter all of the IPs as a comma-separated string – just as
+    you did in the command-line example in the previous chapter. Enter **Topic Name**
+    as users and the **Delivery Guarantee** property to **Guarantee Replication Delivery**.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: You now have a Kafka producer configured in NiFi that will take the output from
+    `ReadDataLake` and send each record to Kafka at one-minute intervals. To read
+    the topic, you will create a NiFi data pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Kafka consumer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As a data engineer, you may or may not need to set up the Kafka cluster and
+    producers. However, as you learned at the beginning of this book, the role of
+    the data engineer varies widely, and building the Kafka infrastructure could very
+    well be part of your job. With Kafka receiving messages on a topic, it is time
+    to read those messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The completed data pipeline is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.9 – Consuming a Kafka topic in NiFi'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.9_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.9 – Consuming a Kafka topic in NiFi
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create the data pipeline, perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Drag and drop the `ConsumeKafka_2_0` processor to the canvas. To configure the
+    processor, set the Kafka brokers to your cluster – `localhost:9092`, `localhost:9093`,
+    and `localhost:9094`. Set `users` and `Earliest`. Lastly, set `NiFi Consumer`.
+    The **Group ID** property defines the consumer group that the consumer (processor)
+    will be a part of.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Next, I have added the `ControlRate` processor to the canvas. The `ControlRate`
+    processor will slow down the reading of the records already on the topic. If the
+    topic is not too large, you could just use backpressure on the queue so that once
+    you have processed the historical data, the new records will move in real time.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To configure the `ControlRate` processor, set `flowfile count`, `1`, and `1`
+    minute.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add an output port to the canvas and name it. I have named it `OutputKafkaConsumer`.
+    This will allow you to connect this processor group to others to complete a data
+    pipeline.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Start the processor group, and you will see records processed every minute.
+    You are reading a Kafka topic with a single consumer in a consumer group. If you
+    recall, when you created the topic, you set the number of partitions to three.
+    Because there are multiple partitions, you can add more consumers to the group.
+    To do that, you just need to add another `ConsumeKafka_2_0` processor and configure
+    it.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Drag another `ConsumeKafka_2_0` processor to the canvas. Configure it with the
+    same Kafka brokers – `localhost:9092`, `localhost:9093`, and `localhost:9094`
+    – and the same topic – `users`. Set `NiFi Consumer`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Now that both processors have the same group ID, they will be members of the
+    same consumer group. With two consumer and three partitions, one of the consumers
+    will read two partitions and the other will read one. You can add another `ConsumeKafka_2_0`
+    processor if the topic is streaming large amounts of data, but any more than three
+    would sit idle.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The new data pipeline is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.10 – Consuming a Kafka with multiple consumers in a consumer group'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.10_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.10 – Consuming a Kafka with multiple consumers in a consumer group
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the processor group, you will start to see records flow through both
+    `ConsumerKafka_2_0` processors. The configuration of the producer will determine
+    which partition records are sent to and how many will flow through your consumer.
+    Because of the default settings and the number of partitions to consumers, you
+    will probably see two flowfiles processed by one consumer for every one flowfile
+    processed by the other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just as you can add more consumers to a consumer group, you can have more than
+    one consumer group read a topic – the number of consumer groups is in no way related
+    to the number of partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To add another consumer group to the data pipeline, drag and drop another `ConsumeKafka_2_0`
+    processor. Set `localhost:9092`, `localhost:9093`, and `localhost:9094`, and set
+    `users`. The group ID is the name of the consumer group. Set it to anything other
+    than `NiFi Consumer` – since this consumer group already exists. I have set `NiFi
+    Consumer2` – hardly creative or original, but it gets the job done. The data pipeline
+    will now look like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.11 – Two consumer groups in NiFi'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.11_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.11 – Two consumer groups in NiFi
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding screenshot, you will notice that there is no `ControlRate`
+    processor on the second consumer group. Once started, the processor will consume
+    the entire history of the topic and send the records downstream. There were 17
+    records in the topic. The other queues are much smaller because the topic is being
+    throttled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can now connect the processor group to any other processor group to create
+    a data pipeline that reads from Apache Kafka. In the following screenshot, I have
+    connected the `ReadKafka` processor group to the production data pipeline from
+    [*Chapter 11*](B15739_11_ePub_AM.xhtml#_idTextAnchor118)*, Project – Building
+    a Production Data Pipeline*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.12 – The completed data pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.12_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.12 – The completed data pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of reading the data from the data lake, the new data pipeline reads
+    the data from the Kafka topic users. The records are sent to the staging processor
+    group to continue the data pipeline. The end result is that the PostgreSQL production
+    table will have all of the records from the Kafka topic. The reading of the data
+    lake is now a Kafka producer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating producers and consumers in NiFi only requires the use of a single processor
+    – `PublishKafka` or `ConsumeKafka`. The configuration is dependent on the Kafka
+    cluster you will publish to or read from. In NiFi, Kafka is just another data
+    input. How you process the data once received will be no different than if you
+    ran a database query. There are some differences in the nature of the data that
+    you must take into consideration, and the next section will discuss them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Differentiating stream processing from batch processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While the processing tools don't change whether you are processing streams or
+    batches, there are two things you should keep in mind while processing streams
+    – **unbounded** and **time**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data can be bounded or unbounded. Bounded data has an end, whereas unbounded
+    data is constantly created and is possibly infinite. Bounded data is last year's
+    sales of widgets. Unbounded data is a traffic sensor counting cars and recording
+    their speeds on the highway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why is this important in building data pipelines? Because with bounded data,
+    you will know everything about the data. You can see it all at once. You can query
+    it, put it in a staging environment, and then run Great Expectations on it to
+    get a sense of the ranges, values, or other metrics to use in validation as you
+    process your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With unbounded data, it is streaming in and you don't know what the next piece
+    of data will look like. This doesn't mean you can't validate it – you know that
+    the speed of a car must be within a certain range and can't have the value *h*
+    – it will be an integer between 0 and 200-ish.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On bounded data, you can query the average or maximum of a field. On unbounded
+    data, you will need to keep recalculating these values as data streams through
+    the data pipeline. In the next chapter, you will learn about Apache Spark and
+    how it can help in processing unbounded, or streaming, data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may be thinking that yes, last year's sales numbers are bounded, but this
+    year's are not. The year is not over, and the data is still streaming in. This
+    brings up the second thing you should keep in mind when dealing with streams and
+    that is time. Bounded data is complete over a time period or a window. And windowing
+    is a method of making unbounded data bounded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three common windows – **fixed**, **sliding**, and **session**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Fixed** – Sometimes called **tumbling windows, these**re windows that covers
+    a fixed time and records do not overlap. If you specify a one-minute window, the
+    records will fall within each interval, as shown in the following diagram:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Figure 13.13 – Data in fixed windows'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.13_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.13 – Data in fixed windows
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Sliding** – This is a window in which the window is defined, such as 1 minute,
+    but the next window starts in less than the window length – say, every 30 seconds.
+    This type of window will have duplicates and is good for rolling averages. A sliding
+    window is shown in the following diagram:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Figure 13.14 – Data in sliding windows'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_13.14_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 13.14 – Data in sliding windows
+  prefs: []
+  type: TYPE_NORMAL
+- en: The diagram shows two windows, one starting at 0 that is extended for 1 minute.
+    The second window overlaps at 0:30 and extends for 1 minute until 1:30.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Session** – Sessions will not have the same window of time but are events.
+    For example, a user logs in to shop, their data is streamed for that login session,
+    and the session is defined by some piece of data in the records, called a session
+    token.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'When discussing windows and time, you must also consider what time to use –
+    **Event**, **Ingest**, or **Processing**. The three different times could have
+    different values and whichever you choose depends on your use case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Event Time** is when the event happens. This may be recorded in the record
+    before it is sent to Kafka. For example, at 1:05, a car was recorded travelling
+    55 mph.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Ingest Time** is the time that the data is recorded in a Kafka topic. The
+    latency between the event and the recording could fluctuate depending on network
+    latency.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Processing Time** is the time in which you read the data from the Kafka topic
+    and did something with it – such as processed it through your data pipeline and
+    put it in the warehouse.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By recognizing that you may be working with unbounded data, you will avoid problems
+    in your data pipelines by not trying to analyze all the data at once, but by choosing
+    an appropriate windowing and also by using the correct time for your use case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Producing and consuming with Python
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can create producers and consumers for Kafka using Python. There are multiple
+    Kafka Python libraries – Kafka-Python, PyKafka, and Confluent Python Kafka. In
+    this section, I will use Confluent Python Kafka, but if you want to use an open
+    source, community-based library, you can use Kafka-Python. The principles and
+    structure of the Python programs will be the same no matter which library you
+    choose.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To install the library, you can use `pip`. The following command will install
+    it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once the library has finished installing, you can use it by importing it into
+    your applications. The following sections will walk through writing a producer
+    and consumer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing a Kafka producer in Python
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To write a producer in Python, you will create a producer, send data, and listen
+    for acknowledgements. In the previous examples, you used `Faker` to create fake
+    data about people. You will use it again to generate the data in this example.
+    To write the producer, perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Import the required libraries and create a faker:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, create the producer by specifying the IP addresses of your Kafka cluster:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You can list the topics available to publish to as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'There are different settings for acknowledgments and how you handle them, but
+    for now, create a callback that will receive an error (`err`) and an acknowledgment
+    (`msg`). In every call, only one of them will be true and have data. Using an
+    `if` statement, check whether there is an error, otherwise, you can print the
+    message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, create the producer loop. The code loops through a range creating a fake
+    data object. The object is the same as in [*Chapter 3*](B15739_03_ePub_AM.xhtml#_idTextAnchor039)*,
+    Working with Files*. It then dumps the dictionary so that it can be sent to Kafka:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Before sending the data to Kafka, call `poll()` to get any acknowledgments
+    for previous messages. Those will be sent to the callback (`receipt`). Now you
+    can call `produce()` and pass the topic name, the data, and the function to send
+    acknowledgments to:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To finish, flush the producer. This will also get any existing acknowledgements
+    and send them to `receipt()`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The results of the preceding code will be messages sent to the `user` topic
+    on the Kafka cluster, and the terminal will print the acknowledgments, which will
+    look like the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that you can send data to a Kafka topic, the next section will show you
+    how to consume it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing a Kafka consumer in Python
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To create a consumer in Python, you create the consumer pointing to the Kafka
+    cluster, select a topic to listen to, and then enter a loop that listens for new
+    messages. The code that follows will walk you through how to write a Python consumer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, import the `Consumer` library and create the consumer. You will pass
+    the IP addresses of your Kafka cluster, the consumer group name – this can be
+    anything you want, but if you add multiple consumers to the group, they will need
+    the same name, and Kafka will remember the offset where this consumer group stopped
+    reading the topic – and lastly, you will pass the offset reset, or where you want
+    to start reading:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You can get a list of topics available to subscribe to as well as the number
+    of partitions for a particular topic:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Once you know which topic you want to consume, you can subscribe to it:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To receive messages, create an infinite loop – if you want to listen forever.
+    You can always start and stop using the offset to pick up where you left off.
+    Call `poll()` to get the message. The result will be one of three things – nothing
+    yet, an error, or a message. Using the `if` statements, check for a nothing, an
+    error, or decode the message and do something with the data, which in this case
+    is to print it. When you are done, close the connection:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The results will be several JSON objects scrolling through the terminal and
+    will look like the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a basic example of consuming a topic with Python, but should give you
+    an idea of the architecture and how to start building more complex consumers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned the basics of Apache Kafka – from what is a log
+    and how Kafka uses it, to partitions, producers, and consumers. You learned how
+    Apache NiFi can create producers and consumers with a single processor. The chapter
+    took a quick detour to explain how streaming data is unbounded and how time and
+    windowing work with streams. These are important considerations when working with
+    streaming data and can result in errors if you assume you have all the data at
+    one time. Lastly, you learned how to use Confluent Python Kafka to write basic
+    producers and consumers in Python.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Equipped with these skills, the next chapter will show you how to build a real-time
+    data pipeline.
+  prefs: []
+  type: TYPE_NORMAL

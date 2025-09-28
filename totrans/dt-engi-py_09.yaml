@@ -1,0 +1,882 @@
+- en: '*Chapter 7*: Features of a Production Pipeline'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you will learn several features that make a data pipeline ready
+    for production. You will learn about building data pipelines that can be run multiple
+    times without changing the results (idempotent). You will also learn what to do
+    if transactions fail (atomicity). And you will learn about validating data in
+    a staging environment. This chapter will use a sample data pipeline that I currently
+    run in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For me, this pipeline is a bonus, and I am not concerned with errors, or missing
+    data. Because of this, there are elements missing in this pipeline that should
+    be present in a mission critical, or production, pipeline. Every data pipeline
+    will have different acceptable rates of errors – missing data – but in production,
+    your pipelines should have some extra features that you have yet to learn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we''re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Staging and validating data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building idempotent data pipelines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building atomic data pipelines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Staging and validating data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When building production data pipelines, staging and validating data become
+    extremely important. While you have seen basic data validation and cleaning in
+    [*Chapter 5*](B15739_05_ePub_AM.xhtml#_idTextAnchor063)*, Cleaning, Transforming,
+    and Enriching Data*, in production, you will need a more formal and automated
+    way of performing these tasks. The next two sections will walk you through how
+    to accomplish staging and validating data in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Staging data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the NiFi data pipeline examples, data was extracted, and then passed along
+    a series of connected processors. These processors performed some tasks on the
+    data and sent the results to the next processor. But what happens if a processor
+    fails? Do you start all over from the beginning? Depending on the source data,
+    that may be impossible. This is where staging comes in to play. We will divide
+    staging in to two different types: the staging of files or database dumps, and
+    the staging of data in a database that is ready to be loaded into a warehouse.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Staging of files
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first type of staging we will discuss is the staging of data in files following
+    extraction from a source, usually a transactional database. Let's walk through
+    a common scenario to see why we would need this type of staging.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You are a data engineering at Widget Co – a company that has disrupted widget
+    making and is the only online retailer of widgets. Every day, people from all
+    over the world order widgets on the company website. Your boss has instructed
+    you to build a data pipeline that takes sales from the website and puts them in
+    a data warehouse every hour so that analysts can query the data and create reports.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since sales are worldwide, let''s assume the only data transformation required
+    is the conversion of the local sales date and time to be in GMT. This data pipeline
+    should be straightforward and is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.1 – A data pipeline to load widget sales into a warehouse'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.1_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.1 – A data pipeline to load widget sales into a warehouse
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding data pipeline queries the widget database. It passes the records
+    as a single flowfile to the `SplitText` processor, which sends each record to
+    the processor, which will convert the date and time to GMT. Lastly, it loads the
+    results in the data warehouse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what happens when you split the records, and then a date conversion fails?
+    You can just re-query the database, right? No, you can't, because transactions
+    are happening every minute and the transaction that failed was canceled and is
+    no longer in the database, or they changed their order and now want a red widget
+    and not the five blue widgets they initially ordered. Your marketing team will
+    not be happy because they no longer know about these changes and cannot plan for
+    how to convert these sales.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The point of the example is to demonstrate that in a transactional database,
+    transactions are constantly happening, and data is being modified. Running a query
+    produces a set of results that may be completely different if you run the same
+    query 5 minutes later, and you have now lost that original data. This is why you
+    need to stage your extracts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the preceding pipeline example is used for staging, you will end up with
+    a pipeline like the example shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.2 – A data pipeline to load widget sales into a warehouse using
+    staging'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.2_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.2 – A data pipeline to load widget sales into a warehouse using staging
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding data pipeline is displayed as two graphs. The first graph queries
+    the widget database and puts the results in a file on disk. This is the staging
+    step. From here, the next graph will load the data from the staging file, split
+    the records into flowfiles, convert the dates and times, and finally, load it
+    into the warehouse. If this portion of the pipeline crashes, or you need to replay
+    your pipeline for any reason, you can then just reload the CSV by restarting the
+    second half of the data pipeline. You have a copy of the database at the time
+    of the original query. If, 3 months from now, your warehouse is corrupted, you
+    could replay your data pipeline with the data at every query, even though the
+    database is completely different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another benefit of having copies of database extracts in CSV files is that it
+    reduces the load in terms of replaying your pipeline. If your queries are resource
+    intensive, perhaps they can only be run at night, or if the systems you query
+    belong to another department, agency, or company. Instead of having to use their
+    resources again to fix a mistake, you can just use the copy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the Airflow data pipelines you have built up to this point, you have staged
+    your queries. The way Airflow works encourages good practices. Each task has saved
+    the results to a file, and then you have loaded that file in the next task. In
+    NiFi, however, your queries have been sent, usually to the `SplitRecords` or `Text`
+    processor, to the next processor in the pipeline. This is not good practice for
+    running pipelines in production and will no longer be the case in examples from
+    here on in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Staging in databases
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Staging data in files is helpful during the extract phase of a data pipeline.
+    On the other end of the pipeline, the load stage, it is better to stage your data
+    in a database, and preferably, the same database as the warehouse. Let's walk
+    through another example to see why.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You have queried your data widget database and staged the data. The next data
+    pipeline picks up the data, transforms it, and then loads it into the warehouse.
+    But now what happens if loading does not work properly? Perhaps records went in
+    and everything looks successful, but the mapping is wrong, and dates are strings.
+    Notice I didn't say the load failed. You will learn about handling load failures
+    later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without actually loading the data into a database, you will only be able to
+    guess what issues you may experience. By staging, you will load the data into
+    a replica of your data warehouse. Then you can run validation suites and queries
+    to see whether you get the results you expect – for example, you could run a `select
+    count(*)` query from the table to see whether you get the correct number of records
+    back. This will allow you to know exactly what issues you may have, or don't have,
+    if all went well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A data pipeline for Widget Co that uses staging at both ends of the pipeline
+    should look like the pipeline in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.3 – A production using staging at both ends of the pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.3_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.3 – A production using staging at both ends of the pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data pipeline in the preceding screenshot queries the widget database and
+    stages the results in a file. The next stage picks up the file and converts the
+    dates and times. The point of departure from the earlier example is that the data
+    pipeline now loads the data into a replica of the data warehouse. The new segment
+    of the data pipeline then queries this replica, performs some validation, and
+    then loads it into the final database or warehouse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ETL versus ELT
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, you have seen Extract, Transform, and Load. However, there is a growing
+    shift toward an Extract, Load, and Transform process. In the ELT process, data
+    is staged in a database immediately after the extract ion without any transformations.
+    You handle all of the transformations in the database. This is very helpful if
+    you are using SQL-based transformation tools. There is no right or wrong way,
+    only preferences and use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By staging data at the front and end of your data pipeline, you are now better
+    suited for handling errors and for validating the data as it moves through your
+    pipeline. Do not think that these are the only two places where data can be staged,
+    or that data must be staged in files. You can stage your data after every transformation
+    in your data pipeline. Doing so will make debugging errors easier and allow you
+    to pick up at any point in the data pipeline after an error. As your transformations
+    become more time consuming, this may become more helpful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You staged the extraction from the widget database in a file, but there is no
+    reason to prevent you from extracting the data to a relational or noSQL database.
+    Dumping data to files is slightly less complicated than loading it into a database
+    – you don't need to handle schemas or build any additional infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While staging data is helpful for replaying pipelines, handling errors, and
+    debugging your pipeline, it is also helpful in the validation stages of your pipeline.
+    In the next section, you will learn how to use Great Expectations to build validation
+    suites on both file and database staged data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Validating data with Great Expectations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With your data staged in either a file or a database, you have the perfect opportunity
+    to validate it. In [*Chapter 5*](B15739_05_ePub_AM.xhtml#_idTextAnchor063)*, Cleaning,
+    Transforming, and Enriching Data*, you used pandas to perform exploratory data
+    analysis and gain insight into what columns existed, find counts of null values,
+    look at ranges of values within columns, and examine the data types in each column.
+    Pandas is powerful and, by using methods such as `value_counts` and `describe`,
+    you can gain a lot of insight into your data, but there are tools that make validation
+    much cleaner and make your expectations of the data much more obvious.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The library you will learn about in this section is **Great Expectations**.
+    The following is a screenshot of the Great Expectations home page, where you can
+    join and get involved with it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.4 – Great Expectations Python library for validating your data,
+    and more'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.4_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.4 – Great Expectations Python library for validating your data, and
+    more
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Why Great Expectations? Because with Great Expectations, you can specify human-readable
+    expectations and let the library handle the implementation. For example, you can
+    specify that the `age` column should not have null values, in your code, with
+    the following line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Great Expectations will handle the logic behind doing this irrespective of whether
+    your data is in a DataFrame or in a database. The same expectation will run on
+    either data context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting started with Great Expectations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Installing Great Expectations can be done with `pip3` as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To view the documents that Great Expectations generates, you will also need
+    to have Jupyter Notebook available on your machine. You can install Notebook with
+    `pip3` as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the requirements installed, you can now set up a project. Create a directory
+    at `$HOME/peoplepipeline` and press *Enter*. You can do this on Linux using the
+    following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that you are in the project directory, before you set up Great Expectations,
+    we will dump a sample of the data we will be working with. Using the code from
+    [*Chapter 3*](B15739_03_ePub_AM.xhtml#_idTextAnchor039)*, Reading and Writing
+    Files*, we will generate 1,000 records relating to people. The code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code creates a CSV file with records about people. We will put
+    this CSV file into the project directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now you can set up Great Expectations on this project by using the command-line
+    interface. The following line will initialize your project:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You will now walk through a series of steps to configure Great Expectations.
+    First, Great Expectations will ask you whether you are ready to proceed. Your
+    terminal should look like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.5 – Initializing Great Expectations on a project'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.5_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.5 – Initializing Great Expectations on a project
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Having entered *Y* and pressed *Enter*, you will be prompted with a series
+    of questions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The answers to the questions are shown in the following screenshot, but it
+    should be `Files`, `Pandas`, where you put your file, and whatever you would like
+    to name it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.6 – Initializing Great Expectations by answering questions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.6_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.6 – Initializing Great Expectations by answering questions
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When Great Expectations has finished running, it will tell you it''s done,
+    give you a path to the document it has generated, and open the document in your
+    browser. The documents will look like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.7 – Documentation generated by Great Expectations'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.7_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.7 – Documentation generated by Great Expectations
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The preceding screenshot shows the documentation generated for the Great Expectations
+    Suite. You can see there are **11** expectations and we have passed all of them.
+    The expectations are very basic, specifying how many records should exist and
+    what columns should exist in what order. Also, in the code I specified an age
+    range. So, **age** has a minimum and maximum value. Ages have to be greater than
+    17 and less than 81 to pass the validation. You can see a sample of the expectations
+    generated by scrolling. I have shown some of mine in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.8 – Sample generated expectations'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.8_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.8 – Sample generated expectations
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, the expectations are very rigid – age must never be null, for
+    example. Let''s edit the expectations. You have installed Jupyter Notebook, so
+    you can run the following command to launch your expectation suite in a single
+    step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Your browser will open a Jupyter notebook and should look like the following
+    screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.9 – Your expectation suite in a Jupyter notebook'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.9_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.9 – Your expectation suite in a Jupyter notebook
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some items should stand out in the code – the expectation suite name, and the
+    path to your data file in the `batch_kwargs` variable. As you scroll through,
+    you will see the expectations with headers for their type. If you scroll to the
+    `Table_Expectation(s)` header, I will remove the row count expectation by deleting
+    the cell, or by deleting the code in the cell, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.10 – Table Expectation(s)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.10_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.10 – Table Expectation(s)
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other expectation to edit is under the `age` header. I will remove an expectation,
+    specifically, the `expect_quantile_values_to_be_between` expectation. The exact
+    line is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.11 – Age expectations with the quantile expectations to be removed'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.11_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.11 – Age expectations with the quantile expectations to be removed
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can continue to remove expectations, or you can add new ones, or even just
+    modify the values of existing expectations. You can find a glossary of available
+    expectations at [https://docs.greatexpectations.io/en/latest/reference/glossary_of_expectations.html](https://docs.greatexpectations.io/en/latest/reference/glossary_of_expectations.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you have made all of the changes and are satisfied, you can run the entire
+    notebook to save the changes to your expectation suite. The following screenshot
+    shows how to do that – select **Cell** | **Run All**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.12 – Saving the changes to your expectation suite by running the
+    notebook'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.12_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.12 – Saving the changes to your expectation suite by running the notebook
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that you have an expectation suite, it is time to add it to your pipeline.
+    In the next two sections, you will learn how to add it alongside your pipeline
+    for use with NiFi or embed the code into your pipeline for use with Airflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Great Expectations outside the pipeline
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: So far, you have validated data while you edited the expectation suite inside
+    a Jupyter notebook. You could continue to do that using a library such as Papermill,
+    but that is beyond the scope of this book. In this section, however, you will
+    create a tap and run it from NiFi.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Papermill
+  prefs: []
+  type: TYPE_NORMAL
+- en: Papermill is a library created at Netflix that allows you to create parameterized
+    Jupyter notebooks and run them from the command line. You can change parameters
+    and specify an output directory for the resultant notebook. It pairs well with
+    another Netflix library, Scrapbook. Find them both, along with other interesting
+    projects, including Hydrogen, at [https://github.com/nteract](https://github.com/nteract).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A tap is how Great Expectations creates executable Python files to run against
+    your expectation suite. You can create a new tap using the command-line interface,
+    as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command takes an expectation suite and the name of a Python file
+    to create. When it runs, it will ask you for a data file. I have pointed it to
+    the `people.csv` file that you used in the preceding section when creating the
+    suite. This is the file that the data pipeline will overwrite as it stages data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.13 – Result of the Python file at the specified location'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.13_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.13 – Result of the Python file at the specified location
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you run the tap, you should see that it succeeded, as shown in the following
+    screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.14 – Great Expectation tap run'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.14_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.14 – Great Expectation tap run
+  prefs: []
+  type: TYPE_NORMAL
+- en: You are now ready to build a pipeline in NiFi and validate your data using Great
+    Expectations. The next section will walk you through the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Great Expectations in NiFi
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'Combining NiFi and Great Expectations requires a few modifications to the tap
+    you created in the previous section. First, you will need to change all the exits
+    to be `0`. If you have a `system.exit(1)` exit, NiFi processors will crash because
+    the script failed. We want the script to close successfully, even if the results
+    are not, because the second thing you will change are the `print` statements.
+    Change the `print` statements to be a JSON string with a result key and a pass
+    or fail value. Now, even though the script exits successfully, we will know in
+    NiFi whether it actually passed or failed. The code of the tap is shown in the
+    following code block, with the modifications in bold:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the changes to the tap complete, you can now build a data pipeline in
+    NiFi. The following screenshot is the start of a data pipeline using the tap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.15 – A NiFi data pipeline using Great Expectations'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.15_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.15 – A NiFi data pipeline using Great Expectations
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The preceding data pipeline creates 1,000 records and saves it as a CSV file.
+    It then runs the tap on the data and reads in the result — the pass or fail JSON
+    from the script. Lastly, it extracts the result and routes the flowfile to either
+    a pass or fail processor. From there, your data pipeline can continue, or it can
+    log the error. You will walk through the pipeline in the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data pipeline starts by generating a fake flowfile without any data to trigger
+    the next processor. You could replace this processor with one that queries your
+    transactional database, or that reads files from your data lake. I have scheduled
+    this processor to run every hour.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once the empty flowfile is received, the `ExecuteStreamCommand` processor calls
+    the `loadcsv.py` Python script. This file is from [*Chapter 3*](B15739_03_ePub_AM.xhtml#_idTextAnchor039)*,
+    Reading and Writing Files*, and uses `Faker` to create 1,000 fake people records.
+    The `ExecuteStreamCommand` processor will read the output from the script. If
+    you had print statements, each line would become a flowfile. The script has one
+    output, and that is `{"status":"Complete"}`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To configure the processor to run the script, you can set the `python3` – if
+    you can run the command with the full path, you do not need to enter it all. Lastly,
+    set `loadcsv.py`. When the processor runs, the output flowfile is shown in the
+    following screenshot:![Figure 7.16 – The flowfile shows the JSON string
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.16_B15739.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 7.16 – The flowfile shows the JSON string
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The next processor is also an `ExecuteStreamCommand` processor. This time, the
+    script will be your tap. The configuration should be the same as in the previous
+    step, except `peoplevalidatescript.py`. Once the processor completes, the flowfile
+    will contain JSON with a result of pass or fail. The `pass` flowfile is shown
+    in the following screenshot:![Figure 7.17 – Result of the tap, validation passed
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.17_B15739.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 7.17 – Result of the tap, validation passed
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The value of the result is extracted in the next processor – `EvaluateJsonPath`.
+    Adding a new property with the plus button, name it `result` and set the value
+    to `$.result`. This will extract the `pass` or `fail` value and send it as a flowfile
+    attribute.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The next process is `RouteOnAttribute`. This processor allows you to create
+    properties that can be used as a relationship in a connection to another processor,
+    meaning you can send each property to a different path. Creating two new properties
+    – `pass` and `fail`, the values are shown in the following code snippet:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The preceding command uses the NiFi expression language to read the value of
+    the result attribute in the flowfile.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: From here, I have terminated the data pipeline at a `PutFile` processor. But
+    you would now be able to continue by connecting a `pass` and `fail` path to their
+    respective relationships in the previous processor. If it passed, you could read
+    the staged file and insert the data into the warehouse.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In this section, you connected Great Expectations to your data pipeline. The
+    tap was generated using your data, and because of this, the test passed. The pipeline
+    ended with the file being written to disk. However, you could continue the data
+    pipeline to route success to a data warehouse. In the real world, your tests will
+    fail on occasion. In the next section, you will learn how to handle failed tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failing the validation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The validation will always pass because the script we are using generates records
+    that meet the validations rules. What if we changed the script? If you edit the
+    `loadcsv.py` script and change the minimum and maximum age, we can make the validation
+    fail. The edit is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will create records that are below the minimum and above the maximum—hopefully,
+    because it is random, but 1,000 records should get us there. Once you have edited
+    the script, you can rerun the data pipeline. The final flowfile should have been
+    routed to the `fail` path. Great Expectations creates documents for your validations.
+    If you remember, you saw them initially when you created the validation suite.
+    Now you will have a record of both the passed and failed runs. Using your browser,
+    open the documents. The path is within your project folder. For example, my docs
+    are at the following path:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`file:///home/paulcrickard/peoplepipeline/great_expectations/uncommitted/data_docs/local_site/validations/people/validate/20200505T145722.862661Z/6f1eb7a06079eb9cab8de404c6faa
+    b62.html`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The documents should show all your validations runs. The documents will look
+    like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.18 – Results of multiple validation runs'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.18_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.18 – Results of multiple validation runs
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The preceding screenshot shows all of the validation runs. You can see the
+    red **x** indicating failures. Click on one of the failed runs to see which expectations
+    were not met. The results should be that both the minimum and maximum age were
+    not met. You should see that this is the case, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.19 – Age expectations have not been met'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.19_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.19 – Age expectations have not been met
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, you have created a Great Expectations suite and specified expectations
+    for your data. Previously, you would have had to do this manually using DataFrames
+    and a significant amount of code. Now you can use human-readable statements and
+    allow Great Expectations to do the work. You have created a tap that you can run
+    inside your NiFi data pipeline — or that you can schedule using Cron or any other
+    tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A quick note on Airflow
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the preceding example, you ran the validation suite outside of your pipeline
+    – the script ran in the pipeline, but was called by a processor. You can also
+    run the code inside the pipeline without having to call it. In Apache Airflow,
+    you can create a validation task that has the code from the tap. To handle the
+    failure, you would need to raise an exception. To do that, import the library
+    in your Airflow code. I have included the libraries that you need to include on
+    top of your standard boilerplate in the following code block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After importing all of the libraries, you can write your task, as shown in
+    the following code block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code will throw an error, or it will end if the validation succeeded.
+    However, choosing to handle the failure is up to you. All you need to do is check
+    whether `results["success"]` is `True`. You can now code the other functions,
+    create the tasks using `PythonOperator`, and then set the downstream relationships
+    as you have in all the other Airflow examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following sections will discuss two other features of a production data
+    pipeline – idempotence and atomicity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building idempotent data pipelines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A crucial feature of a production data pipeline is that it is idempotent. Idempotent
+    is defined as *denoting an element of a set that is unchanged in value when multiplied
+    or otherwise operated on by itself*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In data science, this means that when your pipeline fails, which is not a matter
+    of *if*, but *when*, it can be rerun and the results are the same. Or, if you
+    accidently click run on your pipeline three times in a row by mistake, there are
+    not duplicate records – even if you accidently click run multiple times in a row.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [*Chapter 3*](B15739_03_ePub_AM.xhtml#_idTextAnchor039)*, Reading and Writing
+    Files*, you created a data pipeline that generated 1,000 records of people and
+    put that data in an Elasticsearch database. If you let that pipeline run every
+    5 minutes, you would have 2,000 records after 10 minutes. In this example, the
+    records are all random and you may be OK. But what if the records were rows queried
+    from another system?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every time the pipeline runs, it would insert the same records over and over
+    again. How you create idempotent data pipelines depends on what systems you are
+    using and how you want to store your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the SeeClickFix data pipeline from the previous chapter, you queried the
+    SeeClickFix API. You did not specify any rolling time frame that would only grab
+    the most recent records, and your backfill code grabbed all the archived issues.
+    If you run this data pipeline every 8 hours, as it was scheduled, you will grab
+    new issues, but also issues you already have.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The SeeClickFix data pipeline used the `upsert` method in Elasticsearch to make
+    the pipeline idempotent. Using the `EvaluteJsonPath` processor, you extracted
+    the issue ID and then used that as the `Identifier Attribute` in the `PutElasticsearchHttp`
+    processor. You also set the `upsert`. This is the equivalent of using an update
+    in SQL. No records will be duplicated, and records will only be modified if there
+    have been changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another way to make the data pipeline idempotent, and one that is advocated
+    by some functional data engineering advocates, is to create a new index or partition
+    every time your data pipeline is run. If you named your index with the datetime
+    stamped as a suffix, you would get a new index with distinct records every time
+    the pipeline runs. This not only makes the data pipeline idempotent; it creates
+    an immutable object out of your database indexes. An index will never change;
+    just new indexes will be added.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building atomic data pipelines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The final feature of a production data pipeline that we will discuss in this
+    chapter is atomicity. Atomicity means that if a single operation in a transaction
+    fails, then all of the operations fail. If you are inserting 1,000 records into
+    the database, as you did in [*Chapter 3*](B15739_03_ePub_AM.xhtml#_idTextAnchor039)*,
+    Reading and Writing Files*, if one record fails, then all 1,000 fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In SQL databases, the database will roll back all the changes if record number
+    500 fails, and it will no longer attempt to continue. You are now free to retry
+    the transaction. Failures can occur for many reasons, some of which are beyond
+    your control. If the power or the network goes down while you are inserting records,
+    do you want those records to be saved to the database? You would then need to
+    determine which records in a transaction succeeded and which failed and then retry
+    only the failed records. This would be much easier than retrying the entire transaction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the NiFi data pipelines you have built, there was no atomicity. In the SeeClickFix
+    example, each issue was sent as a flowfile and upserted in Elasticsearch. The
+    only atomicity that existed is that every field in the document (issue) succeeded
+    or failed. But we could have had a situation where all the issues failed except
+    one, and that would have resulted in the data pipeline succeeding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Elasticsearch does not have atomic transactions, so any data pipeline that
+    implements Elasticsearch would need to handle that within the logic. For example,
+    you could track every record that is indexed in Elasticsearch as well as every
+    failure relationship. If there is a failure relationship during the run, you would
+    then delete all the successfully indexed issues. An example data pipeline is shown
+    in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.20 – Building atomicity into a data pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.20_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.20 – Building atomicity into a data pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding data pipeline created two flowfiles; one succeeded and one failed.
+    The contents of both are put in files on disk. From here, your data pipeline could
+    list the files in the failed directory. If there was one or more, it could then
+    read the success files and remove them from Elasticsearch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is not elegant, but atomicity is important. Debugging data pipeline failures
+    when the failure is only partial is extremely difficult and time consuming. The
+    extra work required to incorporate atomicity is well worth it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SQL databases have atomicity built into the transactions. Using a library such
+    as `psycopg2`, you can roll multiple inserts, updates, or deletes into a single
+    transaction and guarantee that the results will either be that all operations
+    were successful, or the transaction failed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating data pipelines that are idempotent and atomic requires additional work
+    when creating your data pipeline. But without these two features, you will have
+    data pipelines that will make changes to your results if accidently run multiple
+    times (not idempotent) or if there are records that are missing (not atomic).
+    Debugging these issues is difficult, so the time spent on making your data pipelines
+    idempotent and atomic is well spent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, you learned three key features of production data pipelines:
+    staging and validation, idempotency, and atomicity. You learned how to use Great
+    Expectations to add production-grade validation to your data pipeline staged data.
+    You also learned how you could incorporate idempotency and atomicity into your
+    pipelines. With these skills, you can build more robust, production-ready pipelines.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, you will learn how to use version control with the NiFi
+    registry.
+  prefs: []
+  type: TYPE_NORMAL

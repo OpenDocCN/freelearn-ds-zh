@@ -1,0 +1,1276 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: iSAX – The Implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before continuing with this chapter and starting to write code, make sure that
+    you have a good understanding of the information covered in the previous chapter
+    because this chapter is all about implementing iSAX in Python. As a general principle,
+    if you cannot perform a task manually, you are not going to be able to perform
+    it with the help of a computer – the same principle applies to constructing and
+    using an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While reading this chapter, keep in mind that we are creating an iSAX index
+    that *fits in memory* and does not use any external files to store the subsequences
+    of each terminal node. The original iSAX paper suggested the use of external files
+    to store the subsequences of each terminal node mainly because back then, RAM
+    was limited compared to what is the case today, where we can easily have computers
+    with many CPU cores and more than 64 GB of RAM. As a result, the use of RAM makes
+    the entire process much faster than if we used disk files. However, if you do
+    not have lots of RAM on your system and are working with large time series, you
+    might end up using swap space, which slows down the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A quick look at the `isax` Python package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The class for storing subsequences
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The class for iSAX nodes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The class for entire iSAX indexes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Explaining the missing parts
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exploring the remaining files
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the iSAX Python package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The GitHub repository with the code can be found at [https://github.com/PacktPublishing/Time-Series-Indexing](https://github.com/PacktPublishing/Time-Series-Indexing).
+    The code for each chapter is in its own directory. Therefore, the code for this
+    chapter can be found in the `ch04` folder and the `ch04` subfolders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first section takes a quick look at the Python package that we have developed
+    for the purposes of this chapter, which strangely enough is called `isax`, before
+    going into more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about bugs?
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have tried our best to give bug-free code. However, bugs might appear in
+    any program, especially when a program is longer than 100 lines! That is why it
+    is crucial to understand the principles behind the operation and construction
+    of an iSAX index and the SAX representation to be able to understand that there
+    might be a small or bigger issue with the code, or be able to port the existing
+    implementation to a different programming language. I wrote the Python version
+    of iSAX using a Java implementation from a colleague as my starting point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A quick look at the iSAX Python package
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will take a first look at the iSAX Python package to get
+    a better idea of the supported functionality. Although we will begin with the
+    code from the `sax` package we developed in [*Chapter 2*](B14769_02_MA.xhtml#_idTextAnchor053),
+    we are going to rename that package `isax` and create additional source code,
+    which is named `isax.py`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The structure of the `isax` directory with the Python files is going to be
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, in total, we have six files. You already know five of them from the `sax`
+    package. The only new one is the `isax.py` source code file, which is the core
+    file for this chapter. Additionally, we are going to add more global variables
+    to the `variables.py` file and some functions to `tools.py`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The list of methods found in the `isax.py` file, which excludes `__init__()`
+    functions, is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason that we are talking about methods and not functions is that each
+    function is attached to a Python class, which automatically makes it a method
+    of that class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, if we also include `__init__()` functions in the output, then
+    we might get a good prediction of the number of classes found in that Python file.
+    In that case, you might want to run `grep -w def -n1` `isax/isax.py` instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, we have three classes, named `TS`, `Node`, and `iSAX`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next sections are going to discuss the methods of `isax.py` in relation
+    to the class that they belong to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The class for storing subsequences
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we are going to explain the Python class used for `TS`.
+    The definition of the class is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When defining an object of that class, we need to provide the `ts` parameter,
+    which is a subsequence stored as a NumPy array, and the number of segments using
+    the `segments` parameter. After that, the `maxCard` field is automatically initialized
+    with the SAX representation of that subsequence with the maximum cardinality.
+    The `index` parameter is optional and keeps the place of the subsequence in the
+    original time series. iSAX does not use the `index` parameter but it is good to
+    have such a field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This class not have any methods attached to it, which is not the case with the
+    `Node` class that is presented next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The class for iSAX nodes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we will explain the Python structure used for *keeping
+    both inner and terminal nodes*. This is an important part of the package and its
+    functionality:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we are dealing with an inner node, then the `terminalNode` field is set to
+    `False`. However, if the Boolean value of the `terminalNode` field is set to `True`,
+    then we are dealing with a terminal node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `word` field holds the SAX representation of the node. Lastly, the `left`
+    and `right` fields are links to the two children of an inner node, whereas the
+    `children` field is a list that holds the subsequences of a terminal node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `Node` class has two methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`insert()`: This method is used for adding subsequences to a node'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`nTimeSeries()`: This method is used for counting the number of subsequences
+    stored in a terminal node'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Next, let us talk about the class for representing entire iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The class for entire iSAX indexes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This last class of the `isax` package is used to represent entire iSAX indexes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `children` field holds the children of the root node – in reality, the instances
+    of the iSAX class are roots of iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ht` field, which is a dictionary, holds all the nodes of the iSAX index.
+    Each key is a SAX representation of a node, which is *unique*, and each value
+    is a `Node` instance. Lastly, the `length` field holds the number of subsequences
+    stored in the iSAX index and is an optional field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `iSAX` class has only one method, which is called `insert()` and is used
+    to insert subsequences into the iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why are we using these three classes?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementation of the iSAX index contains three different entities: subsequences,
+    nodes, and the iSAX index itself, which is represented by the root node of the
+    index. iSAX contains nodes and nodes contain other nodes or subsequences. Each
+    of these entities has its own class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we know the details of the Python classes used in our package. The next
+    section is about implementing the missing parts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Explaining the missing parts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to show the implementations of the class methods.
+    We begin with the `insert()` function of the `iSAX` class, which should not be
+    confused with the `insert()` function of the `Node` class. In Python and many
+    other programming languages, classes are independent entities, which means they
+    can have methods with the same name as long as they are unique inside the class
+    namespace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going to present the code of `Node.insert()` in eight parts. The method
+    accepts two parameters – apart from `self`, which denotes the current `Node` object
+    – which are the subsequences we are trying to insert and the iSAX index that the
+    `Node` instance belongs to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why do we need an iSAX instance as a parameter? We need that in order to be
+    able to add new nodes to the iSAX index by accessing `iSAX.ht`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first part of `insert()` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first thing that `insert()` does is check whether we are working with a
+    terminal node or not. This happens because if we are dealing with a terminal node,
+    we are going to try to store the given subsequence in the terminal node without
+    any other delay. The second check is whether the terminal node is full or not.
+    If it is full, then *we have a split*. First, we duplicate the current node with
+    the `temp = Node(self.word)` statement and the current terminal node becomes an
+    inner node by changing the value of `terminalNode` to `False`. At this point,
+    we have to create two new empty nodes, which are going to become the two children
+    of the current node – the former takes place in the code excerpt that follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `insert()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the previous code, we create two new terminal nodes, which are going to be
+    the children of the node that is going to be split. Both of these new nodes currently
+    have the same SAX representation as the node that is going to be split and become
+    an inner node. The change to their SAX representations, which signifies the split,
+    is going to take place in the code that follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third part contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: At the beginning of the code excerpt, we deal with the promotion strategy, which
+    is implemented in the `tools.py` file, which is explained in *The tools.py file*
+    section and has to do with defining the SAX word (segment) that is going to be
+    promoted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After that, the code creates the two SAX representations of a split using two
+    string operations – this is the main reason that we store SAX words as strings
+    and that we are using a list to hold an entire SAX presentation. After that, we
+    convert the SAX representations into strings stored in `new1.word` and `new2.word`
+    and then put the respective nodes into the iSAX index using `ISAX.ht[new1.word]
+    = new1` and `ISAX.ht[new2.word] = new2`. The keys for finding these two nodes
+    in the `iSAX.ht` Python dictionary are their own SAX representations. The last
+    two statements of the code associate the two new terminal nodes with the inner
+    node by defining the `left` and `right` fields of the inner node and, therefore,
+    signifying its two children.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The fourth code part of the `Node.insert()` method is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: We know for sure that after we split the subsequences, which were previously
+    stored in the terminal node that has become an inner node, we are not going to
+    have an overflow. However, we still need to call `self.insert(ts, ISAX)` to insert
+    the subsequence that created the overflow previously and see what is going to
+    happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last `if` checks whether we are using the default promotion strategy, which
+    is the Round Robin strategy, and in that case, it changes the promotion segment
+    to the next in order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But how do we know whether there is an overflow situation? If after promoting
+    a subsequence to a higher cardinality than its current one (`tempCard`) that subsequence
+    cannot be assigned to any of the two newly created terminal nodes (`new1.word`
+    or `new2.word`), we know that it has not been promoted. Therefore, we have an
+    overflow condition. This is implemented in the `else:` branch of the `if tempCard
+    ==` `new1.word:` block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The fifth part of `Node.insert()` is next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code of the previous `else` is executed when we are dealing with a terminal
+    node that is not full. So, we store the given subsequence in the `children` list
+    – this is the ideal way to add a new subsequence to an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The sixth part of the `insert()` function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we are working with an inner node, we have to decide whether the subsequence
+    is going to go to the left or right child according to its SAX representation
+    in order to finally find the terminal node that is going to store that subsequence.
+    This is where the process begins.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The seventh part contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the previous code, we change (decrease) the maximum cardinality of the subsequence
+    to fit the cardinality of the left node – we could have used the right node as
+    both nodes use the same cardinality. The `tempCard` variable that holds that new
+    cardinality is going to be used to decide the path that the subsequence is going
+    to follow in the tree until it finds the appropriate terminal node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last part of `Node.insert()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: If `tempCard` does not match the SAX representation of the left or right node,
+    then we know that *it has not been promoted*, which means that we have an overflow
+    condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the logic behind the implementation of `Node.insert()` – there exist
+    many comments in the code that you can read, and you can add your own `print()`
+    statements to understand the flow even better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why are we storing the maximum cardinality in its subsequence?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reason for storing the maximum cardinality of this subsequence is that we
+    can easily decrease that maximum cardinality without having to make difficult
+    calculations such as computing a new SAX representation from scratch. This small
+    optimization makes splitting operations much faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other method of the `Node` class is called `nTimeSeries()` and has the
+    following implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The presented function returns the number of subsequences stored in a terminal
+    node. First, `nTimeSeries()` makes sure that we are dealing with a terminal node
+    before iterating over the contents of the `children` list. If the data type of
+    the stored value is `TS`, then we have a subsequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After that, we are going to discuss and explain the `insert()` method of the
+    `iSAX` class, which is presented in three parts. The `iSAX.insert()` method is
+    the method that is being called when we want to add a subsequence to an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first part of `iSAX.insert()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: This first part of the code finds the child of the root where the given subsequence
+    is going to be placed. The `lower_cardinality_str` value is used as the key for
+    finding the relevant child of the root node – the `tools.lowerCardinality()` function
+    is explained in a bit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `iSAX.insert()` contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the child of the root with the `lower_cardinality_str` SAX representation
+    cannot be found, we create the respective root child and add it to the `self.children`
+    hash table (dictionary) and call `insert()` to put the given subsequence there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last part of `iSAX.insert()` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the child of the root with the `lower_cardinality_str` SAX representation
+    exists, then we try to insert that subsequence, thereby calling `insert()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, we go from the `iSAX` class level to the `Node` class level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But `isax.py` is not the only file with new code. The next section shows the
+    additions and changes to the remaining package files that complete the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring the remaining files
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Apart from the `isax.py` file, the `isax` Python package is constructed of more
+    source code files, mainly because it is based on the `sax` package. We will begin
+    with the `tools.py` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The tools.py file
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are some additions to the `tools.py` source code file compared to the
+    version we first saw in [*Chapter 2*](B14769_02_MA.xhtml#_idTextAnchor053)*, which*
+    mainly have to do with the promotion strategy. As said before, we support two
+    promotion strategies: Round Robin and from left to right.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Round Robin strategy is implemented here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the Round Robin case, we try to find the first segment on the right of the
+    segment that was used in the previous promotion with fewer digits than the digits
+    specified by the maximum cardinality (a segment that is not full). If the previous
+    promotion took place in the last segment, then we go back to the first segment
+    and begin from scratch. In order to compute the number of binary digits of the
+    maximum cardinality (the length of the SAX word), we use the `power_of_two()`
+    function, which returns `3` for a cardinality of `8`, `4` for a cardinality of
+    `16`, and so on. If we iterate over all the segments of the given SAX representation
+    (`nSegs`) and all have the maximum length, we know that we have an overflow condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The left-to-right strategy, which is also called **shorter first**, is implemented
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The left-to-right promotion strategy iterates over all the segments of the given
+    SAX representation variable (`nSegs`) starting from the left and going to the
+    right and finds the leftmost one with the minimum length. As a result, if both
+    the second and third segments have the same minimum length, the strategy is going
+    to select the second one because it is the leftmost available. After that, it
+    sets `variables.promote` to the selected segment value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to talk about two additional functions that reside in `tools.py`,
+    which are called `promote()` and `lowerCardinality()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `promote()` function is implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `promote()` function copies the length of the digits of the segments of
+    an existing SAX representation (`node`) to a given subsequence (`s`) in order
+    for both to have the same cardinalities in all their SAX words. This *allows us
+    to compare* these two SAX representations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementation of `lowerCardinality()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `lowerCardinality()` function lowers the cardinalities of a node *in all
+    of its SAX words* (segments). This is mainly needed by `iSAX.insert()` to put
+    a subsequence into the appropriate child of the root. After we put a subsequence
+    into the appropriate child of the root, we promote a single segment of the SAX
+    representation of the subsequence at a time to find out its place in the iSAX
+    index. Remember that the keys to all iSAX nodes are SAX representations that usually
+    have different cardinalities in their segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to test individual functions
+  prefs: []
+  type: TYPE_NORMAL
+- en: Personally, I prefer to create small command line utilities to test complex
+    functions on their own, understand their operation, and maybe discover bugs!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us make two small command-line utilities to showcase the use of `promote()`
+    and `lowerCardinality()` in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we demonstrate the `promote()` function in the `usePromote.py` utility,
+    which contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is important to remember that the `promote()` function mimics the lengths
+    of the segments of an existing SAX representation by decreasing the maximum SAX
+    representation of a subsequence (`s`) to match the given SAX representation stored
+    in the `node` parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rest of `usePromote.py` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Everything is hardcoded in `usePromote.py` because we just want to know more
+    about the use of `promote()` and nothing else. However, as `promote()` has many
+    dependencies in the `isax` package, we must put its entire implementation in our
+    script and make the necessary changes to the Python code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given a subsequence, `ts`, and a `TS` class instance, `t`, we can calculate
+    the SAX representation of `ts` using the maximum cardinality and then decrease
+    it to match the cardinalities of other SAX words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `usePromote.py` generates the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The output shows that the maximum cardinality (`000_010_101_111`) of the given
+    subsequence has been decreased to match the cardinalities of four other SAX words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After that, we demonstrate the `lowerCardinality()` function in the `useLCard.py`
+    utility, which comes with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This time, we do not put the implementation of `lowerCardinality()` in our code
+    because it has fewer dependencies and can be used directly from the `tools.py`
+    file. The parameter that we pass to `lowerCardinality()` is *the number of digits*
+    that we want to get in each SAX word. So, `1` means one digit, which means a cardinality
+    of 2 1, and `3` means three digits, which computes to a cardinality of 2 3.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once again, everything is hardcoded in `useLCard.py` because we just want to
+    know more about the use of `lowerCardinality()` and nothing more. Running `useLCard.py`
+    produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, given a subsequence with a SAX representation of `000_010_101_111`, we calculate
+    its SAX representations for the cardinalities of `2`, `4`, and `8`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to show the changes to `variables.py`, which is the file
+    that holds global variables that can be accessed by all the files of the package
+    or the utilities that use the `isax` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The variables.py file
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This subsection presents the contents of the updated `variables.py` file, which
+    contains variables that are accessible from anywhere in the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How much functionality is enough?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep in mind that sometimes we might need to include functionality that is going
+    to help with debugging or might be needed in the future, and therefore, we might
+    need to include variables or implement functions that are not going to be used
+    right away or all the time. Just remember to keep a good balance between wanting
+    to support everything and please everyone, which is impossible, and wanting to
+    support the absolute minimum functionality, which usually lacks flexibility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The contents of the `variables.py` file are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `variables.promote` variable defines the SAX word that is going to be promoted
+    next if there is such a need. Put simply, we create the SAX representation of
+    the two nodes of a split based on the value of `variables.promote` – we promote
+    the segment defined by the value of `variables.promote`. Every time we have a
+    split, `variables.promote` is updated according to the promotion (splitting) strategy
+    and gets ready for the next split.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Should you wish to see the changes between two versions of the same file, you
+    can use the `diff(1)` utility. In our case, the difference between the `variables.py`
+    file found in the `ch03` directory and the current version is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Lines beginning with `>` show the contents of `ch04/isax/variables.py`, whereas
+    lines beginning with `<` show statements from `ch03/sax/variables.py`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection discusses `sax.py`, which did not change that much.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The sax.py file
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `sax.py` file does have any practical changes. However, we should make
+    changes to its `import` statements as it is no longer an autonomous package but
+    a part of another package with a different name. Therefore, we need to change
+    the following two statements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We replace them with these statements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Apart from that, there is no need for additional changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know the source code of the `isax` package, it is time to see that
+    code in action.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the iSAX Python package
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to use the `isax` Python package to develop practical
+    command-line utilities. But first, we are going to learn how to read the iSAX
+    parameters from the users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading the iSAX parameters
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This subsection illustrates how to read the iSAX parameters, including the filenames
+    with the time series, and how to give default values to some of them. Although
+    we saw relevant code in [*Chapter 2*](B14769_02_MA.xhtml#_idTextAnchor053), this
+    time, the process is explained in more detail. Additionally, the code is also
+    going to show how we use these input parameters to set up the relevant variables
+    located inside the `./isax/variables.py` file. As a reminder, variables stored
+    in `./isax/variables.py`, or other similar files – it just happens that we are
+    using `./isax/variables.py` – are accessible from anywhere in our code as long
+    as we have successfully imported the relevant file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we need to create an iSAX index
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a reminder, to create an iSAX index, we need a time series and a threshold
+    value, which is the maximum number of subsequences that a terminal node can hold,
+    as well as a segment value and a cardinality value. Last, we need a sliding window
+    size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a rule of thumb, when working with global variables, it is better to use
+    long and descriptive names. Additionally, it is also a good practice to give default
+    values to global parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code of `parameters.py` is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: All the work is done by the `argparse` package and the `parser.add_argument()`
+    statements that are used for defining command-line parameters and options. The
+    `dest` parameter defines the name of the parameter – this name is going to be
+    used later to read the value of the parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the other parameters of `parser.add_argument()` is called `type` and
+    allows us to define the data type of the parameter. This can save you from lots
+    of issues and code for converting strings into actual values, so use `type` when
+    possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After that, we call `parser.parse_args()` and we are ready to read any `rgparse`
+    parameter we want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `parameters.py` produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In case of an error, `parameters.py` generates the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, the error is that the `cardinality` parameter is a string, whereas
+    we are expecting an integer. The error output is very informative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If a required parameter is missing, `parameters.py` generates the following
+    output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next section shows how we process the subsequences of a time series in order
+    to create an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to process subsequences to create an iSAX index
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This is a really important subsection because here, we explain the Python structure
+    that is used to store the data for each subsequence of an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code does not lie!
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you have doubts about the fields and the data stored in each subsequence,
+    check out the Python code to learn more. The documentation might lie but the code
+    never does.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `subsequences.py` script shows how we create the subsequences, how we store
+    them in a Python data structure, and how we might process them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define the `TS` class again and use that version in `subsequences.py` in
+    order to be able to make more changes to the `TS` class without the danger of
+    altering the code of the `isax` package. Before now, we have read the parameters
+    of the program and we are ready to read the time series:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Currently, we have the time series stored as a NumPy array using the `ts_numpy`
+    variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `for` loop splits the time series into subsequences based on the sliding
+    window size. The normalized version of each subsequence is stored in a `TS()`
+    structure that has three members: the normalized version of the subsequence (`ts`),
+    the SAX representation of the subsequence (`sax`), and the place of the subsequence
+    in the time series (`index`). The last member of the `TS()` structure allows us
+    to find the original version of the subsequence, should we want to do so.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, check the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: After we finish, the script prints the number of subsequences that have been
+    processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only after we have stored the SAX representation of a subsequence in its Python
+    structure based on the maximum cardinality are we ready to put that subsequence
+    into the iSAX index. So, the next step, which is not presented here, is putting
+    each `TS()` node into an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `subsequences.py` gives you information about the number of subsequences
+    that have been processed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: In summary, this is the way we are going to process subsequences in order to
+    add them to an iSAX index. In the next subsection, we are going to create our
+    first iSAX index!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating our first iSAX index
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to create an iSAX index for the first time. But
+    first, we are going to present the Python utility for doing that. The Python code
+    of `createiSAX.py` is presented in four parts. The first part is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: This first part is about the `import` statements and reading the required parameters
+    using `argparse`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second part of `createiSAX.py` is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this part of `createiSAX.py`, we assign the parameters to the relevant local
+    and global variables and make some tests to make sure that the parameters make
+    sense. The reason for using local variables is to have smaller variable names
+    to work with. The `print()` statement outputs the parameters on the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The third part of `createiSAX.py` contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this part, we read the compressed time series file and create the NumPy variable
+    that holds the entire time series. After that, we initialize a variable to hold
+    the iSAX index. As the name of the class is `iSAX`, the relevant variable is initialized
+    as an instance of the `isax.iSAX()` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last part of `createiSAX.py` contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: This last part splits the time series according to the sliding window size,
+    creates the `TS()` objects, and inserts them into the iSAX index using the `insert()`
+    method of the `iSAX` class using the `ISAX` variable – remember that it is `iSAX.insert()`
+    that calls `Node.insert()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `createiSAX.py` produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: The good thing is that `createiSAX.py` has default values for all iSAX parameters.
+    However, providing the path for the file that holds the time series is required.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next subsection, we are going to develop a command-line utility that
+    counts the total number of subsequences in an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting the subsequences of an iSAX index
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This is a really handy utility that not only shows *how to traverse an entire
+    iSAX index* but also allows you to count all the subsequences of an iSAX index
+    and make sure that you have not missed any subsequences in the process, which
+    can be used for testing purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code of `countSub.py` that does the counting is the following – the rest
+    of the implementation is the same as in `createiSAX.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code visits the `ISAX.ht` field of an iSAX class because this is where *all
+    the nodes* of the iSAX index are kept. If we are working with a terminal node,
+    then we call the `nTimeSeries()` method to find the number of subsequences that
+    are stored in that terminal node. We do that for all the terminal nodes, and we
+    are done. The last statement prints both the theoretical number of subsequences
+    as well as the actual number of subsequences found in the iSAX index. As long
+    as these two values are the same, we are good.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `countSub.py` on a small time series, which you can find in the `ch04`
+    directory, generates the following kind of output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: The subsection that follows shows the time it takes to construct an iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How long does it take to create an iSAX index?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to compute the time it takes a computer to
+    create an iSAX index. The main reason for any delays in the construction phase
+    of iSAX is the splitting of nodes and the rearrangement of the subsequences. The
+    more extensive splitting we have, the more time it takes to generate the index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code of `howMuchTime.py` that computes the time it takes to create the
+    iSAX index is the following – the rest of the implementation is the same as in
+    `createiSAX.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first statement is located right before we begin reading the time series
+    file using `pd.read_csv()` and the second statement is right after we finish splitting
+    and inserting the time series into the iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `howMuchTime.py` when processing `ts1.gz` is similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: As `ts1.gz` is a small time series with 50 elements, the output is not that
+    interesting. Therefore, let us try using `howMuchTime.py` on bigger time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next output shows the time it took `howMuchTime.py` to create an iSAX index
+    for a time series with 500,000 elements on a macOS machine with 32 GB of RAM and
+    an Apple M1 Max CPU – you can create a time series with the same length on your
+    own and try the same command or use the provided file, which is called `500k.gz`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `500k.gz` file was created using the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following output shows the time it took `howMuchTime.py` to create an iSAX
+    index for a time series with 2,000,000 elements on a macOS machine with 32 GB
+    of RAM and an Apple M1 Max CPU – you can create a time series with the same or
+    a bigger length on your own and try the same command or use the provided file,
+    which is called `2M.gz`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `2M.gz` file was created using the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: One interesting conclusion that we can make is that for a time series that is
+    four times bigger, it took our program about four times longer to build. However,
+    this is not always the case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, the time it took to create an iSAX index does not tell the whole
+    story, especially when testing on a busy machine or a slow machine with a little
+    amount of RAM. What is more important is the number of node splits as well as
+    the number of accesses to subsequences that were made. The minimum number of accesses
+    to subsequences is equal to the subsequences of the time series. However, when
+    splits take place, we must revisit the involved subsequences in order to distribute
+    them according to the newly created SAX representations and terminal nodes. The
+    splits and the revisiting of subsequences increase the construction time of the
+    iSAX.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, we are going to create a modified version of `howMuchTime.py` that
+    also prints the number of node splits, as well as the total number of subsequence
+    accesses. The name of the new utility is `accessSplit.py`. The statements that
+    do the counting of the splits and the subsequence accessing are already present
+    in `isax/isax.py` and we just need to access two global variables, which are `variables.nSplits`
+    and `variables.nSubsequences`, to get the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running `accessSplit.py` with the default parameters on `500k.gz` produces
+    the following kind of output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: What does this output tell us? It tells us that there was no split! In practice,
+    this means that the root node of that particular iSAX index has terminal nodes
+    only as children. Is this good or bad? In general, this means that *the index
+    works like a hash table* where the hash function is the function for calculating
+    the SAX representation. Most of the time, this is not the desirable form that
+    we want an index to have because we could have used a hash table in the first
+    place!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we run `accessSplit.py` on the same time series using different parameters,
+    we are going to get a totally different output regarding the construction of the
+    iSAX index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: What does this output tell us? It tells us that even on a relatively small time
+    series, the iSAX parameters play a huge role in the creation time of the iSAX
+    index. However, the number of subsequence accesses is around 33 times the total
+    number of subsequences of the time series, which is pretty big and therefore not
+    very efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us now try `accessSplit.py` on a bigger time series, which is `2M.gz`,
+    and see what happens:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As before, we are using the iSAX index as a hash table, which is not the desired
+    behavior. Let us try using different parameters instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: This time, the number of accesses to subsequences is around seven times the
+    length of the time series, which is more realistic than when we were working with
+    the `500k.gz` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going to work with `accessSplit.py` again in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124).
+    But for now, we are going to learn more about the overflow of iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dealing with iSAX overflows
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to experiment with an overflow situation. Keep
+    in mind that a dedicated global parameter exists in `variables.py` that holds
+    the number of subsequences that were ignored due to overflow. Among other things,
+    this helps you fix the iSAX parameters faster as you know how bad the overflow
+    is. Usually, the easiest way to fix an overflow is by increasing the threshold
+    value, but this might have serious implications when searching an iSAX index or
+    comparing an iSAX index with another one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code of `overflow.py` has only one change compared to `createiSAX.py`,
+    which is the following statement because the SAX representation that created the
+    overflow is printed by default:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: This mainly happens because the functionality is built into the `isax` package,
+    which automatically prints a message when the first overflow takes place, and
+    we just have to access the `variables.overflow` variable to find out the total
+    number of overflows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `overflow.py` when working with the `500k.gz` time series includes
+    the following information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous output tells us that the first SAX representation that caused an
+    overflow was `1000_0111_0111_1000_1000_0111_0111_1000` and that we had `303084`
+    overflows in total – we might have more SAX representations that cause an overflow,
+    but we have decided to print just the first one. This means that `303084` subsequences
+    were not inserted into the iSAX index, which is a very large number compared to
+    the length of the time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us now try the same command using the other promotion strategy and see
+    what happens:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: It turns out that we got the same kind of overflow and the exact same number
+    of total overflows. This makes perfect sense as the overflow situation does not
+    have to do with the promotion strategy but with the SAX representations. *A different
+    promotion strategy might change the shape of an iSAX index a little, but it has
+    nothing to do with the* *overflow situation.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As `303084` is a big number, we might need to drastically increase the capacity
+    of the iSAX index but without creating an unnecessarily big iSAX index. So, with
+    that in mind, we can try to resolve the overflow situation by changing the parameters
+    of the iSAX index. Let us try to do so then by increasing the threshold value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, it looks like we cut the number of overflows in half, which is a good thing
+    for a start. However, although we are using the same cardinality as before, it
+    is a different SAX representation (`0111_1000_1000_1000_1000_0111_0111_0111`)
+    that caused the first overflow this time, which means that the increased threshold
+    value solved the overflow condition that took place earlier with the `1000_0111_0111_1000_1000_0111_0111_1000`
+    SAX representation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us give it another try by increasing the `cardinality` value and at the
+    same time decreasing the threshold value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, we finally found a triplet of parameters that works for the `1024` sliding
+    window size and the `500k.gz` dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Is there a recipe for finding out which parameters work and which do not work?
+    No, as it mainly depends on the values of the dataset and the sliding window size.
+    The more you work and experiment with iSAX indexes, the more you are going to
+    understand which parameters work best for a given dataset and sliding window size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, in this last section, we learned about iSAX overflows and presented a technique
+    for solving such situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we saw and went through the implementation details of the `isax`
+    Python package, which allows us to create iSAX indexes. Please make sure that
+    you understand the code and most importantly know how to use the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, we implemented many command-line utilities that allow us to create
+    iSAX indexes and understand what happens behind the scenes regarding the splits
+    and subsequence accesses as well as the overflow conditions. Having a better understanding
+    of the structure of an iSAX index allows us to select better indexes and avoid
+    using poor ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter is going to put iSAX indexes into practice by showing how to
+    search and join iSAX indexes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Useful links
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `argparse` package: [https://docs.python.org/3/library/argparse.xhtml](https://docs.python.org/3/library/argparse.xhtml)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The NumPy Python package: [https://numpy.org/](https://numpy.org/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Try to work through the following exercises:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 100,000 elements with values from *-10 to 10*
+    and construct an iSAX index with 4 segments, a cardinality of 64, and a threshold
+    value of `1000`. How much time did it take your machine to create the iSAX index?
+    Are there any overflows?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 100,000 elements with values from *-1 to 1*
+    and construct an iSAX index with 4 segments, a cardinality of 64, and a threshold
+    value of `1000`. How much time did it take your machine to create that iSAX index?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 500,000 elements with values from *0 to 10*
+    and construct an iSAX index with 4 segments, a cardinality of 64, and a threshold
+    value of `1000`. How much time did it take your machine to create the iSAX index?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 500,000 elements with values from *0 to 10*
+    and construct an iSAX index with 4 segments, a cardinality of 64, and a threshold
+    value of `1000`. How many splits and accesses to subsequences took place? What
+    happens if you increase the threshold value to `1500`?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 150,000 elements with values from *-1 to 1*
+    and construct an iSAX index with 4 segments, a cardinality of 64, and a threshold
+    value of `1000`. Are there any overflows? How many splits were performed for the
+    construction of the iSAX index?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Experiment with `accessSplit.py` on `2M.gz` using various iSAX parameters. Which
+    parameters seem to work best? Do not forget that high threshold values have a
+    great impact on searching; so, in general, do not use huge threshold values to
+    lower the number of splits.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Experiment with `accessSplit.py` on `500k.gz` using various iSAX parameters.
+    Which parameters seem to work best?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,1293 @@
+- en: '2'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Implementing SAX
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter is about the **Symbolic Aggregate Approximation** (**SAX**) component
+    of the iSAX index and is divided into two parts – the first part with the theoretical
+    knowledge, and the second part with the code to compute SAX and the practical
+    examples. At the end of the chapter, you will see how to calculate some handy
+    statistical quantities that can give you a higher overview of your time series
+    and plot a histogram of your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The required theory
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An introduction to SAX
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Developing a Python package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Working with the SAX package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Counting the SAX representations of a time series
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `tsfresh` Python package
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a histogram of a time series
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculating the percentiles of a time series
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The GitHub repository for the book is [https://github.com/PacktPublishing/Time-Series-Indexing](https://github.com/PacktPublishing/Time-Series-Indexing).
+    The code for each chapter is in its own directory. Therefore, the code for [*Chapter
+    2*](B14769_02_MA.xhtml#_idTextAnchor053) can be found in the `ch02` folder. If
+    you already used `git(1)` to get a local copy of the entire GitHub repository,
+    there is no need to get that again. Just make your current working directory `ch02`
+    while working with this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The required theory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, you are going to learn the required theory that supports the
+    SAX representation. However, keep in mind that this book is more practical than
+    it is theoretical. If you want to learn the theory in depth, you should read the
+    research papers mentioned in this chapter, as well as the forthcoming ones, and
+    the *Useful links* section found at the end of each chapter. Thus, the theory
+    is about serving our main purpose, which is the implementation of techniques and
+    algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The operation and the details of SAX are fully described in a research paper
+    titled *Experiencing SAX: a novel symbolic representation of time series*, which
+    was written by Jessica Lin, Eamonn Keogh, Li Wei, and Stefano Lonardi. This paper
+    ([https://doi.org/10.1007/s10618-007-0064-z](https://doi.org/10.1007/s10618-007-0064-z))
+    was officially published back in 2007\. You do not have to read all of it from
+    the front cover to the back cover, but it is a great idea to download it and read
+    the first pages of it, giving special attention to the abstract and the introduction
+    section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will begin by explaining the terms *PAA* and *SAX*. **PAA** stands for **Piecewise
+    Aggregate Approximation**. The PAA representation offers a way to reduce the dimensionality
+    of a time series. This means that it takes a long time series and creates a smaller
+    version of it that is easier to work with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PAA is also explained in the *Experiencing SAX: a novel symbolic representation
+    of time series* paper ([https://doi.org/10.1007/s10618-007-0064-z](https://doi.org/10.1007/s10618-007-0064-z)).
+    From that, we can easily understand that PAA and SAX are closely related, as the
+    idea behind SAX is based on PAA. The *SAX representation* is a **symbolic representation
+    of time series**. Put simply, it offers a way of representing a time series in
+    a summary form, in order to save space and increase speed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The difference between PAA and SAX
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main difference between PAA and the SAX representation is that PAA just
+    calculates the mean values of a time series, based on a sliding window size, whereas
+    the SAX representation utilizes those mean values and further transforms PAA to
+    get a discrete representation of a time series (or subsequence). In other words,
+    the SAX representation converts the PAA representation into something that is
+    better to work with. As you will find out in a while, this transformation takes
+    place with the help of **breakpoints**, which divide the numeric space of the
+    mean values into subspaces. Each subspace has a discrete representation based
+    on the given breakpoint values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both PAA and SAX are techniques for dimensionality reduction. SAX is going to
+    be explained in much more detail in a while, whereas the discussion about PAA
+    ends here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection tells us why we need SAX.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why do we need SAX?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Time series are difficult to search. The longer a time series (or subsequence)
+    is, the more computationally intensive it is to search for it or compare it with
+    another one. The same applies to working with indexes that index time series –
+    iSAX is such an index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To make things simpler for you, what we will do is take a subsequence with *x*
+    elements and transform it into a representation with *w* elements, where *w* is
+    much smaller than *x*. In strict terms, this is called **dimensionality reduction**,
+    and it allows us to work with long subsequences using less data. However, once
+    we decide that we need to work with a given subsequence, we need to work with
+    it using its full dimensions – that is, all its *x* elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection talks about normalization, which, among other things, allows
+    us to compare values at different scales.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Normalization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first two questions you might ask are what normalization is and why we need
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Normalization** is the process of adjusting values that use different scales
+    to a common scale. A simple example is comparing Fahrenheit and Celsius temperatures
+    – we cannot do that unless we bring all values to the same scale. This is the
+    simplest form of normalization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although various types of normalization exist, what is needed here is **standard
+    score normalization**, which is the simplest form of normalization, because this
+    is what is used for time series and subsequences. Please do not confuse database
+    normalization and normal forms with value normalization, as they are totally different
+    concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The reasons that we introduce normalization into the process are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first and most important reason is that we can compare datasets that use
+    a different range of values. A simple case is comparing Celsius and Fahrenheit
+    temperatures.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A side effect of the previous point is that data anomalies are reduced but not
+    eliminated.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In general, normalized data is easier to understand and process because we deal
+    with values in a predefined range.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Searching using an index that uses normalized values might be faster than when
+    working with bigger values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Searching, sorting, and creating indexes is faster since values are smaller.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Normalization is conceptually cleaner and easier to maintain and change as your
+    needs change.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Another simple example that supports the need for normalization is when comparing
+    positive values with negative ones. It is almost impossible to draw useful conclusions
+    when comparing such different kinds of observations. Normalization solves such
+    issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although we are not going to need to, bear in mind that we cannot go from the
+    normalized version of a subsequence to the original subsequence, so the normalization
+    process is irreversible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following function shows how to normalize a time series with some help
+    from the NumPy Python package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous function reveals the formula of normalization. Given a dataset,
+    the normalized form of each one of its elements is equal to the value of the observation,
+    minus the **mean value** of the dataset over the **standard deviation** of the
+    dataset – both these statistical terms are explained in *The tsfresh Python package*
+    section of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is seen in the return value of the previous function, `(x-mu)/std`. NumPy
+    is clever enough to calculate that value for each observation without the need
+    to use a `for` loop. If the standard deviation is close to `0`, which is simulated
+    by the value of the `eps` variable, then the return value of `normalize()` is
+    equal to a NumPy array full of zeros.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `normalize.py` script, which uses the previously developed function that
+    does not appear here, gets a time series as input and returns its normalized version.
+    Its code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The last `for` loop of the program is used to print the contents of the `taNorm`
+    NumPy array with a smaller precision in order to take up less space. To do that,
+    we need to convert the `taNorm` NumPy array into a regular Python list using the
+    `tolist()` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to feed `normalize.py` a short time series; however, the script
+    also works with longer ones. The output of `normalize.py` looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: With normalization in mind, let us now proceed to the next subsection, where
+    we are going to visualize a time series and show the visual difference between
+    the original version and the normalized version of it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Visualizing normalized time series
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we are going to show the difference between the normalized
+    and the original version of a time series with the help of visualization. Keep
+    in mind that we usually *do not normalize the entire time series*. The normalization
+    takes place on a subsequence level based on the sliding window size. In other
+    words, for the purposes of this book, we will normalize subsequences, not an entire
+    time series. Additionally, for the calculation of the SAX representation, we process
+    the normalized subsequences based on the **segment value**, which specifies the
+    parts that a SAX representation will have. So, for a segment value of 2, we split
+    the normalized subsequence into two. For a segment value of 4, we split the normalized
+    subsequence into four sets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nevertheless, viewing the normalized and original versions of a time series
+    is very educational. The Python code of `visualize_normalized.py`, without the
+    implementation of `normalize()`, is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `plt.plot()` function is called twice, plotting a line each time. Feel free
+    to experiment with the Python code in order to change the look of the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 2**.1* shows the output of `visualize_normalized.py ts1.gz`, which
+    uses a time series with 50 elements.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.1 – The plotting of a time series and its normalized version](img/Figure_2.1_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.1 – The plotting of a time series and its normalized version
+  prefs: []
+  type: TYPE_NORMAL
+- en: I think that *Figure 2**.1* speaks for itself! The values of the normalized
+    version are located *around the value of 0*, whereas the values of the original
+    time series can be anywhere! Additionally, we make the original time series smoother
+    without completely losing its original shape and edges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section is about the details of the SAX representation, which is a
+    key component of every iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An introduction to SAX
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As mentioned previously, **SAX** stands for **Symbolic Aggregate Approximation**.
+    The SAX representation was officially announced back in 2007 in the *Experiencing
+    SAX: a novel symbolic representation of time series* paper ([https://doi.org/10.1007/s10618-007-0064-z](https://doi.org/10.1007/s10618-007-0064-z)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep in mind that we do not want to find the SAX representation of an entire
+    time series. We just want to find the SAX representation of a subsequence of a
+    time series. The main difference between a time series and a subsequence is that
+    a time series is many times bigger than a subsequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each SAX representation has two parameters named **cardinality** and the number
+    of **segments**. We will begin by explaining the cardinality parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cardinality parameter
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *cardinality* parameter specifies the number of possible values each segment
+    can have. As a side effect, the cardinality parameter *defines the way the y axis
+    is divided* – this is used to get the value of each segment. There exist multiple
+    ways to specify the value of a segment based on the cardinality. These include
+    alphabet characters, decimal numbers, and binary numbers. In this book, we will
+    use binary numbers because they are easier to understand and interpret, using
+    a file with the **precalculated breakpoints** for cardinalities up to 256.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, a cardinality of 4, which is 22, gives us four possible values, as we use
+    2 bits. However, we can easily replace `00` with the letter `a`, `01` with the
+    letter `b`, `10` with the letter `c`, `11` with the letter `d`, and so on, in
+    order to use letters instead of binary numbers. Keep in mind that this might require
+    minimal code changes in the presented code, and it would be good to try this as
+    an exercise when you feel comfortable with SAX and the provided Python code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The format of the file with the breakpoints, which in our case supports cardinalities
+    up to 256 and is called `SAXalphabet`, is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The values presented here are called breakpoints in the SAX terminology. The
+    value in the first line divides the *y* axis into two areas, separated by the
+    *x* axis. So, in this case, we need 1 bit to define whether we are in the upper
+    space (the positive *y* value) or the lower one (the negative *y* value).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we will use binary numbers to represent each SAX segment, there is no point
+    in wasting them. Therefore, the values that we will use are the powers of 2, from
+    2 1 (*cardinality 2*) to 2 8 (*cardinality 256*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us now present *Figure 2**.2*, which shows how `-0.67449, 0, 0.67449` divides
+    the *y* axis, which is used in the 2 2 cardinality. The bottom part begins from
+    the minus infinitive up to `-0.67449`, the second part from `-0.67449` up to `0`,
+    the third part from `0` to `0.67449`, and the last part from `0.67449` up to plus
+    infinitive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.2 – The y axis for cardinality 4 (three breakpoints)](img/Figure_2.2_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.2 – The y axis for cardinality 4 (three breakpoints)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us now present *Figure 2**.3*, which shows how `-1.1503, -0.67449, -0.31864,
+    0, 0.31864, 0.67449, 1.1503` divides the *y* axis. This is for the 2 3 cardinality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.3 – The y axis for cardinality 8 (7 breakpoints)](img/Figure_2.3_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.3 – The y axis for cardinality 8 (7 breakpoints)
+  prefs: []
+  type: TYPE_NORMAL
+- en: As this can be a tedious job, we have created a utility that does all the plotting.
+    Its name is `cardinality.py`, and it reads the `SAXalphabet` file to find the
+    breakpoints of the desired cardinality before plotting them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code for `cardinality.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The script requires two command-line parameters – the cardinality and the output
+    file, which is used to save the image. Note that a cardinality value of 8 requires
+    7 breakpoints, a cardinality value of 32 requires 31 breakpoints, and so on. Therefore,
+    the Python code for `cardinality.py` decreases the line number that it is going
+    to search for in the `SAXalphabet` file to support that functionality. Therefore,
+    when given a cardinality value of 8, the script is going to look for the line
+    with 7 breakpoints in `SAXalphabet`. Additionally, as the script reads the breakpoint
+    values as strings, we need to convert these strings into floating-point values
+    using the `lines = [eval(i) for i in elements]` statement. The rest of the code
+    is related to the Matplotlib Python package and how to draw lines using `plt.axhline()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection is about the segments parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The segments parameter
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The (number of) *segments* parameter specifies the number of parts (*words*)
+    a SAX representation is going to have. Therefore, a segments value of 2 means
+    that the SAX representation is going to have two words, each one using the specified
+    cardinality. Therefore, the values of each part are determined by the cardinality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A side effect of this parameter is that, after normalizing a subsequence, we
+    divide it by the number of segments and work with these different parts separately.
+    This is the way the SAX representation works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both cardinality and segments values control the data compression ratio and
+    the accuracy of the subsequences of a time series and, therefore, the entire time
+    series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection shows how to manually compute the SAX representation of
+    a subsequence – this is the best way to fully understand the process and be able
+    to identify bugs or errors in the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to manually find the SAX representation of a subsequence
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Finding the SAX representation of a subsequence looks easy but requires lots
+    of computations, which makes the process ideal for a computer. Here are the steps
+    to find the SAX representation of a time series or subsequence:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we need to have the number of segments and the cardinality.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then, we normalize the subsequence or the time series.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: After that, we divide the normalized subsequence by the number of segments.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For each one of these parts, we find its mean value.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, based on each mean value, we calculate its representation based on
+    the cardinality. The cardinality is what defines the breakpoint values that are
+    going to be used.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We will use two simple examples to illustrate the manual computation of the
+    SAX representation of a time series. The time series is the same in both cases.
+    What will be different are the SAX parameters and the sliding window size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s imagine we have the following time series and a sliding window size of
+    4:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Based on the sliding window size, we extract the first two subsequences from
+    the time series:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`S1 = {-1, 2,` `3, 4}`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`S2 = {2, 3,` `4, 5}`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first step that we should take is to `normalize.py` script we developed
+    earlier – we just have to save each subsequence into its own plain text file and
+    compress it using the `gzip` utility, before giving it as input to `normalize.py`.
+    If you use a Microsoft Windows machine, you should look for a utility that allows
+    you to create such ZIP files. An alternative is to work with plain text files,
+    which might require some small code changes in the `pd.read_csv()` function call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of the `normalize.py` script when processing `S1` (`s1.txt.gz`)
+    and `S2` (`s2.txt.gz`) is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, the normalized versions of `S1` and `S2` are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`N1 = {-1.6036, 0.0000,` `0.5345, 1.0690}`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`N2 = {-1.3416, -0.4472,` `0.4472, 1.3416}`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In this first example, we use a segments value of 2 and a cardinality value
+    of 4 (22). A segment value of 2 means that we must divide each *normalized subsequence*
+    into two parts. These two parts contain the following data, based on the normalized
+    versions of `S1` and `S2`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For `S1`, the two parts are `{-1.6036, 0.0000}` and `{``0.5345, 1.0690}`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For `S2`, the two parts are `{-1.3416, -0.4472}` and `{``0.4472, 1.3416}`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The mean values of each part are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For `S1`, they are `-0.8018` and `0.80175`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For `S2`, they are `-0.8944` and `0.8944`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the cardinality of 4, we are going to look at *Figure 2**.2* and the respective
+    breakpoints, which are `-0.67449`, `0`, and `0.67449`. So, the SAX values of each
+    segment are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For S1, they are `00` because `-0.8018` falls at the bottom of the plot and
+    `11`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For S2, they are `00` and `11` because `0.8944` falls at the top of the plot
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Therefore, the SAX representation of `S1` is `[00, 11]` and for `S2`, it is
+    `[00, 11]`. It turns out that both subsequences have the same SAX representation.
+    This makes sense, as they only differ in one element, which means that their normalized
+    versions are similar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that in both cases, the lower cardinality begins from the bottom of the
+    plot. For *Figure 2**.2*, this means that `00` is at the bottom of the plot, `01`
+    is next, followed by `10`, and `11` is at the top of the plot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the second example, we will use a sliding window size of 8, a segments value
+    of 4, and a cardinality value of 8 (23).
+  prefs: []
+  type: TYPE_NORMAL
+- en: About the sliding window size
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep in mind that the normalized representation of the subsequence remains the
+    same when the sliding window size remains the same. However, if either the cardinality
+    or the segments change, the resulting SAX representation might be completely different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Based on the sliding window size, we extract the first two subsequences from
+    the time series – `S1 = {-1, 2, 3, 4, 5, -1, -3, 4}` and `S2 = {2, 3, 4, 5, -1,
+    -3,` `4, 10}`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of the `normalize.py` script is going to be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, the normalized versions of `S1` and `S2` are `N1 = {-0.9595, 0.1371, 0.5026,
+    0.8681, 1.2337, -0.9595, -1.6906, 0.8681}` and `N2 = {-0.2722, 0.0000, 0.2722,
+    0.5443, -1.0887, -1.6330, 0.2722,` `1.9052}`, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A segment value of 4 means that we must divide each one of the *normalized subsequences*
+    into four parts. For `S1`, these parts are `{-0.9595, 0.1371}`, `{0.5026, 0.8681}`,
+    `{1.2337, -0.9595}`, and `{-``1.6906, 0.8681}`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For `S2`, these parts are `{-0.2722, 0.0000}`, `{0.2722, 0.5443}`, `{-1.0887,
+    -1.6330}`, and `{``0.2722, 1.9052}`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For `S1`, the mean values are `-0.4112`, `0.68535`, `0.1371`, and `-0.41125`.
+    For `S2`, the mean values are `-0.1361`, `0.40825`, `-1.36085`, and `1.0887`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: About the breakpoints of the cardinality value of 8
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just a reminder here that for the cardinality value of 8, the breakpoints are
+    (000) `-1.1503`, (001) `-0.67449`, (010) `-0.31864`, (011) `0`, (100) `0.31864`,
+    (101) `0.67449`, and (110) `1.1503` (111). In parentheses, we present the SAX
+    values for each breakpoint. For the first breakpoint, we have the 000 value to
+    its left and 001 to its right. For the last breakpoint, we have the 110 value
+    to its left and 111 to its right. Remember that we use seven breakpoints for a
+    cardinality value of 8.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, the SAX representation of `S1` is `['010', '110', '100', '010']`,
+    and for `S2`, it is`['011', '101', '000', '110']`. The use of single quotes around
+    SAX words means that internally we store SAX words as strings, despite the fact
+    that we calculate them as binary numbers because it is easier to search and compare
+    strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection examines a case where a subsequence cannot be divided perfectly
+    by the number of segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ηow can we divide 10 data points into 3 segments?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we have seen examples where the length of the subsequence can be perfectly
+    divided by the number of segments. However, what happens if that is not possible?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In that case, there exist data points that contribute to two adjacent segments
+    at the same time. However, instead of putting the whole point into a segment,
+    we put part of it into one segment and part of it into another!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is further explained on page 18 of the *Experiencing SAX: a novel symbolic
+    representation of time series* paper. As stated in the paper, if we cannot divide
+    the sliding window length by the number of segments, we can use a part of a point
+    in a segment and a part of a point in another segment. We do that for points that
+    are between two segments and not for any random points. This can be explained
+    using an example. Imagine we have a time series such as *T* = {*t*1, *t*2, *t*3,
+    *t*4, *t*5, *t*6, *t*7, *t*8, *t*9, *t*10}*.* For the *S*1 segment, we take the
+    values of {*t*1, *t*2, *t*3} and one-third of the value of *t*4\. For the *S*2
+    segment, we take the values of {*t*5, *t*6} and two-thirds of the values of *t*4
+    and *t*7\. For the *S*3 segment, we take the values of {*t*8, *t*9, *t*10} and
+    the third of the value of *t*7 that we have not used so far. This is also explained
+    in *Figure 2**.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.4 – Dividing 10 data points into 3 segments](img/Figure_2.4_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.4 – Dividing 10 data points into 3 segments
+  prefs: []
+  type: TYPE_NORMAL
+- en: Put simply, this is a convention decided by the creators of SAX that applies
+    to all cases where we cannot perfectly divide the number of elements by that of
+    the segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this book, we will not deal with that case. The sliding window size, which
+    is the length of the generated subsequences, and the number of segments are both
+    part of a perfect division, with a remainder of 0\. This simplification does not
+    change the way SAX works, but it makes our lives a little easier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The subject of the next subsection is how to go from higher cardinalities to
+    lower ones without doing every computation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reducing the cardinality of a SAX representation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The knowledge gained from this subsection will be applicable when we discuss
+    the iSAX index. However, as what you will learn is directly related to SAX, we
+    have decided to discuss it here first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine that we have a SAX representation at a given cardinality and that we
+    want to reduce the cardinality. Is that possible? Can we do this without calculating
+    everything from scratch? The answer is simple – this can be done by ignoring trailing
+    bits. Given a binary value of 10,100, the first trailing bit is 0, then the next
+    trailing bit is 0, then 1, and so on. So, we start from the bits at the end, and
+    we remove them one by one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As most of you, including me when I first read about it, might find this unclear,
+    let me show you some practical examples. Let us take the following two SAX representations
+    from the *How to manually find the SAX representation of a subsequence* subsection
+    of this chapter – `[00, 11]` and `[010, 110, 100, 010]`. To convert `[00, 11]`
+    into the cardinality of 2, we must just delete the digits at the end of each SAX
+    word. So, the new version of `[00, 11]` will be `[0, 1]`. Similarly, `[010, 110,
+    100, 010]` is going to be `[01, 11, 10, 01]` for the cardinality of 4 and `[0,
+    1, 1, 0]` for the cardinality of 2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, from a higher cardinality – a cardinality with more digits – we can go to
+    a lower cardinality by *subtracting the appropriate number of digits from the
+    right side* of one or more segments (the trailing bits). Can we go in the opposite
+    direction? Not without losing accuracy, but that would still be better than nothing.
+    However, generally, we don’t go in the opposite direction. So far, we know the
+    theory regarding the SAX representation. The section that follows briefly explains
+    the basics of Python packages and shows the development of our own package, named
+    `sax`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing a Python package
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we describe the process of developing a Python package that
+    calculates the SAX representation of a subsequence. Apart from this being a good
+    programming exercise, the package is going to be enriched in the chapters that
+    follow when we create the iSAX index.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will begin by explaining the basics of Python packages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The basics of Python packages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: I am not a Python expert, and the presented information is far from complete.
+    However, it covers the required knowledge regarding Python packages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In all but the latest Python versions, we used to need a file named `__init__.py`
+    inside the directory of every Python package. Its purpose is to perform initialization
+    actions and imports, as well as define variables. Although this is not the case
+    with most recent Python versions, our packages will still have a `__init__.py`
+    file in them. The good thing is that it is allowed to be empty if you have nothing
+    to put into it. There is a link at the end of the chapter to the official Python
+    documentation regarding packages, regular packages, and namespace packages, where
+    the use of `__init__.py` is explained in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next subsection discusses the details of the Python package that we are
+    going to develop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The SAX Python package
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The code of the `sax` Python package is included in a directory named `sax`.
+    The contents of the `sax` directory are presented with the help of the `tree(1)`
+    command, which you might need to install on your own:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `__pycache__` directory is automatically generated by Python once you begin
+    using the Python package and contains precompiled bytecode Python code. You can
+    completely ignore that directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us begin by showing the contents of `sax.py`, which is going to be presented
+    in multiple code chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we have the `import` section and the implementation of the `normalize()`
+    function, which normalizes a NumPy array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After that, we have the implementation of the `createPAA()` function, which
+    returns the SAX representation of a time series, given the cardinality and the
+    segments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Python uses the double slash `//` operator to perform floor division. What the
+    `//` operator does is divide the first number by the second number before rounding
+    the result down to the nearest integer – this is used for the `segment_size` variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The rest of the code is about specifying the correct index numbers when working
+    with the given time series (or subsequence). Hence, the `for` loop is used to
+    process the entire time series (or subsequence) based on the segments value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we have the implementation of a function that computes the mean value
+    of a NumPy array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we have the function that returns the SAX value of a SAX word, given
+    its mean value and its cardinality. Remember that we calculate the mean value
+    of each SAX word separately in the `createPAA()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code computes the SAX value of a SAX word using its mean value.
+    It iteratively visits the breakpoints, from the lowest value to the biggest, up
+    to the point that the mean value exceeds the current breakpoint. This way, we
+    find the index of the SAX word (mean value) in the list of breakpoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let us discuss a tricky point, which has to do with the last statements
+    that reverse the SAX word. This mainly has to do with whether we begin counting
+    from the top or the bottom of the different areas that the breakpoints create.
+    All ways are equivalent – we just decided to go that way. This is because a previous
+    implementation of SAX used that order, and we wanted to make sure that we created
+    the same results for testing reasons. If you want to alter that functionality,
+    you just have to remove the last `for` loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you saw at the beginning of this section, the `sax` package is composed of
+    three Python files, not just the one that we just presented. So, we will present
+    the remaining two files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we will present the contents of `variables.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might wonder what the main reason is for having such a file. The answer
+    is that we need to have a place to keep our global parameters and options, and
+    having a separate file for that is a perfect solution. This will make much more
+    sense when the code becomes longer and more complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Second, we present the code in `tools.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we reference two variables from the `variable.py` file, which are `variables.breakpointsFile`
+    and `variables.maximumCardinality`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a helper function that we use when we want to make sure that a value
+    is a power of 2:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `load_sax_alphabet()` function loads the contents of the file with the definitions
+    of breakpoints and assigns them to the `variables.elements` variable. The `breakpoints()`
+    function returns the breakpoint values when given the cardinality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, the code of the entire package is relatively short, which is
+    a good thing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we developed a Python package to compute SAX representations.
+    In the next section, we are going to begin working with the `sax` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with the SAX package
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have the SAX package at hand, it is time to use it by developing
+    various utilities, starting with a utility that computes the SAX representations
+    of the subsequences of a time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Computing the SAX representations of the subsequences of a time series
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we will develop a utility that computes the SAX representations
+    for all the subsequences of a time series and also presents their normalized forms.
+    The name of the utility is `ts2PAA.py` and contains the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `ts2PAA.py` script takes a time series, breaks it into subsequences, and
+    computes the normalized version of each subsequence using `sax.normalize()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `ts2PAA.py` is as follows (some output is omitted for brevity):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous output shows the SAX representation, the original subsequence,
+    and the normalized version of the subsequence for all the subsequences of a time
+    series. Each subsequence is on a separate line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using Python packages
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of the chapters that follow will need the SAX package we developed here.
+    For reasons of simplicity, we will copy the SAX package implementation into all
+    directories that use that package. This might not be the best practice on production
+    systems where we want a single copy of each software or package, but it is the
+    best practice when learning and experimenting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we have learned how to use the basic functionality of the `sax` package.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section presents a utility that counts the SAX representations of the
+    subsequences of a time series and prints the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting the SAX representations of a time series
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This section of the chapter presents a utility that counts the SAX representations
+    of a time series. The Python data structure behind the logic of the utility is
+    a dictionary, where the keys are the SAX representations converted into strings
+    and the values are integers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for `counting.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `for` loop splits the time series into subsequences and computes the SAX
+    representation of each subsequence using `sax.createPAA()`, before updating the
+    relevant counter in the `KEYS` dictionary. The `tempSAXword = tempSAXword[:-1]`
+    statement removes an unneeded underscore character from the SAX representation.
+    Finally, we print the content of the `KEYS` dictionary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `counting.py` should be similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: What does this output tell us?
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a time series with 50 elements (`ts1.gz`) and a sliding window size of 4,
+    there exist `18` subsequences with the `10_01` SAX representation, `8` subsequences
+    with the `11_00` SAX representation, `14` subsequences with the `01_10` SAX representation,
+    and `7` subsequences with the `00_11` SAX representation. For easier comparison,
+    and to be able to use a SAX representation as a key to a dictionary, we convert
+    `[01 10]` into the `01_10` string, `[11 00]` into `11_00`, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How many subsequences does a time series have?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep in mind that given a time series with `n` elements and a sliding window
+    size of `w`, the total number of subsequences is `n – w +` `1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`counting.py` can be used for many practical tasks and will be updated in [*Chapter
+    3*](B14769_03.xhtml#_idTextAnchor081).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section discusses a handy Python package that can help us learn more
+    about processing our time series from a statistical point of view.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The tsfresh Python package
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This is a bonus section not directly related to the subject of the book, but
+    it is helpful, nonetheless. It is about a handy Python package called `tsfresh`,
+    which can give you a good overview of your time series from a statistical perspective.
+    We are not going to present all the capabilities of `tsfresh`, just the ones that
+    you can easily use to get information about your time series data – at this point,
+    you might need to install `tsfresh` on your machine. Keep in mind that the `tsfresh`
+    package has lots of package dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, we are going to compute the following properties of a dataset – in this
+    case, a time series:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Mean value**: The mean value of a dataset is the summary of all the values
+    divided by the number of values.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Standard deviation**: The standard deviation of a dataset measures the amount
+    of variation in it. There is a formula to calculate the standard deviation, but
+    we usually compute it using a function from a Python package.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Skewness**: The skewness of a dataset is a measure of the asymmetry in it.
+    The value of skewness can be positive, negative, zero, or undefined.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Kurtosis**: The kurtosis of a dataset is a measure of the tailedness of a
+    dataset. In more mathematical terms, kurtosis measures the heaviness of the tail
+    of a distribution compared to a normal distribution.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All these quantities will make much more sense once you plot your data, which
+    is left as an exercise for you; otherwise, they will be just numbers. So, now
+    that we know some basic statistic terms, let us present a Python script that calculates
+    all these quantities for a time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code for `using_tsfresh.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of `using_tsfresh.py` when processing `ts1.gz` should look similar
+    to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `tsfresh` package can do many more things; we have just presented the tip
+    of the iceberg of the capabilities of `tsfresh`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section is about creating a histogram of a time series.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a histogram of a time series
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This is another bonus section, where we will illustrate how to create a histogram
+    of a time series to get a better overview of its values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A **histogram**, which looks a lot like a bar chart, defines buckets (bins)
+    and counts the number of values that fall into each bin. Strictly speaking, a
+    histogram allows you to understand your data by creating a plot of the **distribution
+    of values**. You can see the maximum and the minimum values, as well as find out
+    data patterns, just by looking at a histogram.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code for `histogram.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The third argument of the `np.linespace()` function helps us define the number
+    of bins the histogram has. The first parameter is the minimum value, and the second
+    parameter is the maximum value of the presented samples. This script does not
+    save its output in a file but, instead, opens a window on your GUI to display
+    the output. The `plt.hist()` function creates the histogram, whereas the `plt.legend()`
+    function puts the legend in the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A sample output of `histogram.py` can be seen in *Figure 2**.5*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.5 – A sample histogram](img/Figure_2.5_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.5 – A sample histogram
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A different sample output from `histogram.py` can be seen in *Figure 2**.6*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.6 – A sample histogram](img/Figure_2.6_B14769.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.6 – A sample histogram
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, what is the difference between the histograms in *Figure 2**.5* and *Figure
+    2**.6*? There exist many differences, including the fact that the histogram in
+    *Figure 2**.5* does not have empty bins and it contains both negative and positive
+    values. On the other hand, the histogram in *Figure 2**.6* contains negative values
+    only that are far away from 0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know about histograms, let us learn about another interesting statistical
+    quantity – *percentiles*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating the percentiles of a time series
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this last bonus section of this chapter, we are going to learn how to compute
+    the percentiles of a time series or a list (and if you find the information presented
+    here difficult to understand, feel free to skip it). The main usage of such information
+    is to better understand your time series data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *percentile* is a score where a given percentage of scores in the frequency
+    distribution falls. Therefore, the 20th percentile is the score below which 20%
+    of the scores of the distribution of the values of a dataset falls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A **quartile** is one of the following three percentiles – 25%, 50%, or 75%.
+    So, we have the first quartile, the second quartile, and the third quartile, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both percentiles and quartiles are calculated in datasets sorted in ascending
+    order. Even if you have not sorted that dataset, the relevant NumPy function,
+    which is called `quantile()`, does that behind the scenes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Python code of `percentiles.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: All the work is done by the `quantile()` function of the NumPy package. Among
+    other things, `quantile()` appropriately arranges its elements before performing
+    any calculations. We do not know what happens internally, but most likely, `quantile()`
+    sorts its input in ascending order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first parameter of `quantile()` is the NumPy array, and its second parameter
+    is the percentage (percentile) that interests us. A 25% percentage is equal to
+    the first quantile, a 50% percentage is equal to the second quantile, and a 75%
+    percentage is equal to the third quantile. A 1% percentage is equal to the 1%
+    percentile, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of `percentiles.py` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter included the theory behind and practical implementation of SAX
+    and an understanding of a time series from a statistical viewpoint. As the iSAX
+    index construction is based on the SAX representation, we cannot construct an
+    iSAX index without computing SAX representations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before you begin reading [*Chapter 3*](B14769_03.xhtml#_idTextAnchor081), please
+    make sure that you know how to calculate the SAX representation of a time series
+    or a subsequence, given the sliding window size, the number of segments, and the
+    cardinality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter contains the theory related to the iSAX index, shows you how
+    to manually construct an iSAX index (which you will find very entertaining), and
+    includes the development of some handy utilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Useful links
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'About Python packages: [https://docs.python.org/3/reference/import.xhtml](https://docs.python.org/3/reference/import.xhtml)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `tsfresh` package: [https://pypi.org/project/tsfresh/](https://pypi.org/project/tsfresh/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The documentation for the `tsfresh` package can be found at [https://tsfresh.readthedocs.io/en/latest/](https://tsfresh.readthedocs.io/en/latest/)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `scipy` package: [https://pypi.org/project/scipy/](https://pypi.org/project/scipy/)
+    and [https://scipy.org/](https://scipy.org/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Normalization: [https://en.wikipedia.org/wiki/Normalization_(statistics)](https://en.wikipedia.org/wiki/Normalization_(statistics))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Histogram: [https://en.wikipedia.org/wiki/Histogram](https://en.wikipedia.org/wiki/Histogram)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Percentile: [https://en.wikipedia.org/wiki/Percentile](https://en.wikipedia.org/wiki/Percentile)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Normal distribution: [https://en.wikipedia.org/wiki/Normal_distribution](https://en.wikipedia.org/wiki/Normal_distribution)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Try to solve the following exercises in Python:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Divide *by hand* the *y* axis for the 16 = 24 cardinality. Did you divide it
+    into 16 areas or 17 areas? How many breakpoints did you use?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Divide *by hand* the *y* axis for the 64 = 26 cardinality. Did you divide it
+    into 64 areas?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use the `cardinality.py` utility to plot the breakpoints of the 16 = 24 cardinality.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use the `cardinality.py` utility to plot the breakpoints of the 128 = 2 7 cardinality.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Find the SAX representation of the `{0, 2, -1, 2, 3, 4, -2, 4}` subsequence
+    using 4 segments and a cardinality of 4 (2 2). Do not forget to normalize it first.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Find the SAX representation of the `{0, 2, -1, 2, 3, 4, -2, 4}` subsequence
+    using 2 segments and a cardinality of 2 (2 1). Do not forget to normalize it first.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Find the SAX representation of the `{0, 2, -1, 2, 3, 1, -2, -4}` subsequence
+    using 4 segments and a cardinality of 2.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Given the `{0, -1, 1.5, -1.5, 0, 1, 0}` time series and a sliding window size
+    of 4, find the SAX representation of all its subsequences using 2 segments and
+    a cardinality of 2.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic time series and process it using `using_tsfresh.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic time series with 1,000 elements and process it using `histogram.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic time series with 5,000 elements and process it using `histogram.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic time series with 10,000 elements and process it using `counting.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic time series with 100 elements and process it using `percentiles.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a synthetic dataset with 100 elements and examine it using `counting.py`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Modify `histogram.py` to save its graphical output in a PNG file.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Plot a time series using `histogram.py` and then process it using `using_tsfresh.py`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

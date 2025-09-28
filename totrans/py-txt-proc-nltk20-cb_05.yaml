@@ -1,0 +1,1272 @@
+- en: Chapter 5. Extracting Chunks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chunking and chinking with regular expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Merging and splitting chunks with regular expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Expanding and removing chunks with regular expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Partial parsing with regular expressions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Training a tagger-based chunker
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Classification-based chunking
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracting named entities
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracting proper noun chunks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracting location chunks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Training a named entity chunker
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Chunk extraction** or **partial parsing** is the process of extracting short
+    phrases from a part-of-speech tagged sentence. This is different than full parsing,
+    in that we are interested in standalone **chunks** or **phrases** instead of full
+    parse trees. The idea is that meaningful phrases can be extracted from a sentence
+    by simply looking for particular patterns of part-of-speech tags.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As in [Chapter 4](ch04.html "Chapter 4. Part-of-Speech Tagging"), *Part-of-Speech
+    Tagging*, we will be using the **Penn Treebank corpus** for basic training and
+    testing chunk extraction. We will also be using the CoNLL 2000 corpus as it has
+    a simpler and more flexible format that supports multiple chunk types (refer to
+    the *Creating a chunked phrase corpus* recipe in [Chapter 3](ch03.html "Chapter 3. Creating
+    Custom Corpora"), *Creating Custom Corpora* for more details on the `conll2000`
+    corpus and IOB tags).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chunking and chinking with regular expressions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using modified regular expressions, we can define **chunk patterns**. These
+    are patterns of part-of-speech tags that define what kinds of words make up a
+    chunk. We can also define patterns for what kinds of words should not be in a
+    chunk. These unchunked words are known as **chinks**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `ChunkRule` specifies what to include in a chunk, while a `ChinkRule` specifies
+    what to exclude from a chunk. In other words, **chunking** creates chunks, while
+    **chinking** breaks up those chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We first need to know how to define chunk patterns. These are modified regular
+    expressions designed to match sequences of part-of-speech tags. An individual
+    tag is specified by surrounding angle brackets, such as `<NN>` to match a noun
+    tag. Multiple tags can then be combined, as in `<DT><NN>` to match a determiner
+    followed by a noun. Regular expression syntax can be used within the angle brackets
+    to match individual tag patterns, so you can do `<NN.*>` to match all nouns including
+    `NN` and `NNS`. You can also use regular expression syntax outside of the angle
+    brackets to match patterns of tags. `<DT>?<NN.*>+` will match an optional determiner
+    followed by one or more nouns. The chunk patterns are converted internally to
+    regular expressions using the `tag_pattern2re_pattern()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: You don't have to use this function to do chunking, but it might be useful or
+    interesting to see how your chunk patterns convert to regular expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The pattern for specifying a chunk is to use surrounding curly braces, such
+    as `{<DT><NN>}`. To specify a chink, you flip the braces, as in `}<VB>{`. These
+    rules can be combined into a **grammar** for a particular phrase type. Here''s
+    a grammar for noun-phrases that combines both a chunk and a chink pattern, along
+    with the result of parsing the sentence "The book has many chapters":'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The grammar tells the `RegexpParser` that there are two rules for parsing `NP`
+    chunks. The first chunk pattern says that a chunk starts with a *determiner* followed
+    by any kind of *noun*. Then any number of other words is allowed, until a final
+    noun is found. The second pattern says that verbs should be *chinked*, thus separating
+    any large chunks that contain a verb. The result is a tree with two noun-phrase
+    chunks: "the book" and "many chapters".'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Tagged sentences are always parsed into a `Tree` (found in the `nltk.tree` module).
+    The top node of the `Tree` is '`S`', which stands for *sentence*. Any chunks found
+    will be subtrees whose nodes will refer to the chunk type. In this case, the chunk
+    type is '`NP`' for *noun-phrase*. Trees can be drawn calling the `draw()` method,
+    as in `t.draw()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here''s what happens, step-by-step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The sentence is converted into a flat `Tree`, as shown in the following figure:![How
+    it works...](img/3609_05_01.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `Tree` is used to create a `ChunkString`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`RegexpParser` parses the grammar to create a `NP RegexpChunkParser` with the
+    given rules.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A `ChunkRule` is created and applied to the `ChunkString`, which matches the
+    entire sentence into a chunk, as shown in the following figure:![How it works...](img/3609_05_02.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A `ChinkRule` is created and applied to the same `ChunkString`, which splits
+    the big chunk into two smaller chunks with a verb between them, as shown in the
+    following figure:![How it works...](img/3609_05_03.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `ChunkString` is converted back to a `Tree`, now with two **NP** chunk subtrees,
+    as shown in the following figure:![How it works...](img/3609_05_04.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'You can do this yourself using the classes in `nltk.chunk.regexp`. `ChunkRule`
+    and `ChinkRule` are both subclasses of `RegexpChunkRule` and require two arguments:
+    the pattern, and a description of the rule. `ChunkString` is an object that starts
+    with a flat tree, which is then modified by each rule when it is passed in to
+    the rule''s `apply()` method. A `ChunkString` is converted back to a `Tree` with
+    the `to_chunkstruct()` method. Here''s the code to demonstrate it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding tree diagrams can be drawn at each step by calling `cs.to_chunkstruct().draw()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You will notice that the subtrees from the `ChunkString` are tagged as `'CHUNK'`
+    and not `'NP'`. That's because the previous rules are phrase agnostic; they create
+    chunks without needing to know what kind of chunks they are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Internally, the `RegexpParser` creates a `RegexpChunkParser` for each chunk
+    phrase type. So if you are only chunking `NP` phrases, there will only be one
+    `RegexpChunkParser`. The `RegexpChunkParser` gets all the rules for the specific
+    chunk type, and handles applying the rules in order and converting the `'CHUNK'`
+    trees to the specific chunk type, such as `'NP'`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here's some code to illustrate the usage of `RegexpChunkParser`. We pass the
+    previous two rules into the `RegexpChunkParser`, and then parse the same sentence
+    tree we created before. The resulting tree is just like what we got from applying
+    both rules in order, except `'CHUNK'` has been replaced with `'NP'` in the two
+    subtrees. This is because `RegexpChunkParser` defaults to `chunk_node='NP'`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Different chunk types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you wanted to parse a different chunk type, then you could pass that in as
+    `chunk_node` to `RegexpChunkParser`. Here's the same code we have just seen, but
+    instead of `'NP'` subtrees, we will call them `'CP'` for *custom phrase*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`RegexpParser` does this internally when you specify multiple phrase types.
+    This will be covered in *Partial parsing with regular expressions*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternative patterns
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The same parsing results can be obtained by using two chunk patterns in the
+    grammar, and discarding the chink pattern:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: In fact, you could reduce the two chunk patterns into a single pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: How you create and combine patterns is really up to you. Pattern creation is
+    a process of trial and error, and entirely depends on what your data looks like
+    and which patterns are easiest to express.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chunk rule with context
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can also create chunk rules with a surrounding tag context. For example,
+    if your pattern is `<DT>{<NN>}`, which will be parsed into a `ChunkRuleWithContext`.
+    Any time there's a tag on either side of the curly braces, you will get a `ChunkRuleWithContext`
+    instead of a `ChunkRule`. This can allow you to be more specific about when to
+    parse particular kinds of chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an example of using `ChunkWithContext` directly. It takes four arguments:
+    the left context, the pattern to chunk, the right context, and a description:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This example only chunks nouns that follow a determiner, therefore ignoring
+    the noun that follows an adjective. Here''s how it would look using the `RegexpParser`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the next recipe, we will cover merging and splitting chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Merging and splitting chunks with regular expressions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In t his recipe, we will cover two more rules for chunking. A `MergeRule` can
+    merge two chunks together based on the end of the first chunk and the beginning
+    of the second chunk. A `SplitRule` will split a chunk into two based on the specified
+    split pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A `Sp` `litRule` is specified with two opposing curly braces surrounded by a
+    pattern on either side. To split a chunk after a noun, you would do `<NN.*>}{<.*>`.
+    A `Merg` `eRule` is specified by flipping the curly braces, and will join chunks
+    where the end of the first chunk matches the left pattern, and the beginning of
+    the next chunk matches the right pattern. To merge two chunks where the first
+    ends with a noun and the second begins with a noun, you would use `<NN.*>{}<NN.*>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order of rules is very important and re-ordering can affect the results.
+    The `RegexpParser` applies the rules one at a time from top to bottom, so each
+    rule will be applied to the `ChunkString` resulting from the previous rule.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here ''s an example of splitting and merging, starting with the sentence tree
+    as shown next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/3609_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The whole sentence is chunked, as shown in the following diagram:![How to do
+    it...](img/3609_05_06.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The chunk is split into multiple chunks after every noun, as shown in the following
+    tree:![How to do it...](img/3609_05_07.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Each chunk with a determiner is split into separate chunks, creating four chunks
+    where there were three:![How to do it...](img/3609_05_08.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Chunks ending with a noun are merged with the next chunk if it begins with a
+    noun, reducing the four chunks back down to three, as shown in the following diagram:![How
+    to do it...](img/3609_05_09.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Using the `RegexpParser`, the code looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And the final tree of `NP` chunks is shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/3609_05_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `MergeRule` and `SplitRule` classes take three arguments: the left pattern,
+    right pattern, and a description. The `RegexpParser` takes care of splitting the
+    original patterns on the curly braces to get the left and right sides, but you
+    can also create these manually. Here''s a step-by-step walkthrough of how the
+    original sentence is modified by applying each rule:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The parsing of the rules and splitting of left and right patterns is done in
+    the static `parse()` method of the `RegexpChunkRule` superclass. This is called
+    by the `RegexpParser` to get the list of rules to pass in to the `RegexpChunkParser`.
+    Here are some examples of parsing the patterns used before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rule descriptions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Descriptions for each rule can be specified with a comment string after the
+    rule (a comment string must start with `#`). If no comment string is found, the
+    rule''s description will be empty. Here''s an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Comment string descriptions can also be used within grammar strings that are
+    passed to `RegexpParser`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous recipe goes over how to use `ChunkRule` and how rules are passed
+    in to `RegexpChunkParser`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Expanding and removing chunks with regular expressions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are three `RegexpChunkRule` subclasses that are not supported by `RegexpChunkRule.parse()`
+    and therefore must be created manually if you want to use them. These rules are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ExpandLeftRule`: Adds unchunked (chink) words to the left of a chunk to the
+    chunk.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`ExpandRightRule`: Adds unchunked (chink) words to the right of a chunk to
+    the chunk.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`UnChunkRule`: Unchunk any matching chunk.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`ExpandLeft` `Rule` and `ExpandRightRule` both take two patterns along with
+    a description as arguments. For `ExpandLeftRule`, the first pattern is the chink
+    we want to add to the beginning of the chunk, while the right pattern will match
+    the beginning of the chunk we want to expand. With `ExpandRightRule`, the left
+    pattern should match the end of the chunk we want to expand, and the right pattern
+    matches the chink we want to add to the end of the chunk. The idea is similar
+    to the `MergeRule`, but in this case we are merging chink words instead of other
+    chunks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`UnChunkRule` is the opposite of `ChunkRule`. Any chunk that exactly matches
+    the `UnChunkRule` pattern will be unchunked, and become a chink. Here''s some
+    code demonstrating usage with the `RegexpChunkParser`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: You will notice the end result is a flat sentence, which is exactly what we
+    started with. That's because the final `UnChunkRule` undid the chunk created by
+    the previous rules. Read on to see the step-by-step procedure of what happened.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The preceding rules were applied in the following order, starting with the
+    sentence tree shown below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/3609_05_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Make single nouns into a chunk, as shown in the following diagram:![How it works...](img/3609_05_12.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Expand left determiners into chunks that begin with a noun, as shown in the
+    following diagram:![How it works...](img/3609_05_13.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Expand right plural nouns into chunks that end with a noun, chunking the whole
+    sentence as shown in the following diagram:![How it works...](img/3609_05_14.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Unchunk every chunk that is a determiner + noun + plural noun, resulting in
+    the original sentence tree, as shown in the following diagram:![How it works...](img/3609_05_15.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Here''s the code showing each step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'I n practice, you can probably get away with only using the previous four rules:
+    `ChunkRule`, `ChinkRule`, `MergeRule`, and `SplitRule`. But if you do need very
+    fine-grained control over chunk parsing and removing, now you know how to do it
+    with the expansion and unchunk rules.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous two recipes covered the more common chunk rules that are supported
+    by `RegexpChunkRule.parse()` and `RegexpParser`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Partial parsing with regular expressions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: S o far, we have only been parsing noun-phrases. But `RegexpParser` supports
+    grammar with multiple phrase types, such as *verb-phrases* and *prepositional-phrases*.
+    We can put the rules we have learned to use and define a grammar that can be evaluated
+    against the `conll2000` corpus, which has `NP`, `VP`, and `PP` phrases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will define a grammar to parse three phrase types. For noun-phrases, we have
+    a `ChunkRule` that looks for an optional determiner followed by one or more nouns.
+    We then have a `MergeRule` for adding an adjective to the front of a noun chunk.
+    For prepositional-phrases, we simply chunk any `IN` word, such as "in" or "on".
+    For verb-phrases, we chunk an optional modal word (such as "should") followed
+    by a verb.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Each grammar rule is followed by a `#` comment. This comment is passed in to
+    each rule as the description. Comments are optional, but they can be helpful notes
+    for understanding what the rule does, and will be included in trace output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we call `evaluate()` on the `chunker`, we give it a list of chunked sentences
+    and get back a `ChunkScore` object, which can give us the accuracy of the `chunker`,
+    along with a number of other metrics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'T he `RegexpParser` parses the grammar string into sets of rules, one set of
+    rules for each phrase type. These rules are used to create a `RegexpChunkParser`.
+    The rules are parsed using `RegexpChunkRule.parse()`, which returns one of the
+    five subclasses: `ChunkRule`, `ChinkRule`, `MergeRule`, `SplitRule`, or `ChunkRuleWithContext`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the grammar has been translated into sets of rules, these rules are
+    used to parse a tagged sentence into a `Tree` structure. `RegexpParser` inherits
+    from `ChunkParserI`, which provides a `parse()` method to parse the tagged words.
+    Whenever a part of the tagged tokens match a chunk rule, a subtree is constructed
+    so that the tagged tokens become the leaves of a `Tree` whose node string is the
+    chunk tag. `ChunkParserI` also provides the `evaluate()` method, which compares
+    the given chunked sentences to the output of the `parse()` method to construct
+    and return a `ChunkScore` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You can also evaluate this `chunker` on the `treebank_chunk` corpus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `treebank_chunk` corpus is a special version of the `treebank` corpus that
+    provides a `chunked_sents()` method. The regular `treebank` corpus cannot provide
+    that method due to its file format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ChunkScore metrics
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`ChunkScore` provides a few other metrics besides accuracy. Of the chunks the
+    `chunker` was able to guess, precision tells you how many were correct. Recall
+    tells you how well the `chunker` did at finding correct chunks, compared to how
+    many total chunks there were.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can also get lists of chunks that were missed by the `chunker`, chunks that
+    were incorrectly found, correct chunks, and guessed chunks. These can be useful
+    to figure out how to improve your chunk grammar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see by the number of incorrect chunks, and by comparing `guessed()`
+    and `correct()`, our chunker guessed that there were more chunks that actually
+    existed. And it also missed a good number of correct chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looping and tracing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you want to apply the chunk rules in your grammar more than once, you pass
+    `loop=2` into `RegexpParser` at initialization. The default is `loop=1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To watch an internal trace of the chunking process, pass `trace=1` into `RegexpParser`.
+    To get even more output, pass in `trace=2`. This will give you a printout of what
+    the chunker is doing as it is doing it. Rule comments/descriptions will be included
+    in the trace output, giving you a good idea of which rule is applied when.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If coming up with regular expression chunk patterns seems like too much work,
+    then read the next recipes where we will cover how to train a chunker based on
+    a corpus of chunked sentences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training a tagger-based chunker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Training a chunker can be a great alternative to manually specifying regular
+    expression chunk patterns. Instead of a painstaking process of trial and error
+    to get the exact right patterns, we can use existing corpus data to train chunkers
+    much like we did in [Chapter 4](ch04.html "Chapter 4. Part-of-Speech Tagging"),
+    *Part-of-Speech Tagging*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As with the part-of-speech tagging, we will use the treebank corpus data for
+    training. But this time we will use the `treebank_chunk` corpus, which is specifically
+    formatted to produce chunked sentences in the form of trees. These `chunked_sents()`
+    will be used by a `TagChunker` class to train a tagger-based chunker. The `TagChunker`
+    uses a helper function `conll_tag_chunks()` to extract a list of `(pos, iob)`
+    tuples from a list of `Tree`. These `(pos, iob)` tuples are then used to train
+    a tagger in the same way `(word, pos)` tuples were used in [Chapter 4](ch04.html
+    "Chapter 4. Part-of-Speech Tagging"), *Part-of-Speech Tagging* to train part-of-speech
+    taggers. But instead of learning part-of-speech tags for words, we are learning
+    IOB tags for part-of-speech tags. Here''s the code from `chunkers.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once we have our trained `TagChunker`, we can then evaluate the `ChunkScore`
+    the same way we did for the `RegexpParser` in the previous recipes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Pretty darn accurate! Training a chunker is clearly a great alternative to manually
+    specified grammars and regular expressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Recall from the *Creating a chunked phrase corpus* recipe in [Chapter 3](ch03.html
+    "Chapter 3. Creating Custom Corpora"), *Creating Custom Corpora* that the `conll2000`
+    corpus defines chunks using IOB tags, which specify the type of chunk and where
+    it begins and ends. We can train a part-of-speech tagger on these IOB tag patterns,
+    and then use that to power a `ChunkerI` subclass. But first we need to transform
+    a `Tree` that you would get from the `chunked_sents()` method of a corpus into
+    a format usable by a part-of-speech tagger. This is what `conll_tag_chunks()`
+    does. It uses `nltk.chunk.tree2conlltags()` to convert a sentence `Tree` into
+    a list of 3-tuples of the form `(word, pos, iob)` where `pos` is the part-of-speech
+    tag and `iob` is an IOB tag, such as `B-NP` to mark the beginning of a noun-phrase,
+    or `I-NP` to mark that the word is inside the noun-phrase. The reverse of this
+    method is `nltk.chunk.conlltags2tree()`. Here''s some code to demonstrate these
+    `nltk.chunk` functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next step is to convert these 3-tuples into 2-tuples that the tagger can
+    recognize. Because the `RegexpParser` uses part-of-speech tags for chunk patterns,
+    we will do that here too and use part-of-speech tags as if they were words to
+    tag. By simply dropping the `word` from 3-tuple `(word, pos, iob)`, the `conll_tag_chunks()`
+    function returns a list of 2-tuples of the form `(pos, iob)`. When given the preceding
+    example `Tree` in a list, the results are in a format we can feed to a tagger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The final step is a subclass of `ChunkParserI` called `TagChunker`. It trains
+    on a list of chunk trees using an internal tagger. This internal tagger is composed
+    of a `UnigramTagger` and a `BigramTagger` in a backoff chain, using the `backoff_tagger()`
+    method created in the *Training and combining Ngram taggers* recipe in [Chapter
+    4](ch04.html "Chapter 4. Part-of-Speech Tagging"), *Part-of-Speech Tagging*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, `ChunkerI` subclasses must implement a `parse()` method that expects
+    a part-of-speech tagged sentence. We unzip that sentence into a list of words
+    and part-of-speech tags. The tags are then tagged by the tagger to get IOB tags,
+    which are then re-combined with the words and part-of-speech tags to create 3-tuples
+    we can pass to `nltk.chunk.conlltags2tree()` to return a final `Tree`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Since we have been talking about the `conll` IOB tags, let us see how the `TagChunker`
+    does on the `conll2000` corpus:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Not quite as good as on `treebank_chunk`, but `conll2000` is a much larger corpus,
+    so it's not too surprising.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using different taggers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you want to use different tagger classes with the `TagChunker`, you can
+    pass them in as `tagger_classes`. For example, here''s the `TagChunker` using
+    just a `UnigramTagger`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `tagger_classes` will be passed directly into the `backoff_tagger()` function,
+    which means they must be subclasses of `SequentialBackoffTagger`. In testing,
+    the default of `tagger_classes=[UnigramTagger, BigramTagger]` produces the best
+    results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *Training and combining Ngram taggers* recipe in [Chapter 4](ch04.html "Chapter 4. Part-of-Speech
+    Tagging"), *Part-of-Speech Tagging* covers backoff tagging with a `UnigramTagger`
+    and `BigramTagger`. `ChunkScore` metrics returned by the `evaluate()` method of
+    a chunker were explained in the previous recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Classification-based chunking
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: U nlike most part-of-speech taggers, the `ClassifierBasedTagger` learns from
+    features. That means we can create a `ClassifierChunker` that can learn from both
+    the words and part-of-speech tags, instead of only the part-of-speech tags as
+    the `TagChunker` does.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For the `ClassifierChunker`, we don''t want to discard the words from the training
+    sentences, as we did in the previous recipe. Instead, to remain compatible with
+    the 2-tuple `(word, pos)` format required for training a `ClassiferBasedTagger`,
+    we convert the `(word, pos, iob)` 3-tuples from `nltk.chunk.tree2conlltags()`
+    into `((word, pos), iob)` 2-tuples using the `chunk_trees2train_chunks()` function.
+    This code can be found in `chunkers.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we need a feature detector function to pass into `ClassifierBasedTagger`.
+    Our default feature detector function, `prev_next_pos_iob()`, knows that the list
+    of `tokens` is really a list of `(word, pos)` tuples, and can use that to return
+    a feature set suitable for a classifier. To give the classifier as much information
+    as we can, this feature set contains the current, previous and next word, and
+    part-of-speech tag, along with the previous IOB tag.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: N ow we can define the `ClassifierChunker`, which uses an internal `ClassifierBasedTagger`
+    with features extracted using `prev_next_pos_iob()`, and training sentences from
+    `chunk_trees2train_chunks()`. As a subclass of `ChunkerParserI`, it implements
+    the `parse()` method, which converts the `((w, t), c)` tuples produced by the
+    internal tagger into a `Tree` using `nltk.chunk.conlltags2tree()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using the same `train_chunks` and `test_chunks` from the `treebank_chunk` corpus
+    in the previous recipe, we can evaluate this code from `chunkers.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'C ompared to the `TagChunker`, all the scores have gone up a bit. Let us see
+    how it does on `conll2000`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is much improved over the `TagChunker`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Like the `TagChunker` in the previous recipe, we are training a part-of-speech
+    tagger for IOB tagging. But in this case, we want to include the word as a feature
+    to power a classifier. By creating nested 2-tuples of the form `((word, pos),
+    iob)`, we can pass the word through the tagger into our feature detector function.
+    `chunk_trees2train_chunks()` produces these nested 2-tuples, and `prev_next_pos_iob()`
+    is aware of them and uses each element as a feature. The following features are
+    extracted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The current word and part-of-speech tag
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The previous word, part-of-speech tag, and IOB tag
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The next word and part-of-speech tag
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The arguments to `prev_next_pos_iob()` look the same as the `feature_detector()`
+    method of the `ClassifierBasedTagger`: `tokens`, `index`, and `history`. But this
+    time, `tokens` will be a list of `(word, pos)` 2-tuples, and `history` will be
+    a list of IOB tags. The special feature values `''<START>''` and `''<END>''` are
+    used if there are no previous or next tokens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: T he `ClassifierChunker` uses an internal `ClassifierBasedTagger` and `prev_next_pos_iob()`
+    as its default `feature_detector`. The results from the tagger, which are in the
+    same nested 2-tuple form, are then reformatted into 3-tuples to return a final
+    `Tree` using `nltk.chunk.conlltags2tree()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You can use your own feature detector function by passing it in to the `ClassifierChunker`
+    as `feature_detector`. The `tokens` will contain a list of `(word, tag)` tuples,
+    and `history` will be a list of the previous IOB tags found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a different classifier builder
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `ClassifierBasedTagger` defaults to using `NaiveBayesClassifier.train`
+    as its `classifier_builder`. But you can use any classifier you want by overriding
+    the `classifier_builder` keyword argument. Here''s an example using `MaxentClassifier.train`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of using `MaxentClassifier.train` directly, it has been wrapped in a
+    `lambda` so that its output is quiet (`trace=0`) and it finishes in a reasonable
+    amount of time. As you can see, the scores are slightly different compared to
+    using the `NaiveBayesClassifier`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous recipe, *Training a tagger-based chunker*, introduced the idea
+    of using a part-of-speech tagger for training a chunker. The *Classifier-based
+    tagging* recipe in [Chapter 4](ch04.html "Chapter 4. Part-of-Speech Tagging"),
+    *Part-of-Speech Tagging* describes `ClassifierBasedPOSTagger`, which is a subclass
+    of `ClassifierBasedTagger`. In [Chapter 7](ch07.html "Chapter 7. Text Classification"),
+    *Text Classification*, we will cover classification in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracting named entities
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Named entity recognition** is a specific kind of chunk extraction that uses
+    **entity tags** instead of, or in addition to, chunk tags. Common entity tags
+    include `PERSON`, `ORGANIZATION`, and `LOCATION`. Part-of-speech tagged sentences
+    are parsed into chunk trees as with normal chunking, but the nodes of the trees
+    can be entity tags instead of chunk phrase tags.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'NLTK comes with a pre-trained named entity chunker. This chunker has been trained
+    on data from the ACE program, a **NIST** (**National Institute of Standards and
+    Technology**) sponsored program for **Automatic Content Extraction**, which you
+    can read more about here: [http://www.itl.nist.gov/iad/894.01/tests/ace/](http://www.itl.nist.gov/iad/894.01/tests/ace/).
+    Unfortunately, this data is not included in the NLTK corpora, but the trained
+    chunker is. This chunker can be used through the `ne_chunk()` method in the `nltk.chunk`
+    module. `ne_chunk()` will chunk a single sentence into a `Tree`. The following
+    is an example using `ne_chunk()` on the first tagged sentence of the `treebank_chunk`
+    corpus:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can see two entity tags are found: `PERSON` and `ORGANIZATION`. Each of
+    these subtrees contain a list of the words that are recognized as a `PERSON` or
+    `ORGANIZATION`. To extract these named entities, we can write a simple helper
+    method that will get the leaves of all the subtrees we are interested in.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then we can call this method to get all the `PERSON` or `ORGANIZATION` leaves
+    from a tree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: You may notice that the chunker has mistakenly separated "Vinken" into its own
+    `ORGANIZATION Tree` instead of including it with the `PERSON Tree` containing
+    "Pierre". Such is the case with statistical natural language processing—you can't
+    always expect perfection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The pre-trained named entity chunker is much like any other chunker, and in
+    fact uses a `MaxentClassifier` powered `ClassifierBasedTagger` to determine IOB
+    tags. But instead of `B-NP` and `I-NP` IOB tags, it uses `B-PERSON`, `I-PERSON`,
+    `B-ORGANIZATION`, `I-ORGANIZATION`, and more. It also uses the `O` tag to mark
+    words that are not part of a named entity (and thus outside the named entity subtrees).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To process multiple sentences at a time, you can use `batch_ne_chunk()`. Here''s
+    an example where we process the first 10 sentences from `treebank_chunk.tagged_sents()`
+    and get the `ORGANIZATION sub_leaves()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can see there are a couple of multi-word `ORGANIZATION` chunks, such as
+    "New England Journal". There are also a few sentences that have no `ORGANIZATION`
+    chunks, as indicated by the empty lists `[]`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binary named entity extraction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you don''t care about the particular kind of named entity to extract, you
+    can pass `binary=True` into `ne_chunk()` or `batch_ne_chunk()`. Now, all named
+    entities will be tagged with `NE`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we get the `sub_leaves()`, we can see that "Pierre Vinken" is correctly combined
+    into a single named entity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the next recipe, we will create our own simple named entity chunker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracting proper noun chunks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A simple way to do named entity extraction is to chunk all proper nouns (tagged
+    with `NNP`). We can tag these chunks as `NAME`, since the definition of a proper
+    noun is the name of a person, place, or thing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using the `RegexpParser`, we can create a very simple grammar that combines
+    all proper nouns into a `NAME` chunk. Then we can test this on the first tagged
+    sentence of `treebank_chunk` to compare the results to the previous recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although we get "Nov." as a `NAME` chunk, this isn't a wrong result, as "Nov."
+    is the name of a month.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `NAME` chunker is a simple usage of the `RegexpParser`, covered in *Chunking
+    and chinking with regular expressions*, *Merging and splitting chunks with regular
+    expressions*, and *Partial parsing with regular expressions* recipes of this chapter.
+    All sequences of `NNP` tagged words are combined into `NAME` chunks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If we wanted to be sure to only chunk the names of people, then we can build
+    a `PersonChunker` that uses the `names` corpus for chunking. This class can be
+    found in `chunkers.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `PersonChunker` iterates over the tagged sentence, checking if each word
+    is in its `names_set` (constructed from the `names` corpus). If the current word
+    is in the `names_set`, then it uses either the `B-PERSON` or `I-PERSON` IOB tags,
+    depending on whether the previous word was also in the `names_set`. Any word that''s
+    not in the `names_set` gets the `O` IOB tag. When complete, the list of IOB tags
+    is converted to a `Tree` using `nltk.chunk.conlltags2tree()`. Using it on the
+    same tagged sentence as before, we get the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We no longer get "Nov.", but we have also lost "Vinken", as it is not found
+    in the `names` corpus. This recipe highlights some of the difficulties of chunk
+    extraction and natural language processing in general:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you use general patterns, you will get general results
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you are looking for specific results, you must use specific data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If your specific data is incomplete, your results will be incomplete too
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous recipe defines the `sub_leaves()` method used to show the found
+    chunks. In the next recipe, we will cover how to find `LOCATION` chunks based
+    on the `gazetteers` corpus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracting location chunks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To identify location chunks, we can make a different kind of `ChunkParserI`
+    subclass that uses the `gazetteers` corpus to identify location words. `gazetteers`
+    is a `WordListCorpusReader` that contains the following location words:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Country names
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: U.S. states and abbreviations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Major U.S. cities
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Canadian provinces
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mexican states
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `LocationChunker`, found in `chunkers.py`, iterates over a tagged sentence
+    looking for words that are found in the `gazetteers` corpus. When it finds one
+    or more location words, it creates a `LOCATION` chunk using IOB tags. The helper
+    method `iob_locations()` is where the IOB `LOCATION` tags are produced, and the
+    `parse()` method converts these IOB tags to a `Tree`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can use the `LocationChunker` to parse the following sentence into two locations,
+    "San Francisco, CA is cold compared to San Jose, CA":'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: And the result is that we get two `LOCATION` chunks, just as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `LocationChunker` starts by constructing a `set` of all locations in the
+    `gazetteers` corpus. Then it finds the maximum number of words in a single location
+    string, so it knows how many words it must look ahead when parsing a tagged sentence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `parse()` method calls a helper method `iob_locations()`, which generates
+    3-tuples of the form `(word, pos, iob)` where `iob` is either `O` if the word
+    is not a location, or `B-LOCATION` or `I-LOCATION` for `LOCATION` chunks. `iob_locations()`
+    finds location chunks by looking at the current word and the next words to check
+    if the combined word is in the locations `set`. Multiple location words that are
+    next to each other are then put into the same `LOCATION` chunk, such as in the
+    preceding example with "San Francisco" and "CA".
+  prefs: []
+  type: TYPE_NORMAL
+- en: Like in the previous recipe, it's simpler and more convenient to construct a
+    list of `(word, pos, iob)` tuples to pass in to `nltk.chunk.conlltags2tree()`
+    to return a `Tree`. The alternative is to construct a `Tree` manually, but that
+    requires keeping track of children, subtrees, and where you currently are in the
+    `Tree`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One of the nice aspects of this `LocationChunker` is that it doesn't care about
+    the part-of-speech tags. As long as the location words are found in the locations
+    set, any part-of-speech tag will do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the next recipe, we will cover how to train a named entity chunker using
+    the `ieer` corpus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Training a named entity chunker
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can train your own named entity chunker using the `ieer` corpus, which stands
+    for **Information Extraction—Entity Recognition** (**ieer**). It takes a bit of
+    extra work though, because the `ieer` corpus has chunk trees, but no part-of-speech
+    tags for words.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using the `ieertree2conlltags()` and `ieer_chunked_sents()` functions in `chunkers.py`,
+    we can create named entity chunk trees from the `ieer` corpus to train the `ClassifierChunker`
+    created in *Classification-based chunking* recipe of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will use 80 out of 94 sentences for training, and the rest for testing. Then
+    we can see how it does on the first sentence of the `treebank_chunk` corpus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So it found a correct `DURATION` and `DATE`, but tagged "Pierre Vinken" as
+    a `LOCATION`. Let us see how it scores against the rest of `ieer` chunk trees:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Accuracy is pretty good, but precision and recall are very low. That means lots
+    of false negatives and false positives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The truth is, we are not working with ideal training data. The `ieer` trees
+    generated by `ieer_chunked_sents()` are not entirely accurate. First, there are
+    no explicit sentence breaks, so each document is a single tree. Second, the words
+    are not explicitly tagged, so we have to guess using `nltk.tag.pos_tag()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ieer` corpus provides a `parsed_docs()` method that returns a list of documents
+    with a `text` attribute. This `text` attribute is a document `Tree` that is converted
+    to a list of 3-tuples of the form `(word, pos, iob)`. To get these final 3-tuples,
+    we must first flatten the `Tree` using `tree.pos()`, which returns a list of 2-tuples
+    of the form `(word, entity)`, where entity is either the entity tag or the top
+    tag of the tree. Any words whose entity is the top tag are outside the named entity
+    chunks and get the IOB tag `O`. All words that have unique entity tags are either
+    the beginning of or inside a named entity chunk. Once we have all the IOB tags,
+    then we can get the part-of-speech tags of all the words and join the words, part-of-speech
+    tags, and IOB tags into 3-tuples using `itertools.izip()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Despite the non-ideal training data, the `ieer` corpus provides a good place
+    to start for training a named entity chunker. The data comes from the *New York
+    Times* and *AP Newswire* reports. Each doc from `ieer.parsed_docs()` also contains
+    a headline attribute that is a `Tree`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: See also
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *Extracting named entities* recipe in this chapter, covers the pre-trained
+    named entity chunker that comes included with NLTK.
+  prefs: []
+  type: TYPE_NORMAL

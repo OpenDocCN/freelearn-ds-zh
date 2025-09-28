@@ -1,0 +1,633 @@
+- en: '*Chapter 11*: Building a Production Data Pipeline'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you will build a production data pipeline using the features
+    and techniques that you have learned in this section of the book. The data pipeline
+    will be broken into processor groups that perform a single task. Those groups
+    will be version controlled and they will use the NiFi variable registry so that
+    they can be deployed in a production environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we''re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a test and production environment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building a production data pipeline
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deploying a data pipeline in production
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a test and production environment
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will return to using PostgreSQL for both the extraction
+    and loading of data. The data pipeline will require a test and production environment,
+    each of which will have a staging and a warehouse table. To create the databases
+    and tables, you will use **PgAdmin4**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the databases
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To use PgAdmin4, perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browse to `http://localhostw/pgadmin4/l`, enter your username and password,
+    and then click the **Login** button. Once logged in, expand the server icon in
+    the left panel.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To create the databases, right-click on the databases icon and select `test`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Next, you will need to add the tables. To create the staging table, right-click
+    on `staging`. Then, select the **Columns** tab. Using the plus sign, create the
+    fields shown in the following screenshot:![Figure 11.1 – The columns used in the
+    staging table
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.1_B15739.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 11.1 – The columns used in the staging table
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Save the table when you are done. You will need to create this table once more
+    for the test database and twice more for the production database. To save some
+    time, you can use **CREATE Script** to do this for you. Right-click on the staging
+    table, and then select **Scripts** | **CREATE Script**, as shown in the following
+    screenshot:![Figure 11.2 – Generating the CREATE script
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.2_B15739.jpg)'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Figure 11.2 – Generating the CREATE script
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: A window will open in the main screen with the SQL required to generate the
+    table. By changing the name from `staging` to `warehouse`, you can make the warehouse
+    table in test, which will be identical to staging. Once you have made the change,
+    click the play button in the toolbar.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Lastly, right-click on `production`. Use the script to create both the tables.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Now that you have the tables created for the test and production environments,
+    you will need a data lake.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Populating a data lake
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A **data lake** is usually a place on disk where files are stored. Usually,
+    you will find data lakes using Hadoop for the **Hadoop Distributed File System**
+    (**HDFS**) and the other tools built on top of the Hadoop ecosystem. In this chapter,
+    we will just drop files in a folder to simulate how reading from the data lake
+    would work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create the data lake, you can use Python and the Faker library. Before you
+    write the code, create a folder to act as the data lake. I have created a folder
+    named `datalake` in my home directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To populate the data lake, you will need to write JSON files with information
+    about an individual. This is similar to the JSON and CSV code you wrote in the
+    first section of this book. The steps are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Import the libraries, set the data lake directory, and set `userid` to `1`.
+    The `userid` variable is going to be a primary key, so we need it to be distinct
+    – incrementing will do that for us:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, create a loop that generates a data object containing the user ID, name,
+    age, street, city, state, and zip of a fake individual. The `fname` variable holds
+    the first and last name of a person without a space in the middle. If you had
+    a space, Linux would wrap the file in quotes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Lastly, dump the JSON object and then write it to a file named after the person.
+    Close the file and let the loop continue:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Run the preceding code and you will have 1,000 JSON files in your data lake.
+    Now you can start building the data pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a production data pipeline
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The data pipeline you build will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Read files from the data lake.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Insert the files into staging.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Validate the staging data.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Move staging to the warehouse.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The final data pipeline will look like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.3 – The final version of the data pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.3_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.3 – The final version of the data pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will build the data pipeline processor group by processor group. The first
+    processor group will read the data lake.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading the data lake
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the first section of this book, you read files from NiFi and will do the
+    same here. This processor group will consist of three processors – `GetFile`,
+    `EvaluateJsonPath`, and `UpdateCounter` – and an output port. Drag the processors
+    and port to the canvas. In the following sections, you will configure them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GetFile
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `GetFile` processor reads files from a folder, in this case, our data lake.
+    If you were reading a data lake in Hadoop, you would switch out this processor
+    for the `GetHDFS` processor. To configure the processor, specify the input directory;
+    in my case, it is `/home/paulcrickard/datalake`. Make sure `^.*\.([jJ][sS][oO][nN]??)$`.
+    If you leave the default, it will work, but if there are other files in the folder,
+    NiFi will try to grab them and will fail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: EvaluateJsonPath
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `EvaluateJsonPath` processor will extract the fields from the JSON and
+    put them into flowfile attributes. To do so, set the **Destination** property
+    to **flowfile-attribute**. Leave the rest of the properties as the default. Using
+    the plus sign, create a property for each field in the JSON. The configuration
+    is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.4 – The configuration for the EvaluateJsonPath processor'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.4_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.4 – The configuration for the EvaluateJsonPath processor
+  prefs: []
+  type: TYPE_NORMAL
+- en: This would be enough to complete the task of reading from the data lake, but
+    we will add one more processor for monitoring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: UpdateCounter
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This processor allows you to create an increment counter. As flowfiles pass
+    through, we can hold a count of how many are being processed. This processor does
+    not manipulate or change any of our data, but will allow us to monitor the progress
+    of the processor group. We will be able to see the number of FlowFiles that have
+    moved through the processor. This is a more accurate way than using the GUI display,
+    but it only shows the number of records in the last 5 minutes. To configure the
+    processor, leave the `1` and set the `datalakerecordsprocessed`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To finish this section of the data pipeline, drag an output port to the canvas
+    and name it `OutputDataLake`. Exit the processor group and right-click, select
+    `ReadDataLake`, wrote a short description and version comments, and then performed
+    a save.
+  prefs: []
+  type: TYPE_NORMAL
+- en: NiFi-Registry
+  prefs: []
+  type: TYPE_NORMAL
+- en: I have created a new bucket named `DataLake`. To create buckets, you can browse
+    to the registry at `http://localhost:18080/nifi-registry/`. Click the wrench in
+    the right corner and then click the **NEW BUCKET** button. Name and save the bucket.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first processor group is complete. You can use this processor group any
+    time you need to read from the data lake. The processor group will hand you every
+    file with the fields extracted. If the data lake changed, you would only need
+    to fix this one processor group to update all of your data pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before continuing down the data pipeline, the next section will take a small
+    diversion to show how you can attach other processor groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scanning the data lake
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The goal of the data pipeline is to read the data lake and put the data in the
+    data warehouse. But let's assume there is another department at our company that
+    needs to monitor the data lake for certain people – maybe VIP customers. Instead
+    of building a new data pipeline, you can just add their task to the `ReadDataLake`
+    processor group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `ScanLake` processor group has an input port that is connected to the output
+    of the `ReadDataLake` processor. It uses the `ScanContent` processor attached
+    to the `EvaluateJsonPath` processor, which is terminated at the `PutSlack` processor,
+    as well as sending the data through to an output port. The flow is shown in the
+    following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.5 – The ScanLake processor group'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.5_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.5 – The ScanLake processor group
+  prefs: []
+  type: TYPE_NORMAL
+- en: The previous chapter used the `PutSlack` processor and you are already familiar
+    with the `EvaluateJsonPath` processor. `ScanContent`, however, is a new processor.
+    The `ScanContent` processor allows you to look at fields in the flowfile content
+    and compare them to a dictionary file – a file with content on each line that
+    you are looking for. I have put a single name in a file at `/home/paulcrickard/data.txt`.
+    I configured the processor by setting the path as the value of the **Dictionary
+    File** property. Now, when a file comes through that contains that name, I will
+    get a message on Slack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inserting the data into staging
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The data we read was from the data lake and will not be removed, so we do not
+    need to take any intermediary steps, such as writing data to a file, as we would
+    have done had the data been from a transactional database. But what we will do
+    is place the data in a staging table to make sure that everything works as we
+    expect before putting it in the data warehouse. To insert the data into staging
+    only requires one processor, `PutSQL`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PutSQL
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `PutSQL` processor will allow you to execute an `INSERT` or `UPDATE` operation
+    on a database table. The processor allows you to specify the query in the contents
+    of a flowfile, or you can hardcode the query to use as a property in the processor.
+    For this example, I have hardcoded the query in the **SQL Statement** property,
+    which is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding query takes the attributes from the flowfile and passes them into
+    the query, so while it is hardcoded, it will change based on the flowfiles it
+    receives. You may have noticed that you have not used `${table}` in any of the
+    `EvaluateJsonPath` processors. I have declared a variable using the NiFi registry
+    and added it to the processor group scope. The value of the table will be `staging`
+    for this test environment, but will change later when we deploy the data pipeline
+    to production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will also need to add a **Java Database Connection** (**JDBC**) pool, which
+    you have done in earlier chapters of this book. You can specify the batch size,
+    the number of records to retrieve, and whether you want the processor to roll
+    back on failure. Setting **Rollback on Failure** to **True** is how you can create
+    atomicity in your transactions. If a single flowfile in a batch fails, the processor
+    will stop and nothing else can continue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I have connected the processor to another `UpdateCounter` processor. This processor
+    creates and updates `InsertedStaging`. The counter should match `datalakerecordsprocessor`
+    when everything has finished. The `UpdateCounter` processor connects to an output
+    port named `OutputStaging`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Querying the staging database
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The next processor group is for querying the staging database. Now that the
+    data has been loaded, we can query the database to make sure all the records have
+    actually made it in. You could perform other validation steps or queries to see
+    whether the results match what you would expect – if you have data analysts, they
+    would be a good source of information for defining these queries. In the following
+    sections, you will query the staging database and route the results based on whether
+    it meets your criteria.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ExecuteSQLRecord
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the previous processor group, you used the `PutSQL` processor to insert
+    data into the database, but in this processor group, you want to perform a `select`
+    query. The `select` query is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding query is set as the value of the optional SQL `select` query property.
+    The `${table}` is a NiFi variable registry variable assigned to the processor
+    group and has a value of `staging`. You will need to define a JDBC connection
+    and a record writer in the processor properties. The record writer is a JSON record
+    set writer. The return value of the processor will be a JSON object with one field
+    – `count`. This processor is sent to an `EvaluateJsonPath` processor to extract
+    the count as `recordcount`. That processor is then sent to the next processor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: RouteOnAttribute
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `RouteOnAttribute` processor allows you to use expressions or values to
+    define where a flowfile goes. To configure the processor, I have set the `allrecords`
+    and set the value to a NiFi expression, shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding expression evaluates the `recordcount` attribute to see whether
+    it is greater than or equal to 1,000\. If it is, it will route on this relationship.
+    I have attached the output to an output port named `OutputQueryStaging`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Validating the staging data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The previous processor group did some validation and you could stop there. However,
+    Great Expectations is an excellent library for handling validation for you. You
+    learned about Great Expectations in [*Chapter 7*](B15739_07_ePub_AM.xhtml#_idTextAnchor086)*,
+    Features of a Production Pipeline*, but I will cover it quickly again here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use Great Expectations, you need to create a project folder. I have done
+    that in the following code snippet and initialized Great Expectations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You will be prompted to create your validation suite. Choose **Relational database
+    (SQL)**, then **Postgres**, and provide the required information. The prompts
+    will look like the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.6 – Configuring Great Expectations to work with PostgreSQL'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.6_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.6 – Configuring Great Expectations to work with PostgreSQL
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When it is finished, Great Expectations will attempt to connect to the database.
+    If successful, it will provide the URL for your documents. Since the table is
+    empty, it will not create a very detailed validation suite. You can edit the suite
+    using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will launch a Jupyter notebook with the code for the suite. I have deleted
+    one line that sets the number of rows between 0 and 0, as shown in the following
+    screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.7 – Editing the Great Expectations suite'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.7_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.7 – Editing the Great Expectations suite
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After deleting the highlighted line, run all the cells in the notebook. Now
+    you can refresh your documents and you will see that the expectation on the row
+    number is no longer part of the suite, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.8 – Great Expectations documents for the suite'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_11.8_B15739.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 11.8 – Great Expectations documents for the suite
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that the suite is complete, you need to generate a file that you can run
+    to launch the validation. Use the following command to create a tap using the
+    `staging.validation` suite and output the `sv.py` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now you can run this file to validate the test database staging table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first processor receives flowfiles from an input port that is connected
+    to the output port of the `QueryStaging` processor group. It connects to an `ExecuteStreamCommand`
+    processor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ExecuteStreamCommand
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `ExecuteStreamCommand` will execute a command and listen for output, streaming
+    the results. Since the `sv.py` file only prints a single line and exits, there
+    is no stream, but if your command had multiple outputs, the processor would grab
+    them all as they were output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To configure the processor, set the `sv.py`, the `sv.py` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The processor connects to an `EvaluateJsonPath` processor that extracts `$.result`
+    and sends it to a `RouteOnAttribute` processor. I have configured a single property
+    and accorded it the value `pass`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding expression checks the result attribute to see whether it matches
+    `pass`. If so, the processor sends the flowfile to an output port.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Insert Warehouse
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You have made it to the last processor group – `ExecuteSQLRecord` and a `PutSQL`
+    processor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ExecuteSQLRecord
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`ExecuteSQLProcessor` performs a select operation on the staging table. It
+    has a variable table defined in the NiFi variable registry pointing to staging.
+    The query is a `select *` query, as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: This query is the value of the SQL `select` query property. You will need to
+    set up a `Database Pooling Connection` service and a `Record Writer` service.
+    `Record Writer` will be a `JsonRecordSetWriter` and you will need to make sure
+    that you set `SplitText` processor, which connects to the `EvalueJsonPath` processor,
+    which is a direct copy of the one from the `ReadDataLake` processor group that
+    connects to the final `PutSQL` processor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: PutSQL
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `PutSQL` processor puts all of the data from the `staging` table into the
+    final data `warehouse` table. You can configure the batch size and the rollback
+    on failure properties. I have set the SQL Statement property to the same as when
+    it was inserted into `staging`, except the variable for the table has been changed
+    to `warehouse` and we set it to `warehouse` in the NiFi variable registry. The
+    query is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: I have terminated the processor for all relationships as this is the end of
+    the data pipeline. If you start all the processor groups, you will have data in
+    your `staging` and `warehouse` tables. You can check your counters to see whether
+    the records processed are the same as the number of records inserted. If everything
+    worked correctly, you can now deploy your data pipeline to production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying a data pipeline in production
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous chapter, you learned how to deploy data to production, so I
+    will not go into any great depth here, but merely provide a review. To put the
+    new data pipeline into production, perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Browse to your production NiFi instance. I have another instance of NiFi running
+    on port `8080` on localhost.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Drag and drop processor groups to the canvas and select **Import**. Choose the
+    latest version of the processor groups you just built.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Modify the variables on the processor groups to point to the database production.
+    The table names can stay the same.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: You can then run the data pipeline and you will see that the data is populated
+    in the production database `staging` and `warehouse` tables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data pipeline you just built read files from a data lake, put them into
+    a database table, ran a query to validate the table, and then inserted them into
+    the warehouse. You could have built this data pipeline with a handful of processors
+    and been done, but when you build for production, you will need to provide error
+    checking and monitoring. Spending the time up front to build your data pipelines
+    properly will save you a lot of time when something changes or breaks in production.
+    You will be well positioned to debug and modify your data pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to build and deploy a production data pipeline.
+    You learned how to create `TEST` and `PRODUCTION` environments and built the data
+    pipeline in `TEST`. You used the filesystem as a sample data lake and learned
+    how you would read files from the lake and monitor them as they were processed.
+    Instead of loading data into the data warehouse, this chapter taught you how to
+    use a staging database to hold the data so that it could be validated before being
+    loaded into the data warehouse. Using Great Expectations, you were able to build
+    a validation processor group that would scan the staging database to determine
+    whether the data was ready to be loaded into the data warehouse. Lastly, you learned
+    how to deploy the data pipeline into `PRODUCTION`. With these skills, you can
+    now fully build, test, and deploy production batch data pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, you will learn how to build Apache Kafka clusters. Using
+    Kafka, you will begin to learn how to process data streams. This data is usually
+    near real time, as opposed to the batch processing you have been currently working
+    with. You will install and configure the cluster to run on a single machine, or
+    multiple devices if you have them.
+  prefs: []
+  type: TYPE_NORMAL
