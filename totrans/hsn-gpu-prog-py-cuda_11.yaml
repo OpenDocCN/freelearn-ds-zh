@@ -1,7 +1,9 @@
 - en: Performance Optimization in CUDA
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: CUDA中的性能优化
 - en: In this penultimate chapter, we will cover some fairly advanced CUDA features
     that we can use for low-level performance optimizations. We will start by learning
     about dynamic parallelism, which allows kernels to launch and manage other kernels
@@ -17,68 +19,98 @@
     in our Python code! Finally, we will bring all of these little low-level tweaks
     together into one final example, where we will apply them to make a blazingly
     fast summation kernel, and compare this to PyCUDA's sum.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章的最后，我们将介绍一些相当高级的CUDA特性，我们可以使用它们进行底层性能优化。我们将从学习动态并行开始，这允许内核在GPU上启动和管理其他内核，并看看我们如何使用它来实现直接在GPU上的快速排序。我们将学习关于矢量化内存访问的内容，这可以在从GPU的全局内存读取时提高内存访问速度。然后我们将看看如何使用CUDA原子操作，这些是线程安全的函数，可以在没有线程同步或*互斥锁*的情况下操作共享数据。我们将学习关于Warps的内容，它们是由32个或更少的线程组成的根本块，线程可以直接读取或写入彼此的变量，然后简要地进入PTX汇编的世界。我们将通过在CUDA-C代码中直接编写一些基本的PTX汇编内联来实现这一点，而CUDA-C代码本身将内联在我们的Python代码中！最后，我们将把这些小的底层调整集中到一个最终的例子中，我们将应用它们来制作一个极快的求和内核，并将其与PyCUDA的求和进行比较。
 - en: 'The learning outcomes for this chapter are as follows:'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的学习成果如下：
 - en: Dynamic parallelism in CUDA
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: CUDA中的动态并行
 - en: Implementing quicksort on the GPU with dynamic parallelism
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用动态并行在GPU上实现快速排序
 - en: Using vectorized types to speed up device memory accesses
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用矢量化类型来加速设备内存访问
 - en: Using thread-safe CUDA atomic operations
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用线程安全的CUDA原子操作
 - en: Basic PTX Assembly
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 基本PTX汇编
 - en: Applying all of these concepts to write a performance-optimized summation kernel
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将所有这些概念应用于编写性能优化的求和内核
 - en: Dynamic parallelism
+  id: totrans-9
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 动态并行
 - en: First, we will take a look at **dynamic parallelism**, a feature in CUDA that
     allows a kernel to launch and manage other kernels without any interaction or
     input on behalf of the host. This also makes many of the host-side CUDA-C features
     that are normally available also available on the GPU, such as device memory allocation/deallocation,
     device-to-device memory copies, context-wide synchronizations, and streams.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们将看看**动态并行**，这是CUDA中的一个特性，允许内核在没有主机交互或输入的情况下启动和管理其他内核。这也使得许多通常在主机端可用的CUDA-C特性也变得在GPU上可用，例如设备内存分配/释放、设备到设备的内存复制、上下文范围内的同步以及流。
 - en: Let's start with a very simple example. We will create a small kernel over *N*
     threads that will print a short message to the terminal from each thread, which
     will then recursively launch another kernel over *N - 1* threads. This process
     will continue until *N* reaches 1\. (Of course, beyond illustrating how dynamic
     parallelism works, this example would be pretty pointless.)
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从一个非常简单的例子开始。我们将创建一个包含*N*个线程的小内核，每个线程将从终端打印一条简短的消息，然后递归地启动另一个包含*N - 1*个线程的内核。这个过程将持续进行，直到*N*达到1。（当然，除了说明动态并行的工作原理之外，这个例子几乎没有什么实际意义。）
 - en: 'Let''s start with the `import` statements in Python:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从Python中的`import`语句开始：
 - en: '[PRE0]'
+  id: totrans-13
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'Notice that we have to import `DynamicSourceModule` rather than the usual `SourceModule`!
     This is due to the fact that the dynamic parallelism feature requires particular
     configuration details to be set by the compiler. Otherwise, this will look and
     act like a usual `SourceModule` operation. Now we can continue writing the kernel:'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，我们必须导入`DynamicSourceModule`而不是通常的`SourceModule`！这是因为动态并行特性需要编译器设置特定的配置细节。否则，这看起来和表现就像是一个普通的`SourceModule`操作。现在我们可以继续编写内核：
 - en: '[PRE1]'
+  id: totrans-15
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'The most important thing here to note is this: we must be careful that we have
     only a single thread launch the next iteration of kernels with a single thread
     with a well-placed `if` statement that checks the `threadIdx` and `blockIdx` values.
@@ -86,38 +118,56 @@
     necessary at every depth iteration. Also, notice how we could just launch the
     kernel in a normal way with the usual CUDA-C triple-bracket notation—we don''t
     have to use any obscure or low-level commands to make use of dynamic parallelism.'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里需要注意的最重要的事情是：我们必须小心，只有一个线程使用一个放置良好的`if`语句检查`threadIdx`和`blockIdx`值来启动下一个内核迭代的下一个内核。如果我们不这样做，那么每个线程在每次深度迭代中都会启动比必要的更多的内核实例。此外，注意我们只需用通常的CUDA-C三重括号符号以正常方式启动内核——我们不需要使用任何晦涩或低级命令来利用动态并行性。
 - en: When using the CUDA dynamic parallelism feature, always be careful to avoid
     unnecessary kernel launches. This can be done by having a designated thread launch
     the next iteration of kernels.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用CUDA动态并行特性时，务必小心避免不必要的内核启动。这可以通过指定一个线程启动下一个内核迭代来实现。
 - en: 'Now let''s finish this up:'
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在让我们来完成这个任务：
 - en: '[PRE2]'
+  id: totrans-19
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'Now we can run the preceding code, which will give us the following output:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们可以运行前面的代码，这将给出以下输出：
 - en: '![](img/5147fd83-75b9-4dd4-8e5f-07a8cf013436.png)'
+  id: totrans-21
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/5147fd83-75b9-4dd4-8e5f-07a8cf013436.png)'
 - en: This example can also be found in the `dynamic_hello.py` file under the directory
     in this book's GitHub repository.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 此示例也可以在本书GitHub仓库目录下的`dynamic_hello.py`文件中找到。
 - en: Quicksort with dynamic parallelism
+  id: totrans-23
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 带有动态并行的快速排序
 - en: Now let's look at a slightly more interesting and utilitarian application of
     dynamic parallelism—the **Quicksort Algorithm**. This is actually a well-suited
     algorithm for parallelization, as we will see.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在让我们看看动态并行的一个稍微有趣且实用的应用——**快速排序算法**。实际上，这是一个非常适合并行化的算法，我们将看到这一点。
 - en: Let's start with a brief review. Quicksort is a recursive and in-place sorting
     algorithm that has an average and best case performance of *O(N log N)*, and worst-case
     performance of *O(N²)*. Quicksort is performed by choosing an arbitrary point
@@ -127,42 +177,59 @@
     the two arrays. If one or both of the arrays now has a length greater than 1,
     then we recursively call quicksort again on one or both of the sub-arrays, with
     the pivot point now in its final position.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从简要回顾开始。快速排序是一种递归的、原地排序算法，平均和最佳情况性能为*O(N log N)*，最坏情况性能为*O(N²)*。快速排序通过在未排序数组中选择一个任意点称为*pivot*，然后将数组划分为一个左数组（包含所有小于枢轴的点），一个右数组（包含所有等于或大于枢轴的点），枢轴位于两个数组之间来执行。如果现在一个或两个数组长度大于1，则我们递归地对一个或两个子数组再次调用快速排序，此时枢轴点在其最终位置。
 - en: 'Quicksort can be implemented in a single line in pure Python using functional
     programming:'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用纯Python和函数式编程，快速排序可以单行实现：
 - en: '`qsort = lambda xs : [] if xs == [] else qsort(filter(lambda x: x < xs[-1]
     , xs[0:-1])) + [xs[-1]] + qsort(filter(lambda x: x >= xs[-1] , xs[0:-1]))`'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: '`qsort = lambda xs : [] if xs == [] else qsort(filter(lambda x: x < xs[-1]
+    , xs[0:-1])) + [xs[-1]] + qsort(filter(lambda x: x >= xs[-1] , xs[0:-1]))`'
 - en: We can see where parallelism will come into play by the fact that quicksort
     is recursively called on both the right and left arrays—we can see how this will
     start with one thread operating on an initial large array, but by the time the
     arrays get very small, there should be many threads working on them. Here, we
     will actually accomplish this by launching all of the kernels over one *single
     thread each*!
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过快速排序在左右数组上递归调用的事实，我们可以看到并行性将如何发挥作用——我们可以看到这将从单个线程操作一个初始的大型数组开始，但到数组变得非常小的时候，应该有多个线程在操作它们。在这里，我们实际上将通过每个*单个线程*启动所有内核来实现这一点！
 - en: 'Let''s get going, and start with the import statements. (We will ensure that
     we import the `shuffle` function from the standard random module for the example
     that we will go over later.):'
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们开始吧，从导入语句开始。（我们将确保导入标准随机模块中的`shuffle`函数，以便稍后进行示例。）
 - en: '[PRE3]'
+  id: totrans-30
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'Now we''ll write our quicksort kernel. We''ll write a `device` function for
     the partitioning step, which will take an integer pointer, the lowest point of
     the subarray to partition, and the highest point of the subarray. This function
     will also use the highest point of this subarray as the pivot. Ultimately, after
     this function is done, it will return the final resting place of the pivot:'
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们将编写我们的快速排序内核。我们将为分区步骤编写一个`device`函数，它将接受一个整数指针、子数组的最低分区点和最高分区点。此函数还将使用此子数组的最高点作为枢轴。最终，在此函数完成后，它将返回枢轴的最终位置：
 - en: '[PRE4]'
+  id: totrans-32
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Now we can write the kernel that implements this partition function into a
     parallel quicksort. We''ll have to use the CUDA-C conventions for streams, which
     we haven''t seen so far: to launch a kernel *k* in a stream *s* in CUDA-C, we
@@ -170,26 +237,39 @@
     here, we can be sure that they are launched in parallel. (Considering that we
     won''t be using shared memory, we''ll set the third launch parameter to "0".)
     The creation and destruction of the stream objects should be self-explanatory:'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们可以将实现此分区函数的内核写入并行快速排序。我们将不得不使用CUDA-C的流约定，我们之前还没有看到：在CUDA-C中，要在流`s`中启动内核*k*，我们使用`k<<<grid,
+    block, sharedMemBytesPerBlock, s>>>(...)`。通过在这里使用两个流，我们可以确保它们是并行启动的。（考虑到我们不会使用共享内存，我们将第三个启动参数设置为“0”）。流对象的创建和销毁应该是自解释的：
 - en: '[PRE5]'
+  id: totrans-34
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'Now let''s randomly shuffle a list of 100 integers and have our kernel sort
     this for us. Notice how we launch the kernel over a single thread:'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们随机打乱一个包含100个整数的列表，并让我们的内核为我们排序。注意我们是如何在单个线程上启动内核的：
 - en: '[PRE6]'
+  id: totrans-36
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: This program is also available in the `dynamic_quicksort.py` file in this book's
     GitHub repository.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 此程序也包含在这本书GitHub仓库的`dynamic_quicksort.py`文件中。
 - en: Vectorized data types and memory access
+  id: totrans-38
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 向量化数据类型和内存访问
 - en: We will now look at CUDA's Vectorized Data Types. These are *vectorized* versions
     of the standard datatypes, such as int or double, in that they can store multiple
     values. There are *vectorized* versions of the 32-bit types of up to size 4 (for
@@ -198,116 +278,173 @@
     For a size 4 vectorized variable, we access each individual element using the
     C "struct" notation for the members `x`, `y`, `z`, and `w`, while we use `x`,`y`,
     and `z` for a 3-member variable and just `x` and `y` for a 2-member variable.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将查看CUDA的向量化数据类型。这些是标准数据类型（如int或double）的**向量化**版本，因为它们可以存储多个值。32位类型有**向量化**版本，大小可达4（例如，`int2`、`int3`、`int4`和`float4`），而64位变量只能向量化到其原始大小的两倍（例如，`double2`和`long2`）。对于大小为4的向量化变量，我们使用C的“struct”表示法访问每个单独的元素，对于成员`x`、`y`、`z`和`w`，而对于3个成员的变量，我们使用`x`、`y`和`z`，对于2个成员的变量，我们只使用`x`和`y`。
 - en: 'These may seem pointless right now, but these datatypes can be used to improve
     the performance of loading arrays from the global memory. Now, let''s do a small
     test to see how we can load some int4 variables from an array of integers, and
     double2s from an array of doubles—we will have to use the CUDA `reinterpret_cast`
     operator to do this:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些可能现在看起来没有意义，但这些数据类型可以用来提高从全局内存加载数组时的性能。现在，让我们做一个小的测试，看看我们如何从一个整数数组中加载一些`int4`变量，以及从双精度浮点数组中加载`double2`变量——我们将不得不使用CUDA的`reinterpret_cast`运算符来完成这个操作：
 - en: '[PRE7]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Notice how we have to use the `dereference` operator `*` to set the vectorized
     variables, and how we have to jump to the next address by reference (`&ints[4]`,
     `&doubles[2]`) to load the second `int4` and `double2` by using the reference
     operator `&` on the array:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意我们如何必须使用解引用运算符`*`来设置向量化变量，以及我们如何必须通过引用跳转到下一个地址（`&ints[4]`、`&doubles[2]`），通过在数组上使用引用运算符`&`来加载第二个`int4`和`double2`：
 - en: '![](img/9b0e1417-e3c7-4896-9672-279ced733a2f.png)'
+  id: totrans-43
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/9b0e1417-e3c7-4896-9672-279ced733a2f.png)'
 - en: This example is also available in the `vectorized_memory.py` file in this book's
     GitHub repository.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子也包含在这本书GitHub仓库的`vectorized_memory.py`文件中。
 - en: Thread-safe atomic operations
+  id: totrans-45
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 线程安全的原子操作
 - en: We will now learn about **atomic operations** in CUDA. Atomic operations are
     very simple, thread-safe operations that output to a single global array element
     or shared memory variable, which would normally lead to race conditions otherwise.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将学习CUDA中的**原子操作**。原子操作是非常简单的线程安全操作，它们输出到单个全局数组元素或共享内存变量，否则这通常会导致竞态条件。
 - en: Let's think of one example. Suppose that we have a kernel, and we set a local
     variable called `x` across all threads at some point. We then want to find the
     maximum value over all *x*s, and then set this value to the shared variable we
     declare with `__shared__ int x_largest`. We can do this by just calling `atomicMax(&x_largest,
     x)` over every thread.
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们考虑一个例子。假设我们有一个内核，并在某个时刻为所有线程设置了一个名为 `x` 的局部变量。然后我们想要找到所有 `x` 中的最大值，并将这个值设置为我们用
+    `__shared__ int x_largest` 声明的共享变量中。我们可以通过在每一个线程上调用 `atomicMax(&x_largest, x)`
+    来实现这一点。
 - en: 'Let''s look at a brief example of atomic operations. We will write a small
     program for two experiments:'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看原子操作的简要示例。我们将为两个实验编写一个小程序：
 - en: Setting a variable to 0 and then adding 1 to this for each thread
+  id: totrans-49
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将变量设置为 0，然后为每个线程加 1
 - en: Finding the maximum thread ID value across all threads
+  id: totrans-50
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在所有线程中查找最大线程 ID 值
 - en: 'Let''s start out by setting the `tid` integer to the global thread ID as usual,
     and then set the global `add_out` variable to 0\. In the past, we would do this
     by having a single thread alter the variable using an `if` statement, but now
     we can use `atomicExch(add_out, 0)` across all threads. Let''s do the imports
     and write our kernel up to this point:'
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们先像往常一样将 `tid` 整数设置为全局线程 ID，然后将全局 `add_out` 变量设置为 0。在过去，我们会通过一个线程使用 `if` 语句来修改变量，但现在我们可以使用
+    `atomicExch(add_out, 0)` 在所有线程上执行。让我们进行导入并编写我们的内核到这一点：
 - en: '[PRE8]'
+  id: totrans-52
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'It should be noted that while Atomics are indeed thread-safe, they by no means
     guarantee that all threads will access them at the same time, and they may be
     executed at different times by different threads. This can be problematic here,
     since we will be modifying `add_out` in the next step. This might lead to `add_out`
     being reset after it''s already been partially modified by some of the threads.
     Let''s do a block-synchronization to guard against this:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 应该注意的是，虽然原子操作确实是线程安全的，但它们并不能保证所有线程都会同时访问它们，它们可能在不同线程的不同时间被执行。这在这里可能是个问题，因为我们将在下一步修改
+    `add_out`。这可能会导致 `add_out` 在被一些线程部分修改后重置。让我们进行块同步以防止这种情况：
 - en: '[PRE9]'
+  id: totrans-54
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'We can now use `atomicAdd` to add `1` to `add_out` for each thread, which will
     give us the total number of threads:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以使用 `atomicAdd` 为每个线程的 `add_out` 加 1，这将给出线程的总数：
 - en: '[PRE10]'
+  id: totrans-56
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Now let''s check what the maximum value of `tid` is for all threads by using
     `atomicMax`. We can then close off our CUDA kernel:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在让我们通过使用 `atomicMax` 来检查所有线程的 `tid` 的最大值。然后我们可以关闭我们的 CUDA 内核：
 - en: '[PRE11]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'We will now add the test code; let''s try launching this over 1 block of 100
     threads. We only need two variables here, so we will have to allocate some `gpuarray`
     objects of only size 1\. We will then print the output:'
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将添加测试代码；让我们尝试在 1 块 100 个线程上启动。这里我们只需要两个变量，所以我们将不得不分配一些只有大小为 1 的 `gpuarray`
+    对象。然后我们将打印输出：
 - en: '[PRE12]'
+  id: totrans-60
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'Now we are prepared to run this:'
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经准备好运行这个了：
 - en: '![](img/d0799721-50a9-45e2-a9d2-6c3f8d097bcb.png)'
+  id: totrans-62
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/d0799721-50a9-45e2-a9d2-6c3f8d097bcb.png)'
 - en: This example is also available as the `atomic.py` file in this book's GitHub
     repository.
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子也作为本书 GitHub 仓库中的 `atomic.py` 文件提供。
 - en: Warp shuffling
+  id: totrans-64
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: Warp shuffling
 - en: We will now look at what is known as **warp shuffling**. This is a feature in
     CUDA that allows threads that exist within the same CUDA Warp concurrently to
     communicate by directly reading and writing to each other's registers (that is,
@@ -319,13 +456,20 @@
     of size 32 or less. Another catch is that we can only use datatypes that are 32
     bits or less. This means that we can't shuffle 64-bit *long long* integers or
     *double* floating point values across a Warp.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将探讨所谓的 **warp shuffling**。这是 CUDA 中的一项功能，允许同一 CUDA Warp 内的线程通过直接读取和写入彼此的寄存器（即它们的局部栈空间变量）来并发通信，而不使用
+    *shared* 变量或全局设备内存。Warp shuffling 实际上比其他两种选项更快、更容易使用。这听起来几乎太好了，以至于几乎不可能为真，所以肯定有一个
+    *陷阱—*的确，这个 *陷阱* 是它只适用于同一 CUDA Warp 上的线程，这限制了 shuffling 操作只能用于大小为 32 或更小的线程组。另一个陷阱是，我们只能使用
+    32 位或更小的数据类型。这意味着我们无法在 Warp 中 shuffle 64 位 *long long* 整数或 *double* 浮点值。
 - en: Only 32-bit (or smaller) datatypes can be used with CUDA Warp shuffling! This
     means that while we can use integers, floats, and chars, we cannot use doubles
     or *long long* integers!
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 只有32位（或更小）的数据类型可以与CUDA Warp shuffling一起使用！这意味着虽然我们可以使用整数、浮点数和字符，但不能使用双精度或**长长**整数！
 - en: 'Let''s briefly review CUDA Warps before we move on to any coding. (You might
     wish to review the section entitled *The warp lockstep property* in [Chapter 6](6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml),
     *Debugging and Profiling Your CUDA Code*, before we continue.) A CUDA **Warp**
@@ -337,8 +481,11 @@
     32, it is also considered a full Warp: this means that a Block with only one single
     thread will use 32 cores. This also implies that a block of 33 threads will consist
     of two Warps and 31 cores.'
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们继续任何编码之前，简要回顾一下CUDA Warps。（在继续之前，你可能希望回顾[第6章](6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml)中名为*The
+    warp lockstep property*的部分，即*调试和性能分析您的CUDA代码*。）CUDA中的**Warp**是CUDA中最小的执行单元，由32个或更少的线程组成，在恰好32个GPU核心上运行。正如Grid由块组成一样，块同样由一个或多个Warp组成，具体取决于块使用的线程数——如果一个块由32个线程组成，那么它将使用一个Warp，如果它使用96个线程，它将包含三个Warp。即使Warp的大小小于32，它也被视为一个完整的Warp：这意味着只有一个线程的块将使用32个核心。这也意味着一个包含33个线程的块将包含两个Warp和31个核心。
 - en: To remember what we looked at in [Chapter 6](6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml),
     *Debugging and Profiling Your CUDA Code*, a Warp has what is known as the **Lockstep
     Property**. This means that every thread in a warp will iterate through every
@@ -349,22 +496,31 @@
     avoided as much as possible. NVIDIA calls this execution model **Single Instruction
     Multiple Thread**, or **SIMT**. By now, you should understand why we have tried
     to always use Blocks of 32 threads consistently throughout the text!
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了记住我们在[第6章](6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml)中看到的内容，即*调试和性能分析您的CUDA代码*，Warp有一个被称为**锁步属性**的特性。这意味着Warp中的每个线程将迭代每条指令，与Warp中的每个其他线程完美并行。也就是说，单个Warp中的每个线程将同时执行相同的精确指令，*忽略*任何不适用于特定线程的指令——这就是为什么在单个Warp中尽可能避免线程之间的任何分歧。NVIDIA称这种执行模型为**单指令多线程**，或**SIMT**。到现在为止，你应该明白为什么我们一直在文本中始终如一地使用32线程的块！
 - en: We need to learn one more term before we get going—a **lane** in a Warp is a
     unique identifier for a particular thread within the warp, which will be between
     0 and 31\. Sometimes, this is also called the **Lane ID**.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们继续之前，我们需要学习一个新术语——Warp中的一个**lane**是warp中特定线程的唯一标识符，其值将在0到31之间。有时，这也被称为**Lane
+    ID**。
 - en: 'Let''s start with a simple example: we will use the `__shfl_xor` command to
     swap the values of a particular variable between all even and odd numbered Lanes
     (threads) within our warp. This is actually very quick and easy to do, so let''s
     write our kernel and take a look:'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从简单的例子开始：我们将使用`__shfl_xor`命令在所有偶数和奇数编号的Lanes（线程）之间交换特定变量的值。这实际上非常快且容易完成，所以让我们编写我们的内核并看看：
 - en: '[PRE13]'
+  id: totrans-71
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'Everything here is familiar to us except `__shfl_xor` . This is how an individual
     CUDA thread sees this: this function takes the value of `temp` as an input from
     the current thread. It performs an `XOR` operation on the binary Lane ID of the
@@ -374,20 +530,32 @@
     `temp` value to its neighbor, while retrieving the neighbor''s temp value, which
     is `__shfl_xor`. This will be returned as output right back into `temp`. We then
     set the value in the output array, which will swap our input array values.'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里的一切对我们来说都很熟悉，除了 `__shfl_xor`。这是单个 CUDA 线程如何看待这个函数的：这个函数从当前线程接收 `temp` 的值作为输入。它对当前线程的二进制通道
+    ID 与 `1` 进行 `XOR` 操作，这将要么是其左邻居（如果线程的通道的最不重要位是二进制的“1”），要么是其右邻居（如果最不重要位是二进制的“0”）。然后它将当前线程的
+    `temp` 值发送给其邻居，同时检索邻居的 `temp` 值，这就是 `__shfl_xor`。这个值将作为输出返回到 `temp`。然后我们设置输出数组中的值，这将交换我们的输入数组值。
 - en: 'Now let''s write the rest of the test code and then check the output:'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们编写剩余的测试代码，然后检查输出：
 - en: '[PRE14]'
+  id: totrans-74
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'The output for the preceding code is as follows:'
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 上述代码的输出如下：
 - en: '![](img/c0f8d38e-aae3-4dee-8d83-ac869ba587bc.png)'
+  id: totrans-76
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/c0f8d38e-aae3-4dee-8d83-ac869ba587bc.png)'
 - en: Let's do one more warp-shuffling example before we move on—we will implement
     an operation to sum a single local variable over all of the threads in a Warp.
     Let's recall the Naive Parallel Sum algorithm from [Chapter 4](5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml),
@@ -399,32 +567,50 @@
     and works by *shifting* a variable between threads by the certain number of steps
     indicated in the second parameter, while the third parameter will indicate the
     total size of the Warp.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们继续之前，让我们再举一个 warp 混洗的例子——我们将实现一个操作，用于在 warp 中的所有线程上对单个局部变量求和。让我们回顾一下来自[第
+    4 章](5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml)，*内核、线程、块和网格*中的朴素并行求和算法，这个算法非常快，但它做出了一个*朴素*的假设，即我们拥有的处理器数量和我们拥有的数据块数量一样多——在我们生活中，这实际上是非常少见的，假设我们正在处理大小为
+    32 或更小的数组。我们将使用 `__shfl_down` 函数在一个 warp 中实现这一点。`__shfl_down` 函数接受第一个参数中的线程变量，通过第二个参数中指示的步数在线程之间*移位*一个变量，而第三个参数将指示
+    warp 的总大小。
 - en: 'Let''s implement this right now. Again, if you aren''t familiar with the Naive
     Parallel Sum or don''t remember why this should work, please review [Chapter 4](5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml),
     *Kernels, Threads, Blocks, and Grids*. We will implement a straight-up sum with
     `__shfl_down`, and then run this on an array that includes the integers 0 through
     31\. We will then compare this against NumPy''s own `sum` function to ensure correctness:'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们立即实现这个操作。再次提醒，如果你不熟悉朴素并行求和或者不记得为什么它应该有效，请回顾[第 4 章](5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml)，*内核、线程、块和网格*。我们将使用
+    `__shfl_down` 实现直接的求和，然后在包含从 0 到 31 的整数的数组上运行这个操作。然后我们将它与 NumPy 的 `sum` 函数进行比较，以确保正确性：
 - en: '[PRE15]'
+  id: totrans-79
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'This will give us the following output:'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 这将给出以下输出：
 - en: '![](img/9ed86d23-a9fb-4770-add7-d80587b7aa01.png)'
+  id: totrans-81
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/9ed86d23-a9fb-4770-add7-d80587b7aa01.png)'
 - en: The examples in this section are also available as the `shfl_sum.py` and `shfl_xor.py`
     files under the `Chapter11` directory in this book's GitHub repository.
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节中的示例也作为 `shfl_sum.py` 和 `shfl_xor.py` 文件包含在本书的 GitHub 仓库中的 `Chapter11` 目录下。
 - en: Inline PTX assembly
+  id: totrans-83
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 内联 PTX 汇编
 - en: We will now scratch the surface of writing PTX (Parallel Thread eXecution) Assembly
     language, which is a kind of a pseudo-assembly language that works across all
     Nvidia GPUs, which is, in turn, compiled by a Just-In-Time (JIT) compiler to the
@@ -434,26 +620,37 @@
     or a CUDA .cubin binary) and inspect its PTX code if no source code is otherwise
     available. This can be done with the `cuobjdump.exe -ptx cuda_binary` command
     in both Windows and Linux.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将探讨编写PTX（并行线程执行）汇编语言，这是一种在所有Nvidia GPU上工作的伪汇编语言，它反过来由即时（JIT）编译器编译成特定GPU的实际机器代码。虽然这显然不是日常使用，但如果需要，它将让我们在比C语言更低级别上工作。一个特定的用例是，你可以轻松地反汇编CUDA二进制文件（主机端可执行文件/库或CUDA
+    .cubin二进制文件）并检查其PTX代码，如果否则没有源代码。这可以通过Windows和Linux中的`cuobjdump.exe -ptx cuda_binary`命令来完成。
 - en: 'As stated previously, we will only cover some of the basic usages of PTX from
     within CUDA-C, which has a particular syntax and usage which is similar to that
     of using the inline host-side assembly language in GCC. Let''s get going with
     our code—we will do the imports and start writing our GPU code:'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前所述，我们将在CUDA-C中仅涵盖PTX（并行线程执行）的一些基本用法，CUDA-C具有特定的语法和用法，这与在GCC中使用内联主机端汇编语言类似。让我们开始编写我们的代码——我们将进行导入并开始编写我们的GPU代码：
 - en: '[PRE16]'
+  id: totrans-86
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'We will do several mini-experiments here by writing the code into separate
     device functions. Let''s start with a simple function that sets an input variable
     to zero. (We can use the C++ pass-by-reference operator `&` in CUDA, which we
     will use in the `device` function.):'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将通过将代码写入单独的设备函数来在这里进行几个迷你实验。让我们从一个简单的函数开始，该函数将输入变量设置为0。（在CUDA中，我们可以使用C++的按引用传递操作符`&`，我们将在`device`函数中使用它。）
 - en: '[PRE17]'
+  id: totrans-88
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'Let''s break this down before we move on. `asm`, of course, will indicate to
     the `nvcc` compiler that we are going to be using assembly, so we will have to
     put that code into quotes so that it can be handled properly. The `mov` instruction
@@ -473,34 +670,49 @@
     be handled as a 32-bit integer datatype. We then put the variable we want to be
     handled by the assembler in parentheses, and then close off the `asm`, just like
     we would with any C function.'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们继续之前，让我们分解一下。`asm`当然会指示`nvcc`编译器我们将要使用汇编，因此我们必须将这段代码放入引号中，以便它可以被正确处理。`mov`指令只是复制一个常数或其他值，并将其输入到一个**寄存器**中。（寄存器是GPU或CPU使用的最基本类型的片上存储单元，用于存储或操作值；这是大多数*局部*变量在CUDA中使用的方式。）`mov.s32`中的`.s32`部分表示我们正在处理一个有符号的32位整数变量——PTX汇编语言没有像C语言那样的*类型*数据，因此我们必须小心使用正确的特定操作。`%0`告诉`nvcc`使用与字符串这里的`0th`参数相对应的寄存器，我们用逗号将其与`mov`的下一个*输入*分开，逗号是常数`0`。然后我们像在C语言中一样以分号结束汇编语句行，并用引号关闭这段汇编代码。然后我们必须使用冒号（而不是逗号！）来指示我们想要在代码中使用哪些变量。`"=r"`意味着两件事：等号`=`将指示`nvcc`该寄存器将被写入作为输出，而`r`表示这应该被处理为32位整数数据类型。然后我们将要由汇编器处理的变量放在括号中，然后像任何C函数一样关闭`asm`。
 - en: 'All of that exposition to set the value of a single variable to 0! Now, let''s
     make a small device function that will add two floating-point numbers for us:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有这些都是为了设置单个变量的值为0！现在，让我们创建一个小的设备函数，该函数将为我们添加两个浮点数：
 - en: '[PRE18]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: Let's stop and notice a few things. First, of course, we are using `add.f32`
     to indicate that we want to add two 32-bit floating point values together. We
     also use `"=f"` to indicate that we will be writing to a register, and `f` to
     indicate that we will be only reading from it. Also, notice how we use a colon
     to separate the `write` registers from the `only read` registers for `nvcc`.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们停下来注意一些事情。首先，当然，我们使用 `add.f32` 来表示我们想要将两个 32 位浮点数相加。我们还使用 `"=f"` 来表示我们将写入一个寄存器，并且使用
+    `f` 来表示我们只从它读取。此外，注意我们如何使用冒号来区分 `nvcc` 中的 `write` 寄存器和 `only read` 寄存器。
 - en: 'Let''s look at one more simple example before we continue, that is, a function
     akin to the `++` operator in C that increments an integer by `1`:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们继续之前，让我们看看另一个简单的例子，即类似于 C 中的 `++` 操作符的函数，它将整数增加 `1`。
 - en: '[PRE19]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: First, notice that we use the "0th" parameter as both the output and the first
     input. Next, notice that we are using `+r` rather than `=r`—the `+` tells `nvcc`
     that this register will be read from *and* written to in this instruction.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，请注意我们使用“0th”参数作为输出和第一个输入。接下来，请注意我们使用 `+r` 而不是 `=r`——`+` 告诉 `nvcc`，在这个指令中这个寄存器将被读取和写入。
 - en: 'Now, we won''t be getting any fancier than this, as even writing a simple `if`
     statement in assembly language is fairly involved. However, let''s look at some
     more examples that will come in useful when using CUDA Warps. Let''s start with
@@ -511,11 +723,18 @@
     which will indicate to `nvcc` to directly use the `%` in the assembly code for
     the `%laneid` reference rather than interpret this as an argument to the `asm`
     command.):'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们不会比这更复杂，因为即使在汇编语言中编写一个简单的 `if` 语句也是相当复杂的。然而，让我们看看一些更有用的例子，这些例子在使用 CUDA
+    Warps 时会很有帮助。让我们从一个小的函数开始，它将给我们当前线程的通道 ID；这特别有用，实际上比使用 CUDA-C 做这件事要简单得多，因为通道 ID
+    实际上存储在一个称为 `%laneid` 的特殊寄存器中，我们无法在纯 C 中访问它。（注意我们在代码中使用两个 `%` 符号，这将指示 `nvcc` 直接在汇编代码中使用
+    `%` 来引用 `%laneid`，而不是将其解释为 `asm` 命令的参数。）
 - en: '[PRE20]'
+  id: totrans-97
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'Now let''s write two more functions that will be useful for dealing with CUDA
     Warps. Remember, you can only pass a 32-bit variable across a Warp using a shuffle
     command. This means that to pass a 64-bit variable over a warp, we have to split
@@ -524,55 +743,83 @@
     We can use the `mov.b64` command for the case of splitting a 64-bit double into
     two 32-bit integers—notice how we have to use `d` to indicate a 64-bit floating-point
     double:'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们再写两个有用的函数来处理 CUDA Warps。记住，你只能通过 shuffle 命令传递一个 32 位变量。这意味着为了在 warp 中传递一个
+    64 位变量，我们必须将其分成两个 32 位变量，分别将这两个变量 shuffle 到另一个线程，然后将这些 32 位值重新组合成原始的 64 位变量。我们可以使用
+    `mov.b64` 命令来处理将 64 位双精度浮点数拆分成两个 32 位整数的情况——注意我们必须使用 `d` 来表示 64 位浮点双精度数。
 - en: Notice our use of `volatile` in the following code, which will ensure that these
     commands are executed exactly as written after they are compiled. We do this because
     sometimes a compiler will make its own optimizations to or around inline assembly
     code, but for particularly delicate operations such as this, we want this done
     exactly as written.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意以下代码中我们使用了 `volatile`，这将确保在编译后这些命令将严格按照编写的方式执行。我们这样做是因为有时编译器会对内联汇编代码进行自己的优化，但对于像这样特别微妙的操作，我们希望它们按照编写的方式执行。
 - en: '[PRE21]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'Now let''s write a simple kernel that will test all of the PTX assembly device
     functions we wrote. We will then launch it over one single thread so that we can
     check everything:'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们编写一个简单的内核，它将测试我们编写的所有 PTX 汇编设备函数。然后我们将通过单个线程启动它，以便我们可以检查一切：
 - en: '[PRE22]'
+  id: totrans-102
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'We will now run the preceding code:'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将运行前面的代码：
 - en: '![](img/bebb9f8f-a21c-4b06-b3e9-3686b8c96b41.png)'
+  id: totrans-104
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/bebb9f8f-a21c-4b06-b3e9-3686b8c96b41.png)'
 - en: This example is also available as the `ptx_assembly.py` file under the `Chapter11`
     directory in this book's GitHub repository.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子也可以在这个书的 GitHub 仓库的 `Chapter11` 目录下的 `ptx_assembly.py` 文件中找到。
 - en: Performance-optimized array sum
+  id: totrans-106
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 性能优化的数组求和
 - en: For the final example of this book, we will now make a standard array summation
     kernel for a given array of doubles, except this time we will use every trick
     that we've learned in this chapter to make it as fast as possible. We will check
     the output of our summing kernel against NumPy's `sum` function, and then we will
     run some tests with the standard Python `timeit` function to compare how our function
     compares to PyCUDA's own `sum` function for `gpuarray` objects.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于本书的最后一个例子，我们现在将创建一个标准的数组求和内核，针对给定的双精度浮点数组，但这次我们将使用本章学到的每一个技巧，使其尽可能快。我们将通过
+    NumPy 的 `sum` 函数检查我们的求和内核的输出，然后使用标准的 Python `timeit` 函数运行一些测试，以比较我们的函数与 PyCUDA
+    自身的 `sum` 函数在 `gpuarray` 对象上的性能。
 - en: 'Let''s get started by importing all of the necessary libraries, and then start
     with a `laneid` function, similar to the one we used in the previous section:'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们开始导入所有必要的库，然后从与上一节类似的 `laneid` 函数开始：
 - en: '[PRE23]'
+  id: totrans-109
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: Let's note a few things—notice that we put a new inline statement in the declaration
     of our device function. This will effectively make our function into a macro,
     which will shave off a little time from calling and branching to a device function
@@ -580,79 +827,121 @@
     by reference instead of returning a value—in this case, there may actually be
     two integer registers that should be used, and there should be an additional copy
     command. This guarantees that this won't happen.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们记下几点——注意我们在设备函数的声明中添加了一个新的内联语句。这将有效地使我们的函数成为一个宏，当我们从内核调用它时，这将减少调用和分支到设备函数的时间。另外，注意我们通过引用设置
+    `id` 变量而不是返回一个值——在这种情况下，实际上可能需要使用两个整数寄存器，并且应该有一个额外的复制命令。这保证了这种情况不会发生。
 - en: 'Let''s write the other device functions in a similar fashion. We will need
     to have two more device functions so that we can split and combine a 64-bit double
     into two 32-bit variables:'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们以类似的方式编写其他设备函数。我们需要有两个额外的设备函数，以便我们可以将 64 位双精度浮点数拆分和组合成两个 32 位变量：
 - en: '[PRE24]'
+  id: totrans-112
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: 'Let''s start writing the kernel. We will take in an array of doubles called
     input, and then output the entire sum to `out`, which should be initialized to
     `0`. We will start by getting the lane ID for the current thread and loading two
     values from global memory into the current thread with vectorized memory loading:'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们开始编写内核。我们将接收一个名为 `input` 的双精度浮点数组，然后将整个和输出到 `out`，它应该初始化为 `0`。我们首先获取当前线程的
+    lane ID，并将两个值从全局内存加载到当前线程，使用向量化内存加载：
 - en: '[PRE25]'
+  id: totrans-114
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: 'Now let''s sum these values from the double2 `vals` variable into a new double
     variable, `sum_val`, which will keep track of all the summations across this thread.
     We will create two 32-bit integers, `s1` and `s2`, that we will use for splitting
     this value and sharing it with Warp Shuffling, and then create a `temp` variable
     for reconstructed values we receive from other threads in this Warp:'
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们将这些值从 `vals` 变量的 `double2` 中求和到一个新的双精度变量 `sum_val` 中，这将跟踪这个线程的所有求和。我们将创建两个
+    32 位整数 `s1` 和 `s2`，我们将使用它们来拆分这个值并与 warp 混洗共享，然后创建一个 `temp` 变量来存储我们从这个 warp 中的其他线程接收到的重构值：
 - en: '[PRE26]'
+  id: totrans-116
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'Now let''s use a Naive Parallel sum again across the warp, which will be the
     same as summing 32-bit integers across a Warp, except we will be using our `split64`
     and `combine64` PTX functions on `sum_val` and `temp` for each iteration:'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们再次使用 Naive Parallel sum 在 warp 中进行求和，这相当于在 warp 中对 32 位整数进行求和，但我们将在每个迭代中使用我们的
+    `split64` 和 `combine64` PTX 函数在 `sum_val` 和 `temp` 上：
 - en: '[PRE27]'
+  id: totrans-118
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: 'Now that we are done, let''s have the `0th` thread of every single warp add
     their end value to `out` using the thread-safe `atomicAdd`:'
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经完成了，让我们让每个 warp 的 `0th` 线程使用线程安全的 `atomicAdd` 将它们的结束值添加到 `out` 中：
 - en: '[PRE28]'
+  id: totrans-120
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: 'We will now write our test code with `timeit` operations to measure the average
     time of our kernel and PyCUDA''s sum over 20 iterations of both on an array of
     10000*2*32 doubles:'
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将使用 `timeit` 操作编写测试代码，以测量我们的内核和 PyCUDA 的 `sum` 函数在 10000*2*32 个双精度浮点数组上
+    20 次迭代的平均时间：
 - en: '[PRE29]'
+  id: totrans-122
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: 'Let''s run this from IPython. Make sure that you have run both `gpuarray.sum`
     and `sum_ker` beforehand to ensure that we aren''t timing any compilation by `nvcc`
     as well:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从 IPython 中运行这个例子。确保你事先已经运行了 `gpuarray.sum` 和 `sum_ker`，以确保我们不会因为 `nvcc`
+    的编译而计时：
 - en: '![](img/b1e04079-149b-4da4-9524-6bc4ef455108.png)'
+  id: totrans-124
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/b1e04079-149b-4da4-9524-6bc4ef455108.png)'
 - en: So, while summing is normally pretty boring, we can be excited by the fact that
     our clever use of hardware tricks can speed up such a bland and trivial algorithm
     quite a bit.
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 所以，虽然求和通常相当无聊，但我们却可以因为巧妙地使用硬件技巧，能显著加快这种平淡无奇且微不足道的算法而感到兴奋。
 - en: This example is available as the `performance_sum_ker.py` file under the `Chapter11`
     directory in this book's GitHub repository.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子作为`performance_sum_ker.py`文件包含在这本书的GitHub仓库的`Chapter11`目录下。
 - en: Summary
+  id: totrans-127
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: We started this chapter by learning about dynamic parallelism, which is a paradigm
     that allows us to launch and manage kernels directly on the GPU from other kernels.
     We saw how we can use this to implement a quicksort algorithm on the GPU directly.
@@ -667,38 +956,51 @@
     arrays of doubles, applying almost most of the tricks we've learned in this chapter.
     We saw that this is actually faster than the standard PyCUDA sum on double arrays
     with a length of an order of 500,000.
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们从学习动态并行性开始这一章，这是一种允许我们从其他内核直接在GPU上启动和管理内核的范例。我们看到了如何直接在GPU上实现快速排序算法。然后我们学习了CUDA中的矢量化数据类型，并看到了如何使用这些数据类型来加速从全局设备内存中的内存读取。然后我们学习了CUDA
+    Warps，它们是GPU上32个线程或更少的单元，我们看到了单个Warp内的线程如何使用Warp Shuffle直接读取和写入彼此的寄存器。然后我们探讨了如何用PTX汇编编写一些基本操作，包括导入操作，如确定车道ID和将64位变量分割成两个32位变量。最后，我们通过编写一个新的用于双精度数组性能优化的求和内核来结束这一章，我们应用了本章学到的几乎所有技巧。我们看到这实际上比标准PyCUDA对长度为500,000的双精度数组求和要快。
 - en: We have gotten through all of the technical chapters of this book! You should
     be proud of yourself, since you are now surely a skilled GPU programmer with many
     tricks up your sleeve. We will now embark upon the final chapter, where we will
     take a brief tour of a few of the different paths you can take to apply and extend
     your GPU programming knowledge from here.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经完成了这本书的所有技术章节！你应该为自己感到骄傲，因为你现在肯定是一个熟练的GPU程序员，有很多技巧在你的袖子里。我们现在将开始最后一章，我们将简要地浏览一下你可以采取的不同路径来应用和扩展你的GPU编程知识。
 - en: Questions
+  id: totrans-130
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 问题
 - en: In the atomic operations example, try changing the grid size from 1 to 2 before
     the kernel is launched while leaving the total block size at 100\. If this gives
     you the wrong output for `add_out` (anything other than 200), then why is it wrong,
     considering that `atomicExch` is thread-safe?
+  id: totrans-131
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在原子操作示例中，尝试在内核启动之前将网格大小从1更改为2，同时保持总块大小为100。如果这导致`add_out`（除了200以外的任何值）的输出不正确，那么为什么是错误的，考虑到`atomicExch`是线程安全的？
 - en: In the atomic operations example, try removing `__syncthreads`, and then run
     the kernel over the original parameters of grid size 1 and block size 100\. If
     this gives you the wrong output for `add_out` (anything other than 100), then
     why is it wrong, considering that `atomicExch` is thread-safe?
+  id: totrans-132
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在原子操作示例中，尝试移除`__syncthreads`，然后使用网格大小为1和块大小为100的原始参数运行内核。如果这导致`add_out`（除了100以外的任何值）的输出不正确，那么为什么是错误的，考虑到`atomicExch`是线程安全的？
 - en: Why do we not have to use `__syncthreads` to synchronize over a block of size
     32 or less?
+  id: totrans-133
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 为什么我们不需要在大小为32或更小的块上使用`__syncthreads`来同步？
 - en: We saw that `sum_ker` is around five times faster than PyCUDA's sum operation
     for random-valued arrays of length 640,000 (`10000*2*32`). If you try adding a
     zero to the end of this number (that is, multiply it by 10), you'll notice that
@@ -706,11 +1008,15 @@
     fast as PyCUDA's sum. If you add another zero to the end of that number, you'll
     notice that `sum_ker` is only 75% as fast as PyCUDA's sum. Why do you think this
     is the case? How can we improve `sum_ker` to be faster on larger arrays?
+  id: totrans-134
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们看到`sum_ker`大约比PyCUDA对长度为640,000（`10000*2*32`）的随机值数组求和快五倍。如果你尝试在这个数字的末尾添加一个零（即乘以10），你会注意到性能下降到`sum_ker`只比PyCUDA的求和快1.5倍。如果你在这个数字的末尾再添加一个零，你会注意到`sum_ker`只比PyCUDA的求和快75%。你认为这是为什么？我们如何改进`sum_ker`以使其在更大的数组上更快？
 - en: 'Which algorithm performs more addition operations (counting both calls to the
     C + operator and atomicSum as a single operation): `sum_ker` or PyCUDA''s `sum`?'
+  id: totrans-135
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 哪个算法执行更多的加法操作（包括对C +运算符和atomicSum的调用）：`sum_ker`还是PyCUDA的`sum`？
