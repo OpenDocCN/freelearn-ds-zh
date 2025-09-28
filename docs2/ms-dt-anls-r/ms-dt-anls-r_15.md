@@ -28,7 +28,7 @@
 
 +   *《高级 R》*，作者*Hadley Wickham*，*2015*，可在[`adv-r.had.co.nz`](http://adv-r.had.co.nz)找到
 
-# 第一章 – 嗨，数据！
+# 第一章：– 嗨，数据！
 
 本章提到的 R 包版本（按顺序列出）：
 
@@ -86,7 +86,7 @@
 
 +   MySQL 下载地址：[`dev.mysql.com/downloads/mysql`](https://dev.mysql.com/downloads/mysql)
 
-# 第二章 – 从网络获取数据
+# 第二章：– 从网络获取数据
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -144,7 +144,7 @@
 
 +   *Web 技术和服务 CRAN 任务视图*，由 *Scott Chamberlain*、*Karthik Ram*、*Christopher Gandrud* 和 *Patrick Mair*（2014）编写，可在 [`cran.r-project.org/web/views/WebTechnologies.html`](http://cran.r-project.org/web/views/WebTechnologies.html) 查找
 
-# 第三章 – 过滤和汇总数据
+# 第三章：– 过滤和汇总数据
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -166,7 +166,7 @@
 
 +   *dplyr 简介*，*vignette*：[`cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html`](https://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html)
 
-# 第四章 – 数据重构
+# 第四章：– 数据重构
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -206,7 +206,7 @@
 
 +   *整洁数据*，*统计软件杂志. 59(10): 1:23*，由*Hadley Wickham*，*2014*，在 [`vita.had.co.nz/papers/tidy-data.html`](http://vita.had.co.nz/papers/tidy-data.html)
 
-# 第五章 – 构建模型（由 Renata Nemeth 和 Gergely Toth 撰写）
+# 第五章：– 构建模型（由 Renata Nemeth 和 Gergely Toth 撰写）
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -236,7 +236,7 @@
 
 +   *使用 R 进行线性模型*，*Julian J*，*CRC*，*Faraway*，*2014*，在 [`www.maths.bath.ac.uk/~jjf23/LMR/`](http://www.maths.bath.ac.uk/~jjf23/LMR/)
 
-# 第六章 – 超越线性趋势线（由 Renata Nemeth 和 Gergely Toth 撰写）
+# 第六章：– 超越线性趋势线（由 Renata Nemeth 和 Gergely Toth 撰写）
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -268,7 +268,7 @@
 
 +   *R 应用的回归分析伴侣*, *Sage*, *Web 补充* 由 *John Fox* (2011) 提供，[`socserv.socsci.mcmaster.ca/jfox/Books/Companion/appendix.html`](http://socserv.socsci.mcmaster.ca/jfox/Books/Companion/appendix.html)
 
-# 第七章 – 非结构化数据
+# 第七章：– 非结构化数据
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -302,7 +302,7 @@
 
 +   Stefan Thomas Gries (2009): 使用 R 进行定量语料库语言学：实用导论. Routledge.
 
-# 第八章 – 数据精炼
+# 第八章：– 数据精炼
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -346,7 +346,7 @@
 
 +   *稳健统计方法 CRAN 任务视图*, *Martin Maechler* [`cran.r-project.org/web/views/Robust.html`](https://cran.r-project.org/web/views/Robust.html)
 
-# 第九章 – 从大数据到小数据
+# 第九章：– 从大数据到小数据
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -390,7 +390,7 @@
 
 +   *PCA 的视觉解释*，*Victor Powell*，可在[`setosa.io/ev/principal-component-analysis/`](http://setosa.io/ev/principal-component-analysis/)找到
 
-# 第十章 - 分类与聚类
+# 第十章：- 分类与聚类
 
 在本章中提到的顺序中加载的 R 包版本：
 
@@ -442,7 +442,7 @@
 
 +   *机器学习基准*，由*Szilard Pafka*，于*2015*年出版，可在[`github.com/szilard/benchm-ml`](https://github.com/szilard/benchm-ml)找到
 
-# 第十一章 - R 生态系统的社会网络分析
+# 第十一章：- R 生态系统的社会网络分析
 
 在本章中提到的顺序中加载的 R 包版本：
 
@@ -464,7 +464,7 @@
 
 +   *使用 R 和 SoNIA 进行社会网络分析实验室*，由*Sean J. Westwood*在*2010*编写，可在[`sna.stanford.edu/rlabs.php`](http://sna.stanford.edu/rlabs.php)找到
 
-# 第十二章 – 时间序列分析
+# 第十二章：– 时间序列分析
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -494,7 +494,7 @@
 
 +   *时间序列分析 CRAN 任务视图*，由*Rob J Hyndman*在[`cran.r-project.org/web/views/TimeSeries.html`](https://cran.r-project.org/web/views/TimeSeries.html)提供
 
-# 第十三章 – 周围的数据
+# 第十三章：– 周围的数据
 
 加载的 R 包版本（按章节中提到的顺序）：
 
@@ -552,7 +552,7 @@
 
 +   *空间数据分析 CRAN 任务视图*，由*Roger Bivand*在[`cran.r-project.org/web/views/Spatial.html`](https://cran.r-project.org/web/views/Spatial.html)提供
 
-# 第十四章 – 分析 R 社区
+# 第十四章：– 分析 R 社区
 
 加载的 R 包版本（按章节中提到的顺序）：
 

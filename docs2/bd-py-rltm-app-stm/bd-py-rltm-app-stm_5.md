@@ -1,4 +1,4 @@
-# 第五章 使用 Redis 和 MongoDB 进行持久化
+# 第五章：使用 Redis 和 MongoDB 进行持久化
 
 通常有必要将元组存储在持久数据存储中，如 NoSQL 数据库或快速键值缓存，以执行额外的分析。在本章中，我们将借助两种流行的持久化媒体：Redis 和 MongoDB，回顾第四章中的 Twitter 趋势分析拓扑，*示例拓扑 - Twitter*。
 
