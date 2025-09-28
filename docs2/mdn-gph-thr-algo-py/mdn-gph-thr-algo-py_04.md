@@ -1,6 +1,6 @@
 
 
-# 使用 NetworkX 和 igraph 将数据整理成网络
+# 第三章：使用 NetworkX 和 igraph 将数据整理成网络
 
 在本章中，我们将介绍在分析项目中常见的多种数据类型，包括 `NetworkX` 和 `igraph` 包。
 

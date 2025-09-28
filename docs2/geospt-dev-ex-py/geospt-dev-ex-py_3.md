@@ -344,7 +344,7 @@ for wpt in gpx_dict['gpx']['wpt']:
 
 geometry = "POINT(" + wpt.pop('@lat') + " " + wpt.pop('@lon') + ")"
 
-# 如果 geocache 不在字典中，则跳过此 wpt。
+# 第四章：如果 geocache 不在字典中，则跳过此 wpt。
 
 try:
 

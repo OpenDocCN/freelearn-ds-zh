@@ -1,4 +1,4 @@
-# ArcGIS API for Python 和 ArcGIS Online
+# 第九章：ArcGIS API for Python 和 ArcGIS Online
 
 本章将介绍用于 Python 和 ArcGIS Online 的 ArcGIS **应用程序编程接口** (**API**)。ArcGIS API for Python 是一个用于处理地图和地理空间数据的 Python 库。此 API 可以使用 `conda` 本地安装，并与 Esri 的云 GIS 进行交互，无论是 ArcGIS Online (SaaS) 还是 Portal for ArcGIS，后者是一款提供本地云 GIS 部署的服务器产品。该 API 为使用 Python 进行网络地图脚本编写提供了现代解决方案，并且与 Jupyter Notebooks 兼容良好。
 

@@ -588,7 +588,7 @@ Nilesh Mohite
 
 import ogr
 
-# 打开 shapefile 并获取第一层。
+# 第一章：打开 shapefile 并获取第一层。
 
 datasource = ogr.Open("../data/world_borders_simple.shp") layer = datasource.GetLayerByIndex(0)
 

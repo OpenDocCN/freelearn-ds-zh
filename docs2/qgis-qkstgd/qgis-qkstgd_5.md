@@ -1,4 +1,4 @@
-# 创建地图
+# 第五章：创建地图
 
 在本章中，我们将使用 QGIS 创建地图。我们将使用上一章中的样式和数据。在构建地图之前，我们将查看标签功能。QGIS 在创建地图方面非常出色。查看这个画廊以了解 QGIS 的功能：[`www.flickr.com/groups/qgis/pool/`](https://www.flickr.com/groups/qgis/pool/)。
 

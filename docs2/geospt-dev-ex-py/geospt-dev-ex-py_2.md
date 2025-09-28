@@ -20,7 +20,7 @@ cv2.destroyAllWindows()
 
 8. 从 map_functions.py 文件中复制 create_map 函数，并对类进行以下修改：
 
-# coding=utf-8
+# 第三章：coding=utf-8
 
 import cv2
 

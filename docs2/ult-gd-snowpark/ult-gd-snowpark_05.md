@@ -1,6 +1,6 @@
 
 
-# 使用 Snowpark 简化数据处理
+# 第三章：使用 Snowpark 简化数据处理
 
 在上一章中，我们学习了如何为 Snowpark 设置开发环境，以及各种 Snowpark 组件，如 DataFrames、UDFs 和存储过程。我们还介绍了如何操作这些对象并在 Snowflake 中运行它们。在本章中，我们将介绍使用 Snowpark 进行数据处理，并学习如何使用 Snowpark 加载数据、准备、分析和转换数据。
 

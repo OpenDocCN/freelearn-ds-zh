@@ -1,4 +1,4 @@
-# 3 配置 Python 与 Power BI
+# 第四章：3 配置 Python 与 Power BI
 
 正如 *第二章，使用 Python 配置 R* 中所述，你必须安装 R 引擎才能与 Power BI 交互，同样，你也将需要在你的机器上安装 Python 引擎。你还将了解如何配置一些 IDE，以便在将 Python 代码用于 Power BI 之前，你可以舒适地开发和测试 Python 代码。因此，类似于我们在 *第二章，使用 Python 配置 R* 中已经看到的，本章将讨论以下主题：
 

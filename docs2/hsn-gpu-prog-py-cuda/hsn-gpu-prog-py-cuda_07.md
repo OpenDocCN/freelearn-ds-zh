@@ -1,4 +1,4 @@
-# 使用 Scikit-CUDA 与 CUDA 库
+# 第七章：使用 Scikit-CUDA 与 CUDA 库
 
 在本章中，我们将游览三个旨在简化数值和科学计算的标准化 CUDA 库。我们将首先查看的是 **cuBLAS**，这是 NVIDIA 对 CUDA 的 **基本线性代数子程序**（**BLAS**）规范的实现。（cuBLAS 是 NVIDIA 对各种基于 CPU 的优化 BLAS 实现的回应，例如免费/开源的 OpenBLAS 或英特尔专有的数学内核库。）我们将查看的下一个库是 **cuFFT**，它可以在 GPU 上执行几乎所有的 **快速傅里叶变换**（**FFT**）变体。我们将特别探讨如何使用 cuFFT 进行图像处理中的滤波。然后我们将查看 **cuSolver**，它可以执行比 cuBLAS 中提供的更复杂的线性代数操作，例如 **奇异值分解**（**SVD**）或 Cholesky 分解。
 

@@ -1,4 +1,4 @@
-# GeoDjango
+# 第十二章：GeoDjango
 
 Django Python Web 框架于 2005 年推出，并在多年来持续得到支持和改进。一个主要改进是增加了对空间数据类型和查询的支持。这一努力产生了 GeoDjango，使得 Django 能够支持地理空间数据库模型和利用地理空间查询的 Web 视图。
 
