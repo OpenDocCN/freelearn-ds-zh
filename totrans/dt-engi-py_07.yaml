@@ -1,7 +1,9 @@
 - en: '*Chapter 6*: Building a 311 Data Pipeline'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '*第 6 章*：构建 311 数据管道'
 - en: In the previous three chapters, you learned how to use Python, Airflow, and
     NiFi to build data pipelines. In this chapter, you will use those skills to create
     a pipeline that connects to **SeeClickFix** and downloads all the issues for a
@@ -11,175 +13,261 @@
     vehicles, graffiti, and needles. Also, it's really interesting to see what kinds
     of things people complain to their city about – during the COVID-19 pandemic,
     my city has seen several reports of people not social distancing at clubs.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前三个章节中，你学习了如何使用 Python、Airflow 和 NiFi 来构建数据管道。在本章中，你将使用这些技能来创建一个连接到 **SeeClickFix**
+    并下载一个城市所有问题的管道，然后将其加载到 Elasticsearch 中。我目前每 8 小时运行这个管道一次。我将这个管道用作开源情报的来源——用它来监控社区的生活质量问题，以及废弃车辆、涂鸦和针头的报告。而且，看到人们向他们的城市抱怨什么类型的事情也非常有趣——在
+    COVID-19 大流行期间，我的城市看到了几起人们在俱乐部不保持社交距离的报告。
 - en: 'In this chapter, we''re going to cover the following main topics:'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要主题：
 - en: Building the data pipeline
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 构建数据管道
 - en: Building a Kibana dashboard
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 构建一个 Kibana 仪表板
 - en: Building the data pipeline
+  id: totrans-5
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 构建数据管道
 - en: 'This data pipeline will be slightly different from the previous pipelines in
     that we will need to use a trick to start it off. We will have two paths to the
     same database – one of which we will turn off once it has run the first time,
     and we will have a processor that connects to itself for the success relationship.
     The following screenshot shows the completed pipeline:'
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个数据管道将与之前的管道略有不同，因为我们需要使用一个技巧来启动它。我们将有两个指向同一数据库的路径——其中一个在第一次运行后我们将关闭它，并且我们将有一个连接到自身的处理器来建立成功关系。以下截图显示了完成的管道：
 - en: '![Figure 6.1 – The complete pipeline'
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: '![Figure 6.1 – The complete pipeline'
 - en: '](img/Figure_6.1_B15739.jpg)'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: '![img/Figure_6.1_B15739.jpg]'
 - en: Figure 6.1 – The complete pipeline
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 6.1 – 完整的管道
 - en: The preceding screenshot may look complicated, but I assure you that it will
     make sense by the end of this chapter.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 上述截图可能看起来很复杂，但我向你保证，到本章结束时你会明白它的意义。
 - en: Mapping a data type
+  id: totrans-11
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 映射数据类型
 - en: 'Before you can build the pipeline, you need to map a field in Elasticsearch
     so that you get the benefit of the coordinates by mapping them as the geopoint
     data type. To do that, open Kibana at `http://localhost:5601`. At the toolbar,
     select **Dev Tools** (the wrench icon) and enter the code shown in the left panel
     of the following screenshot, and then click the run arrow. If it was successful,
     you will see output in the right panel, as shown in the following screenshot:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 在你构建管道之前，你需要将 Elasticsearch 中的一个字段进行映射，以便通过将它们映射为地理点数据类型来获得坐标的好处。为此，打开 Kibana，网址为
+    `http://localhost:5601`。在工具栏上，选择 **Dev Tools**（扳手图标）并输入以下截图左侧面板中显示的代码，然后点击运行箭头。如果成功，你将在右侧面板中看到输出，如下面的截图所示：
 - en: '![Figure 6.2 – Adding geopoint mapping'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: '![Figure 6.2 – Adding geopoint mapping'
 - en: '](img/Figure_6.2_B15739.jpg)'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: '![img/Figure_6.2_B15739.jpg]'
 - en: Figure 6.2 – Adding geopoint mapping
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 6.2 – 添加地理点映射
 - en: Now that you have created the `scf` index with geopoint mapping, when you run
     your pipeline, the `coords` field will be converted into spatial coordinates in
     Elasticsearch.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在你已经创建了具有地理点映射的 `scf` 索引，当你运行你的管道时，`coords` 字段将被转换为 Elasticsearch 中的空间坐标。
 - en: Let's start building.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们开始构建。
 - en: Triggering a pipeline
+  id: totrans-18
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 触发管道
 - en: In the previous section, I mentioned that you would need to trick the data pipeline
     into starting. Remember that this pipeline will connect to an API endpoint, and
     in order to do that, the NiFi processors for calling HTTP endpoints, as well as
     the `ExecuteScript` processer that you will use, require an incoming flowfile
     to start them. This processor cannot be the first processor in a data pipeline.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我提到你需要欺骗数据管道以启动。记住，这个管道将连接到一个 API 端点，为了做到这一点，调用 HTTP 端点的 NiFi 处理器以及你将使用的
+    `ExecuteScript` 处理器都需要一个传入的 flowfile 来启动它们。这个处理器不能是数据管道中的第一个处理器。
 - en: 'To start the data pipeline, you will use the `GenerateFlowFile` processor.
     Drag and drop the processor on the canvas. Double-click on it to change the configuration.
     In the `Start Flow Fake Data`. This lets us know that this processor sends fake
     data just to start the flow. The configuration will use all the defaults and look
     like the following screenshot:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 要启动数据管道，你将使用 `GenerateFlowFile` 处理器。将处理器拖放到画布上。双击它以更改配置。在 `Start Flow Fake Data`
+    中。这让我们知道这个处理器发送的是假数据，只是为了启动流程。配置将使用所有默认值，如下面的截图所示：
 - en: '![Figure 6.3 – Configuring the GenerateFlowfile processor'
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图 6.3 – 配置 GenerateFlowfile 处理器'
 - en: '](img/Figure_6.3_B15739.jpg)'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: '![img/Figure_6.3_B15739.jpg]'
 - en: Figure 6.3 – Configuring the GenerateFlowfile processor
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 6.3 – 配置 GenerateFlowfile 处理器
 - en: Lastly, in the **SCHEDULING** tab, set the processor to run at your desired
     interval. I use 8 because I do not want to overwhelm the API.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，在 **SCHEDULING** 选项卡中，将处理器设置为按你希望的间隔运行。我使用 8，因为我不想压倒 API。
 - en: The processor, when running, will generate a single flowfile with 0 bytes of
     data. It is empty, but it does contain metadata generated by NiFi. However, this
     empty flowfile will do the trick and start the next processor. That is where the
     work begins.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 当处理器运行时，它将生成一个包含 0 字节数据的单个 flowfile。它是空的，但它确实包含由 NiFi 生成的元数据。然而，这个空 flowfile
+    将会起到作用并启动下一个处理器。这就是工作的开始之处。
 - en: Querying SeeClickFix
+  id: totrans-26
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 查询 SeeClickFix
 - en: In the previous NiFi examples, you did not use any code, just configurations
     to make the processor do what you needed. We could do that in this pipeline. However,
     now is a good time to introduce coding using Python – Jython – into your pipelines.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 在之前的 NiFi 示例中，你没有使用任何代码，只是配置来让处理器完成你需要的工作。我们可以在这个管道中这样做。然而，现在是一个很好的时机，将使用 Python
+    – Jython 编码引入你的管道中。
 - en: 'Drag and drop the `ExecuteScript` processor to the canvas. Double-click on
     it to edit the configuration. Starting with the `Query SCF` so that I know it
     queries **SeeClickFix**. In the **Properties** tab, set **Script Engine** to **Python**.
     In the **Script Body** parameter, you will write the Python code that the processor
     will execute. The query steps are as follows:'
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 将 `ExecuteScript` 处理器拖放到画布上。双击它以编辑配置。从 `Query SCF` 开始，这样我知道它查询的是 **SeeClickFix**。在
+    **Properties** 选项卡中，将 **Script Engine** 设置为 **Python**。在 **Script Body** 参数中，你将编写处理器将执行的
+    Python 代码。查询步骤如下：
 - en: 'You need to import the required libraries. The following code is the libraries
     that you will always need to include:'
+  id: totrans-29
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 你需要导入所需的库。以下代码是你会始终需要包含的库：
 - en: '[PRE0]'
+  id: totrans-30
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'Next, you will create the class that will be called to handle the work. The
     `process` function will contain the code that will perform the task:'
+  id: totrans-31
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，你将创建一个将被调用来处理工作的类。`process` 函数将包含执行任务的代码：
 - en: '[PRE1]'
+  id: totrans-32
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Lastly, assume that no errors have occurred, and check whether there is a flowfile.
     If there is one, write the flowfile calling the class. Next, check whether an
     error occurred. If there was an error, you will send the flowfile to the failure
     relationship, otherwise, send it to the success relationship:'
+  id: totrans-33
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，假设没有发生错误，检查是否存在 flowfile。如果存在，调用类的 flowfile。接下来，检查是否发生了错误。如果有错误，你将把 flowfile
+    发送到失败关系，否则，发送到成功关系：
 - en: '[PRE2]'
+  id: totrans-34
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: The preceding code is the boiler plate for any Python `ExecuteScript` processor.
     The only thing you will need to change will be in the process function, which
     we will do in the steps that follow.
+  id: totrans-35
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 之前的代码是任何 Python `ExecuteScript` 处理器的模板。你需要更改的唯一内容将是在过程函数中，我们将在接下来的步骤中完成这一操作。
 - en: Because NiFi uses Jython, you can add many Python libraries to the Jython environment,
     but that is beyond the scope of this book. For now, you will use the standard
     libraries.
+  id: totrans-36
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 由于 NiFi 使用 Jython，你可以向 Jython 环境添加许多 Python 库，但这超出了本书的范围。现在，你将使用标准库。
 - en: 'To make a call to the SeeClickFix API, you will need to import the `urllib`
     libraries and `json`, as shown:'
+  id: totrans-37
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 要调用 SeeClickFix API，你需要导入 `urllib` 库和 `json`，如下所示：
 - en: '[PRE3]'
+  id: totrans-38
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'Next, you will put the code in the `process` function. The code will be a `try`
     `except` block that makes a request to the HTTP endpoint and writes out the response
     to `outputStream`. If there was an error, the `except` block will set `errorOccurred`
@@ -187,71 +275,105 @@
     `Failure` relationship. The only line in the `try` block that is not standard
     Python for using `urllib` is `outputStream.write()`. This is where you write to
     the flowfile:'
+  id: totrans-39
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，你将在 `process` 函数中放置代码。代码将是一个 `try` `except` 块，它向 HTTP 端点发出请求并将响应写入 `outputStream`。如果有错误，`except`
+    块将 `errorOccurred` 设置为 `True`，这将触发其余代码将文件流发送到 `Failure` 关系。`try` 块中不标准的 Python
+    代码行是 `outputStream.write()`。这是你写入文件流的地方：
 - en: '[PRE4]'
+  id: totrans-40
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: The preceding code, when successful, will output a JSON flowfile. The contents
     of the flowfile will contain some metadata and an array of issues. The two pieces
     of metadata we will be interested in are **page** and **pages**.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 前面的代码在成功时将输出一个 JSON 文件流。文件流的内容将包含一些元数据和问题数组。我们将感兴趣的元数据是 **page** 和 **pages**。
 - en: You have grabbed the first 100 issues for Bernalillo County, and will pass this
     flowfile to two different processors – `GetEveryPage` and `SplitJson`. We will
     follow the `SplitJson` path, as this path will send the data to Elasticsearch.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 你已经抓取了伯纳利县的前 100 个问题，并将把这个文件流传递给两个不同的处理器——`GetEveryPage` 和 `SplitJson`。我们将遵循
+    `SplitJson` 路径，因为这个路径会将数据发送到 Elasticsearch。
 - en: Transforming the data for Elasticsearch
+  id: totrans-43
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 将数据转换为 Elasticsearch
 - en: 'The following are the steps for transforming data for Elasticsearch:'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下是将数据转换为 Elasticsearch 的步骤：
 - en: Drag and drop the `SplitJson` processor to the canvas. Double-click on it to
     modify the properties. In the **Properties** tab, set the **JsonPath Expression**
     property to **$.issues**. This processor will now split the 100 issues into their
     own flowfiles.
+  id: totrans-45
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将 `SplitJson` 处理器拖放到画布上。双击它以修改属性。在 **属性** 选项卡中，将 **JsonPath 表达式** 属性设置为 **$.issues**。这个处理器现在将
+    100 个问题分割成它们自己的文件流。
 - en: Next, you need to add coordinates in the format expected by NiFi. We will use
     an `x`, `y` string named `coords`. To do that, drag and drop an `ExecuteScript`
     processor to the canvas. Double-click on it and click the `import json` statement.
+  id: totrans-46
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，你需要添加符合 NiFi 期望格式的坐标。我们将使用一个名为 `coords` 的 `x`、`y` 字符串。为此，将 `ExecuteScript`
+    处理器拖放到画布上。双击它并点击 `import json` 语句。
 - en: 'The `process` function will convert the input stream to a string. The input
     stream is the flowfile contents from the previous processor. In this case, it
     is a single issue. Then it will use the `json` library to load it as `json`. You
     then add a field named `coords` and assign it the value of a concatenated string
     of the `lat` and `lng` fields in the flowfile JSON. Lastly, you write the JSON
     back to the output stream as a new flowfile:'
+  id: totrans-47
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`process` 函数将输入流转换为字符串。输入流是来自前一个处理器的文件流内容。在这种情况下，它是一个单一的问题。然后它将使用 `json` 库将其加载为
+    `json`。然后你添加一个名为 `coords` 的字段，并将其分配给 `lat` 和 `lng` 字段在文件流 JSON 中的连接字符串值。最后，你将
+    JSON 写回输出流作为新的文件流：'
 - en: '[PRE5]'
+  id: totrans-48
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Now you have a single issue, with a new field called `coords`, that is a string
     format that Elasticsearch recognizes as a geopoint. You are almost ready to load
     the data in Elasticsearch, but first you need a unique identifier.
+  id: totrans-49
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 现在你有一个单独的问题，有一个名为 `coords` 的新字段，它是一个 Elasticsearch 识别为地理点的字符串格式。你几乎准备好在 Elasticsearch
+    中加载数据了，但首先你需要一个唯一的标识符。
 - en: To create the equivalent of a primary key in Elasticsearch, you can specify
     an ID. The JSON has an ID for each issue that you can use. To do so, drag and
     drop the `EvaluateJsonPath` processor on to the canvas. Double-click on it and
     select the `id` with the value of `$.id`. Remember that `$.` allows you to specify
     a JSON field to extract. The flowfile now contains a unique ID extracted from
     the JSON.
+  id: totrans-50
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 要在 Elasticsearch 中创建主键的等效项，你可以指定一个 ID。JSON 为每个问题都有一个 ID，你可以使用它。为此，将 `EvaluateJsonPath`
+    处理器拖放到画布上。双击它并选择值为 `$.id` 的 `id`。记住，`$.` 允许你指定要提取的 JSON 字段。现在文件流包含从 JSON 中提取的唯一
+    ID。
 - en: Drag and drop the `PutElasticsearchHttp` processor on to the canvas. Double-click
     on it to edit the properties. Set the `http://localhost:9200`. In the optional
     **Identifier Attribute** property, set the value to **id**. This is the attribute
@@ -261,66 +383,88 @@
     document if the ID does not already exist, and it will update if the ID exists,
     and the data is different. Otherwise, nothing will happen, and the record will
     be ignored, which is what you want if the data is already the same.
+  id: totrans-51
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将`PutElasticsearchHttp`处理器拖放到画布上。双击它以编辑属性。设置`http://localhost:9200`。在可选的**标识符属性**中，将值设置为**id**。这是您在之前的处理器中提取的属性。将**索引**设置为**SCF**（代表**SeeClickFix**），将**类型**设置为**doc**。最后，您将设置**索引操作**属性为**upsert**。在Elasticsearch中，**upsert**如果ID不存在，则会索引文档，如果ID存在且数据不同，则会更新。否则，不会发生任何操作，记录将被忽略，如果数据已经相同，这正是您想要的。
 - en: The issues are now being loaded in Elasticsearch, and if you were to check,
     you will have 100 documents in your `scf` index. But there are a lot more than
     100 records in the SeeClickFix data for Bernalillo County; there are 44 pages
     of records (4,336 issues) according to the metadata from the `QuerySCF` processor.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 问题现在正在加载到Elasticsearch中，如果您检查，您将在`scf`索引中找到100个文档。但Bernalillo县SeeClickFix数据中记录的数量远不止100条；根据`QuerySCF`处理器的元数据，有44页的记录（4,336个问题）。
 - en: The following section will show you how to grab all the data.
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下部分将向您展示如何抓取所有数据。
 - en: Getting every page
+  id: totrans-54
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 获取每一页
 - en: When you queried SeeClickFix, you sent the results to two paths. We took the
     `SplitJson` path. The reason for this is because on the initial query, you got
     back 100 issues and how many pages of issues exist (as part of the metadata).
     You sent the issues to the `SplitJson` path, because they were ready to process,
     but now you need to do something with the number of pages. We will do that by
     following the `GetEveryPage` path.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 当您查询SeeClickFix时，您将结果发送到两个路径。我们选择了`SplitJson`路径。这样做的原因是因为在初始查询中，您收到了100个问题和存在多少页问题（作为元数据的一部分）。您将问题发送到`SplitJson`路径，因为它们已经准备好处理，但现在您需要处理页数。我们将通过遵循`GetEveryPage`路径来完成这项工作。
 - en: Drag and drop an `ExecuteScript` processor on to the canvas. Double-click on
     it to edit the `urllib` and `json` libraries.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 将`ExecuteScript`处理器拖放到画布上。双击它以编辑`urllib`和`json`库。
 - en: 'The `process` function will convert the input stream to JSON, and then it will
     load it using the `json` library. The main logic of the function states that if
     the current page is less than or equal to the total number of pages, call the
     API and request the next page (`next_page_url`), and then write out the JSON as
     a flowfile. Otherwise, it stops. The code is as follows:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: '`process`函数将输入流转换为JSON，然后使用`json`库加载它。函数的主要逻辑表明，如果当前页小于或等于总页数，则调用API并请求下一页（`next_page_url`），然后将JSON作为流文件写入。否则，它将停止。代码如下：'
 - en: '[PRE6]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: You will connect the relationship success for this processor to the `SplitJson`
     processor in the last path we took. The flowfile will be split on issues, coordinates
     added, the ID extracted, and the issue sent to Elasticsearch. However, we need
     to do this 42 times.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 您将连接此处理器的成功关系到最后一条路径中我们使用的`SplitJson`处理器。流文件将在问题上分割，添加坐标，提取ID，然后将问题发送到Elasticsearch。然而，我们需要这样做42次。
 - en: To keep processing pages, you need to connect the success relationship to itself.
     That's right; you can connect a processor to itself. When you processed the first
     page through this processor, the next page was 2\. The issues were sent to `SplitJson`,
     and back to this processor, which said the current page is less than 44 and the
     next page is 3\.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了保持处理页面，您需要将成功关系连接到自身。没错；您可以将处理器连接到自身。当您通过此处理器处理第一页时，下一页是2。问题被发送到`SplitJson`，然后回到这个处理器，它说当前页是小于44，下一页是3。
 - en: You now have an Elasticsearch index with all of the current issues from SeeClickFix.
     However, the number of issues for Bernalillo County is much larger than the set
     of current issues – there is an archive. And now that you have a pipeline pulling
     new issues every 8 hours, you will always be up to date, but you can backfill
     Elasticsearch with all of the archived issues as well. Then you will have the
     full history of issues.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
 - en: Backfilling data
+  id: totrans-62
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -328,11 +472,14 @@
     a single parameter to the `params` object in the `QuerySCF` processor. To do that,
     right-click on the `QuerySCF` processor and select `QuerySCFArchive`. In the `params`
     object to the following code:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE7]'
+  id: totrans-64
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: The `status` parameter was added with the value `Archived`. Now, connect the
     `GenerateFlowfile` processor to this backfill processor to start it. Then, connect
     the processor to the `SplitJson` processor for the success relationship. This
@@ -340,6 +487,7 @@
     so connect the processor to the `GetEveryPage` processor too. This will loop through
     the archives and send all the issues to Elasticsearch. Once this pipeline finishes,
     you can stop the `QuerySCFArchive` processor.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
 - en: When you have a system that is constantly adding new records – like a transactional
@@ -350,6 +498,7 @@
     to grab all the historic data and backfill your warehouse. You may not need to
     go back to the beginning of time, but in this case, there were sufficiently few
     records to make it feasible.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
 - en: You will also follow this pattern if something goes wrong or if you need to
@@ -359,9 +508,11 @@
     The next chapter deals with production pipelines and will help you solve this
     problem by improving your pipelines. For now, let's visualize your new Elasticsearch
     index in Kibana.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
 - en: Building a Kibana dashboard
+  id: totrans-68
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -369,70 +520,89 @@
     would be nice to see the results of the data, as would an analyst. Using Kibana,
     you can do just that. In this section, you will build a Kibana dashboard for your
     data pipeline.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
 - en: 'To open Kibana, browse to `http://localhost:5601` and you will see the main
     window. At the bottom of the toolbar (on the left of the screen; you may need
     to expand it), click the management icon at the bottom. You need to select `scf*`,
     as shown in the following screenshot:'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.4 – Creating the index pattern in Kibana](img/Figure_6.4_B15739.jpg)'
+  id: totrans-71
   prefs: []
   type: TYPE_IMG
 - en: Figure 6.4 – Creating the index pattern in Kibana
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
 - en: 'When you click the next step, you will be asked to select a `created_at`, as
     shown in the following screenshot:'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.5 – Selecting the Time Filter field'
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.5_B15739.jpg)'
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.5 – Selecting the Time Filter field
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
 - en: Once you have created the index in Kibana, you can move on to visualizations.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
 - en: Creating visualizations
+  id: totrans-78
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: 'To create visualizations, select the visualization icon in the toolbar. Select
     **Create Visualization** and you will see a variety of types available, as shown
     in the following screenshot:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.6 – Available visualization types'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.6_B15739.jpg)'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.6 – Available visualization types
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
 - en: 'You will see the `scf` — this will apply to all visualizations in this chapter.
     Leave the y axis as `created_at` and the interval will be **Monthly**. You will
     see a chart as shown in the following screenshot (yours may vary):'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.7 – Bar chart of created_at counts by month'
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.7_B15739.jpg)'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.7 – Bar chart of created_at counts by month
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
 - en: Save the bar chart and name it `scf-bar`, or anything that you will be able
     to associate with the SeeClickFix data.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
 - en: 'Next, select visualization again and choose metric. You will only add a custom
@@ -440,19 +610,24 @@
     the default count that gets placed under the numbers in the metric. This visualization
     is giving us a count of issues and will change when we apply filters in the dashboard.
     The configuration is shown in the following screenshot:'
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.8 – Metrics visualization configuration'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.8_B15739.jpg)'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.8 – Metrics visualization configuration
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
 - en: Again, save the visualization using any convention, or prefix it with `scf`,
     as I have done.
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
 - en: 'For the next visualization, select a pie chart – which will default to a donut.
@@ -460,15 +635,19 @@
     And for **Field**, select **request_type.title.keyword**. Leave the rest of the
     defaults set. This will give you the top five titles. The results are shown in
     the following screenshot:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.9 – Top five issue titles'
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.9_B15739.jpg)'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.9 – Top five issue titles
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
 - en: 'While not a visualization, **Markdown** can add value to your dashboard by
@@ -476,26 +655,33 @@
     options. You can enter Markdown in the left pane and, by clicking the run symbol,
     see the preview in the right pane. I have just added an H1, some text, and a bullet
     list, as shown in the following screenshot:'
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.10 – Using the Markdown editor'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.10_B15739.jpg)'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.10 – Using the Markdown editor
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
 - en: 'The last visualization, `scf`. Once on the map screen, select **Add Layer**
     and the source will be **Documents**. This allows you to select an index. The
     following screenshot shows what you should see:'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.11 – Adding a new layer with the source being documents](img/Figure_6.11_B15739.jpg)'
+  id: totrans-102
   prefs: []
   type: TYPE_IMG
 - en: Figure 6.11 – Adding a new layer with the source being documents
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
 - en: 'When you select `scf` as the index pattern, Kibana will recognize the appropriate
@@ -504,22 +690,28 @@
     have data newer than the last 8 hours. Set the filter to a longer time frame,
     and the data will appear if the `create_at` field is in the window. The results
     are shown in the following screenshot:'
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.12 – A map visualization from an Elasticsearch index'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.12_B15739.jpg)'
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.12 – A map visualization from an Elasticsearch index
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
 - en: Now that you have created visualizations from your data, you can now move on
     to combining them into a dashboard. The next section will show you how.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
 - en: Creating a dashboard
+  id: totrans-109
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -528,15 +720,19 @@
     them to the dashboard, you can then position them and resize them. Make sure to
     save your dashboard once it is set up. I have built the dashboard shown in the
     following screenshot:'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.13 – A SeeClickFix dashboard'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.13_B15739.jpg)'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.13 – A SeeClickFix dashboard
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
 - en: The dashboard has the Markdown, pie chart, map, metric, and bar chart added.
@@ -544,110 +740,152 @@
     the lower-right corner and dragging. You can also click the gear icon and add
     a new name for your panels, so that they do not have the name that you used when
     you save the visualization.
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
 - en: 'With your dashboard, you can filter the data and all the visualizations will
     change. For example, I have clicked on the Graffiti label in the pie chart and
     the results are shown in the following screenshot:'
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.14 – Filtering on Graffiti'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.14_B15739.jpg)'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.14 – Filtering on Graffiti
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
 - en: 'Using filters is where the metric visualization comes in handy. It is nice
     to know what the number of records are. You can see that the map and the bar chart
     changed as well. You can also filter on the date range. I have selected the last
     7 days in the filter, as shown in the following screenshot:'
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.15 – Filtering by time in a dashboard'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.15_B15739.jpg)'
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.15 – Filtering by time in a dashboard
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
 - en: 'The time filter allows you to select **Now**, **Relative**, or **Absolute**.
     **Relative** is a number of days, months, years, and so on from **Now**, while
     **Absolute** allows you to specify a start and end time on a calendar. The results
     of the seven-day filter are shown in the following screenshot:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 6.16 – Dashboard with a seven-day filter'
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/Figure_6.16_B15739.jpg)'
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 6.16 – Dashboard with a seven-day filter
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
 - en: 'The last filter I will show is the map filter. You can select an area or draw
     a polygon on the map to filter your dashboard. By clicking on the map tools icon,
     the options will appear as shown in the following screenshot:'
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 我将要展示的最后一种过滤器是地图过滤器。你可以在地图上选择一个区域或绘制一个多边形来过滤你的仪表板。通过点击地图工具图标，选项将如以下截图所示出现：
 - en: '![Figure 6.17 – Tools icon on the map'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图 6.17 – 地图上的工具图标'
 - en: '](img/Figure_6.17_B15739.jpg)'
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: '](img/Figure_6.17_B15739.jpg)'
 - en: Figure 6.17 – Tools icon on the map
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 6.17 – 地图上的工具图标
 - en: 'Using the **Draw** bounds to filter data, I drew a rectangle on the map and
     the results are shown in the following screenshot:'
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用**绘制**边界来过滤数据，我在地图上画了一个矩形，结果如下截图所示：
 - en: '![Figure 6.18 – Filtering data using the map'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图 6.18 – 使用地图过滤数据'
 - en: '](img/Figure_6.18_B15739.jpg)'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: '](img/Figure_6.18_B15739.jpg)'
 - en: Figure 6.18 – Filtering data using the map
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 6.18 – 使用地图过滤数据
 - en: In the preceding dashboard, you can see the perfect rectangle of points. The
     map filter is one of my favorite filters.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的仪表板中，你可以看到完美的点矩形。地图过滤器是我最喜欢的过滤器之一。
 - en: Kibana dashboards make your data pipelines useful to non-data engineers. The
     work you put into moving and transforming data becomes live data that can be used
     by analysts and mangers to explore and learn from the data. Kibana dashboards
     are also an excellent way for you, the data engineer, to visualize the data you
     have extracted, transformed, and loaded to see whether there are any obvious issues
     in your data pipeline. They can be a type of debugging tool.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: Kibana 仪表板使你的数据管道对非数据工程师变得有用。你投入的数据移动和转换工作变成了可以由分析师和管理员用于探索和从数据中学习的实时数据。Kibana
+    仪表板也是你，作为数据工程师，可视化你提取、转换和加载的数据的绝佳方式，以查看你的数据管道中是否存在任何明显的问题。它们可以是一种调试工具。
 - en: Summary
+  id: totrans-137
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, you learned how to build a data pipeline using data from a
     REST API. You also added a flow to the data pipeline to allow you to backfill
     the data, or to recreate a database with all of the data using a single pipeline.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，你学习了如何使用来自 REST API 的数据构建数据管道。你还向数据管道添加了一个流程，以便你可以回填数据，或者使用单个管道重新创建包含所有数据的数据库。
 - en: The second half of the chapter provided a basic overview of how to build a dashboard
     using Kibana. Dashboards will usually be outside the responsibilities of a data
     engineer. In smaller firms, however, this could very well be your job. Furthermore,
     being able to quickly build a dashboard can help validate your data pipeline and
     look for any possible errors in the data.
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的后半部分提供了如何使用 Kibana 构建仪表板的基本概述。通常，仪表板的构建不会是数据工程师的责任。然而，在小公司中，这完全可能是你的工作。此外，能够快速构建仪表板可以帮助验证你的数据管道，并查找数据中可能存在的任何错误。
 - en: In the next chapter, we begin a new section of this book, where you will take
     the skills you have learned and improve them by making your pipelines ready for
     production. You will learn about deployment, better validation techniques, and
     other skills needed when you are running pipelines in a production environment.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一章中，我们将开始本书的新章节，你将利用你学到的技能，通过使你的管道准备就绪用于生产来提高它们。你将学习关于部署、更好的验证技术以及在生产环境中运行管道时所需的其它技能。

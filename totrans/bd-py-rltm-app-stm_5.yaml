@@ -1,108 +1,158 @@
 - en: Chapter 5. Persistence Using Redis and MongoDB
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第5章 使用Redis和MongoDB进行持久化
 - en: 'It is often necessary to store tuples in a persistent data store, such as a
     NoSQL database or a fast key-value cache, in order to perform additional analysis.
     In this chapter, we will revisit the Twitter trending analysis topology from [Chapter
     4](ch04.html "Chapter 4. Example Topology – Twitter"), *Example Topology – Twitter*
     with the help of two popular persistence media: Redis and MongoDB.'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常有必要将元组存储在持久数据存储中，如NoSQL数据库或快速键值缓存，以执行额外的分析。在本章中，我们将借助两种流行的持久化媒体：Redis和MongoDB，回顾[第4章](ch04.html
+    "第4章。示例拓扑 - Twitter")中的Twitter趋势分析拓扑，*示例拓扑 - Twitter*。
 - en: Redis ([http://redis.io/](http://redis.io/)) is an open source and BSD-licensed
     advanced key-value cache and store. MongoDB is a cross-platform, document-oriented
     database ([https://www.mongodb.org/](https://www.mongodb.org/)).
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: Redis ([http://redis.io/](http://redis.io/)) 是一个开源的BSD许可的高级键值缓存和存储。MongoDB是一个跨平台的文档型数据库
+    ([https://www.mongodb.org/](https://www.mongodb.org/))。
 - en: 'Here are the two problems that we will solve in this chapter:'
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章我们将解决以下两个问题：
 - en: Finding the top trending tweet topics using Redis
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Redis查找最热门的推文主题
 - en: Computing hourly aggregates of city mentions using MongoDB
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用MongoDB计算城市提及的小时聚合
 - en: Finding the top n ranked topics using Redis
+  id: totrans-6
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用Redis查找排名前n的热门主题
 - en: 'The topology will compute a rolling ranking of the most popular words in the
     past 5 minutes. The word counts are stored in individual windows of 60 seconds
     in length. It consists of the following components:'
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 拓扑将计算过去5分钟内最受欢迎的单词的滚动排名。词频存储在长度为60秒的单独窗口中。它由以下组件组成：
 - en: 'Twitter stream spout (`twitterstream.py`): This reads tweets from the Twitter
     sample stream. This spout is unchanged from [Chapter 4](ch04.html "Chapter 4. Example
     Topology – Twitter"), *Example Topology – Twitter*.'
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Twitter流源（`twitterstream.py`）：此源从Twitter样本流中读取推文。此源与[第4章](ch04.html "第4章。示例拓扑
+    - Twitter")中的相同，*示例拓扑 - Twitter*。
 - en: 'Splitter bolt (`splitsentence.py`): This receives tweets and splits them into
     words. This is also identical to the one in [Chapter 4](ch04.html "Chapter 4. Example
     Topology – Twitter"), *Example Topology – Twitter*.'
+  id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分词bolt（`splitsentence.py`）：此bolt接收推文并将它们分割成单词。这也与[第4章](ch04.html "第4章。示例拓扑 -
+    Twitter")中的相同，*示例拓扑 - Twitter*。
 - en: 'Rolling word count bolt (`rollingcount.py`): This receives words and counts
     the occurrences. The Redis keys look like `twitter_word_count:<start time of current
     window in seconds>`, and the values are stored in a hash using the following simple
     format:'
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 滚动词频bolt（`rollingcount.py`）：此bolt接收单词并计算它们的出现次数。Redis键看起来像`twitter_word_count:<当前窗口开始时间（秒）>`，值以以下简单格式存储：
 - en: '[PRE0]'
+  id: totrans-11
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'This bolt uses the Redis `expireat` command to discard old data after 5 minutes.
     These lines of code perform the key work:'
+  id: totrans-12
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 此bolt使用Redis的`expireat`命令在5分钟后丢弃旧数据。以下代码行执行关键工作：
 - en: '[PRE1]'
+  id: totrans-13
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'In this bolt, the following code does the most important work:'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此bolt中，以下代码执行最重要的工作：
 - en: '[PRE2]'
+  id: totrans-15
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: This bolt computes the top `maxSize` words across the last num_windows periods.
     The `zunionstore()` combines the word counts across the periods. The `zrevrange()`
     sorts the combined counts, returning the top `maxSize` words.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 此bolt计算过去num_windows个周期内的前`maxSize`个单词。`zunionstore()`将周期内的词频合并。`zrevrange()`对合并的计数进行排序，返回前`maxSize`个单词。
 - en: In the original Twitter example, roughly the same logic was implemented in `rollingcount.py`,
     `intermediaterankings.py`, and `totalrankings.py`. With Redis, we can implement
     the same calculations in just a few lines. The design delegates much of the work
     to Redis. Depending on your data volumes, this may not scale as well as the topology
     in the previous chapter. However, it demonstrates that Redis's capabilities go
     far beyond simply storing data.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 在原始的Twitter示例中，大致相同的逻辑在`rollingcount.py`、`intermediaterankings.py`和`totalrankings.py`中实现。使用Redis，我们只需几行代码就能实现相同的计算。设计将大部分工作委托给了Redis。根据您的数据量，这可能不如上一章中的拓扑扩展性好。然而，它展示了Redis的能力远不止简单地存储数据。
 - en: The topology configuration file – the Redis case
+  id: totrans-18
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 拓扑配置文件 - Redis案例
 - en: Coming up is the topology configuration file. Depending on your Redis installation,
     you may need to change the value of `redis_url`.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来是拓扑配置文件。根据您的Redis安装情况，您可能需要更改`redis_url`的值。
 - en: 'Enter this code in `topology.yaml`:'
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`topology.yaml`中输入以下代码：
 - en: '[PRE3]'
+  id: totrans-21
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: Rolling word count bolt – the Redis case
+  id: totrans-22
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 滚动词频bolt - Redis案例
 - en: The rolling word count bolt is similar to the word count bolt in [Chapter 3](ch03.html
     "Chapter 3. Introducing Petrel"), *Introducing Petrel*. The bolt in the earlier
     chapter simply accumulated the word count indefinitely. This is not good for analyzing
@@ -111,364 +161,509 @@
     earlier, the rolling word count bolt stores data in time-based buckets. Then,
     it periodically discards buckets that exceed 5 minutes in age. Thus, the word
     counts from this bolt only consider the last 5 minutes of data.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 滚动词计数螺栓与[第3章](ch03.html "第3章。介绍Petrel")中的词计数螺栓类似。早期章节中的螺栓简单地无限期地累积词计数。这不利于分析Twitter上的热门话题，因为热门话题可能在一瞬间发生变化。相反，我们希望计数反映最新信息。如前所述，滚动词计数螺栓将数据存储在基于时间的桶中。然后，它定期丢弃超过5分钟年龄的桶。因此，此螺栓的词计数只考虑最后5分钟的数据。
 - en: 'Enter this code in `rollingcount.py`:'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`rollingcount.py`中输入以下代码：
 - en: '[PRE4]'
+  id: totrans-25
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Total rankings bolt – the Redis case
+  id: totrans-26
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 总排名螺栓 – Redis案例
 - en: 'Enter the following code in `totalrankings.py`:'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`totalrankings.py`中输入以下代码：
 - en: '[PRE5]'
+  id: totrans-28
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Defining the topology – the Redis case
+  id: totrans-29
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 定义拓扑 – Redis案例
 - en: 'Here is the `create.py` script that defines the structure of the topology:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是定义拓扑结构的`create.py`脚本：
 - en: '[PRE6]'
+  id: totrans-31
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: Running the topology – the Redis case
+  id: totrans-32
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 运行拓扑 – Redis案例
 - en: 'We have a few more small things to address before we run the topology:'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们运行拓扑之前，还有一些小事情要处理：
 - en: Copy the `logconfig.ini` file from the second example in [Chapter 3](ch03.html
     "Chapter 3. Introducing Petrel"), *Introducing Petrel*, to this topology's directory.
+  id: totrans-34
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将[第3章](ch03.html "第3章。介绍Petrel")中的第二个示例`logconfig.ini`文件复制到这个拓扑目录中。
 - en: 'Create a file called `setup.sh`. Petrel will package this script with the topology
     and run it at startup. This script installs the third-party Python libraries used
     by the topology. The file looks like this:'
+  id: totrans-35
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为`setup.sh`的文件。Petrel将与此拓扑一起打包此脚本并在启动时运行它。此脚本安装拓扑使用的第三方Python库。文件看起来像这样：
 - en: '[PRE7]'
+  id: totrans-36
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Create a file called `manifest.txt` with these two lines:'
+  id: totrans-37
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个包含以下两行的`manifest.txt`文件：
 - en: '[PRE8]'
+  id: totrans-38
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'Install the Redis server on a well-known node. All workers will store state
     here:'
+  id: totrans-39
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在一个知名节点上安装Redis服务器。所有工作节点都将在此处存储状态：
 - en: '[PRE9]'
+  id: totrans-40
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'Install the Python Redis client on all Storm worker machines:'
+  id: totrans-41
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在所有Storm工作机器上安装Python Redis客户端：
 - en: '[PRE10]'
+  id: totrans-42
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Before running the topology, let''s review the list of files that we''ve created.
     Make sure you have created these files correctly:'
+  id: totrans-43
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在运行拓扑之前，让我们回顾一下我们创建的文件列表。确保你已经正确创建了这些文件：
 - en: '`topology.yaml`'
+  id: totrans-44
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`topology.yaml`'
 - en: '`twitterstream.py`'
+  id: totrans-45
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`twitterstream.py`'
 - en: '`splitsentence.py`'
+  id: totrans-46
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`splitsentence.py`'
 - en: '`rollingcount.py`'
+  id: totrans-47
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`rollingcount.py`'
 - en: '`totalrankings.py`'
+  id: totrans-48
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`totalrankings.py`'
 - en: '`manifest.txt`'
+  id: totrans-49
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`manifest.txt`'
 - en: '`setup.sh`'
+  id: totrans-50
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`setup.sh`'
 - en: 'Run the topology with the following command:'
+  id: totrans-51
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 使用以下命令运行拓扑：
 - en: '[PRE11]'
+  id: totrans-52
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'Once the topology is running, open another terminal in the topology directory.
     Enter this command to see the log file for the total rankings bolt, sorted from
     oldest to newest:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦拓扑开始运行，在拓扑目录中打开另一个终端。输入以下命令以查看总排名螺栓的日志文件，按时间顺序从旧到新排序：
 - en: '[PRE12]'
+  id: totrans-54
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'If this is the first time you are running the topology, there will be only
     one log file listed. A new file is created for each run. If there are several
     listed, choose the most recent one. Enter this command to monitor the contents
     of the log file (the exact filename will be different on your system):'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你第一次运行拓扑，将只列出一个日志文件。每次运行都会创建一个新的文件。如果有几个列出，请选择最新的一个。输入以下命令以监控日志文件的内容（在您的系统上，确切的文件名可能不同）：
 - en: '[PRE13]'
+  id: totrans-56
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'Periodically, you will see an output like the following, listing the top 5
     words in descending order of popularity:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 定期，你会看到如下输出，列出按流行度降序排列的前5个单词：
 - en: 'Example output from `totalrankings`:'
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: '`totalrankings`的示例输出：'
 - en: '[PRE14]'
+  id: totrans-59
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: Finding the hourly count of tweets by city name using MongoDB
+  id: totrans-60
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用MongoDB按城市名称查找推文的每小时计数
 - en: MongoDB is a popular database for storing large amounts of data. It is designed
     for easy scalability across many nodes.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: MongoDB是一个用于存储大量数据的流行数据库。它设计用于跨多个节点轻松扩展。
 - en: 'To run this topology, you first need to install MongoDB and configure some
     database-specific settings. This example uses a MongoDB database called `cities`
     with a collection named `minute`. In order to compute the counts by city and minute,
     we must create a unique index on the `cities.minute` collection. To do this, launch
     the MongoDB command-line client:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE15]'
+  id: totrans-63
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'Create a unique index on the `cities.minute` collection:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE16]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: This index stores a per minute time series of city counts in MongoDB. After
     running the example topology to capture some data, we'll run a standalone command-line
     script (`city_report.py`) to sum the per minute city counts by hour and city.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
 - en: This is a variant of the earlier Twitter topology. This example uses the Python
     geotext library ([https://pypi.python.org/pypi/geotext](https://pypi.python.org/pypi/geotext))
     to find city names in tweets.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
 - en: 'Here is an overview of the topology:'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
 - en: Read the tweets.
+  id: totrans-69
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Split them into words and find city names.
+  id: totrans-70
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: In MongoDB, count the number of times a city is mentioned each minute.
+  id: totrans-71
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: 'Twitter stream spout (`twitterstream.py`): This reads tweets from the Twitter
     sample stream.'
+  id: totrans-72
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: 'City count bolt (`citycount.py`): This finds city names and writes to MongoDB.
     It is similar to the `SplitSentenceBolt` from the Twitter sample, but after splitting
     by words, it looks for city names.'
+  id: totrans-73
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: The `_get_words()` function here is slightly different from earlier examples.
     This is because geotext does not recognize lowercase strings as city names.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
 - en: It creates or updates MongoDB records, taking advantage of the unique index
     on minute and city to accumulate the per minute counts.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
 - en: This is a common pattern for representing time series data in MongoDB. Each
     record also includes an `hour` field. The `city_report.py` script uses this to
     compute the hourly counts.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
 - en: 'Enter this code in `citycount.py`:'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE17]'
+  id: totrans-78
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: Defining the topology – the MongoDB case
+  id: totrans-79
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: 'Enter the following code in `create.py`:'
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-81
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: Running the topology – the MongoDB case
+  id: totrans-82
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: 'We have a few more small things to address before we run the topology:'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: Copy the `logconfig.ini` file from the second example in [Chapter 3](ch03.html
     "Chapter 3. Introducing Petrel"), *Introducing Petrel* to this topology's directory.
+  id: totrans-84
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: 'Create a file called `setup.sh`:'
+  id: totrans-85
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE19]'
+  id: totrans-86
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: Next, create a file called `manifest.txt`. This is identical to the Redis example.
+  id: totrans-87
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: Install the MongoDB server. On Ubuntu, you can use the instructions given at
     [http://docs.mongodb.org/manual/tutorial/install-mongodb-on-ubuntu/](http://docs.mongodb.org/manual/tutorial/install-mongodb-on-ubuntu/).
+  id: totrans-88
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: 'Install the Python MongoDB client on all Storm worker machines:'
+  id: totrans-89
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE20]'
+  id: totrans-90
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'To verify that `pymongo` is installed and the index is created correctly, start
     an interactive Python session by running `python`. Then use this code:'
+  id: totrans-91
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE21]'
+  id: totrans-92
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'You should see the following output. The second line is the index that we added:'
+  id: totrans-93
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: '[PRE22]'
+  id: totrans-94
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'Next, install `geotext`:'
+  id: totrans-95
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE23]'
+  id: totrans-96
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'Before running the topology, let''s review the list of files that we created.
     Make sure you have created these files correctly:'
+  id: totrans-97
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '`topology.yaml`'
+  id: totrans-98
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`twitterstream.py`'
+  id: totrans-99
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`citycount.py`'
+  id: totrans-100
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`citycount.py`'
 - en: '`manifest.txt`'
+  id: totrans-101
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`manifest.txt`'
 - en: '`setup.sh`'
+  id: totrans-102
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`setup.sh`'
 - en: 'Run the topology with the following command:'
+  id: totrans-103
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 使用以下命令运行拓扑：
 - en: '[PRE24]'
+  id: totrans-104
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: The `city_report.py` file is a standalone script that generates a simple hourly
     report from the data inserted by the topology. This script uses MongoDB aggregation
     to compute the hourly totals. As noted earlier, the report depends on the presence
     of an `hour` field.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: '`city_report.py` 文件是一个独立的脚本，它从拓扑插入的数据生成简单的每小时报告。此脚本使用MongoDB聚合来计算每小时的总数。如前所述，报告依赖于`hour`字段的存。'
 - en: 'Enter this code in `city_report.py`:'
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 `city_report.py` 中输入以下代码：
 - en: '[PRE25]'
+  id: totrans-107
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: Summary
+  id: totrans-108
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we saw how to use two popular NoSQL storage engines (Redis
     and MongoDB) with Storm. We also showed you how to create data in a topology and
     access it from other applications, demonstrating that Storm can be an effective
     part of an ETL pipeline.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们展示了如何使用两个流行的NoSQL存储引擎（Redis和MongoDB）与Storm结合使用。我们还向您展示了如何在拓扑中创建数据并从其他应用程序访问它，证明了Storm可以成为ETL管道的有效部分。
