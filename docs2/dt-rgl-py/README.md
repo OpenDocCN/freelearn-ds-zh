@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Python 数据整理
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/23dc001d0992d683d7b7f8a65b290a27`](https://zh.annas-archive.org/md5/23dc001d0992d683d7b7f8a65b290a27)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

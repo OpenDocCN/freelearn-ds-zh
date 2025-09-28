@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Python NLTK 2.0 文本处理秘籍
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/ecaef2d49672b1924f32f544b78cf8c1`](https://zh.annas-archive.org/md5/ecaef2d49672b1924f32f544b78cf8c1)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
