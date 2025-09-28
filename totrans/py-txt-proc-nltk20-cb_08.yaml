@@ -1,42 +1,62 @@
 - en: Chapter 8. Distributed Processing and Handling Large Datasets
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第8章 分布式处理和大型数据集处理
 - en: 'In this chapter, we will cover:'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将介绍：
 - en: Distributed tagging with execnet
+  id: totrans-2
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用execnet进行分布式标记
 - en: Distributed chunking with execnet
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用execnet进行分布式分块
 - en: Parallel list processing with execnet
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用execnet进行并行列表处理
 - en: Storing a frequency distribution in Redis
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在Redis中存储频率分布
 - en: Storing a conditional frequency distribution in Redis
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在Redis中存储条件频率分布
 - en: Storing an ordered dictionary in Redis
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在Redis中存储有序字典
 - en: Distributed word scoring with Redis and execnet
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Redis和execnet进行分布式单词评分
 - en: Introduction
+  id: totrans-9
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 简介
 - en: NLTK is great for in-memory single-processor natural language processing. However,
     there are times when you have a lot of data to process and want to take advantage
     of multiple CPUs, multi-core CPUs, and even multiple computers. Or perhaps you
@@ -45,42 +65,56 @@
     using execnet to do parallel and distributed processing with NLTK. For the second
     case, you'll learn how to use the Redis data structure server/database to store
     frequency distributions and more.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: NLTK非常适合内存中的单处理器自然语言处理。然而，有时你有很多数据要处理，并想利用多个CPU、多核CPU甚至多台计算机。或者你可能想在一个持久、共享的数据库中存储频率和概率，以便多个进程可以同时访问它。对于第一种情况，我们将使用execnet进行NLTK的并行和分布式处理。对于第二种情况，你将学习如何使用Redis数据结构服务器/数据库来存储频率分布等。
 - en: Distributed tagging with execnet
+  id: totrans-11
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用execnet进行分布式标记
 - en: '**Execnet** is a distributed execution library for python. It allows you to
     create gateways and channels for remote code execution. A **gateway** is a connection
     from the calling process to a remote environment. The remote environment can be
     a local subprocess or an SSH connection to a remote node. A **channel** is created
     from a gateway and handles communication between the channel creator and the remote
     code.'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: '**Execnet**是一个用于Python的分布式执行库。它允许你创建用于远程代码执行的网关和通道。**网关**是从调用进程到远程环境的连接。远程环境可以是本地子进程或到远程节点的SSH连接。**通道**是从网关创建的，用于处理通道创建者与远程代码之间的通信。'
 - en: Since many NLTK processes require 100 percent CPU utilization during computation,
     execnet is an ideal way to distribute that computation for maximum resource usage.
     You can create one gateway per CPU core, and it doesn't matter whether the cores
     are in your local computer or spread across remote machines. In many situations,
     you only need to have the trained objects and data on a single machine, and can
     send the objects and data to the remote nodes as needed.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于许多NLTK过程在计算期间需要100%的CPU利用率，execnet是分配这种计算以实现最大资源使用的一个理想方式。你可以为每个CPU核心创建一个网关，无论这些核心是在你的本地计算机上还是分布在远程机器上。在许多情况下，你只需要在单个机器上拥有训练好的对象和数据，并在需要时将对象和数据发送到远程节点。
 - en: Getting ready
+  id: totrans-14
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: You'll need to install execnet for this to work. It should be as simple as `sudo
     pip install execnet` or `sudo easy_install execnet`. The current version of execnet,
     as of this writing, is `1.0.8`. The execnet homepage, which has API documentation
     and examples, is at [http://codespeak.net/execnet/](http://codespeak.net/execnet/).
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 你需要安装execnet才能使它工作。这应该像`sudo pip install execnet`或`sudo easy_install execnet`一样简单。截至本文写作时，execnet的当前版本是`1.0.8`。execnet的主页，其中包含API文档和示例，位于[http://codespeak.net/execnet/](http://codespeak.net/execnet/)。
 - en: How to do it...
+  id: totrans-16
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何实现...
 - en: We start by importing the required modules, as well as an additional module
     `remote_tag.py` that will be explained in the next section. We also need to import
     `pickle` so we can serialize the tagger. Execnet does not natively know how to
@@ -88,66 +122,98 @@
     tagger to a string using `pickle.dumps()`. We'll use the default tagger that's
     used by the `nltk.tag.pos_tag()` function, but you could load and dump any pre-trained
     part-of-speech tagger as long as it implements the `TaggerI` interface.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先导入所需的模块，以及将在下一节中解释的附加模块`remote_tag.py`。我们还需要导入`pickle`，这样我们就可以序列化标记器。Execnet本身不知道如何处理诸如词性标记器之类的复杂对象，因此我们必须使用`pickle.dumps()`将标记器转储为字符串。我们将使用`nltk.tag.pos_tag()`函数使用的默认标记器，但你也可以加载并转储任何实现了`TaggerI`接口的预训练词性标记器。
 - en: Once we have a serialized tagger, we start execnet by making a gateway with
     `execnet.makegateway()`. The default gateway creates a Python *subprocess*, and
     we can call the `remote_exec()` method with the `remote_tag` module to create
     a `channel`. With an open channel, we send over the serialized tagger and then
     the first tokenized sentence of the `treebank` corpus.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦我们有了序列化的标记器，我们就通过使用 `execnet.makegateway()` 创建网关来启动 execnet。默认网关创建一个 Python
+    *子进程*，我们可以使用 `remote_exec()` 方法并传递 `remote_tag` 模块来创建一个 `channel`。有了开放的通道，我们发送序列化的标记器和
+    `treebank` 语料库的第一个标记句子。
 - en: Note
+  id: totrans-19
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: You don't have to do any special serialization of simple types such as lists
     and tuples, since execnet already knows how to handle serializing the built-in
     types.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于列表和元组等简单类型，您无需进行任何特殊的序列化，因为 execnet 已经知道如何处理内置类型的序列化。
 - en: Now if we call `channel.receive()`, we get back a tagged sentence that is equivalent
     to the first tagged sentence in the `treebank` corpus, so we know the tagging
     worked. We end by exiting the gateway, which closes the channel and kills the
     subprocess.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在如果我们调用 `channel.receive()`，我们会得到一个标记的句子，它与 `treebank` 语料库中的第一个标记句子等效，因此我们知道标记是成功的。我们通过退出网关结束，这会关闭通道并杀死子进程。
 - en: '[PRE0]'
+  id: totrans-22
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'Visually, the communication process looks like this:'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 从视觉上看，通信过程看起来像这样：
 - en: '![How to do it...](img/3609OS_08_01.jpg)'
+  id: totrans-24
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/3609OS_08_01.jpg)'
 - en: How it works...
+  id: totrans-25
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的...
 - en: 'The gateway''s `remote_exec()` method takes a single argument that can be one
     of the following three types:'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 网关的 `remote_exec()` 方法接受一个参数，该参数可以是以下三种类型之一：
 - en: A string of code to execute remotely.
+  id: totrans-27
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 要在远程执行的代码字符串。
 - en: The name of a **pure** **function** that will be serialized and executed remotely.
+  id: totrans-28
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将要序列化和远程执行的一个**纯**函数的名称。
 - en: The name of a **pure** **module** whose source will be executed remotely.
+  id: totrans-29
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 一个**纯**模块的名称，其源将在远程执行。
 - en: 'We use the third option with the `remote_tag.py` module, which is defined as
     follows:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用 `remote_tag.py` 模块的第三个选项，该模块定义如下：
 - en: '[PRE1]'
+  id: totrans-31
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: A pure module is a module that is self-contained. It can only access Python
     modules that are available where it executes, and does not have access to any
     variables or states that exist wherever the gateway is initially created. To detect
@@ -155,71 +221,103 @@
     variable. If it's equal to `'__channelexec__'`, then it is being used to create
     a remote channel. This is similar to doing `if __name__ == '__main__'` to check
     if a module is being executed on the command line.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个纯模块是一个自包含的模块。它只能访问它在执行时可以访问的 Python 模块，并且无法访问网关最初创建位置存在的任何变量或状态。要检测模块是否由 `execnet`
+    执行，您可以查看 `__name__` 变量。如果它等于 `'__channelexec__'`，则它被用于创建远程通道。这与执行 `if __name__
+    == '__main__'` 来检查模块是否在命令行上执行类似。
 - en: The first thing we do is call `channel.receive()` to get the serialized `tagger`,
     which we load using `pickle.loads()`. You may notice that `channel` is not imported
     anywhere—that's because it is included in the global namespace of the module.
     Any module that `execnet` executes remotely has access to the `channel` variable
     in order to communicate with the `channel` creator.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先调用 `channel.receive()` 来获取序列化的 `tagger`，然后使用 `pickle.loads()` 加载它。您可能会注意到
+    `channel` 没有在任何地方导入——这是因为它包含在模块的全局命名空间中。任何 `execnet` 在远程执行的模块都可以访问 `channel` 变量，以便与
+    `channel` 创建者通信。
 - en: Once we have the `tagger`, we iteratively `tag()` each tokenized sentence that
     we receive from the channel. This allows us to tag as many sentences as the sender
     wants to send, as iteration will not stop until the `channel` is closed. What
     we've essentially created is a compute node for part-of-speech tagging that dedicates
     100 percent of its resources to tagging whatever sentences it receives. As long
     as the `channel` remains open, the node is available for processing.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦我们有了 `tagger`，我们就迭代地对从通道接收到的每个标记句子进行 `tag()` 操作。这允许我们标记发送者想要发送的任意数量的句子，因为迭代不会停止，直到
+    `channel` 关闭。我们实际上创建的是一个用于词性标注的计算节点，该节点将100%的资源用于标注它接收到的任何句子。只要 `channel` 保持开放，节点就可供处理。
 - en: There's more...
+  id: totrans-35
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 更多...
 - en: This is a simple example that opens a single gateway and channel. But execnet
     can do a lot more, such as opening multiple channels to increase parallel processing,
     as well as opening gateways to remote hosts over SSH to do distributed processing.
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是一个简单的示例，它打开一个网关和一个通道。但 execnet 可以做更多的事情，例如打开多个通道以增加并行处理，以及通过 SSH 打开远程主机的网关以进行分布式处理。
 - en: Multiple channels
+  id: totrans-37
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 多个通道
 - en: We can create multiple channels, one per gateway, to make the processing more
     parallel. Each gateway creates a new subprocess (or remote interpreter if using
     an SSH gateway) and we use one channel per gateway for communication. Once we've
     created two channels, we can combine them using the `MultiChannel` class, which
     allows us to iterate over the channels, and make a receive queue to receive messages
     from each channel.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以创建多个通道，每个网关一个，以使处理更加并行。每个网关创建一个新的子进程（如果使用SSH网关，则为远程解释器），我们使用每个网关的一个通道进行通信。一旦我们创建了两个通道，我们可以使用`MultiChannel`类将它们组合起来，这允许我们遍历通道，并创建一个接收队列以接收来自每个通道的消息。
 - en: After creating each channel and sending the tagger, we cycle through the channels
     to send an even number of sentences to each channel for tagging. Then we collect
     all the responses from the `queue`. A call to `queue.get()` will return a 2-tuple
     of `(channel, message)` in case you need to know which channel the message came
     from.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 在创建每个通道并发送标记器之后，我们遍历通道，为每个通道发送相同数量的句子进行标记。然后我们收集`queue`中的所有响应。调用`queue.get()`将返回一个包含`(channel,
+    message)`的2元组，以防你需要知道消息来自哪个通道。
 - en: Tip
+  id: totrans-40
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: If you don't want to wait forever, you can also pass a `timeout` keyword argument
     with the maximum number of seconds you want to wait, as in `queue.get(timeout=4)`.
     This can be a good way to handle network errors.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你不想永远等待，你也可以传递一个`timeout`关键字参数，指定你想要等待的最大秒数，例如`queue.get(timeout=4)`。这可以是一种处理网络错误的好方法。
 - en: 'Once all the tagged sentences have been collected, we can exit the gateways.
     Here''s the code:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦收集到所有标记的句子，我们就可以退出网关。以下是代码：
 - en: '[PRE2]'
+  id: totrans-43
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Local versus remote gateways
+  id: totrans-44
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 本地与远程网关
 - en: The default gateway spec is `popen`, which creates a Python subprocess on the
     local machine. This means `execnet.makegateway()` is equivalent to `execnet.makegateway('popen')`.
     If you have passwordless SSH access to a remote machine, then you can create a
@@ -227,63 +325,87 @@
     should be the hostname of the machine. A SSH gateway spawns a new Python interpreter
     for executing the code remotely. As long as the code you're using for remote execution
     is **pure**, you only need a Python interpreter on the remote machine.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认网关规范是`popen`，它在本地机器上创建一个Python子进程。这意味着`execnet.makegateway()`等价于`execnet.makegateway('popen')`。如果你有对远程机器的无密码SSH访问权限，那么你可以使用`execnet.makegateway('ssh=remotehost')`创建一个远程网关，其中`remotehost`应该是机器的主机名。SSH网关为远程执行代码启动一个新的Python解释器。只要你在远程执行中使用的代码是**纯**的，你只需要在远程机器上有一个Python解释器。
 - en: Channels work exactly the same no matter what kind of gateway is used; the only
     difference will be communication time. This means you can mix and match local
     subprocesses with remote interpreters to distribute your computations across many
     machines in a network. There are many more details on gateways in the API documentation
     at [http://codespeak.net/execnet/basics.html](http://codespeak.net/execnet/basics.html).
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 无论使用哪种网关，通道的工作方式都完全相同；唯一的区别将是通信时间。这意味着你可以将本地子进程与远程解释器混合匹配，以在网络中的多台机器上分配你的计算。有关网关的更多详细信息，请参阅API文档中的[http://codespeak.net/execnet/basics.html](http://codespeak.net/execnet/basics.html)。
 - en: See also
+  id: totrans-47
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: Part-of-speech tagging and taggers are covered in detail in [Chapter 4](ch04.html
     "Chapter 4. Part-of-Speech Tagging"), *Part-of-Speech Tagging*. In the next recipe,
     we'll use `execnet` to do distributed chunk extraction.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[第4章](ch04.html "第4章。词性标注")“词性标注”中详细介绍了词性标注和标记器。在下一个菜谱中，我们将使用`execnet`进行分布式分块提取。
 - en: Distributed chunking with execnet
+  id: totrans-49
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用execnet进行分布式分块
 - en: In this recipe, we'll do chunking and tagging over an `execnet` gateway. This
     will be very similar to the tagging in the previous recipe, but we'll be sending
     two objects instead of one, and we will be receiving a `Tree` instead of a list,
     which requires pickling and unpickling for serialization.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个菜谱中，我们将对`execnet`网关进行分块和标记。这将与前一个菜谱中的标记非常相似，但我们将会发送两个对象而不是一个，并且我们将接收一个`Tree`而不是一个列表，这需要序列化和反序列化。
 - en: Getting ready
+  id: totrans-51
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: As in the previous recipe, you must have `execnet` installed.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前一个菜谱中所述，你必须安装`execnet`。
 - en: How to do it...
+  id: totrans-53
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点...
 - en: The setup code is very similar to the last recipe, and we'll use the same pickled
     `tagger` as well. First we'll pickle the default `chunker` used by `nltk.chunk.ne_chunk()`,
     though any chunker would do. Next, we make a gateway for the `remote_chunk` module,
     get a `channel`, and send the pickled `tagger` and `chunker` over. Then we receive
     back a pickled `Tree`, which we can unpickle and inspect to see the result. Finally,
     we exit the gateway.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE3]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: The communication this time is slightly different.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
 - en: '![How to do it...](img/3609OS_08_02.jpg)'
+  id: totrans-57
   prefs: []
   type: TYPE_IMG
 - en: How it works...
+  id: totrans-58
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -293,19 +415,25 @@
     interface. Once it has both a `tagger` and a `chunker`, it expects to receive
     any number of tokenized sentences, which it tags and parses into a `Tree`. This
     `tree` is then pickled and sent back over the `channel`.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE4]'
+  id: totrans-60
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Note
+  id: totrans-61
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: The `Tree` must be pickled because it is not a simple built-in type.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
 - en: There's more...
+  id: totrans-63
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -316,9 +444,11 @@
     as you structure your remote code like this, with no external dependencies, you
     only need NLTK to be installed on a single machine—the one that starts the gateway
     and sends the objects over the channel.
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
 - en: Python subprocesses
+  id: totrans-65
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -330,26 +460,32 @@
     are separate communicating processes. This is true whether the processes are local
     or remote. Instead of locking and synchronization, all you have to worry about
     is the order in which the messages are sent and received.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
 - en: See also
+  id: totrans-67
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: The previous recipe explains `execnet` gateways and channels in detail. In the
     next recipe, we'll use `execnet` to process a list in parallel.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
 - en: Parallel list processing with execnet
+  id: totrans-69
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: This recipe presents a pattern for using `execnet` to process a list in parallel.
     It's a function pattern for mapping each element in the list to a new value, using
     `execnet` to do the mapping in parallel.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
 - en: How to do it...
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -358,26 +494,35 @@
     `remote_double.py`, which will be executed by `execnet`. It receives a 2-tuple
     of `(i, arg)`, assumes `arg` is a number, and sends back `(i, arg*2)`. The need
     for `i` will be explained in the next section.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE5]'
+  id: totrans-73
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: To use this module to double every element in a list, we import the `plists`
     module (explained in the next section) and call `plists.map()` with the `remote_double`
     module, and a list of integers to double.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE6]'
+  id: totrans-75
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Communication between channels is very simple, as shown in the following diagram:'
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
 - en: '![How to do it...](img/3609OS_08_03.jpg)'
+  id: totrans-77
   prefs: []
   type: TYPE_IMG
 - en: How it works...
+  id: totrans-78
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -387,6 +532,7 @@
     and channels. Once these channels are opened, we put them into an `itertools`
     cycle, which creates an infinite iterator that cycles back to the beginning once
     it hits the end.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
 - en: Now we can send each argument in `args` to a `channel` for processing, and since
@@ -397,41 +543,53 @@
     with a `MultiChannel` receive queue and insert them into a pre-filled list that's
     the same length as the original `args`. Once we have all the expected results,
     we can exit the gateways and return the results.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE7]'
+  id: totrans-81
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: There's more...
+  id: totrans-82
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: 'You can increase the parallelization by modifying the specs, as follows:'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE8]'
+  id: totrans-84
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: However, more parallelization does not necessarily mean faster processing. It
     depends on the available resources, and the more gateways and channels you have
     open, the more overhead is required. Ideally there should be one gateway and channel
     per CPU core.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
 - en: You can use `plists.map()` with any pure module as long as it receives and sends
     back 2-tuples where `i` is the first element. This pattern is most useful when
     you have a bunch of numbers to crunch, and want to process them as quickly as
     possible.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
 - en: See also
+  id: totrans-87
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: The previous recipes cover `execnet` features in greater detail.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
 - en: Storing a frequency distribution in Redis
+  id: totrans-89
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -440,6 +598,7 @@
     all in-memory, and doesn't provide a way to persist the data. A single `FreqDist`
     is also not accessible to multiple processes. We can change all that by building
     a `FreqDist` on top of Redis.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
 - en: Redis is a **data** **structure** **server** that is one of the more popular
@@ -447,17 +606,21 @@
     for storing dictionaries (also known as *hash maps*). Building a `FreqDist` interface
     to a Redis hash map will allow us to create a persistent `FreqDist` that is accessible
     to multiple local and remote processes at the same time.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
 - en: Note
+  id: totrans-92
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: Most Redis operations are **atomic**, so it's even possible to have multiple
     processes write to the `FreqDist` concurrently.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
 - en: Getting ready
+  id: totrans-94
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -465,19 +628,23 @@
     A quick start install guide for Redis is available at [http://code.google.com/p/redis/wiki/QuickStart](http://code.google.com/p/redis/wiki/QuickStart).
     To use hash maps, you should install at least version `2.0.0` (the latest version
     as of this writing).
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
 - en: The `Redis` Python driver `redis-py` can be installed using `pip install redis`
     or `easy_install redis`. Ensure you install at least version `2.0.0` to use hash
     maps. The `redis-py` homepage is at [http://github.com/andymccurdy/redis-py/](http://github.com/andymccurdy/redis-py/).
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
 - en: Once both are installed and a `redis-server` process is running, you're ready
     to go. Let's assume `redis-server` is running on `localhost` on port `6379` (the
     default host and port).
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
 - en: How to do it...
+  id: totrans-98
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -487,6 +654,7 @@
     key, along with an optional `count` keyword argument that defaults to `1`, and
     increments the value at `sample` by `count`. `N()` returns the number of sample
     outcomes, which is the sum of all the values in the frequency distribution.'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
 - en: We can create an API-compatible class on top of Redis by extending a `RedisHashMap`
@@ -496,21 +664,28 @@
     in `redisprob.py`) uses the `hincrby` command for the `inc()` method to increment
     the `sample` value by `count`, and sums all the values in the hash map for the
     `N()` method.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE9]'
+  id: totrans-101
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: We can use this class just like a `FreqDist`. To instantiate it, we must pass
     a `Redis` connection and the `name` of our hash map. The `name` should be a unique
     reference to this particular `FreqDist` so that it doesn't clash with any other
     keys in `Redis`.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE10]'
+  id: totrans-103
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Note
+  id: totrans-104
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -518,9 +693,11 @@
     and `&` characters with `_`. This is because the `Redis` protocol uses these characters
     for communication. It's best if the name and keys don't include whitespace to
     begin with.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
 - en: How it works...
+  id: totrans-106
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -528,54 +705,66 @@
     which extends `collections.MutableMapping`, then overrides all methods that require
     Redis-specific commands. Here''s an outline of each method that uses a specific
     `Redis` command:'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
 - en: '`__len__()`: Uses the `hlen` command to get the number of elements in the hash
     map'
+  id: totrans-108
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__contains__()`: Uses the `hexists` command to check if an element exists
     in the hash map'
+  id: totrans-109
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__getitem__()`: Uses the `hget` command to get a value from the hash map'
+  id: totrans-110
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__setitem__()`: Uses the `hset` command to set a value in the hash map'
+  id: totrans-111
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__delitem__()`: Uses the `hdel` command to remove a value from the hash map'
+  id: totrans-112
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`keys()`: Uses the `hkeys` command to get all the keys in the hash map'
+  id: totrans-113
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`values()`: Uses the `hvals` command to get all the values in the hash map'
+  id: totrans-114
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`items()`: Uses the `hgetall` command to get a dictionary containing all the
     keys and values in the hash map'
+  id: totrans-115
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`clear()`: Uses the `delete` command to remove the entire hash map from `Redis`'
+  id: totrans-116
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Note
+  id: totrans-117
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: Extending `collections.MutableMapping` provides a number of other `dict` compatible
     methods based on the previous methods, such as `update()` and `setdefault()`,
     so we don't have to implement them ourselves.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
 - en: The initialization used for the `RedisHashFreqDist` is actually implemented
@@ -583,12 +772,16 @@
     and name are both stored internally to use with all the subsequent commands. As
     mentioned before, whitespace is replaced by underscore in the name and all keys,
     for compatibility with the Redis network protocol.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE11]'
+  id: totrans-120
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: There's more...
+  id: totrans-121
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -598,26 +791,32 @@
     of keys. However, don't let that stop you from taking full advantage of Redis.
     It's very fast (for a network server) and does its best to efficiently encode
     whatever data you throw at it.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
 - en: Note
+  id: totrans-123
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: While Redis is quite fast for a network database, it will be significantly slower
     than the in-memory `FreqDist`. There's no way around this, but while you sacrifice
     speed, you gain persistence and the ability to do concurrent processing.
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
 - en: See also
+  id: totrans-125
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: In the next recipe, we'll create a conditional frequency distribution based
     on the `Redis` frequency distribution created here.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
 - en: Storing a conditional frequency distribution in Redis
+  id: totrans-127
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -628,17 +827,21 @@
     7](ch07.html "Chapter 7. Text Classification"), *Text Classification*. Here, we'll
     create an API-compatible class on top of `Redis` using the `RedisHashFreqDist`
     from the previous recipe.
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
 - en: Getting ready
+  id: totrans-129
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: As in the previous recipe, you'll need to have `Redis` and `redis-py` installed
     with an instance of `redis-server` running.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
 - en: How to do it...
+  id: totrans-131
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -648,19 +851,26 @@
     instance of `RedisHashFreqDist` instead of a `FreqDist`, and override `__contains__()`
     so we can call `encode_key()` from the `rediscollections` module before checking
     if the `RedisHashFreqDist` exists.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE12]'
+  id: totrans-133
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: An instance of this class can be created by passing in a `Redis` connection
     and a *base name*. After that, it works just like a `ConditionalFreqDist`.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE13]'
+  id: totrans-135
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: How it works...
+  id: totrans-136
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -673,15 +883,18 @@
     the existing hash maps using the `keys` command. By searching for all keys matching
     `'condhash:*'`, we can identify all the existing conditions and create an instance
     of `RedisHashFreqDist` for each.
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
 - en: Note
+  id: totrans-138
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: Combining strings with colons is a common naming convention for `Redis` keys
     as a way to define *namespaces*. In our case, each `RedisConditionalHashFreqDist`
     instance defines a single namespace of hash maps.
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
 - en: The `ConditionalFreqDist` class stores an internal dictionary at `self._fdists`
@@ -689,27 +902,33 @@
     class still uses `self._fdists`, but the values are instances of `RedisHashFreqDist`
     instead of `FreqDist`. `self._fdists` is created when we call `ConditionalFreqDist.__init__()`,
     and values are initialized as necessary in the `__getitem__()` method.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
 - en: There's more...
+  id: totrans-141
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: '`RedisConditionalHashFreqDist` also defines a `clear()` method. This is a helper
     method that calls `clear()` on all the internal `RedisHashFreqDist` instances.
     The `clear()` method is not defined in `ConditionalFreqDist`.'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
 - en: See also
+  id: totrans-143
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: The previous recipe covers the `RedisHashFreqDist` in detail. Also see the *Calculating
     high information words* recipe in [Chapter 7](ch07.html "Chapter 7. Text Classification"),
     *Text Classification*, for example usage of a `ConditionalFreqDist`.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
 - en: Storing an ordered dictionary in Redis
+  id: totrans-145
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -720,39 +939,52 @@
     *Calculating high information words* recipe in [Chapter 7](ch07.html "Chapter 7. Text
     Classification"), *Text Classification*) when you want to store all the words
     and scores for later use.
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
 - en: Getting ready
+  id: totrans-147
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: Again, you'll need `Redis` and `redis-py` installed, with an instance of `redis-server`
     running.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
 - en: How to do it...
+  id: totrans-149
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: The `RedisOrderedDict` class in `rediscollections.py` extends `collections.MutableMapping`
     to get a number of `dict` compatible methods for free. Then it implements all
     the key methods that require `Redis` ordered set (also known as **Zset**) commands.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE14]'
+  id: totrans-151
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: '[PRE15]'
+  id: totrans-152
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: You can create an instance of `RedisOrderedDict` by passing in a `Redis` connection
     and a unique name.
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE16]'
+  id: totrans-154
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: How it works...
+  id: totrans-155
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -761,49 +993,59 @@
     is that `RedisOrderedSet` orders keys by floating point values, and so is not
     suited for arbitrary key-value storage like the `RedisHashMap`. Here''s an outline
     explaining each key method and how it works with `Redis`:'
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
 - en: '`__len__()`: Uses the `zcard` command to get the number of elements in the
     ordered set.'
+  id: totrans-157
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__getitem__()`: Uses the `zscore` command to get the score of a key, and returns
     `0` if the key does not exist.'
+  id: totrans-158
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__setitem__()`: Uses the `zadd` command to add a key to the ordered set with
     the given score, or updates the score if the key already exists.'
+  id: totrans-159
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`__delitem__()`: Uses the `zrem` command to remove a key from the ordered set.'
+  id: totrans-160
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`keys()`: Uses the `zrevrange` command to get all the keys in the ordered set,
     sorted by highest score. It takes two optional keyword arguments `start` and `end`
     to more efficiently get a slice of the ordered keys.'
+  id: totrans-161
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`values()`: Extracts all the scores from the `items()` method.'
+  id: totrans-162
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`items()`: Uses the `zrevrange` command to get the scores of each key in order
     to return a list of 2-tuples ordered by highest score. Like `keys()`, it takes
     `start` and `end` keyword arguments to efficiently get a slice.'
+  id: totrans-163
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '`clear()`: Uses the `delete` command to remove the entire ordered set from
     `Redis`.'
+  id: totrans-164
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Note
+  id: totrans-165
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
@@ -813,9 +1055,11 @@
     when it comes to *scoring*. For storing *scores*, we expect items to be sorted
     from *high-to-low*, which is why `keys()` and `items()` use `zrevrange` instead
     of `zrange`.
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
 - en: There's more...
+  id: totrans-167
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -823,12 +1067,16 @@
     and `end` keyword arguments to get a slice of the results. This makes the `RedisOrderedDict`
     optimal for storing scores, then getting the top N keys. Here''s a simple example
     where we assign three word scores, then get the top two:'
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE17]'
+  id: totrans-169
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: See also
+  id: totrans-170
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -837,9 +1085,11 @@
     gain, which is a good case for storing word scores in a `RedisOrderedDict`. The
     *Storing a frequency distribution in Redis* recipe introduces `Redis` and the
     `RedisHashMap`.'
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
 - en: Distributed word scoring with Redis and execnet
+  id: totrans-172
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -851,17 +1101,21 @@
     and a `RedisConditionalHashFreqDist`, then store the scores in a `RedisOrderedDict`.
     We can use `execnet` to distribute the counting in order to get better performance
     out of `Redis`.
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
 - en: Getting ready
+  id: totrans-174
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: '`Redis`, `redis-py`, and `execnet` must be installed, and an instance of `redis-server`
     must be running on `localhost`.'
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
 - en: How to do it...
+  id: totrans-176
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -872,92 +1126,116 @@
     words is 39,764\. Using the `keys()` method, we can then get the top 1000 words,
     and inspect the top five just to see what they are. Once we have all we want from
     `word_scores`, we can delete the keys in `Redis` as we no longer need the data.
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-178
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: The `score_words()` function in `dist_featx` can take a while to complete, so
     expect to wait a couple of minutes. The overhead of using `execnet` and `Redis`
     means it will take significantly longer than a non-distributed in-memory version
     of the function.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
 - en: How it works...
+  id: totrans-180
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
 - en: 'The `dist_featx.py` module contains the `score_words()` function, which does
     the following:'
+  id: totrans-181
   prefs: []
   type: TYPE_NORMAL
 - en: Opens gateways and channels, sending initialization data to each.
+  id: totrans-182
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: Sends each `(label, words)` tuple over a channel for counting.
+  id: totrans-183
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: Sends a `done` message to each channel, waits for a `done` reply back, then
     closes the channels and gateways.
+  id: totrans-184
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: Calculates the score of each word based on the counts and stores in a `RedisOrderedDict`.
+  id: totrans-185
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: 'In our case of counting words in the `movie_reviews` corpus, calling `score_words()`
     opens two gateways and channels, one for counting the `pos` words, and the other
     for counting the `neg` words. The communication is as follows:'
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
 - en: '![How it works...](img/3609OS_08_04.jpg)'
+  id: totrans-187
   prefs: []
   type: TYPE_IMG
 - en: 'Once the counting is finished, we can score all the words and store the results.
     The code itself is as follows:'
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE19]'
+  id: totrans-189
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: Note
+  id: totrans-190
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
 - en: Note that this scoring method will only be accurate when there are two labels.
     If there are more than two labels, then word scores for each label should be stored
     in separate `RedisOrderedDict` instances, one per label.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
 - en: 'The `remote_word_count.py` module looks as follows:'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE20]'
+  id: totrans-193
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'You''ll notice this is not a pure module as it requires being able to import
     both `redis` and `redisprob`. The reason is that instances of `RedisHashFreqDist`
     and `RedisConditionalHashFreqDist` cannot be pickled and sent over the `channel`.
     Instead, we send the host name and key names over the channel so we can create
     the instances in the remote module. Once we have the instances, there are two
     kinds of data we can receive over the channel:'
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
 - en: A `done` message, which signals that there is no more data coming in over the
     channel. We reply back with another `done` message, then exit the loop to close
     the channel.
+  id: totrans-195
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: A 2-tuple of `(label, words)`, which we then iterate over to increment counts
     in both the `RedisHashFreqDist` and `RedisConditionalHashFreqDist`.
+  id: totrans-196
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: There's more...
+  id: totrans-197
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -973,9 +1251,11 @@
     scalability using `execnet` or some other method to distribute computations across
     many nodes becomes more valuable, as the size of the data you need to process
     increases.
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
 - en: See also
+  id: totrans-199
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -984,5 +1264,6 @@
     words for feature extraction and classification. The first three recipes of this
     chapter show how to use `execnet`, while the next three recipes describe `RedisHashFreqDist`,
     `RedisConditionalHashFreqDist`, and `RedisOrderedDict` respectively.
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
