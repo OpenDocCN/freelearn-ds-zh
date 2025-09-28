@@ -1,16 +1,22 @@
 - en: '7'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '7'
 - en: Using iSAX to Approximate MPdist
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用iSAX近似MPdist
 - en: So far in this book, we have seen the use of iSAX for searching subsequences
     and joining iSAX indexes based on SAX representations but no other applications
     of it.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，本书中我们看到了iSAX在搜索子序列和基于SAX表示的iSAX索引连接中的应用，但没有看到其他应用。
 - en: In this chapter, we are going to use iSAX indexes to approximately calculate
     the **Matrix Profile** vectors as well as the **MPdist** distance between two
     time series – we are still going to use iSAX for searching and joining, but the
@@ -18,49 +24,71 @@
     is the perception that *terminal nodes in an iSAX index group have similar subsequences*
     from a SAX representation perspective – this is what we are trying to take advantage
     of for our approximate computations.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将使用iSAX索引来近似计算时间序列之间的**矩阵轮廓**向量和**MPdist**距离——我们仍然会使用iSAX进行搜索和连接，但最终结果将更加复杂。本章的主导思想是，从SAX表示的角度来看，iSAX索引组的终端节点具有相似子序列——这是我们试图在我们的近似计算中利用的。
 - en: 'In this chapter, we are going to cover the following main topics:'
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要主题：
 - en: Understanding the Matrix Profile
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解矩阵轮廓
 - en: Computing the Matrix Profile using iSAX
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用iSAX计算矩阵轮廓
 - en: Understanding MPdist
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解MPdist
 - en: Calculating MPdist using iSAX
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用iSAX计算MPdist
 - en: Implementing the MPdist calculation in Python
+  id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在Python中实现MPdist计算
 - en: Using the Python code
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Python代码
 - en: Technical requirements
+  id: totrans-11
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: The GitHub repository for the book is at [https://github.com/PacktPublishing/Time-Series-Indexing](https://github.com/PacktPublishing/Time-Series-Indexing).
     The code for each chapter is in its own directory. Therefore, the code for [*Chapter
     7*](B14769_07.xhtml#_idTextAnchor160) can be found in the `ch07` folder of the
     GitHub repository.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 本书在GitHub上的仓库地址为[https://github.com/PacktPublishing/Time-Series-Indexing](https://github.com/PacktPublishing/Time-Series-Indexing)。每章的代码都存放在各自的目录中。因此，[第7章](B14769_07.xhtml#_idTextAnchor160)的代码可以在GitHub仓库的`ch07`文件夹中找到。
 - en: Understanding the Matrix Profile
+  id: totrans-13
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解矩阵轮廓
 - en: Time series are everywhere, and there are many tasks that we might need to perform
     on large time series including similarity search, outlier detection, classification,
     and clustering. Dealing directly with a large time series is very time-consuming
@@ -68,61 +96,91 @@
     on the computation of the nearest neighbor of subsequences using a given sliding
     window size. This is where the **Matrix Profile** comes into play because it helps
     you perform the previous tasks once you have computed them.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 时间序列无处不在，我们可能需要在大型时间序列上执行许多任务，包括相似性搜索、异常检测、分类和聚类。直接处理大型时间序列非常耗时，并且会减慢处理速度。上述大多数任务都是基于使用给定滑动窗口大小计算子序列最近邻的计算。这就是**矩阵轮廓**发挥作用的地方，因为它可以帮助你在计算了这些任务之后执行它们。
 - en: We already saw the Matrix Profile in [*Chapter 1*](B14769_01.xhtml#_idTextAnchor015),
     but in this section, we are going to discuss it in more detail in order to understand
     better the reason that it is so slow to compute.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经在[第1章](B14769_01.xhtml#_idTextAnchor015)中看到了矩阵轮廓，但在这个部分，我们将更详细地讨论它，以便更好地理解它为什么计算起来如此缓慢。
 - en: 'Various research papers exist that present and extend the Matrix Profile, including
     the following:'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 存在许多研究论文介绍了矩阵轮廓及其扩展，包括以下内容：
 - en: '*Matrix Profile I: All Pairs Similarity Joins for Time Series: A Unifying View
     That Includes Motifs, Discords and Shapelets*, written by Chin-Chia Michael Yeh,
     Yan Zhu, Liudmila Ulanova, Nurjahan Begum, Yifei Ding, Hoang Anh Dau, Diego Furtado
     Silva, Abdullah Mueen, and Eamonn J. Keogh ([https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992))'
+  id: totrans-17
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '由Chin-Chia Michael Yeh、Yan Zhu、Liudmila Ulanova、Nurjahan Begum、Yifei Ding、Hoang
+    Anh Dau、Diego Furtado Silva、Abdullah Mueen和Eamonn J. Keogh撰写的*Matrix Profile I:
+    All Pairs Similarity Joins for Time Series: A Unifying View That Includes Motifs,
+    Discords and Shapelets*（[https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992)）'
 - en: '*Matrix Profile II: Exploiting a Novel Algorithm and GPUs to Break the One
     Hundred Million Barrier for Time Series Motifs and Joins*, written by Yan Zhu,
     Zachary Zimmerman, Nader Shakibay Senobari, Chin-Chia Michael Yeh, Gareth Funning,
     Abdullah Mueen, Philip Brisk, and Eamonn Keogh ([https://ieeexplore.ieee.org/abstract/document/7837898](https://ieeexplore.ieee.org/abstract/document/7837898))'
+  id: totrans-18
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '*矩阵配置II：利用新型算法和GPU突破一亿大关，用于时间序列模式和连接*，由Yan Zhu、Zachary Zimmerman、Nader Shakibay
+    Senobari、Chin-Chia Michael Yeh、Gareth Funning、Abdullah Mueen、Philip Brisk和Eamonn
+    Keogh撰写([https://ieeexplore.ieee.org/abstract/document/7837898](https://ieeexplore.ieee.org/abstract/document/7837898))'
 - en: '*Matrix profile goes MAD: variable-length motif and discord discovery in data
     series*, written by Michele Linardi, Yan Zhu, Themis Palpanas, and Eamonn J. Keogh
     ([https://doi.org/10.1007/s10618-020-00685-w](https://doi.org/10.1007/s10618-020-00685-w))'
+  id: totrans-19
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '*矩阵配置疯狂：数据序列中的可变长度模式和冲突发现*，由Michele Linardi、Yan Zhu、Themis Palpanas和Eamonn
+    J. Keogh撰写([https://doi.org/10.1007/s10618-020-00685-w](https://doi.org/10.1007/s10618-020-00685-w))'
 - en: About normalization
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 关于归一化
 - en: As it happens with the SAX representation, all Euclidean distances that are
     going to be computed in this chapter use normalized subsequences.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像SAX表示一样，本章中将要计算的所有的欧几里得距离都使用归一化子序列。
 - en: The next subsection shows what the Matrix Profile computation returns.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个子节将展示矩阵配置计算返回的内容。
 - en: What does the Matrix Profile compute?
+  id: totrans-23
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 矩阵配置计算什么？
 - en: In this subsection, we are going to explain what the Matrix Profile calculates.
     Imagine having a time series and a sliding window size that is smaller than the
     time series length. The Matrix Profile computes *two vectors*.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将解释矩阵配置计算什么。想象一下有一个时间序列和一个小于时间序列长度的滑动窗口大小。矩阵配置计算**两个向量**。
 - en: The first vector contains the *Euclidean distances of the nearest neighbor*
     of each subsequence. The value at index `0` is the Euclidean distance of the nearest
     neighbor of the subsequence that begins at index `0`, and so on.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一个向量包含每个子序列的**欧几里得距离最近邻**。索引`0`处的值是开始于索引`0`的子序列的最近邻的欧几里得距离，依此类推。
 - en: In the second vector, the value at each place of the vector is the index of
     the subsequence that is the nearest neighbor and corresponds to the Euclidean
     distance stored in the previous vector. So, if the value at index `0` is `123`,
@@ -130,8 +188,10 @@
     in the original time series is the subsequence that begins at index `123` in the
     original time series. The first vector is going to contain that Euclidean distance
     value.
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 在第二个向量中，向量中每个位置的值是最近邻子序列的索引，对应于前一个向量中存储的欧几里得距离。所以，如果索引`0`的值是`123`，这意味着原始时间序列中开始于索引`0`的子序列的最近邻是原始时间序列中开始于索引`123`的子序列。第一个向量将包含那个欧几里得距离值。
 - en: It is very important to understand that when computing the Matrix Profile for
     a time series using a self-join – that is, by looking for the nearest neighbor
     at the subsequences of the same time series – we need to *exclude the subsequences
@@ -139,8 +199,10 @@
     subsequences that share many elements in the same order tend to have smaller Euclidean
     distances by default. However, when dealing with a subsequence that is from another
     time series, we do not need to exclude any subsequences from the calculations.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 非常重要的是理解，当使用自连接来计算时间序列的矩阵配置时——也就是说，通过查找相同时间序列子序列的最近邻——我们需要**排除接近我们正在检查的子序列**。这是必需的，因为共享相同顺序中许多元素的子序列默认情况下往往具有较小的欧几里得距离。然而，当处理来自另一个时间序列的子序列时，我们不需要从计算中排除任何子序列。
 - en: A naïve implementation of the computation of the Matrix Profile vectors is to
     get the first subsequence, compare it to all other subsequences (excluding the
     subsequences that are close), find its nearest neighbor, and put the Euclidean
@@ -150,8 +212,10 @@
     This means that for a time series with 10,000 subsequences, we need to perform
     10,000 times 10,000 computations (100,000,000). We are going to implement that
     algorithm to understand how slow it can be in real life.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 矩阵轮廓向量的计算的一个朴素实现是获取第一个子序列，将其与所有其他子序列（排除接近的子序列）进行比较，找到其最近邻，并将欧几里得距离和最近邻的索引放在两个向量的索引`0`处。然后，对其他所有子序列执行相同的操作。虽然这对于较小的时序数据有效，但它的算法复杂度为O(n^2)，这意味着对于一个有10,000个子序列的时间序列，我们需要执行10,000次10,000次计算（100,000,000次）。我们将实现该算法以了解它在现实生活中的速度有多慢。
 - en: 'The authors of the original Matrix Profile paper created a clever technique
     that involves **Fast Fourier** transforms that compute the Matrix Profile vectors
     with a viable complexity – the name of the algorithm is **Mueen’s Algorithm for
@@ -159,244 +223,360 @@
     the MASS algorithm and the ideas behind the Matrix Profile, you should read the
     *Matrix Profile I: All Pairs Similarity Joins for Time Series: A Unifying View
     That Includes Motifs, Discords and Shapelets* paper ([https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992)).'
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 原始矩阵轮廓论文的作者创造了一种巧妙的技术，该技术涉及**快速傅里叶变换**，可以以可行的复杂度计算矩阵轮廓向量——该算法的名称是**Mueen相似性搜索算法**（**MASS**）。如果您想了解更多关于MASS算法的细节以及矩阵轮廓背后的思想，您应该阅读*矩阵轮廓I：时间序列的所有成对相似性连接：一个包含基序、不一致性和形状的统一视图*这篇论文（[https://ieeexplore.ieee.org/document/7837992](https://ieeexplore.ieee.org/document/7837992)）。
 - en: The next section presents an implementation of the naïve algorithm for computing
     the Matrix Profile vectors. The naivete of the algorithm lies in its complexity,
     not its accuracy.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一节将展示计算矩阵轮廓向量的朴素算法的实现。该算法的朴素性在于其复杂度，而不是其准确性。
 - en: Manually computing the exact Matrix Profile
+  id: totrans-31
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 手动计算精确的矩阵轮廓
 - en: In this subsection, we are going to manually compute the exact Matrix Profile
     to show how slow the process can be, especially when working with large time series.
     We are using the word *exact* to differentiate this from the approximate Matrix
     Profile computation that we are going to implement in the *Computing Matrix Profile
     using iSAX* section of this chapter.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本小节中，我们将手动计算精确的矩阵轮廓以展示这个过程可能有多慢，尤其是在处理大型时间序列时。我们使用“精确”这个词来区分我们将在本章的“使用iSAX计算矩阵轮廓”部分中实现的近似矩阵轮廓计算。
 - en: 'The last Python statements in the `main()` function of `mp.py` are the following:'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`mp.py`的`main()`函数中的最后几个Python语句如下：
 - en: '[PRE0]'
+  id: totrans-34
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: The first statement runs the `mp()` function, which returns two values, both
     of them being lists (vectors), which are the two Matrix Profile vectors.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一条语句运行`mp()`函数，该函数返回两个值，这两个值都是列表（向量），它们是两个矩阵轮廓向量。
 - en: 'The implementation of the `mp()` function is where we compute the two vectors
     and is presented in two parts. The first part comes with the following code:'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mp()`函数的实现是我们计算两个向量的地方，分为两部分。第一部分包含以下代码：'
 - en: '[PRE1]'
+  id: totrans-37
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'In the previous code, we iterate over all the subsequences of the given time
     series. For each such subsequence, we define the indexes of the exclusion zone
     as specified in the *Matrix Profile I: All Pairs Similarity Joins for Time Series:
     A Unifying View That Includes Motifs, Discords and* *Shapelets* paper.'
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的代码中，我们遍历给定时间序列的所有子序列。对于每个这样的子序列，我们定义排除区域的索引，如*矩阵轮廓I：时间序列的所有成对相似性连接：一个包含基序、不一致性和形状的统一视图*论文中所述。
 - en: For a sliding window size of `16`, the exclusion zone is `4` elements (`16 //
     4`) on the left and `4` elements (`16 // 4`) on the right side of the subsequence.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于`16`大小的滑动窗口，排除区域是子序列左侧和右侧的`4`个元素（`16 // 4`）。
 - en: 'The second part of `mp()` is as follows:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mp()`的第二部分如下：'
 - en: '[PRE2]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: In this part of the section, we compare each subsequence from the first part
     of the code with all the subsequences of the time series while taking into account
     the exclusion zone.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节的部分，我们比较代码第一部分中的每个子序列与时间序列的所有子序列，同时考虑到排除区域。
 - en: The bad thing about `mp()` is that it contains two `for` loops, which makes
     its computational complexity *O(n*2*)*.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mp()`的缺点是它包含两个`for`循环，这使得其计算复杂度为*O(n*2*)*。'
 - en: 'The output of `mp.py` when working with the `ts.gz` time series from [*Chapter
     6*](B14769_06.xhtml#_idTextAnchor145) (which is found in the `ch06` directory
     of the GitHub repository of the book) is similar to the following for a sliding
     window of `16` – we are going to use the output to test the correctness of our
     implementation by comparing it to the original Matrix Profile algorithm and its
     output:'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用来自[*第6章*](B14769_06.xhtml#_idTextAnchor145)的`ts.gz`时序（该时序位于书籍GitHub仓库的`ch06`目录中）时，`mp.py`的输出与以下内容类似，对于滑动窗口为`16`
+    – 我们将使用这个输出通过将其与原始矩阵轮廓算法及其输出进行比较来测试我们实现的正确性：
 - en: '[PRE3]'
+  id: totrans-45
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: Naively thinking, the subsequences with the smallest and largest Euclidean distances
     can be considered outliers as they differ from all other subsequences – this is
     an example of the use of the Matrix Profile for anomaly detection.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 想当然地认为，具有最小和最大欧几里得距离的子序列可以被认为是异常值，因为它们与其他所有子序列不同 – 这就是矩阵轮廓用于异常检测的一个例子。
 - en: 'Using a sliding window size of `32`, `mp.py` produces the following kind of
     output:'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用滑动窗口大小为`32`，`mp.py`生成以下类型的输出：
 - en: '[PRE4]'
+  id: totrans-48
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Lastly, using a sliding window size of `64`, the produced output is the following:'
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，使用滑动窗口大小为`64`，生成的输出如下：
 - en: '[PRE5]'
+  id: totrans-50
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: The reason for having a smaller output here is that the bigger the sliding window
     size, the fewer the number of subsequences that are created from a time series.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里输出较小的原因是，滑动窗口大小越大，从时序中创建的子序列数量就越少。
 - en: 'Now, let us experiment with a time series with 25,000 elements that was created
     as follows:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们实验一个包含25,000个元素的时序，其创建方式如下：
 - en: '[PRE6]'
+  id: totrans-53
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'The results for `25k.gz` with the same sliding window sizes as before are as
     follows (only the times are shown – the rest of the output is omitted for brevity):'
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 与之前相同的滑动窗口大小，`25k.gz`的结果如下（仅显示时间 – 为了简洁，省略了其余输出）：
 - en: '[PRE7]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: At this point, we should be aware of the fact that computing the Matrix Profile
     vectors can be really slow as it took `mp.py` 45,113 seconds to compute the Matrix
     Profile in the last run.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个阶段，我们应该意识到计算矩阵轮廓向量可能非常慢，因为在上次运行中，`mp.py`花费了45,113秒来计算矩阵轮廓。
 - en: 'Can you think of the reason that even a small increase in the sliding window
     size also increases the overall times? The answer is that the bigger the sliding
     window size, the bigger the subsequence length, and therefore, the more time it
     takes to compute the Euclidean distance between two subsequences. Here is the
     time it takes to compute the Matrix Profile vectors for a sliding window size
     of `2048`:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 你能想到为什么即使滑动窗口大小的微小增加也会增加整体时间吗？答案是，滑动窗口大小越大，子序列长度越大，因此计算两个子序列之间欧几里得距离所需的时间就越长。以下是计算滑动窗口大小为`2048`的矩阵轮廓向量所需的时间：
 - en: '[PRE8]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: Have in mind that *the MASS algorithm does not have such an issue* as it computes
     the Euclidean distances in its own clever way. As a result, its performance depends
     on the time series length only.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 请记住，*MASS算法没有这样的问题*，因为它以自己的巧妙方式计算欧几里得距离。因此，其性能仅取决于时序长度。
 - en: 'Now, let us present a Python script that computes the exact Matrix Profile
     using the MASS algorithm with the help of the `stumpy` Python package. We are
     using the `realMP.py` script for computing the Matrix Profile vectors, which has
     the following implementation:'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们展示一个Python脚本，该脚本使用`stumpy`Python包通过MASS算法计算精确的矩阵轮廓。我们使用`realMP.py`脚本来计算矩阵轮廓向量，其实现如下：
 - en: '[PRE9]'
+  id: totrans-61
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The return value of `stumpy.stump()` is a multi-dimensional array. The first
     column (`[:,0]`) is the vector of distances, and the second column (`[:,1]`) is
     the vector of indexes. In the previous code, we print both these vectors, which
     is not very handy when dealing with large time series – comment out these two
     `print()` statements if you want.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: '`stumpy.stump()`的返回值是一个多维数组。第一列（`[:,0]`）是距离向量，第二列（`[:,1]`）是索引向量。在前面的代码中，我们打印了这两个向量，当处理大型时序时这并不方便
+    – 如果你想，请注释掉这两个`print()`语句。'
 - en: 'In order to verify the correctness of `mp.py`, we present the output of `realMP.py`
     for the `ts.gz` time series and a sliding window size of `64`:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了验证`mp.py`的正确性，我们展示了`realMP.py`对于`ts.gz`时序和滑动窗口大小为`64`的输出：
 - en: '[PRE10]'
+  id: totrans-64
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Now that we are sure about the correctness of `mp.py`, let us experiment with
     the `25k.gz` time series to see how much time it takes to compute the exact Matrix
     Profile vectors.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 既然我们已经确信 `mp.py` 的正确性，让我们用 `25k.gz` 时间序列进行实验，看看计算精确矩阵轮廓向量需要多少时间。
 - en: 'The time it takes `realMP.py` and the `stumpy.stump()` function to compute
     the Matrix Profile vectors *on a single CPU core* for the `25k.gz` time series
     is the following:'
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: '`realMP.py` 和 `stumpy.stump()` 函数在单个 CPU 核心上计算 `25k.gz` 时间序列的矩阵轮廓向量所需的时间如下：'
 - en: '[PRE11]'
+  id: totrans-67
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'The time it takes `realMP.py` to compute the Matrix Profile vectors for the
     `25k.gz` time series on an Intel i7 with 8 CPU cores is the following:'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: '`realMP.py` 在 Intel i7 的 8 个 CPU 核心上计算 `25k.gz` 时间序列的矩阵轮廓向量所需的时间如下：'
 - en: '[PRE12]'
+  id: totrans-69
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'Moreover, the time it takes `realMP.py` and the `stumpy.stump()` function to
     compute the Matrix Profile vectors *on a single CPU core* for the `ch06/100k.gz`
     time series and sliding window size of `1024` is the following:'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，`realMP.py` 和 `stumpy.stump()` 函数在单个 CPU 核心上计算 `ch06/100k.gz` 时间序列和滑动窗口大小为
+    `1024` 的矩阵轮廓向量所需的时间如下：
 - en: '[PRE13]'
+  id: totrans-71
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'Lastly, let us try `realMP.py` on a *single CPU core* on the `500k.gz` time
     series from [*Chapter 4*](B14769_04.xhtml#_idTextAnchor102):'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，让我们在 `500k.gz` 时间序列上尝试 `realMP.py`，该时间序列来自 [*第 4 章*](B14769_04.xhtml#_idTextAnchor102)
+    的**单个 CPU 核心**：
 - en: '[PRE14]'
+  id: totrans-73
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: The conclusion from the previous output is that computing the Matrix Profile
     gets slower as the length of the time series gets bigger, which is the main reason
     for thinking about an approximate computation of it. What we lose in accuracy,
     we gain in time. We cannot have everything!
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 从前面的输出中可以得出结论，随着时间序列长度的增加，计算矩阵轮廓的速度会变慢，这是考虑对其进行近似计算的主要原因。我们在精度上失去的，我们在时间上获得的。我们不能拥有一切！
 - en: The next section explains the technique that we are going to use to approximately
     compute the Matrix Profile vectors with the help of iSAX.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个部分将解释我们将使用的技术，以帮助使用 iSAX 近似计算矩阵轮廓向量。
 - en: Computing the Matrix Profile using iSAX
+  id: totrans-76
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用 iSAX 计算矩阵轮廓
 - en: 'First of all, let us make something clear: we are going to present *an approximate
     method*. If you want to calculate the exact Matrix Profile, then you should use
     an implementation that uses the original algorithm.'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们明确一点：我们将介绍一种**近似方法**。如果您想计算精确的矩阵轮廓，那么您应该使用使用原始算法的实现。
 - en: 'The idea behind the used technique is the following: *it is more likely that
     the nearest neighbor of a subsequence is going to be found in the subsequences
     stored in the same terminal node as the subsequence under examination*. Therefore,
     we do not need to check all the subsequences of the time series, just a small
     subset of them.'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用的技术背后的想法如下：**子序列的最近邻更有可能出现在与正在检查的子序列相同的终端节点中存储的子序列中**。因此，我们不需要检查时间序列的所有子序列，只需检查其中的一小部分。
 - en: The next subsection discusses and resolves an issue that might come up in our
     calculations, which is what are we going to do if we cannot find a proper match
     for a subsequence in a terminal node.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个小节将讨论并解决可能在我们的计算中出现的一个问题，即如果我们无法在终端节点中找到一个子序列的适当匹配，我们将怎么办。
 - en: What happens if there is not a valid match?
+  id: totrans-80
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如果没有有效的匹配会发生什么？
 - en: 'In this subsection, we are going to clarify the problematic cases of the process.
     There exist two conditions that might end up in an undesired situation:'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本小节中，我们将阐明过程中的问题案例。存在两种条件可能会导致不希望的情况：
 - en: A terminal node contains a single subsequence only
+  id: totrans-82
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 一个终端节点只包含一个子序列
 - en: For a given subsequence, all the remaining subsequences of the terminal node
     are in the exclusion zone
+  id: totrans-83
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于给定的子序列，终端节点中所有剩余的子序列都在排除区域
 - en: In both cases, we are not going to be able to find the approximate nearest neighbor
     of a subsequence. Can we resolve these issues?
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这两种情况下，我们都不可能找到一个子序列的近似最近邻。我们能否解决这些问题？
 - en: There exist multiple answers to that question, including doing nothing or choosing
     a different subsequence and using that to compute the Euclidean distance of the
     nearest neighbor. We are going with the latter solution, but instead of randomly
@@ -405,38 +585,54 @@
     zone, we are going to choose the subsequence that is next to the right side of
     the exclusion zone. As these two conditions cannot happen at the same time, we
     are good!
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于这个问题，存在多个答案，包括什么都不做或选择不同的子序列并使用它来计算最近邻的欧几里得距离。我们选择了后者，但不是随机选择子序列，而是选择紧邻排除区左侧的子序列。如果没有空间在排除区左侧，我们将选择紧邻排除区右侧的子序列。由于这两个条件不能同时发生，所以我们没问题！
 - en: The next subsection discusses how to compute the error of the approximate Matrix
     Profile vector of distances compared to the real Matrix Profile vector of distances.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个子节将讨论如何计算与真实距离矩阵配置文件向量相比的近似距离矩阵配置文件向量的误差。
 - en: Calculating the error
+  id: totrans-87
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 计算误差
 - en: As explained earlier, we are computing an approximate Matrix Profile vector.
     In such cases, we need a way to compute how far we are from the real values. There
     exist various ways to compute an error value between two quantities. As a Matrix
     Profile is a list of values, we need to find a way to compute an error value that
     supports a list of values, not single values only.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前所述，我们正在计算一个近似矩阵配置文件向量。在这种情况下，我们需要一种方法来计算我们与真实值之间的距离。存在多种方法来计算两个数量之间的误差值。由于矩阵配置文件是一系列值，我们需要找到一种方法来计算支持一系列值的误差值，而不仅仅是单个值。
 - en: The most common way is to find the Euclidean distance between the approximate
     vector and the exact vector. However, this does not always tell the whole truth.
     A good alternative would be to use the **Root Mean Square** **Error** (**RMSE**).
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 最常见的方法是找到近似向量和精确向量之间的欧几里得距离。然而，这并不总是能揭示全部真相。一个好的替代方案是使用 **均方根** **误差**（**RMSE**）。
 - en: 'The formula for the RMSE is a little complex at first. It is presented in *Figure
     7**.1*:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: RMSE 的公式一开始可能有点复杂。它在 *图 7.1* 中展示：
 - en: '![Figure 7.1 – The RMSE formula](img/Figure_7.1_B14769.jpg)'
+  id: totrans-91
   prefs: []
   type: TYPE_IMG
+  zh: '![图 7.1 – RMSE 公式](img/Figure_7.1_B14769.jpg)'
 - en: Figure 7.1 – The RMSE formula
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 7.1 – RMSE 公式
 - en: In practice, this means that we find the difference between the actual value
     and the approximate one and we square that. We do that for all the pairs and then
     add all these values – this is the purpose of the big Greek Sigma letter. After
@@ -444,48 +640,72 @@
     that last value and we are done. If you are not good at mathematics, bear in mind
     that you do not need to remember that formula – we are going to implement it in
     Python in a while.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 实际上，这意味着我们找到实际值和近似值之间的差异，并将该差异平方。我们对所有这些对都这样做，然后将所有这些值相加——这就是大希腊字母 Sigma 的作用。之后，我们将这些值除以对的数量。最后，我们找到最后一个值的平方根，这样我们就完成了。如果你不擅长数学，请记住，你不需要记住这个公式——我们将在稍后用
+    Python 实现。
 - en: The desired property that the RMSE has is that it takes into account the number
     of elements that we compare. Put simply, the RMSE takes the *average*, whereas
     the Euclidean distance takes the *sum*. In our case, using the average error looks
     more appropriate.
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: RMSE 所具有的期望特性是它考虑了我们比较的元素数量。简单来说，RMSE 取的是 *平均值*，而欧几里得距离取的是 *总和*。在我们的情况下，使用平均误差看起来更为合适。
 - en: As an example, the Euclidean distance between `(0, 0, 0, 2, 2)` and `(2, 1,
     0, 0, 0)` is equal to `3.6055`. On the other hand, the RMSE of these two vectors
     is equal to `1.61245`.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，向量 `(0, 0, 0, 2, 2)` 和 `(2, 1, 0, 0, 0)` 之间的欧几里得距离等于 `3.6055`。另一方面，这两个向量的均方根误差（RMSE）等于
+    `1.61245`。
 - en: With all that in mind, we are ready to present our approximate implementation.
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 考虑到所有这些，我们准备展示我们的近似实现。
 - en: Approximate Matrix Profile implementation
+  id: totrans-97
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 近似矩阵配置文件实现
 - en: In this subsection, we present the Python script that approximately computes
     the Matrix Profile vectors.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们展示了用于近似计算矩阵配置文件向量的 Python 脚本。
 - en: 'The important code for `apprMP.py` can be found in `approximateMP()`, which
     is presented in four parts. The first part of the function is the following:'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: '`apprMP.py` 中的重要代码可以在 `approximateMP()` 函数中找到，该函数分为四个部分。函数的第一部分如下：'
 - en: '[PRE15]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: The previous code splits the time series into subsequences and creates the iSAX
     index. It also initializes the `vDist` and `vIndex` variables, for keeping the
     list of distances and the list of indexes, respectively.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码将时间序列分割成子序列并创建iSAX索引。它还初始化`vDist`和`vIndex`变量，分别用于保存距离列表和索引列表。
 - en: 'The second part of `approximateMP()` is the following:'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: '`approximateMP()`的第二部分如下：'
 - en: '[PRE16]'
+  id: totrans-103
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: In the previous code, we take each node of the iSAX index and determine whether
     it is a terminal node or not – we are only interested in terminal nodes. If we
     are dealing with a terminal node, we process each subsequence stored there. First,
@@ -493,35 +713,52 @@
     of the left side of the exclusion zone is `0` – this is the index of the first
     element of the time series – and the maximum value of the right side of the exclusion
     zone is not bigger than the length of the time series minus 1.
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 在之前的代码中，我们取iSAX索引的每个节点并确定它是否是终端节点 – 我们只对终端节点感兴趣。如果我们处理的是终端节点，我们处理那里存储的每个子序列。首先，我们定义排除区的索引，确保排除区左侧的最小值是`0`
+    – 这是时间序列第一个元素的索引 – 并且排除区右侧的最大值不大于时间序列长度减1。
 - en: 'The third part of it is the following:'
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 其第三部分如下：
 - en: '[PRE17]'
+  id: totrans-106
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: We compare each subsequence of the selected terminal node with the rest of the
     subsequences it contains because we expect that there is a high probability of
     the nearest neighbor being in the same node.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将所选终端节点的每个子序列与它包含的其他子序列进行比较，因为我们预计最近邻很可能位于同一个节点中。
 - en: Then, we make sure that the index of the subsequence that is going to be compared
     with the initial subsequence is not in the exclusion zone. If we find such a subsequence,
     we compute the Euclidean distance and keep the relevant index value. From all
     these subsequences that are outside the exclusion zone and are located in the
     terminal node, we keep the minimum Euclidean distance and the related index.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们确保将要与初始子序列进行比较的子序列的索引不在排除区域。如果我们找到这样的子序列，我们计算欧几里得距离并保留相关的索引值。从所有这些位于终端节点且位于排除区域外的子序列中，我们保留最小的欧几里得距离和相关的索引。
 - en: We do that for all the subsequences in all the terminal nodes of the iSAX index.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们对iSAX索引中所有终端节点的所有子序列都这样做。
 - en: 'The last part of the `approximateMP()` function is the following:'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: '`approximateMP()`函数的最后部分如下：'
 - en: '[PRE18]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: If, at this point, we do not have a valid Euclidean distance value (`None`),
     we compare the initial subsequence with the subsequence next to the left side
     of the exclusion zone, if it exists – this means if the left side of the exclusion
@@ -529,135 +766,199 @@
     side of the exclusion zone. We put the relevant index and Euclidean distance into
     the `vIndex` and `vDist` variables, respectively. However, if we already have
     an index and Euclidean distance from earlier, we use these values.
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果在此阶段我们没有有效的欧几里得距离值（`None`），我们将比较初始子序列与排除区左侧的子序列，如果存在的话 – 这意味着排除区左侧不是`0`。否则，我们将其与排除区右侧的子序列进行比较。我们将相关的索引和欧几里得距离分别放入`vIndex`和`vDist`变量中。然而，如果我们已经从之前得到了索引和欧几里得距离，我们使用这些值。
 - en: The next subsection compares the accuracy of our approximate technique when
     using different iSAX parameters.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个小节将比较使用不同iSAX参数时我们近似技术的准确性。
 - en: Comparing the accuracy of two different parameter sets
+  id: totrans-114
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 比较两个不同参数集的准确性
 - en: In this subsection, we are going to compute the approximate Matrix Profile vector
     of a single time series using two different sets of iSAX parameters and check
     the accuracy of the results using the RMSE.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本小节中，我们将使用两组不同的iSAX参数来计算单个时间序列的近似矩阵轮廓向量，并使用RMSE检查结果的准确性。
 - en: 'To make things simpler, we have created a Python script that computes the two
     approximate Matrix Profile vectors of Euclidean distances, as well as the exact
     Matrix Profile vectors, and calculates the RMSE – the name of the script is `rmse.py`.
     We are not going to present the entire Python code of `rmse.py`, just the important
     Python statements, starting from the function that computes the RMSE:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了使事情更简单，我们创建了一个Python脚本，该脚本计算欧几里得距离的两个近似矩阵轮廓向量，以及精确的矩阵轮廓向量，并计算RMSE – 该脚本的名称是`rmse.py`。我们不会展示`rmse.py`的整个Python代码，只展示从计算RMSE的函数开始的重要Python语句：
 - en: '[PRE19]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: The previous code implements the computation of the RMSE value according to
     the formula presented in *Figure 7**.1*.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码实现了根据 *图 7.1* 中提出的公式计算 RMSE 值。
 - en: 'The remaining relevant Python code is located in the `main()` function:'
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 剩余的相关 Python 代码位于 `main()` 函数中：
 - en: '[PRE20]'
+  id: totrans-120
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: First, we compute the real Matrix Profile vector with `stumpy.stump()`, and
     then we compute the approximate Matrix Profile vector with the Euclidean distances
     using `approximateMP()`. After that, we call the `RMSE()` function and get the
     numeric result, which we print on the screen.
+  id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们使用 `stumpy.stump()` 计算实际的矩阵轮廓向量，然后使用 `approximateMP()` 使用欧几里得距离计算近似的矩阵轮廓向量。之后，我们调用
+    `RMSE()` 函数并得到数值结果，然后将其打印到屏幕上。
 - en: 'So, let us run `rmse.py` and see what we get:'
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，让我们运行 `rmse.py` 并看看我们得到什么：
 - en: '[PRE21]'
+  id: totrans-123
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'Now, let us use `rmse.py` another time, but this time, with different iSAX
     parameters, as follows:'
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们再次使用 `rmse.py`，但这次，使用不同的 iSAX 参数，如下所示：
 - en: '[PRE22]'
+  id: totrans-125
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'What do the previous results tell us? First, the results tell us that our approximate
     technique does not leave any subsequence without a Euclidean distance. If there
     was such a case, then `rmse.py` would have generated an error message like the
     following:'
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的结果告诉我们什么？首先，结果告诉我们我们的近似技术没有留下任何没有欧几里得距离的子序列。如果有这样的情况，那么 `rmse.py` 将会生成如下错误信息：
 - en: '[PRE23]'
+  id: totrans-127
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: As, in the initialization of `vDist`, all its elements are set equal to `None`,
     the previous error means that the value of at least one of the elements was not
     reset. Therefore, it is still equal to `None` and our code fails to subtract a
     floating point value, calculated by `stumpy.stump()`, from `None`.
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于在 `vDist` 的初始化中，所有元素都被设置为 `None`，因此之前的错误意味着至少有一个元素的值没有被重置。因此，它仍然等于 `None`，并且我们的代码无法从
+    `None` 中减去由 `stumpy.stump()` 计算出的浮点数值。
 - en: Apart from that, the results tell us that bigger threshold values produce more
     accurate results, which makes perfect sense, as there are more subsequences in
     each terminal node. However, this makes the computation of the approximate Matrix
     Profile slower. As a general rule, the closer the number of subsequences at each
     terminal node is to the threshold value, the better the accuracy – we do not want
     terminal nodes with a small number of subsequences stored in them.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，结果告诉我们更大的阈值值会产生更准确的结果，这是完全合理的，因为每个终端节点中有更多的子序列。然而，这使得近似矩阵轮廓的计算变慢。一般来说，每个终端节点中的子序列数量越接近阈值值，准确性就越好——我们不希望终端节点中存储少量子序列。
 - en: Now that we know about the Matrix Profile, let us discuss MPdist, how it is
     computed, and the role of the Matrix Profile in this computation.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 既然我们已经了解了矩阵轮廓，让我们讨论 MPdist，它是如何计算的，以及矩阵轮廓在此计算中的作用。
 - en: Understanding MPdist
+  id: totrans-131
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解 MPdist
 - en: 'Now that we know about the Matrix Profile, we are ready to learn about MPdist
     and how the Matrix Profile is used in the calculation of MPdist. The paper that
     defines the MPdist distance is *Matrix Profile XII: MPdist: A Novel Time Series
     Distance Measure to Allow Data Mining in More Challenging Scenarios*, written
     by S. Gharghabi, S. Imani, A. Bagnall, A. Darvishzadeh, and E. Keogh ([https://ieeexplore.ieee.org/abstract/document/8594928](https://ieeexplore.ieee.org/abstract/document/8594928)).'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 既然我们已经了解了矩阵轮廓（Matrix Profile），我们就准备好学习 MPdist 以及矩阵轮廓在 MPdist 计算中的作用。定义 MPdist
+    距离的论文是 S. Gharghabi、S. Imani、A. Bagnall、A. Darvishzadeh 和 E. Keogh 撰写的 *矩阵轮廓 XII：MPdist：一种新的时间序列距离度量，允许在更具挑战性的场景中进行数据挖掘*
+    ([https://ieeexplore.ieee.org/abstract/document/8594928](https://ieeexplore.ieee.org/abstract/document/8594928))。
 - en: 'The intuition behind MPdist is that two time series can be considered similar
     if they *have similar patterns throughout their duration*. Such patterns are extracted
     in the form of subsequences using a sliding window. This is illustrated in *Figure
     7**.2*:'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: MPdist 的直觉是，如果两个时间序列在其整个持续时间中具有相似的**模式**，则可以认为它们是相似的。这些模式通过滑动窗口以子序列的形式提取。这如图
+    *图 7.2* 所示：
 - en: '![Figure 7.2 – Grouping time series](img/Figure_7.2_B14769.jpg)'
+  id: totrans-134
   prefs: []
   type: TYPE_IMG
+  zh: '![图 7.2 – 时间序列分组](img/Figure_7.2_B14769.jpg)'
 - en: Figure 7.2 – Grouping time series
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 7.2 – 时间序列分组
 - en: In *Figure 7**.2*, we see that MPdist *(c)* understands the similarity between
     time series that follow the same pattern better, whereas Euclidean distance *(b)*
     compares time series based on time, and therefore groups the presented time series
     differently. In my opinion, the grouping that is based on MPdist is more accurate.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 *图 7.2* 中，我们看到 MPdist *(c)* 更好地理解遵循相同模式的时间序列之间的相似性，而欧几里得距离 *(b)* 则基于时间比较时间序列，因此将呈现的时间序列分组不同。在我看来，基于
+    MPdist 的分组更准确。
 - en: The advantages of MPdist (according to the people that created it) are that
     the MPdist distance measure tries to be more flexible than most available distance
     measures, including the Euclidean distance, and it takes into account similarities
     that may not take place at the same time. Additionally, MPdist can compare time
     series of different sizes –Euclidean distance cannot do that – and requires just
     a single parameter (the sliding window size) to operate.
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: MPdist（根据其创造者所说）的优点在于，MPdist距离度量试图比大多数可用的距离度量更加灵活，包括欧几里得距离，并且它考虑了可能不会同时发生的相似性。此外，MPdist可以比较不同大小的时序数据——欧几里得距离无法做到这一点——并且只需要一个参数（滑动窗口大小）来操作。
 - en: The next subsection discusses the way MPdist is computed.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个子节将讨论MPdist的计算方式。
 - en: How to compute MPdist
+  id: totrans-139
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何计算MPdist
 - en: In this subsection, we are going to discuss the way the real MPdist is computed
     in order to better understand the complexity of the process.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将讨论实际MPdist的计算方式，以便更好地理解该过程的复杂性。
 - en: The computation of MPdist is based on the Matrix Profile. First, we are given
     two time series, A and B, and a sliding window size. Then, for each subsequence
     of the first time series, we find its nearest neighbor in the second time series,
@@ -669,157 +970,231 @@
     we get the Euclidean distance found at the index value that is equal to *5% of
     the length of the list* – the authors of MPdist decided to use the Euclidean distance
     at that index as the MPdist value.
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: MPdist的计算基于矩阵轮廓。首先，我们得到两个时序A和B以及一个滑动窗口大小。然后，对于第一个时序的每个子序列，我们在第二个时序中找到其最近邻居，并将相关的欧几里得距离放入值列表中。我们对第一个时序的所有子序列都这样做。这被称为**AB连接**。然后，我们以相同的方式对第二个时序进行操作——这被称为**BA连接**。因此，最终我们计算了**ABBA连接**，并有一个从最小到最大的欧几里得距离列表。从这个列表中，我们得到等于列表长度*5%的索引值处的欧几里得距离——MPdist的作者决定使用该索引处的欧几里得距离作为MPdist值。
 - en: For both the AB join and BA join, the authors of MPdist use the MASS algorithm
     to compute the nearest neighbor of each subsequence, in order to avoid the inefficient
     algorithmic complexity of O(n 2).
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于AB连接和BA连接，MPdist的作者使用MASS算法计算每个子序列的最近邻居，以避免O(n²)的低效算法复杂度。
 - en: In the next subsection, we will create a Python script that manually computes
     the MPdist distance between two time series.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一个子节中，我们将创建一个Python脚本，手动计算两个时序之间的MPdist距离。
 - en: Manually computing MPdist
+  id: totrans-144
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 手动计算MPdist
 - en: In this subsection, we are going to show how to manually compute the MPdist
     value between two time series. The idea behind the implementation is based on
     the code found in `mp.py` – however, fundamental differences exist as the Matrix
     Profile returns a vector of values instead of a single value.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将展示如何手动计算两个时序之间的MPdist值。实现背后的思想基于`mp.py`中的代码——然而，由于矩阵轮廓返回的是值向量而不是单个值，因此存在根本性的差异。
 - en: 'The logic code of `mpdist.py` is implemented in two functions, named `mpdist()`
     and `JOIN()`. `mpdist()` is implemented as follows:'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mpdist.py`的逻辑代码在两个函数中实现，分别命名为`mpdist()`和`JOIN()`。`mpdist()`的实现如下：'
 - en: '[PRE24]'
+  id: totrans-147
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: The previous code uses the `JOIN()` function to compute `AB Join` and `BA Join`.
     Then, it concatenates the numeric results, which are all Euclidean distances,
     and sorts them. Based on the length of the concatenation, it computes `index`,
     which is used for selecting a value from the `JABBA` array.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码使用`JOIN()`函数来计算`AB Join`和`BA Join`。然后，它将数值结果（都是欧几里得距离）连接起来，并对它们进行排序。基于连接的长度，它计算`index`，该值用于从`JABBA`数组中选择一个值。
 - en: '`JOIN()` is implemented as follows:'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: '`JOIN()`的实现如下：'
 - en: '[PRE25]'
+  id: totrans-150
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: This is where the join is implemented. For every subsequence in the `ts1` time
     series, we find the nearest neighbor in the `ts2` time series – there is no need
     for an exclusion zone in this case.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就是连接的实现。对于`ts1`时序中的每个子序列，我们在`ts2`时序中找到最近的邻居——在这种情况下不需要排除区域。
 - en: The bad thing about `mpdist.py` is that it contains two `for` loops, which makes
     its computational complexity O(n 2) – this is no surprise, as MPdist is based
     on the Matrix Profile. Therefore, the previous technique is viable for small time
     series only. In general, **brute-force algorithms** usually do not work well for
     large amounts of data.
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mpdist.py`的缺点是它包含两个`for`循环，这使得它的计算复杂度为O(n^2)——这并不奇怪，因为MPdist基于矩阵轮廓。因此，之前的技术仅适用于小时间序列。一般来说，**暴力算法**通常不适用于大量数据。'
 - en: 'At this point, we are going to create two time series with 10,000 elements
     each:'
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们将创建两个包含10,000个元素的时序：
 - en: '[PRE26]'
+  id: totrans-154
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'The output of `mpdist.py` when working with `10k1.gz` and `10k2.gz` and a sliding
     window size of `128` is as follows:'
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用`10k1.gz`和`10k2.gz`以及滑动窗口大小为`128`时，`mpdist.py`的输出如下：
 - en: '[PRE27]'
+  id: totrans-156
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: It took `mpdist.py` approximately 12,026 seconds to compute MPdist.
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mpdist.py`计算MPdist大约需要12,026秒。'
 - en: 'The output of `mpdist.py` when working with `10k1.gz` and `10k2.gz` and a sliding
     window size of `2048` is the following:'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 当使用`10k1.gz`和`10k2.gz`以及滑动窗口大小为`2048`时，`mpdist.py`的输出如下：
 - en: '[PRE28]'
+  id: totrans-159
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: Why do you think the calculation of the `2048` sliding window ran faster than
     the same calculation for the sliding window size of `128`? It most likely has
     to do with the fact that the `2048` sliding window needs fewer iterations (1,920
     times 1,920, which is equal to 3,686,400) due to the larger sliding window size,
     which also compensates for the cost of computing Euclidean distances for larger
     subsequences in the `2048` sliding window case.
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 你认为为什么`2048`滑动窗口的计算速度比`128`滑动窗口的计算速度快？这很可能与`2048`滑动窗口需要更少的迭代次数（1,920次乘以1,920，等于3,686,400）有关，因为滑动窗口的大小更大，这也补偿了在`2048`滑动窗口情况下计算较大子序列欧几里得距离的成本。
 - en: Let us now see how much time it takes the MASS algorithm to compute MPdist.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看MASS算法计算MPdist需要多少时间。
 - en: 'The time it takes the `stumpy.mpdist()` function to compute the previous MPdist
     distances on a single CPU core is the following – we are using the `mpdistance.py`
     script from [*Chapter 1*](B14769_01.xhtml#_idTextAnchor015):'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: '`stumpy.mpdist()`函数在单个CPU核心上计算之前的MPdist距离所需的时间如下——我们使用的是来自[*第1章*](B14769_01.xhtml#_idTextAnchor015)的`mpdistance.py`脚本：'
 - en: '[PRE29]'
+  id: totrans-163
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: So, it takes the `stumpy.mpdist()` function about 10 seconds.
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，`stumpy.mpdist()`函数大约需要10秒钟。
 - en: 'The time it takes the `stumpy.mpdist()` function to compute the previous MPdist
     distances on four CPU cores is the following:'
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: '`stumpy.mpdist()`函数在四个CPU核心上计算之前的MPdist距离所需的时间如下：'
 - en: '[PRE30]'
+  id: totrans-166
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: Why are the times almost the same when using a single CPU core? The answer is
     that with small time series, `stumpy.mpdist()` *does not have enough time* to
     use all CPU cores.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 为什么使用单个CPU核心时时间几乎相同？答案是，对于小时间序列，`stumpy.mpdist()`没有足够的时间来使用所有CPU核心。
 - en: 'Lastly, the time it takes the `stumpy.mpdist()` function to compute the two
     MPdist distances on eight CPU cores is the following:'
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，`stumpy.mpdist()`函数在八个CPU核心上计算两个MPdist距离所需的时间如下：
 - en: '[PRE31]'
+  id: totrans-169
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: Why are the times the same when using four CPU cores? As before, for very small
     time series, the number of CPU cores used does not make any difference to the
     computation time as there is not enough time to use them.
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 为什么使用四个CPU核心时时间相同？正如之前所提到的，对于非常小的时序，使用的CPU核心数量对计算时间没有影响，因为没有足够的时间来使用它们。
 - en: We are now ready to use the existing knowledge to approximately compute MPdist
     with the help of iSAX.
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在准备利用现有知识，在iSAX的帮助下近似计算MPdist。
 - en: Calculating MPdist using iSAX
+  id: totrans-172
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用iSAX计算MPdist
 - en: In this section, we are going to discuss our views and ideas regarding using
     iSAX indexes to *approximately* *compute MPdist*.
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将讨论我们关于使用iSAX索引来**近似**计算MPdist的观点和想法。
 - en: We know that iSAX keeps together subsequences with the same SAX representation.
     As before, our feeling is that it is more likely to find the nearest neighbor
     of a subsequence from a given time series in the subsequences with the same SAX
     representation from another time series.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们知道iSAX会将具有相同SAX表示的子序列放在一起。正如之前所提到的，我们的感觉是，在另一个时序的具有相同SAX表示的子序列中找到给定时序的子序列的最近邻的可能性更大。
 - en: The next section is about putting our thoughts into practice.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一节是关于将我们的想法付诸实践。
 - en: Implementing the MPdist calculation in Python
+  id: totrans-176
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 在Python中实现MPdist计算
 - en: In this section, we will discuss two ways to approximately compute MPdist with
     the help of iSAX.
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将讨论两种使用iSAX帮助近似计算MPdist的方法。
 - en: The first way is much simpler than the second one and is slightly based on the
     approximate calculation of the Matrix Profile. We take each subsequence from the
     first time series, and we match it with a terminal node with the same SAX representation
@@ -828,189 +1203,281 @@
     we ignore that subsequence. So, in this case, we do not join iSAX indexes, which
     makes the process much slower – our experiments are going to show how much slower
     this technique is.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一种方法比第二种方法简单得多，并且稍微基于矩阵轮廓的近似计算。我们从第一时间序列中取每个子序列，并将其与第二时间序列的iSAX索引中具有相同SAX表示的终端节点匹配，以获取近似最近邻——如果一个子序列没有基于其SAX表示的匹配，我们忽略该子序列。因此，在这种情况下，我们不连接iSAX索引，这使得过程变得非常慢——我们的实验将展示这种技术有多慢。
 - en: For the second way, we just use the **similarity join** of two iSAX indexes,
     which we first saw in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124).
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于第二种方法，我们只使用两个iSAX索引的**相似性连接**，这是我们第一次在[*第五章*](B14769_05.xhtml#_idTextAnchor124)中看到的。
 - en: The next subsection shows the implementation of the first technique.
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个子节展示了第一种技术的实现。
 - en: Using the approximate Matrix Profile way
+  id: totrans-181
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用近似矩阵轮廓法
 - en: Although we do not return any Matrix Profile vectors, this technique looks like
     computing the Matrix Profile because *we examine subsequences one by one* and
     not in groups, and return their Euclidean distance with the approximate nearest
     neighbor. In this technique, *there is no exclusion zone* in the computation because
     we are comparing subsequences from two different time series.
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然我们不返回任何矩阵轮廓向量，但这种技术看起来像是在计算矩阵轮廓，因为我们**逐个检查子序列**而不是成组检查，并返回它们与近似最近邻的欧几里得距离。在这个技术中，计算中没有**排除区域**，因为我们正在比较来自两个不同时间序列的子序列。
 - en: 'The important code within `apprMPdist.py` is the following – we assume that
     we have already generated the two iSAX indexes:'
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: '`apprMPdist.py`中的重要代码如下——我们假设我们已经生成了两个iSAX索引：'
 - en: '[PRE32]'
+  id: totrans-184
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: For each subsequence of the first time series, search the iSAX index of the
     second time series for the approximate nearest neighbor using the `NN()` function.
     Then, do the same for the subsequences of the second time series and the iSAX
     index of the first time series.
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于第一时间序列的每个子序列，使用`NN()`函数在第二时间序列的iSAX索引中搜索近似最近邻。然后，对第二时间序列的子序列和第一时间序列的iSAX索引执行相同的操作。
 - en: 'What is interesting is the implementation of the `NN()` function, used in the
     previous code. We are going to present `NN()` in three parts. The first part is
     the following:'
+  id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 有趣的是`NN()`函数的实现，它在之前的代码中使用。我们将分三部分介绍`NN()`。第一部分如下：
 - en: '[PRE33]'
+  id: totrans-187
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: In the previous code, we try to find an iSAX node with the same SAX representation
     as the subsequence we are examining – we begin with the children of the root node
     of the iSAX. If such a child of the root node cannot be found, then we have a
     miss and we ignore that particular subsequence. As the final list of Euclidean
     distances is large (this depends on the lengths of the time series), missing some
     subsequences has no real effect on the end result.
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的代码中，我们试图找到与我们要检查的子序列具有相同SAX表示的iSAX节点——我们从iSAX根节点的子节点开始。如果找不到根节点的此类子节点，则我们有一个缺失，并忽略该特定子序列。由于最终的欧几里得距离列表很大（这取决于时间序列的长度），忽略一些子序列对最终结果没有真正的影响。
 - en: 'The second part of `NN()` is the following:'
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: '`NN()`函数的第二部分如下：'
 - en: '[PRE34]'
+  id: totrans-190
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: In the previous code, we try to locate the iSAX node with the desired SAX representation
     by traversing the iSAX index.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的代码中，我们试图通过遍历iSAX索引来定位具有所需SAX表示的iSAX节点。
 - en: 'The last part of `NN()` is the following:'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: '`NN()`的最后部分如下：'
 - en: '[PRE35]'
+  id: totrans-193
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: After locating the desired terminal node, we compare its subsequences with the
     given subsequence and return the minimum Euclidean distance found. The main program
     puts all these minimum Euclidean distances into a list.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 定位到所需的终端节点后，我们将其子序列与给定的子序列进行比较，并返回找到的最小欧几里得距离。主程序将这些最小欧几里得距离放入一个列表中。
 - en: Now, let us discuss the second technique, which joins two iSAX indexes.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们讨论第二种技术，它将两个iSAX索引连接起来。
 - en: Using the join of two iSAX indexes
+  id: totrans-196
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用两个iSAX索引的连接
 - en: The second way is much faster than the first one. In this way, we *join the
     two iSAX indexes* based on the technique from [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124),
     and we get the list of Euclidean distances. From that list, we choose a value
     to be the approximate MPdist.
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 第二种方法比第一种方法快得多。在这种情况下，我们根据[*第5章*](B14769_05.xhtml#_idTextAnchor124)中的技术*连接两个iSAX索引*，并得到欧几里得距离列表。从这个列表中，我们选择一个值作为近似的MPdist。
 - en: What happens if there is not a match among iSAX nodes?
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果iSAX节点之间没有匹配会发生什么？
 - en: In some rare cases that depend on the time series data and the iSAX parameters,
     some nodes from one iSAX might end up not having a match in the other iSAX, and
     vice versa. In our case, we *ignore those nodes*, which means that we end up having
     a smaller-than-expected list of Euclidean distances.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 在一些罕见的情况下，这取决于时间序列数据和iSAX参数，一个iSAX中的某些节点可能最终在另一个iSAX中没有匹配，反之亦然。在我们的情况下，我们*忽略这些节点*，这意味着我们最终得到的欧几里得距离列表比预期的要小。
 - en: 'The important code within `joinMPdist.py` is the following – we assume that
     we have already generated the two iSAX indexes:'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: '`joinMPdist.py`中的重要代码如下——我们假设我们已经生成了两个iSAX索引：'
 - en: '[PRE36]'
+  id: totrans-201
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: The previous code uses the `Join()` function from `isax.iSAXjoin`, which we
     implemented and saw in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124). We have
     already seen the join of two iSAX indexes. However, this is the first time that
     we actually use the results of that join for something.
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码使用了来自`isax.iSAXjoin`的`Join()`函数，这是我们实现并见过的[*第5章*](B14769_05.xhtml#_idTextAnchor124)。我们已经看到了两个iSAX索引的连接。然而，这是我们第一次真正使用该连接的结果。
 - en: We are now going to start using the existing implementations and see their performance.
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将开始使用现有的实现并查看它们的性能。
 - en: Using the Python code
+  id: totrans-204
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用Python代码
 - en: In this section, we are going to use the Python scripts that we have created.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将使用我们创建的Python脚本。
 - en: 'Running `apprMPdist.py` using the two time series with 10,000 elements each
     that we created earlier in this chapter generates the following kind of output:'
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用本章前面创建的每个包含10,000个元素的两个时间序列运行`apprMPdist.py`会产生以下类型的输出：
 - en: '[PRE37]'
+  id: totrans-207
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: 'Using a bigger sliding window size generates the following output:'
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用更大的滑动窗口大小会产生以下输出：
 - en: '[PRE38]'
+  id: totrans-209
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: So, bigger sliding window sizes require more time. As before, this is because
     calculating Euclidean distances for bigger sliding window sizes is slower.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，更大的滑动窗口大小需要更多时间。如前所述，这是因为计算更大滑动窗口大小的欧几里得距离较慢。
 - en: 'Executing `joinMPdist.py` produces the following output:'
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 执行`joinMPdist.py`会产生以下输出：
 - en: '[PRE39]'
+  id: totrans-212
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: 'As before, using a bigger sliding window produces the following output:'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前所述，使用更大的滑动窗口会产生以下输出：
 - en: '[PRE40]'
+  id: totrans-214
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: It looks like `joinMPdist.py` is a lot faster than `apprMPdist.py`, which makes
     perfect sense as it is *using two iSAX indexes at the same time* to construct
     the list of Euclidean distances. Put simply, the running of `joinMPdist.py` requires
     fewer computations.
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 看起来`joinMPdist.py`比`apprMPdist.py`快得多，这是完全合理的，因为它*同时使用两个iSAX索引*来构建欧几里得距离列表。简单来说，运行`joinMPdist.py`需要的计算更少。
 - en: The next subsection compares the accuracy and the speed of the two methods when
     working with larger time series.
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一个子节比较了两种方法在处理更长时间序列时的准确性和速度。
 - en: Comparing the accuracy and the speed of the methods
+  id: totrans-217
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 比较方法的准确性和速度
 - en: Both methods are far from perfect. However, in this subsection, we are going
     to compare their accuracy and speed in relation to the MPdist implementation found
     in the `stumpy` Python package.
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两种方法都远非完美。然而，在本节中，我们将比较它们与`stumpy`Python包中找到的MPdist实现相关的准确性和速度。
 - en: We want to test our code on bigger time series, as this is where our technique
     might be faster than the exact MPdist function of `stumpy`. In this case, we are
     going to use two time series with around 500,000 elements each – we already created
     such time series in [*Chapter 5*](B14769_05.xhtml#_idTextAnchor124).
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们希望在大时间序列上测试我们的代码，因为我们的技术可能比`stumpy`的精确MPdist函数更快。在这种情况下，我们将使用两个大约有50万个元素的时间序列——我们已经在[*第5章*](B14769_05.xhtml#_idTextAnchor124)中创建了这样的时间序列。
 - en: 'For `apprMPdist.py`, the results for sliding window sizes of `120`, `600`,
     and `1200` are as follows:'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于`apprMPdist.py`，以下是对滑动窗口大小为`120`、`600`和`1200`的结果：
 - en: '[PRE41]'
+  id: totrans-221
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: 'For the `joinMPdist.py` script, the output for sliding window sizes of `120`,
     `600`, and `1200` is the following:'
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于`joinMPdist.py`脚本，滑动窗口大小为`120`、`600`和`1200`的输出如下：
 - en: '[PRE42]'
+  id: totrans-223
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: The results of `joinMPdist.py` are really promising when working with larger
     time series. Although it looks like the bigger the sliding window size, the faster
     the technique, this is not completely true because as the sliding window gets
@@ -1018,154 +1485,221 @@
     gets smaller, which means that we compute fewer Euclidean distances as the sliding
     window increases. This is not always the case, as this depends on the time series
     data.
+  id: totrans-224
   prefs: []
   type: TYPE_NORMAL
+  zh: 当处理较大的时间序列时，`joinMPdist.py`的结果非常有希望。尽管看起来滑动窗口越大，技术越快，但这并不完全正确，因为随着滑动窗口的增大，我们会有更多没有匹配的节点，因此值列表会变小，这意味着随着滑动窗口的增加，我们计算的欧几里得距离会更少。这并不总是如此，因为这取决于时间序列数据。
 - en: 'Lastly, the result from the `stumpy` Python package when running on a single
     CPU core is as follows:'
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，当在单个CPU核心上运行`stumpy`Python包时的结果如下：
 - en: '[PRE43]'
+  id: totrans-226
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: '*Figure 7**.3* shows the accuracy of the approximate methods, which are named
     **Search** and **Join**, compared to the real MPdist value, which is named **Real**,
     for the three sliding window sizes used.'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: '*图7.3*显示了近似方法的准确性，这些方法被称为**搜索**和**连接**，与使用的三种滑动窗口大小相比，与名为**实际**的真实MPdist值。'
 - en: '![Figure 7.3 – Comparing the accuracy of the approximate methods to the real
     MPdist](img/Figure_7.3_B14769.jpg)'
+  id: totrans-228
   prefs: []
   type: TYPE_IMG
+  zh: '![图7.3 – 比较近似方法与实际MPdist的准确性](img/Figure_7.3_B14769.jpg)'
 - en: Figure 7.3 – Comparing the accuracy of the approximate methods to the real MPdist
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: 图7.3 – 比较近似方法与实际MPdist的准确性
 - en: What does the output of *Figure 7**.3* tell us? First of all, the approximate
     methods performed pretty well because the approximate values are really close
     to the real MPdist values. So, at least for our example time series, the approximate
     techniques are very accurate.
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: '*图7.3*的输出告诉我们什么？首先，近似方法表现相当不错，因为近似值与实际的MPdist值非常接近。因此，至少对于我们的示例时间序列，近似技术非常精确。'
 - en: Similarly, *Figure 7**.4* compares the times of the approximate methods to the
     time of the `stumpy` computation when running on a single CPU core for the three
     sliding window sizes used – the presented times for the approximate methods *do
     not include the time it takes to create the two* *iSAX indexes*.
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 类似地，*图7.4*比较了近似方法在单个CPU核心上运行时，对于三种滑动窗口大小所用的近似方法的时间与`stumpy`计算时间——所提供的近似方法的时间不包括创建两个*
+    *iSAX索引*所需的时间。
 - en: '![Figure 7.4 – Comparing the times of the approximate methods to the real MPdist](img/Figure_7.4_B14769.jpg)'
+  id: totrans-232
   prefs: []
   type: TYPE_IMG
+  zh: '![图7.4 – 比较近似方法与实际MPdist的时间](img/Figure_7.4_B14769.jpg)'
 - en: Figure 7.4 – Comparing the times of the approximate methods to the real MPdist
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: 图7.4 – 比较近似方法与实际MPdist的时间
 - en: 'What does the output of *Figure 7**.4* tell us? The first technique is really
     slow and should not be used – that is the purpose of experimentation: to find
     out what works well and what does not. On the other hand, the performance of the
     second approximate technique is very good. Additionally, *Figure 7**.4* shows
     that the `stumpy` computation takes the same time regardless of the sliding window
     size – this is a good and desirable feature of the MASS algorithm.'
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: '*图7.4*的输出告诉我们什么？第一种技术确实很慢，不应该使用——这就是实验的目的：找出什么有效，什么无效。另一方面，第二种近似技术的性能非常好。此外，*图7.4*显示，无论滑动窗口大小如何，`stumpy`的计算时间都是相同的——这是MASS算法的一个良好且期望的特征。'
 - en: Summary
+  id: totrans-235
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: Although the main purpose of iSAX is to help us search for subsequences by indexing
     them, there are other ways to use an iSAX index.
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管iSAX的主要目的是通过索引来帮助我们搜索子序列，但还有其他使用iSAX索引的方法。
 - en: In this chapter, we presented a way to approximately compute the Matrix Profile
     vectors and two ways to approximately compute the MPdist distance between two
     time series. All these techniques use iSAX indexes.
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一章中，我们介绍了一种近似计算矩阵轮廓向量的方法，以及两种近似计算两个时间序列之间的MPdist距离的方法。所有这些技术都使用了iSAX索引。
 - en: We presented two ways to approximately compute MPdist. Out of the two methods,
     the one that joins two iSAX indexes is much more efficient than the other – so
     the use of an iSAX index by itself does not guarantee efficiency; we have to use
     an iSAX index the right way to get better results.
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们提出了两种近似计算MPdist的方法。在这两种方法中，将两个iSAX索引合并的方法比另一种方法效率高得多——因此，仅使用iSAX索引本身并不能保证效率；我们必须正确使用iSAX索引才能获得更好的结果。
 - en: There is a small chapter left to finish this book, which is about the next steps
     you can follow if you are really into time series and databases.
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 剩下一个小章节来完成这本书，内容是如果你对时间序列和数据库真的感兴趣，你可以采取的下一步。
 - en: Useful links
+  id: totrans-240
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 有用链接
 - en: 'The `stumpy` Python package: [https://pypi.org/project/stumpy/](https://pypi.org/project/stumpy/)'
+  id: totrans-241
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`stumpy` Python包：[https://pypi.org/project/stumpy/](https://pypi.org/project/stumpy/)'
 - en: 'The `numba` Python package: [https://pypi.org/project/numba/](https://pypi.org/project/numba/)'
+  id: totrans-242
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`numba` Python包：[https://pypi.org/project/numba/](https://pypi.org/project/numba/)'
 - en: 'The RMSE: [https://en.wikipedia.org/wiki/Root-mean-square_deviation](https://en.wikipedia.org/wiki/Root-mean-square_deviation)'
+  id: totrans-243
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 均方根误差（RMSE）：[https://en.wikipedia.org/wiki/Root-mean-square_deviation](https://en.wikipedia.org/wiki/Root-mean-square_deviation)
 - en: 'The UCR Matrix Profile page: [https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml](https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml)'
+  id: totrans-244
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: UCR矩阵配置文件页面：[https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml](https://www.cs.ucr.edu/~eamonn/MatrixProfile.xhtml)
 - en: 'SAX home page: [https://www.cs.ucr.edu/~eamonn/SAX.htm](https://www.cs.ucr.edu/~eamonn/SAX.htm)'
+  id: totrans-245
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: SAX主页：[https://www.cs.ucr.edu/~eamonn/SAX.htm](https://www.cs.ucr.edu/~eamonn/SAX.htm)
 - en: Exercises
+  id: totrans-246
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 练习
 - en: 'Try to do the following exercises:'
+  id: totrans-247
   prefs: []
   type: TYPE_NORMAL
+  zh: 尝试完成以下练习：
 - en: Try to use `mp.py` with a time series with 50,000 elements and see how much
     time it takes to complete for sliding window sizes of `16`, `2048`, and `4096`.
+  id: totrans-248
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 尝试使用包含50,000个元素的时间序列与`mp.py`一起使用，并查看完成滑动窗口大小为`16`、`2048`和`4096`所需的时间。
 - en: Try to use `mp.py` with a time series with 65,000 elements and see how much
     time it takes to complete.
+  id: totrans-249
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 尝试使用包含65,000个元素的时间序列与`mp.py`一起使用，并查看完成所需的时间。
 - en: Experiment with the exclusion zone limits of `mp.py` and see what you get.
+  id: totrans-250
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 尝试调整`mp.py`的排除区域限制，并查看你得到的结果。
 - en: Use `realMP.py` and `stumpy.stump()` to compute the Matrix Profile vectors for
     a time series with 200,000 elements – create that time series if you do not have
     one.
+  id: totrans-251
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用`realMP.py`和`stumpy.stump()`计算包含200,000个元素的时间序列的矩阵配置文件向量——如果你没有这样的时间序列，请创建一个。
 - en: Use `realMP.py` and `stumpy.stump()` to compute the Matrix Profile vectors for
     a time series with 500,000 elements. Now, consider that a time series with 500,000
     elements is on the small side!
+  id: totrans-252
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用`realMP.py`和`stumpy.stump()`计算包含500,000个元素的时间序列的矩阵配置文件向量。现在，考虑一下，一个包含500,000个元素的时间序列相对较小！
 - en: Try `realMP.py` on the `2M.gz` time series from [*Chapter 4*](B14769_04.xhtml#_idTextAnchor102)
     using a single CPU code. As you can see, `realMP.py` starts getting really slow
     with larger time series. Now, consider that a time series with 2,000,000 elements
     is not big.
+  id: totrans-253
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用单核代码在`2M.gz`时间序列上尝试`realMP.py`，如[*第4章*](B14769_04.xhtml#_idTextAnchor102)所示。正如你所见，`realMP.py`在处理更大的时间序列时会变得非常慢。现在，考虑一下，一个包含200,000个元素的时间序列并不大。
 - en: We can make `mp.py` a little faster by storing the normalized versions of the
     subsequences and using the normalized versions when calculating the Euclidean
     distances, instead of computing the normalized versions inside the `euclidean()`
     function every time we call `euclidean()`. Try to implement that functionality.
+  id: totrans-254
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 我们可以通过存储子序列的归一化版本，并在计算欧几里得距离时使用这些归一化版本，而不是每次调用`euclidean()`函数时在`euclidean()`函数内部计算归一化版本，来使`mp.py`运行得更快一些。尝试实现这个功能。
 - en: Similarly, we can make `mpdist.py` faster by storing the normalized versions
     of the subsequences and using them for the Euclidean distance computations.
+  id: totrans-255
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 类似地，我们可以通过存储子序列的归一化版本并使用它们进行欧几里得距离计算来使`mpdist.py`运行得更快。
 - en: Create an image similar to *Figure 7**.4* but for larger time series. Begin
     with time series with 1,000,000 elements and see what you get.
+  id: totrans-256
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 创建一个类似于*图7**.4*的图像，但用于更大的时间序列。从包含1,000,000个元素的时间序列开始，看看你得到的结果。
