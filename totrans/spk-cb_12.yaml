@@ -3,115 +3,138 @@
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第12章. 优化和性能调整
 - en: This chapter covers various optimizations and performance-tuning best practices
     when working with Spark.
   id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章涵盖了与Spark一起工作时各种优化和性能调整的最佳实践。
 - en: 'The chapter is divided into the following recipes:'
   id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章分为以下食谱：
 - en: Optimizing memory
   id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 优化内存
 - en: Using compression to improve performance
   id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用压缩来提高性能
 - en: Using serialization to improve performance
   id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用序列化来提高性能
 - en: Optimizing garbage collection
   id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 优化垃圾回收
 - en: Optimizing the level of parallelism
   id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 优化并行级别
 - en: Understanding the future of optimization – project Tungsten
   id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解优化的未来——Tungsten项目
 - en: Introduction
   id: totrans-9
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 介绍
 - en: Before looking into various ways to optimize Spark, it is a good idea to look
     at the Spark internals. So far, we have looked at Spark at higher level, where
     focus was the functionality provided by the various libraries.
   id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 在探讨优化Spark的各种方法之前，了解Spark的内部结构是一个好主意。到目前为止，我们已经在较高层次上了解了Spark，重点是各种库提供的功能。
 - en: 'Let''s start with redefining an RDD. Externally, an RDD is a distributed immutable
     collection of objects. Internally, it consists of the following five parts:'
   id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从重新定义一个RDD开始。从外部来看，RDD是一个分布式的不可变对象集合。从内部来看，它由以下五个部分组成：
 - en: Set of partitions (`rdd.getPartitions`)
   id: totrans-12
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分区集合(`rdd.getPartitions`)
 - en: List of dependencies on parent RDDs (`rdd.dependencies`)
   id: totrans-13
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 父RDD的依赖关系列表(`rdd.dependencies`)
 - en: Function to compute a partition, given its parents
   id: totrans-14
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 根据其父RDD计算分区的函数
 - en: Partitioner (optional) (`rdd.partitioner`)
   id: totrans-15
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分区器（可选）(`rdd.partitioner`)
 - en: Preferred location of each partition (optional) (`rdd.preferredLocations`)
   id: totrans-16
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 每个分区的首选位置（可选）(`rdd.preferredLocations`)
 - en: The first three are needed for an RDD to be recomputed, in case the data is
     lost. When combined, it is called **lineage**. The last two parts are optimizations.
   id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 前三项是RDD重新计算所需的，以防数据丢失。当结合在一起时，它被称为**血缘**。最后两部分是优化。
 - en: A set of partitions is how data is divided into nodes. In case of HDFS, it means
     `InputSplits`, which are mostly the same as block (except when a record crosses
     block boundaries; in that case, it will be slightly bigger than a block).
   id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 一组分区是将数据划分到节点的方式。在HDFS的情况下，这意味着`InputSplits`，它们基本上与块相同（除非记录跨越块边界；在这种情况下，它将略大于块）。
 - en: 'Let''s revisit our `wordCount` example to understand these five parts. This
     is how the RDD graph looks for `wordCount` at dataset level view:'
   id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们回顾一下`wordCount`示例，以了解这五个部分。这是在数据集级别视图下`wordCount`的RDD图：
 - en: '![Introduction](img/3056_12_01.jpg)'
   id: totrans-20
   prefs: []
   type: TYPE_IMG
+  zh: '![介绍](img/3056_12_01.jpg)'
 - en: 'Basically, this is how the flow goes:'
   id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 基本上，流程是这样的：
 - en: 'Load the `words` folder as an RDD:'
   id: totrans-22
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将`words`文件夹加载为RDD：
 - en: '[PRE0]'
   id: totrans-23
   prefs:
@@ -123,37 +146,45 @@
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 以下为`words` RDD的五个部分：
 - en: '| **Partitions** | One partition per hdfs inputsplit/block (`org.apache.spark.rdd.HadoopPartition`)
     |'
   id: totrans-25
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区** | 每个hdfs输入split/block有一个分区(`org.apache.spark.rdd.HadoopPartition`)
+    |'
 - en: '| **Dependencies** | None |'
   id: totrans-26
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **依赖关系** | 无 |'
 - en: '| **Compute function** | Read the block |'
   id: totrans-27
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **计算函数** | 读取块 |'
 - en: '| **Preferred location** | The hdfs block location |'
   id: totrans-28
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **首选位置** | HDFS块位置 |'
 - en: '| **Partitioner** | None |'
   id: totrans-29
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区器** | 无 |'
 - en: 'Tokenize the words from `words` RDD with each word on a separate line:'
   id: totrans-30
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将`words` RDD中的单词分词，每个单词占一行：
 - en: '[PRE1]'
   id: totrans-31
   prefs:
@@ -165,39 +196,46 @@
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 以下为`wordsFlatMap` RDD的五个部分：
 - en: '| **Partitions** | Same as parent RDD, that is, `words` (`org.apache.spark.rdd.HadoopPartition`)
     |'
   id: totrans-33
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区** | 与父RDD相同，即`words` (`org.apache.spark.rdd.HadoopPartition`) |'
 - en: '| **Dependencies** | Same as parent RDD, that is, `words` (`org.apache.spark.OneToOneDependency`)
     |'
   id: totrans-34
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **依赖关系** | 与父RDD相同，即`words` (`org.apache.spark.OneToOneDependency`) |'
 - en: '| **Compute function** | Compute parent and split each element and flattens
     the results |'
   id: totrans-35
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **计算函数** | 计算父RDD并分割每个元素，然后将结果展平 |'
 - en: '| **Preferred location** | Ask parent |'
   id: totrans-36
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **首选位置** | 询问父RDD |'
 - en: '| **Partitioner** | None |'
   id: totrans-37
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区器** | 无 |'
 - en: 'Transform each word in `wordsFlatMap` RDD to (word,1) tuple:'
   id: totrans-38
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将`wordsFlatMap` RDD中的每个单词转换为(word,1)元组：
 - en: '[PRE2]'
   id: totrans-39
   prefs:
@@ -209,38 +247,45 @@
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 以下为`wordsMap` RDD的五个部分：
 - en: '| **Partitions** | Same as parent RDD, that is, wordsFlatMap (org.apache.spark.rdd.HadoopPartition)
     |'
   id: totrans-41
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区** | 与父RDD相同，即wordsFlatMap (org.apache.spark.rdd.HadoopPartition) |'
 - en: '| **Dependencies** | Same as parent RDD, that is, wordsFlatMap (org.apache.spark.OneToOneDependency)
     |'
   id: totrans-42
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **依赖关系** | 与父RDD相同，即wordsFlatMap (org.apache.spark.OneToOneDependency) |'
 - en: '| **Compute function** | Compute parent and map it to PairRDD |'
   id: totrans-43
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **计算函数** | 计算父RDD并将其映射到PairRDD |'
 - en: '| **Preferred Location** | Ask parent |'
   id: totrans-44
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **首选位置** | 询问父RDD |'
 - en: '| **Partitioner** | None |'
   id: totrans-45
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区器** | 无 |'
 - en: 'Reduce all the values for a given key and sum them up:'
   id: totrans-46
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 对给定键的所有值进行归约并求和：
 - en: '[PRE3]'
   id: totrans-47
   prefs:
@@ -252,46 +297,55 @@
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 以下为`wordCount` RDD的五个部分：
 - en: '| **Partitions** | One per reduce task (`org.apache.spark.rdd.ShuffledRDDPartition`)
     |'
   id: totrans-49
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区** | 每个reduce任务一个（`org.apache.spark.rdd.ShuffledRDDPartition`） |'
 - en: '| **Dependencies** | Shuffle dependency on each parent (`org.apache.spark.ShuffleDependency`)
     |'
   id: totrans-50
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **依赖关系** | 对每个父RDD的shuffle依赖（`org.apache.spark.ShuffleDependency`） |'
 - en: '| **Compute function** | Do addition on shuffled data |'
   id: totrans-51
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **计算函数** | 对shuffle数据进行加法运算 |'
 - en: '| **Preferred location** | None |'
   id: totrans-52
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **首选位置** | 无 |'
 - en: '| **Partitioner** | HashPartitioner (`org.apache.spark.HashPartitioner`) |'
   id: totrans-53
   prefs:
   - PREF_IND
   type: TYPE_TB
+  zh: '| **分区器** | HashPartitioner（`org.apache.spark.HashPartitioner`） |'
 - en: 'This is how an RDD graph for `wordCount` looks at the partition level view:'
   id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是在分区级别视图下`wordCount` RDD图的样子：
 - en: '![Introduction](img/3056_12_02.jpg)'
   id: totrans-55
   prefs: []
   type: TYPE_IMG
+  zh: '![介绍](img/3056_12_02.jpg)'
 - en: Optimizing memory
   id: totrans-56
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 优化内存
 - en: Spark is a complex distributed computing framework, and has many moving parts.
     Various cluster resources, such as memory, CPU, and network bandwidth, can become
     bottlenecks at various points. As Spark is an in-memory compute framework, the
@@ -299,26 +353,31 @@
   id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: Spark是一个复杂的分布式计算框架，有许多组成部分。各种集群资源，如内存、CPU和网络带宽，在各个点上可能会成为瓶颈。由于Spark是一个内存计算框架，内存的影响最大。
 - en: Another issue is that it is common for Spark applications to use a huge amount
     of memory, sometimes more than 100 GB. This amount of memory usage is not common
     in traditional Java applications.
   id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个问题是在Spark应用程序中，使用大量内存是很常见的，有时甚至超过100 GB。这种内存使用量在传统的Java应用程序中并不常见。
 - en: In Spark, there are two places where memory optimization is needed, and that
     is at the driver and at the executor level.
   id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 在Spark中，有两个地方需要进行内存优化，那就是在驱动程序和执行器级别。
 - en: 'You can use the following commands to set the driver memory:'
   id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以使用以下命令设置驱动程序内存：
 - en: 'Spark shell:'
   id: totrans-61
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Spark shell：
 - en: '[PRE4]'
   id: totrans-62
   prefs:
@@ -330,6 +389,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Spark提交：
 - en: '[PRE5]'
   id: totrans-64
   prefs:
@@ -340,11 +400,13 @@
   id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以使用以下命令设置执行器内存：
 - en: 'Spark shell:'
   id: totrans-66
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Spark shell：
 - en: '[PRE6]'
   id: totrans-67
   prefs:
@@ -356,6 +418,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Spark提交：
 - en: '[PRE7]'
   id: totrans-69
   prefs:
@@ -369,6 +432,7 @@
   id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 要理解内存优化，了解Java中的内存管理机制是很有帮助的。在Java中，对象位于堆中。堆在JVM启动时创建，并在需要时可以调整大小（基于最小和最大大小，即配置中分别指定的`-Xms`和`-Xmx`）。
 - en: 'Heap is divided into two spaces or generations: young space and old space.
     The young space is reserved for the allocation of new objects. Young space consists
     of an area called **Eden** and two smaller survivor spaces. When the nursery becomes
@@ -379,21 +443,25 @@
   id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 堆被分为两个空间或代：年轻代和老年代。年轻代是为新对象分配预留的。年轻代包括一个称为**伊甸园**的区域和两个较小的幸存者空间。当 nursery 填满时，通过运行一个称为**年轻收集**的特殊过程进行垃圾回收，其中所有存活时间足够长的对象被提升到老年代。当老年代填满时，通过运行一个称为**老年代收集**的过程在那里进行垃圾回收。
 - en: '![Optimizing memory](img/3056_12_03.jpg)'
   id: totrans-72
   prefs: []
   type: TYPE_IMG
+  zh: '![优化内存](img/3056_12_03.jpg)'
 - en: The logic behind nursery is that most objects have a very short life span. A
     young collection is designed to be fast at finding newly allocated objects and
     moving them to the old space.
   id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 幼儿园背后的逻辑是，大多数对象的生命周期非常短。年轻收集被设计成快速找到新分配的对象并将它们移动到老年代。
 - en: The JVM uses mark and sweep algorithm for garbage collection. Mark and sweep
     collection consists of two phases.
   id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: JVM使用标记-清除算法进行垃圾回收。标记-清除收集包括两个阶段。
 - en: During the mark phase, all the objects, which have live references, are marked
     alive, the rest are presumed candidates for garbage collection. During the sweep
     phase, the space occupied by garbage collectable candidates is added to the free
@@ -401,6 +469,7 @@
   id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 在标记阶段，所有具有活动引用的对象都被标记为存活，其余的被认为是垃圾回收的候选者。在清除阶段，垃圾收集的候选者所占用的空间被添加到空闲列表中，即它们可以被分配给新的对象。
 - en: There are two improvements to mark and sweep. One is **concurrent mark and sweep**
     (**CMS**) and the other is parallel mark and sweep. CMS focuses on lower latency,
     while the latter focuses on higher throughput. Both strategies have performance
@@ -410,6 +479,7 @@
   id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 标记和清除有两个改进。一个是**并发标记和清除**（**CMS**），另一个是并行标记和清除。CMS侧重于降低延迟，而后者侧重于提高吞吐量。两种策略都有性能权衡。CMS不执行压缩，而并行**垃圾回收器**（**GC**）仅执行整个堆的压缩，这导致了暂停时间。作为一个经验法则，对于实时流，应使用CMS，否则使用并行GC。
 - en: If you would like to have both low latency and high throughput, Java 1.7 update
     4 onwards has another option called **garbage-first GC** (**G1**). G1 is a server-style
     garbage collector, primarily meant for multicore machines with large memories.
@@ -418,6 +488,8 @@
   id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你希望同时拥有低延迟和高吞吐量，从Java 1.7更新4开始，还有一个名为**垃圾回收优先级GC**（**G1**）的选项。G1是一种服务器风格的垃圾回收器，主要用于具有大内存的多核机器。它计划作为CMS的长期替代品。因此，为了修改我们的经验法则，如果你使用的是Java
+    7及以上版本，只需简单地使用G1。
 - en: G1 partitions the heap into a set of equal-sized regions, where each set is
     a contiguous range of virtual memory. Each region is assigned a role like Eden,
     Survivor, and Old. G1 performs a concurrent global marking phase to determine
@@ -427,10 +499,12 @@
   id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: G1将堆划分为一组等大小的区域，其中每个集合是一个连续的虚拟内存范围。每个区域被分配一个角色，如Eden、Survivor和Old。G1执行一个并发全局标记阶段，以确定整个堆中对象的存活引用。在标记阶段完成后，G1知道哪些区域大部分是空的。它首先在这些区域进行收集，从而释放出更多的内存。
 - en: '![Optimizing memory](img/3056_12_04.jpg)'
   id: totrans-79
   prefs: []
   type: TYPE_IMG
+  zh: '![优化内存](img/3056_12_04.jpg)'
 - en: The regions selected by G1 as candidates for garbage collection are garbage
     collected using evacuation. G1 copies objects from one or more regions of the
     heap to a single region on the heap, and it both compacts and frees up memory.
@@ -440,41 +514,50 @@
   id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: G1选定的垃圾回收候选区域使用 evacuation 进行垃圾回收。G1将堆中的一个或多个区域的对象复制到堆上的一个单独区域，并且同时压缩和释放内存。这种
+    evacuation 在多个核心上并行执行以减少暂停时间并提高吞吐量。因此，每次垃圾回收周期都会在用户定义的暂停时间内减少碎片。
 - en: 'There are three aspects in memory optimization in Java:'
   id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: Java内存优化有三个方面的内容：
 - en: Memory footprint
   id: totrans-82
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 内存占用
 - en: Cost of accessing objects in memory
   id: totrans-83
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 访问内存中对象的成本
 - en: Cost of garbage collection
   id: totrans-84
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 垃圾回收的成本
 - en: Java objects, in general, are fast to access but consume much more space than
     the actual data inside them.
   id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 通常，Java对象访问速度快，但比它们内部实际数据消耗的空间要多得多。
 - en: Using compression to improve performance
   id: totrans-86
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用压缩来提高性能
 - en: Data compression involves encoding information using fewer bits than the original
     representation. Compression has an important role to play in big data technologies.
     It makes both storage and transport of data more efficient.
   id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据压缩涉及使用比原始表示更少的位来编码信息。压缩在大数据技术中扮演着重要的角色。它使得数据的存储和传输更加高效。
 - en: When data is compressed, it becomes smaller, so both disk I/O and network I/O
     become faster. It also saves storage space. Every optimization has a cost, and
     the cost of compression comes in the form of added CPU cycles to compress and
@@ -482,65 +565,77 @@
   id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 当数据被压缩时，它变得更小，因此磁盘I/O和网络I/O都变得更快。它还节省了存储空间。每个优化都有成本，压缩的成本是以压缩和解压缩数据时增加的CPU周期形式出现的。
 - en: Hadoop needs to split data to put them into blocks, irrespective of whether
     the data is compressed or not. Only few compression formats are splittable.
   id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: Hadoop需要分割数据以将它们放入块中，无论数据是否被压缩。只有少数压缩格式是可分割的。
 - en: Two most popular compression formats for big data loads are LZO and Snappy.
     Snappy is not splittable, while LZO is. Snappy, on the other hand, is a much faster
     format.
   id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 大数据负载中最流行的两种压缩格式是LZO和Snappy。Snappy是不可分割的，而LZO是可分割的。另一方面，Snappy是一种格式速度更快的格式。
 - en: If compression format is splittable like LZO, input file is first split into
     blocks and then compressed. Since compression happened at block level, decompression
     can happen at block level as well as node level.
   id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果压缩格式可分割，如LZO，则首先将输入文件分割成块，然后压缩。由于压缩发生在块级别，解压缩也可以在块级别以及节点级别发生。
 - en: If compression format is not splittable, compression happens at file level and
     then it is split into blocks. In this case, blocks have to be merged back to file
     before they can be decompressed, so decompression cannot happen at node level.
   id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果压缩格式不可分割，压缩将在文件级别发生，然后将其分割成块。在这种情况下，必须在解压缩之前将块合并回文件，因此解压缩不能在节点级别发生。
 - en: For supported compression formats, Spark will deploy codecs automatically to
     decompress, and no action is required from the user's side.
   id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于支持的压缩格式，Spark将自动部署编解码器来自动解压缩，用户不需要采取任何操作。
 - en: Using serialization to improve performance
   id: totrans-94
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用序列化来提高性能
 - en: 'Serialization plays an important part in distributed computing. There are two
     persistence (storage) levels, which support serializing RDDs:'
   id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 序列化在分布式计算中扮演着重要的角色。有两种持久化（存储）级别，支持序列化RDD：
 - en: '`MEMORY_ONLY_SER`: This stores RDDs as serialized objects. It will create one
     byte array per partition'
   id: totrans-96
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`MEMORY_ONLY_SER`：这以序列化对象的形式存储RDD。它将为每个分区创建一个字节数组'
 - en: '`MEMORY_AND_DISK_SER`: This is similar to the `MEMORY_ONLY_SER`, but it spills
     partitions that do not fit in the memory to disk'
   id: totrans-97
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`MEMORY_AND_DISK_SER`：这与`MEMORY_ONLY_SER`类似，但它将无法适应内存的分区溢出到磁盘'
 - en: 'The following are the steps to add appropriate persistence levels:'
   id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下是将适当的持久化级别添加的步骤：
 - en: 'Start the Spark shell:'
   id: totrans-99
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 启动Spark shell：
 - en: '[PRE8]'
   id: totrans-100
   prefs:
@@ -552,6 +647,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 导入与`StorageLevel`相关的`StorageLevel`和隐式转换：
 - en: '[PRE9]'
   id: totrans-102
   prefs:
@@ -563,6 +659,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个RDD：
 - en: '[PRE10]'
   id: totrans-104
   prefs:
@@ -574,6 +671,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 持久化RDD：
 - en: '[PRE11]'
   id: totrans-106
   prefs:
@@ -585,26 +683,31 @@
   id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然序列化大大减少了内存占用，但它由于反序列化而增加了额外的CPU周期。
 - en: By default, Spark uses Java's serialization. Since the Java serialization is
     slow, the better approach is to use `Kryo` library. `Kryo` is much faster and
     sometimes even 10 times more compact than the default.
   id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，Spark使用Java的序列化。由于Java序列化速度慢，更好的方法是使用`Kryo`库。`Kryo`要快得多，有时甚至比默认的快10倍。
 - en: How to do it…
   id: totrans-109
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作...
 - en: 'You can use `Kryo` by doing the following settings in your `SparkConf`:'
   id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以通过在`SparkConf`中进行以下设置来使用`Kryo`：
 - en: 'Start the Spark shell by setting `Kryo` as serializer:'
   id: totrans-111
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 通过设置`Kryo`作为序列化器来启动Spark shell：
 - en: '[PRE12]'
   id: totrans-112
   prefs:
@@ -617,6 +720,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`Kryo`自动注册大多数核心Scala类，但如果你想要注册自己的类，可以使用以下命令：'
 - en: '[PRE13]'
   id: totrans-114
   prefs:
@@ -628,6 +732,7 @@
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 优化垃圾回收
 - en: JVM garbage collection can be a challenge if you have a lot of short lived RDDs.
     JVM needs to go over all the objects to find the ones it needs to garbage collect.
     The cost of the garbage collection is proportional to the number of objects the
@@ -636,11 +741,13 @@
   id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你有很多生命周期短的RDD，JVM垃圾回收可能是一个挑战。JVM需要遍历所有对象以找到需要垃圾回收的对象。垃圾回收的成本与GC需要遍历的对象数量成正比。因此，使用较少的对象和使用较少对象的数据结构（如数组）的数据结构有助于。
 - en: Serialization also shines here as a byte array needs only one object to be garbage
     collected.
   id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 序列化在这里也表现出色，因为只需要一个对象进行垃圾回收。
 - en: By default, Spark uses 60 percent of the executor memory to cache RDDs and the
     rest 40 percent for regular objects. Sometimes, you may not need 60 percent for
     RDDs and can reduce this limit so that more space is available for object creation
@@ -648,16 +755,19 @@
   id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 默认情况下，Spark使用执行器内存的60%来缓存RDD，其余40%用于常规对象。有时，你可能不需要为RDD分配60%，可以降低这个限制，以便为对象创建提供更多空间（减少对GC的需求）。
 - en: How to do it…
   id: totrans-119
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作...
 - en: 'You can set the memory allocated for RDD cache to 40 percent by starting the
     Spark shell and setting the memory fraction:'
   id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以通过启动Spark shell并设置内存分数来将分配给RDD缓存的内存设置为40%：
 - en: '[PRE14]'
   id: totrans-121
   prefs: []
@@ -668,31 +778,37 @@
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 优化并行级别
 - en: Optimizing the level of parallelism is very important to fully utilize the cluster
     capacity. In the case of HDFS, it means that the number of partitions is the same
     as the number of `InputSplits`, which is mostly the same as the number of blocks.
   id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 优化并行级别对于充分利用集群容量非常重要。在HDFS的情况下，这意味着分区数与`InputSplits`数相同，这通常与块数相同。
 - en: In this recipe, we will cover different ways to optimize the number of partitions.
   id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个菜谱中，我们将介绍不同的方法来优化分区数量。
 - en: How to do it…
   id: totrans-125
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点…
 - en: 'Specify the number of partitions when loading a file into RDD with the following
     steps:'
   id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 在将文件加载到RDD时指定分区数，按照以下步骤：
 - en: 'Start the Spark shell:'
   id: totrans-127
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 启动Spark shell：
 - en: '[PRE15]'
   id: totrans-128
   prefs:
@@ -704,6 +820,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将RDD加载为自定义分区数作为第二个参数：
 - en: '[PRE16]'
   id: totrans-130
   prefs:
@@ -715,11 +832,13 @@
   id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一种方法是按照以下步骤更改默认的并行度：
 - en: 'Start the Spark shell with the new value of default parallelism:'
   id: totrans-132
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 使用新的默认并行度值启动Spark shell：
 - en: '[PRE17]'
   id: totrans-133
   prefs:
@@ -731,6 +850,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 检查并行度的默认值：
 - en: '[PRE18]'
   id: totrans-135
   prefs:
@@ -742,6 +862,7 @@
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: You can also reduce the number of partitions using an RDD method called `coalesce(numPartitions)`
     where `numPartitions` is the final number of partitions you would like. If you
     would like the data to be reshuffled over the network, you can call the RDD method
@@ -750,11 +871,13 @@
   id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 您还可以使用名为`coalesce(numPartitions)`的RDD方法来减少分区数量，其中`numPartitions`是您希望得到的最终分区数。如果您希望数据在网络中重新洗牌，可以调用名为`repartition(numPartitions)`的RDD方法，其中`numPartitions`是您希望得到的最终分区数。
 - en: Understanding the future of optimization – project Tungsten
   id: totrans-138
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解优化的未来——项目钨丝
 - en: Project Tungsten, starting with Spark Version 1.4, is the initiative to bring
     Spark closer to bare metal. The goal of this project is to substantially improve
     the memory and CPU efficiency of the Spark applications and push the limits of
@@ -762,6 +885,7 @@
   id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 项目钨丝，从Spark版本1.4开始，旨在将Spark与裸金属更紧密地结合。该项目的目标是显著提高Spark应用程序的内存和CPU效率，并推动底层硬件的极限。
 - en: In distributed systems, conventional wisdom has been to always optimize network
     I/O as that has been the most scarce and bottlenecked resource. This trend has
     changed in the last few years. Network bandwidth, in the last 5 years, has changed
@@ -769,6 +893,7 @@
   id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 在分布式系统中，传统的做法是始终优化网络I/O，因为那一直是稀缺和瓶颈资源。这种趋势在最近几年发生了变化。在过去5年里，网络带宽从每秒1千兆比特增加到每秒10千兆比特。
 - en: On similar lines, the disk bandwidth has increased from 50 MB/s to 500 MB/s
     and SSDs are being deployed more and more. CPU clock speed, on the other hand,
     was ~3 GHz 5 years back and is still the same. This has unseated the network and
@@ -776,11 +901,13 @@
   id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 类似地，磁盘带宽也从50 MB/s增加到500 MB/s，SSD的使用也越来越广泛。另一方面，CPU时钟速度在5年前大约是3 GHz，现在仍然是这个速度。这已经取代了网络，使CPU成为分布式处理中的新瓶颈。
 - en: Note
   id: totrans-142
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: Another trend that has put more load on CPU performance is the new compressed
     data formats such as Parquet. Both compression and serialization, as we have seen
     in the previous recipes in this chapter, lead to more CPU cycles. This trend has
@@ -788,6 +915,7 @@
   id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一种对CPU性能造成更大负担的趋势是新的压缩数据格式，如Parquet。正如我们在本章前面的菜谱中看到的，压缩和序列化都需要更多的CPU周期。这种趋势也推动了CPU优化的需求，以减少CPU周期成本。
 - en: On the similar lines, let's look at the memory footprint. In Java, GC does memory
     management. GC has done an amazing job at taking away the memory management from
     the programmer and making it transparent. To do this, Java has to put a lot of
@@ -796,6 +924,7 @@
   id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 在类似的方向上，让我们看看内存占用。在Java中，GC负责内存管理。GC在将内存管理从程序员手中拿走并使其透明化方面做得非常出色。为此，Java必须投入大量的开销，这大大增加了内存占用。例如，一个简单的字符串"abcd"，理想情况下应该占用4字节，但在Java中却占用了48字节。
 - en: What if we do away with GC and manage memory manually like in lower-level programming
     languages such as C? Java does provide a way to do that since 1.7 version and
     it is called `sun.misc.Unsafe`. Unsafe essentially means that you can build long
@@ -804,11 +933,13 @@
   id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们放弃GC并像在C等低级编程语言中那样手动管理内存会怎样？从1.7版本开始，Java提供了一种方法来做这件事，它被称为`sun.misc.Unsafe`。Unsafe基本上意味着您可以在没有任何安全检查的情况下构建长内存区域。这是项目钨丝的第一个特性。
 - en: Manual memory management by leverage application semantics
   id: totrans-146
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 通过利用应用语义进行手动内存管理
 - en: Manual memory management by leverage application semantics, which can be very
     risky if you do not know what you are doing, is a blessing with Spark. We used
     knowledge of data schema (DataFrames) to directly layout the memory ourselves.
