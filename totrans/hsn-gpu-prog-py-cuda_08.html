@@ -1,10 +1,7 @@
-<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">The CUDA Device Function Libraries and Thrust</h1>
-                </header>
+<html><head></head><body><div><div><h1 class="header-title">The CUDA Device Function Libraries and Thrust</h1>
+                
             
-            <article>
+            
                 
 <p class="mce-root">In the last chapter, looking at a fairly broad overview of the libraries that are available in CUDA through the Scikit-CUDA wrapper module. We will now look at a few other libraries that we will have to use directly from within CUDA C proper, without the assistance of wrappers like those in Scikit-CUDA. We will start by looking at two standard libraries that consist of device functions that we may invoke from any CUDA C kernel cuRAND and the CUDA Math API. By the end of learning how to use these libraries, we will know how to use these libraries in the context of Monte Carlo integration. Monte Carlo integration is a well-known randomized method that provides estimates for the values of definite integrals from calculus. We will first look at a basic example of how to implement a simple Monte Carlo method with cuRAND to do a basic estimate of the value of Pi (as in the well-known constant, π=3.14159...), and then we'll embark on a more ambitious project where we will construct a Python class that can perform definite integration on any arbitrary mathematical function, and use the Math API for creating such functions. We'll also look at how to effectively use some ideas from metaprogramming in our design of this class.</p>
 <p class="mce-root"> We will then take another look at writing some pure CUDA programs with the help of the Thrust C++ library. Thrust is a library that provides C++ template containers, similar to those in the C++ Standard Template Library (STL). This will enable us to manipulate CUDA C arrays from C++ in a more natural way that is closer to PyCUDA's <kbd>gpuarray</kbd> and the STL's vector container. This will save us from having to constantly use pointers, such as <em>mallocs</em> and <em>frees</em>, that plagued us before in CUDA C.</p>
@@ -20,69 +17,60 @@
 </ul>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Technical requirements</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">Technical requirements</h1>
                 
-<p>A Linux or Windows 10 PC with a modern <span>NVIDIA </span>GPU (2016—onward) is required for this chapter, with all of the necessary GPU drivers and the CUDA Toolkit (9.0–onward) installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) with the PyCUDA module is also required.</p>
+            
+            
+                
+<p>A Linux or Windows 10 PC with a modern NVIDIA GPU (2016—onward) is required for this chapter, with all of the necessary GPU drivers and the CUDA Toolkit (9.0–onward) installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) with the PyCUDA module is also required.</p>
 <p>This chapter's code is also available on GitHub, and can be found at <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA.</a></p>
-<div class="packt_infobox">For more information about the prerequisites for this chapter, check the preface of this book. For the software and hardware requirements, check out the README at <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</div>
+<p>For more information about the prerequisites for this chapter, check the preface of this book. For the software and hardware requirements, check out the README at <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">The cuRAND device function library</h1>
-                </header>
+<div><div><h1 class="header-title">The cuRAND device function library</h1>
+                
             
-            <article>
+            
                 
 <p>Let's start with cuRAND. This is a standard CUDA library that is used for generating pseudo-random values within a CUDA kernel on a thread-by-thread basis, which is initialized and invoked by calling device functions from each individual thread within a kernel. Let's emphasize again that this is a <strong>pseudo-random</strong> sequence of values—since the digital hardware is always deterministic and never random or arbitrary, we use algorithms to generate a sequence of apparently random values from an initial <strong>seed value</strong>. Usually, we can set the seed value to a truly random value (such as the clock time in milliseconds), which will yield us with a nicely arbitrary sequence of <em>random</em> values. These generated random values have no correlation with prior or future values in the sequence generated by the same seed, although there can be correlations and repeats when you combine values generated from different seeds. For this reason, you have to be careful that the values you wish to be mutually <em>random</em> are generated by the same seed.</p>
 <p>Let's start by looking at the function prototype for <kbd>curand_init</kbd>, which we will initialize with an appropriate seed:</p>
-<pre><span>__device__ void curand_init ( unsigned long long seed, unsigned long long sequence, unsigned long long offset, curandState_t *state)</span></pre>
-<p>Here, all of the inputs are unsigned long, which in C is an unsigned (non-negative valued) 64-bit integer. First, we can see the <kbd>seed</kbd>, which is, of course, the seed value. Generally speaking, you'll set this with the clock value or some variation. We then see a value called <kbd>sequence</kbd> and as we stated previously, values generated by cuRAND will only be truly mathematically mutually random if they are generated by the same seed value. So, if we have multiple threads using the same seed value, we use <kbd>sequence</kbd> to indicate which sub-sequence of random numbers of <span>length 2</span><sup>190 </sup>for the current thread to use, while we use <kbd>offset</kbd> to indicate at which point to start within this sub-sequence; this will generate values in each thread that are all mathematically mutually random with no correlation. Finally, the last parameter is for a pointer to a <kbd>curandState_t</kbd> object; this keeps track of where we are in the sequence of pseudo-random numbers.</p>
-<p>After you initialize a class object, you will then generate random values from the appropriate random distribution by calling the appropriate device function. The two most common distributions are uniform and normal (Gaussian). A uniform distribution (<span><kbd>curand_uniform</kbd>, in cuRAND)</span> is a function that outputs values that are all equally probable over a given range: that is to say, for a uniform distribution over 0 to 1, there is a 10% chance that a value will fall between 0 and 0.1, or between 0.9 to 1, or between any two points that are spaced .1 away from each other. The normal distribution (<kbd><span>curand_normal</span></kbd>, in cuRAND) has values that are centered at a particular mean, which will be distributed according to the well-known bell-shaped curve that is defined by the distribution's standard deviation. (The default mean of <kbd><span>curand_normal</span></kbd> is <kbd>0</kbd> and the standard deviation is 1 in cuRAND, so this will have to be shifted and scaled manually for other values.) Another well-known distribution supported by cuRAND is the Poisson distribution (<span><kbd>curand_poisson</kbd>), which is used for modeling the occurrences of random events over time.</span></p>
+<pre>__device__ void curand_init ( unsigned long long seed, unsigned long long sequence, unsigned long long offset, curandState_t *state)</pre>
+<p>Here, all of the inputs are unsigned long, which in C is an unsigned (non-negative valued) 64-bit integer. First, we can see the <kbd>seed</kbd>, which is, of course, the seed value. Generally speaking, you'll set this with the clock value or some variation. We then see a value called <kbd>sequence</kbd> and as we stated previously, values generated by cuRAND will only be truly mathematically mutually random if they are generated by the same seed value. So, if we have multiple threads using the same seed value, we use <kbd>sequence</kbd> to indicate which sub-sequence of random numbers of length 2<sup>190 </sup>for the current thread to use, while we use <kbd>offset</kbd> to indicate at which point to start within this sub-sequence; this will generate values in each thread that are all mathematically mutually random with no correlation. Finally, the last parameter is for a pointer to a <kbd>curandState_t</kbd> object; this keeps track of where we are in the sequence of pseudo-random numbers.</p>
+<p>After you initialize a class object, you will then generate random values from the appropriate random distribution by calling the appropriate device function. The two most common distributions are uniform and normal (Gaussian). A uniform distribution (<kbd>curand_uniform</kbd>, in cuRAND) is a function that outputs values that are all equally probable over a given range: that is to say, for a uniform distribution over 0 to 1, there is a 10% chance that a value will fall between 0 and 0.1, or between 0.9 to 1, or between any two points that are spaced .1 away from each other. The normal distribution (<kbd>curand_normal</kbd>, in cuRAND) has values that are centered at a particular mean, which will be distributed according to the well-known bell-shaped curve that is defined by the distribution's standard deviation. (The default mean of <kbd>curand_normal</kbd> is <kbd>0</kbd> and the standard deviation is 1 in cuRAND, so this will have to be shifted and scaled manually for other values.) Another well-known distribution supported by cuRAND is the Poisson distribution (<kbd>curand_poisson</kbd>), which is used for modeling the occurrences of random events over time.</p>
 <p>We will be primarily looking at how to use cuRAND in the context of uniform distributions in the next section, due to their applicability to Monte Carlo integration. Readers interested in learning how to use more features in cuRAND are encouraged to look at the official documentation from NVIDIA.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Estimating π with Monte Carlo</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">Estimating π with Monte Carlo</h1>
                 
-<p>First, we will apply our new knowledge of cuRAND to perform an estimate of the well-known mathematical constant π, or Pi, which is, of course, the never-ending irrational number <span>3.14159265358979</span>...</p>
+            
+            
+                
+<p>First, we will apply our new knowledge of cuRAND to perform an estimate of the well-known mathematical constant π, or Pi, which is, of course, the never-ending irrational number 3.14159265358979...</p>
 <p>To get an estimate, though, we need to take a moment to think about what this means. Let's think about a circle. Remember that the radius of a circle is the length from the center of the circle to any point in the circle; usually, this is designated with <em>R</em>. The diameter is defined as <em>D = 2R</em>, and the circumference <em>C</em> is the length around the circle. Pi is then defined as <em>π = C / D</em> . We can use Euclidean geometry to find a formula for the area of the circle, which turns out being <em>A = πR<sup>2</sup></em> . Now, let's think about a circle with radius <em>R</em> being circumscribed in a square with all sides of length <em>2R</em>:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/310fec25-8742-4878-a6e6-e5d917ef29bc.png" style="" width="551" height="527"/></div>
+<div><img src="img/310fec25-8742-4878-a6e6-e5d917ef29bc.png" style="" width="551" height="527"/></div>
 <p>So, of course, we know that the area of the square is <em>(2R)<sup>2</sup> = 4R<sup>2</sup></em>. Let's consider <em>R=1</em>, so that we have known that the area of the circle is exactly π, while the area of the square is exactly 4. Let's make a further assumption and state that both the circle and square are centered at (0,0) in the Cartesian plane. Now, let's take a completely random value within the square, (<em>x,y</em>), and see if it falls within the circle. How can we do this? By applying the Pythagorean formula: we do this by checking whether <em>x<sup>2</sup> + y<sup>2</sup></em> is less than or equal to 1. Let's designate the total number of random points we choose with <em>iters</em>, and the number of hits with <em>hits</em>.</p>
 <p>Let's do a little bit more thinking about this: the probability of picking a point within the circle should be proportionate to the area of the circle divided by the area of the rectangle; here, this is π / 4. However, if we choose a very large value of random points, notice that we will get the following approximation:</p>
-<div class="CenterAlign"><img class="fm-editor-equation" src="assets/36f08e8a-fac6-413e-9276-a44a18fba9a1.png" style="width:5.00em;height:2.25em;" width="810" height="370"/></div>
+<div><img class="fm-editor-equation" src="img/36f08e8a-fac6-413e-9276-a44a18fba9a1.png" style="width:5.00em;height:2.25em;" width="810" height="370"/></div>
 <p class="mce-root"/>
 <p class="mce-root"/>
 <p>This is exactly how we will estimate π! The number of iterations we will have to do will be very high before we can come up with a decent estimate of Pi, but notice how nicely parallelizable this is: we can check the "hits" in different threads, splitting the total number of iterations among different threads. At the end of the day, we can just sum up the total number of hits among all of the threads to get our estimate.</p>
 <p>We can now begin to write a program to make our Monte Carlo estimate. Let's first import the usual Python modules that we will need for a PyCUDA program, with one addition from SymPy:</p>
-<div class="packt_infobox">SymPy is used for perfect <em>symbolic</em> computations that are to be made in Python so that when we have very large integers, we can use the <kbd>Rational</kbd> function to make a much more accurate floating-point estimate of a division.</div>
+<p>SymPy is used for perfect <em>symbolic</em> computations that are to be made in Python so that when we have very large integers, we can use the <kbd>Rational</kbd> function to make a much more accurate floating-point estimate of a division.</p>
 <pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>import numpy as np<br/>from sympy import Rational</pre>
 <p>Now, we have to do something a little different than normal when we build our kernel: we need to set the option <kbd>no_extern_c=True</kbd> in <kbd>SourceModule</kbd>. This modifies how the code is compiled so that our code can properly link with C++ code, as required by the cuRAND library. We then begin writing our kernel and include the appropriate header:</p>
 <pre>ker = SourceModule(no_extern_c=True, source='''<br/>#include &lt;curand_kernel.h&gt;</pre>
@@ -97,7 +85,7 @@
 <p><kbd>clock()</kbd> is a device function that outputs the current time down to the millisecond. We can add <kbd>tid</kbd> to the output of <kbd>clock()</kbd> to get a unique seed for each thread. We don't need to use different subsequences or offsets, so let's set them both to 0. We will also carefully typecast everything here to 64-bit unsigned integers:</p>
 <pre>curand_init( (ULL) clock() + (ULL) tid, (ULL) 0, (ULL) 0, &amp;cr_state);</pre>
 <p>Let's set up the <kbd>x</kbd> and <kbd>y</kbd> values to hold a random point in the rectangle:</p>
-<pre><span>float x, y;</span></pre>
+<pre>float x, y;</pre>
 <p>We will then iterate <kbd>iters</kbd> times to see how many hits in the circle we get. We generate these with <kbd>curand_uniform(&amp;cr_state)</kbd>. Notice that we can generate them over 0 to 1, rather than from -1 to 1, since the squaring of these in the <kbd>_PYTHAG</kbd> macro will remove any negative values:</p>
 <pre>for(ULL i=0; i &lt; iters; i++)<br/> {<br/>     x = curand_uniform(&amp;cr_state);<br/>     y = curand_uniform(&amp;cr_state);<br/><br/>     if(_PYTHAG(x,y) &lt;= 1.0f)<br/>         hits[tid]++;<br/> }</pre>
 <p>We can now end and close off our kernel, as well as the <kbd>extern "C"</kbd> block with another final <kbd>}</kbd> bracket:</p>
@@ -116,65 +104,56 @@
 <pre>est_pi = np.float(est_pi_symbolic.evalf())</pre>
 <p class="mce-root">Let's check our estimate against NumPy's constant value, <kbd>numpy.pi</kbd>:</p>
 <pre>print "Our Monte Carlo estimate of Pi is : %s" % est_pi<br/>print "NumPy's Pi constant is: %s " % np.pi<br/>print "Our estimate passes NumPy's 'allclose' : %s" % np.allclose(est_pi, np.pi)</pre>
-<p>We are now done. Let's run this from IPython and check it out <span>(This </span>program<span> is also available as the</span> <kbd>monte_carlo_pi.py</kbd><span> file under <kbd>Chapter08</kbd> in this book's repository.)</span>:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/5d4875e3-6231-4fc4-a2e2-3004f3933636.png" style="" width="791" height="150"/></div>
+<p>We are now done. Let's run this from IPython and check it out (This program is also available as the <kbd>monte_carlo_pi.py</kbd> file under <kbd>Chapter08</kbd> in this book's repository.):</p>
+<div><img src="img/5d4875e3-6231-4fc4-a2e2-3004f3933636.png" style="" width="791" height="150"/></div>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">The CUDA Math API</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">The CUDA Math API</h1>
                 
-<p>Now, we will take a look at the <strong>CUDA Math API</strong>. This is a library that consists of device functions similar to those in the standard C <kbd>math.h</kbd> library that can be called from individual threads in a kernel. One difference here is that single and double valued floating-point operations are overloaded, so if we use <kbd>sin(x)</kbd> where <kbd>x</kbd> is a float, the sin function will yield a 32-bit float as the output, while if <kbd>x</kbd> were a 64-bit double, then the output of <kbd>sin</kbd> would also be a 64-bit value (Usually, this is the proper name for a 32-bit function, but it has an <kbd>f</kbd> at the end, such as <kbd>sinf</kbd>). There are also additional <strong>instrinsic</strong> functions. Intrinsic functions are less accurate but faster math functions that are built into the <span>NVIDIA </span>CUDA hardware; generally, they have similar names to the original function, except that they are preceded with two underscores—therefore, the intrinsic, 32-bit sin function is <kbd>__sinf</kbd>.</p>
+            
+            
+                
+<p>Now, we will take a look at the <strong>CUDA Math API</strong>. This is a library that consists of device functions similar to those in the standard C <kbd>math.h</kbd> library that can be called from individual threads in a kernel. One difference here is that single and double valued floating-point operations are overloaded, so if we use <kbd>sin(x)</kbd> where <kbd>x</kbd> is a float, the sin function will yield a 32-bit float as the output, while if <kbd>x</kbd> were a 64-bit double, then the output of <kbd>sin</kbd> would also be a 64-bit value (Usually, this is the proper name for a 32-bit function, but it has an <kbd>f</kbd> at the end, such as <kbd>sinf</kbd>). There are also additional <strong>instrinsic</strong> functions. Intrinsic functions are less accurate but faster math functions that are built into the NVIDIA CUDA hardware; generally, they have similar names to the original function, except that they are preceded with two underscores—therefore, the intrinsic, 32-bit sin function is <kbd>__sinf</kbd>.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">A brief review of definite integration</h1>
-                </header>
+<div><div><h1 class="header-title">A brief review of definite integration</h1>
+                
             
-            <article>
+            
                 
 <p>Now, we're going to use some object-oriented programming in Python to set up a class that we can use to evaluate definite integrals of functions using a Monte Carlo method. Let's stop for a moment and talk about what we mean: suppose we have a mathematical function (as in the type you might see in a calculus class) that we call <em>f(x)</em>. When we graph this out on the Cartesian plane between points <em>a</em> and <em>b</em>, it may look something like this:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/35cc22f9-0a21-45ae-89b9-367edd83aa59.png" style="" width="370" height="271"/></div>
-<p>Now, let's review exactly what definite integration means—let's denote the first gray area in this graph as <em>I</em>, the second gray area as <em>II</em>, and the third gray area as <em>III</em>. Notice that the second gray area here is below zero. The definite integral of <em>f</em> here, from <em>a</em> to <em>b,</em> will be the value <em>I - II + III</em>, and we will denote this mathematically as  <img class="fm-editor-equation" src="assets/6fbf2855-0340-4589-9e3e-a007a7276e06.png" style="width:4.75em;height:2.75em;" width="860" height="500"/>. <span>In general, the definite integral from <em>a</em> to <em>b</em> is just the sum of all of the total "positive" area bounded by the <em>f</em> function and x-axis with y &gt; 0 between <em>a</em> and <em>b</em>, minus all of the "negative" area bounded by the <em>f</em> function and the x-axis with y &lt; 0 between <em>a</em> and <em>b</em>.</span></p>
+<div><img src="img/35cc22f9-0a21-45ae-89b9-367edd83aa59.png" style="" width="370" height="271"/></div>
+<p>Now, let's review exactly what definite integration means—let's denote the first gray area in this graph as <em>I</em>, the second gray area as <em>II</em>, and the third gray area as <em>III</em>. Notice that the second gray area here is below zero. The definite integral of <em>f</em> here, from <em>a</em> to <em>b,</em> will be the value <em>I - II + III</em>, and we will denote this mathematically as  <img class="fm-editor-equation" src="img/6fbf2855-0340-4589-9e3e-a007a7276e06.png" style="width:4.75em;height:2.75em;" width="860" height="500"/>. In general, the definite integral from <em>a</em> to <em>b</em> is just the sum of all of the total "positive" area bounded by the <em>f</em> function and x-axis with y &gt; 0 between <em>a</em> and <em>b</em>, minus all of the "negative" area bounded by the <em>f</em> function and the x-axis with y &lt; 0 between <em>a</em> and <em>b</em>.</p>
 <p>There are many ways to calculate or estimate the definite integral of a function between two points. One that you may have seen in a calculus class is to find a closed-form solution: find the anti-derivative of <em>f</em>, <em>F</em>, and calculate <em>F(b) - F(a)</em>. In many areas, though, we won't be able to find an exact anti-derivative, and we will have to determine the definite integral numerically. This is exactly the idea behind Monte Carlo integration: we evaluate <em>f</em> at many, many random points between <em>a</em> and <em>b</em>, and then use those to make an estimate of the definite integral.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Computing definite integrals with the Monte Carlo method</h1>
-                </header>
+<div><div><h1 class="header-title">Computing definite integrals with the Monte Carlo method</h1>
+                
             
-            <article>
+            
                 
 <p>We are now going to use the CUDA Math API for representing an arbitrary mathematical function, <em>f</em>, while using the cuRAND library to implement the Monte Carlo integral. We will do this with <strong>metaprogramming</strong>: we will use Python to generate the code for a device function from a code template, which will plug into an appropriate Monte Carlo kernel for integration. </p>
-<div class="packt_infobox">The idea here is that it will look and act similarly to some of the metaprogramming tools we've seen with PyCUDA, such as <kbd>ElementwiseKernel</kbd>.</div>
+<p>The idea here is that it will look and act similarly to some of the metaprogramming tools we've seen with PyCUDA, such as <kbd>ElementwiseKernel</kbd>.</p>
 <p>Let's start by importing the appropriate modules into our new project:</p>
 <pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>import numpy as np</pre>
 <p>We're going to use a trick in Python called <strong>dictionary based string formatting</strong>. Let's go over this for a minute before we continue. Suppose we are writing a chunk of CUDA C code, and we are unsure of whether we want a particular collection of variables to be float or double; perhaps it looks like this: <kbd>code_string="float x, y; float * z;"</kbd>. We might actually want to format the code so that we can switch between floats and doubles on the fly. Let's change all references from <kbd>float</kbd> in the string to <kbd>%(precision)s</kbd>—<kbd>code_string="%(precision)s x, y; %(precision)s * z;"</kbd>. We can now set up an appropriate dictionary that will swap <kbd>%(presision)s</kbd> with <kbd>double</kbd>, which is, <kbd>code_dict = {'precision' : 'double'}</kbd>, and get the new double string with <kbd>code_double = code_string % code_dict</kbd>. Let's take a look:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/508d1ba2-6545-46ad-b443-f494ecbeba3f.png" style="" width="967" height="293"/></div>
-<p><span>Now, let's think for a moment about how we want our new Monte Carlo integrator to work. We will also have it take a string that is a math equation that is written using the CUDA Math API to define the function we want to integrate. We can then fit this string into the code using the dictionary trick we just learned, and use this to integrate arbitrary functions. We will also use the template to switch between </span><kbd>float</kbd><span> and </span><kbd>double</kbd><span> precision, as per the user's discretion.</span></p>
+<div><img src="img/508d1ba2-6545-46ad-b443-f494ecbeba3f.png" style="" width="967" height="293"/></div>
+<p>Now, let's think for a moment about how we want our new Monte Carlo integrator to work. We will also have it take a string that is a math equation that is written using the CUDA Math API to define the function we want to integrate. We can then fit this string into the code using the dictionary trick we just learned, and use this to integrate arbitrary functions. We will also use the template to switch between <kbd>float</kbd> and <kbd>double</kbd> precision, as per the user's discretion.</p>
 <p>We can now begin our CUDA C code:</p>
 <pre>MonteCarloKernelTemplate = '''<br/>#include &lt;curand_kernel.h&gt;</pre>
 <p>We will keep the unsigned 64-bit integer macro from before, <kbd>ULL</kbd>. Let's define some new macros for a reciprocal of x (<kbd>_R</kbd>), and for squaring (<kbd>_P2</kbd>):</p>
@@ -183,13 +162,13 @@
 <pre>__device__ inline %(p)s f(%(p)s x)<br/>{<br/>    %(p)s y;<br/>    %(math_function)s;<br/>    return y;<br/>}</pre>
 <p>Now, let's think about how this will work— We declare a 32 or 64-bit floating point value called <kbd>y</kbd>, call <kbd>math_function</kbd>, and then return <kbd>y</kbd>. <kbd>math_function</kbd>, which will only make sense if it's some code that acts on the input parameter <kbd>x</kbd> and sets some value to <kbd>y</kbd>, such as <kbd>y = sin(x)</kbd>. Let's keep this in mind and continue.</p>
 <p>We will now begin writing our Monte Carlo integration kernel. Let's remember that we have to make our CUDA kernel visible from plain C with the <kbd>extern "C"</kbd> keyword. We will then set up our kernel.</p>
-<p>First, we will indicate how many random samples each thread in the kernel should take with <kbd>iters</kbd>; we then indicate the lower bound of integration (<em>b</em>) with <kbd>lo</kbd> and the upper bound (<em>a</em>) with <kbd>hi</kbd>, and pass in an array, <kbd>ys_out</kbd>, to store the collection of partial integrals for each thread (we will later sum over <kbd>ys_out</kbd> to get the value of the complete definite integral from <kbd>lo</kbd> to <kbd>hi</kbd> on the host side). <span>Again, notice how we are referring to the precision as <kbd>p</kbd>:</span></p>
+<p>First, we will indicate how many random samples each thread in the kernel should take with <kbd>iters</kbd>; we then indicate the lower bound of integration (<em>b</em>) with <kbd>lo</kbd> and the upper bound (<em>a</em>) with <kbd>hi</kbd>, and pass in an array, <kbd>ys_out</kbd>, to store the collection of partial integrals for each thread (we will later sum over <kbd>ys_out</kbd> to get the value of the complete definite integral from <kbd>lo</kbd> to <kbd>hi</kbd> on the host side). Again, notice how we are referring to the precision as <kbd>p</kbd>:</p>
 <pre>extern "C" {<br/>__global__ void monte_carlo(int iters, %(p)s lo, %(p)s hi, %(p)s * ys_out)<br/>{</pre>
-<p> We will need a <kbd>curandState</kbd> object for generating random values. We will also need to find the global thread ID and the total number of threads. Since <span>we are working with a one-dimensional mathematical function, it makes sense to set up our block and grid parameters in one dimension,</span> <kbd>x</kbd>, as well:</p>
+<p> We will need a <kbd>curandState</kbd> object for generating random values. We will also need to find the global thread ID and the total number of threads. Since we are working with a one-dimensional mathematical function, it makes sense to set up our block and grid parameters in one dimension, <kbd>x</kbd>, as well:</p>
 <pre>curandState cr_state;<br/>int tid = blockIdx.x * blockDim.x + threadIdx.x;<br/>int num_threads = blockDim.x * gridDim.x;</pre>
 <p class="mce-root"/>
 <p>We will now calculate the amount of area there is between <kbd>lo</kbd> and <kbd>hi</kbd> that a single thread will process. We'll do this by dividing up the entire length of the integration (which will be <kbd>hi - lo</kbd>) by the total number of threads.:</p>
-<div class="packt_infobox">Again, note how we are using templating tricks so that this value can be multi-precision.</div>
+<p>Again, note how we are using templating tricks so that this value can be multi-precision.</p>
 <pre>%(p)s t_width = (hi - lo) / ( %(p)s ) num_threads;</pre>
 <p>Recall that we have a parameter called <kbd>iters</kbd>; this indicates how many random values each thread will sample. We need to know what the density of the samples is in a little bit; that is, the average number of samples per unit distance. We calculate it like so, remembering to typecast the integer <kbd>iters</kbd> into a floating-point value:</p>
 <pre>%(p)s density = ( ( %(p)s ) iters ) / t_width;</pre>
@@ -222,59 +201,53 @@
 <p>We can finish this function off by setting up an empty array to store the partial sub-integrals and launching the kernel. We then need to sum over the sub-integrals to get the final value, which we return:</p>
 <pre>self.ys = gpuarray.empty((num_threads,) , dtype=self.numpy_precision)<br/><br/>self.f(np.int32(samples_per_thread), self.numpy_precision(lo), self.numpy_precision(hi), self.ys, block=block, grid=grid)<br/><br/>self.nintegral = np.sum(self.ys.get() )<br/> <br/>return np.sum(self.nintegral)</pre>
 <p>We are ready to try this out. Let's just set up a class with the default values—this will integrate <kbd>y = sin(x)</kbd> from 0 to π. If you remember calculus, the anti-derivative of <em>sin(x)</em> is <em>-cos(x)</em>, so we can evaluate the definite integral like so:</p>
-<div class="CenterAlign"><img class="fm-editor-equation" src="assets/0f237e46-f4f9-459c-a1db-29766ce488b7.png" style="width:25.58em;height:2.83em;" width="4160" height="460"/></div>
+<div><img class="fm-editor-equation" src="img/0f237e46-f4f9-459c-a1db-29766ce488b7.png" style="width:25.58em;height:2.83em;" width="4160" height="460"/></div>
 <p>Therefore, we should get a numerical value close to 2. Let's see what we get:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/49e7d08f-4958-4e3e-96f6-2168b71e628a.png" style="" width="727" height="152"/></div>
+<div><img src="img/49e7d08f-4958-4e3e-96f6-2168b71e628a.png" style="" width="727" height="152"/></div>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Writing some test cases</h1>
-                </header>
+<div><div><h1 class="header-title">Writing some test cases</h1>
+                
             
-            <article>
+            
                 
 <p>Now, we will finally get to see how to use the CUDA Math API to write some test cases for our class by way of the <kbd>math_function</kbd> parameter. These will be fairly straightforward if you have any experience with the C/C++ standard math library. Again, these functions are overloaded so that we don't have to change the names of anything when we switch between single and double precision.</p>
 <p>We've already seen one example, namely <em>y = sin(x)</em>. Let's try something a little more ambitious:</p>
-<div class="CenterAlign"><img class="fm-editor-equation" src="assets/94a6e5b9-688f-4fee-9cde-34949e6f0386.png" style="width:6.92em;height:1.17em;" width="1420" height="240"/></div>
+<div><img class="fm-editor-equation" src="img/94a6e5b9-688f-4fee-9cde-34949e6f0386.png" style="width:6.92em;height:1.17em;" width="1420" height="240"/></div>
 <p>We will integrate this function from <em>a=</em>11.733 to <em>b=</em>18.472, and then check the output of our Monte Carlo integrator against the known value of this integral from another source. Here, Mathematica indicates that the value of this definite integral is 8.9999, so we will check against that. </p>
 <p>Now, let's think of how to represent this function: here, <em>log</em> refers to the base-<em>e</em> logarithm (also known as <em>ln</em>), and this is just <kbd>log(x)</kbd> in the Math API. We already set up a macro for squaring, so we can represent <em>sin<sup>2</sup>(x)</em> as <kbd>_P2(sin(x))</kbd>. We can now represent the entire function with <kbd>y = log(x)*_P2(sin(x))</kbd>.</p>
 <p>Let's use the following equation, integrating from <em>a=.9</em> to <em>b=4</em>:</p>
-<div class="CenterAlign"><img class="fm-editor-equation" src="assets/41e43277-2c80-488e-b8ab-78355f6c0c53.png" style="width:9.83em;height:2.25em;" width="2010" height="460"/></div>
+<div><img class="fm-editor-equation" src="img/41e43277-2c80-488e-b8ab-78355f6c0c53.png" style="width:9.83em;height:2.25em;" width="2010" height="460"/></div>
 <p>Remembering that <kbd>_R</kbd> is the macro we set up for a reciprocal, we can write the function with the Math API like so:</p>
 <pre>'y = _R( 1 + sinh(2*x)*_P2(log(x)) )' </pre>
 <p class="mce-root"/>
 <p>Before we move on, let's note that Mathematica tells us that the value of this definite integral is .584977.</p>
 <p>Let's check on one more function. Let's be a little ambitious and say that it's this:</p>
-<div class="CenterAlign"><img class="fm-editor-equation" src="assets/b33f7b41-e613-4e37-96ac-9b12a223a7e0.png" style="width:8.50em;height:2.75em;" width="1610" height="520"/></div>
+<div><img class="fm-editor-equation" src="img/b33f7b41-e613-4e37-96ac-9b12a223a7e0.png" style="width:8.50em;height:2.75em;" width="1610" height="520"/></div>
 <p>We can represent this as <kbd>'y = (cosh(x)*sin(x))/ sqrt( pow(x,3) + _P2(sin(x)))'</kbd>; naturally <kbd>sqrt</kbd> is the square root in the denominator, and <kbd>pow</kbd> allows us to take a value of arbitrary power. Of course, <kbd>sin(x)</kbd> is <em>sin(x)</em> and <kbd>cosh(x)</kbd> is <em>cosh(x)</em>. We integrate this from <em>a</em>=1.85 to <em>b</em>=4.81; Mathematica tells us that the true value of this integral is -3.34553.</p>
 <p>We are now ready to check some test cases and verify that our Monte Carlo integral is working! Let's iterate over a list, whose first value is a string indicating the function (using the Math API), the second value indicates the lower bound of integration, the third indicates the upper bound of integration, and the last value indicates the expected value that was calculated with Mathematica:</p>
 <pre>if __name__ == '__main__':<br/><br/>    integral_tests = [('y =log(x)*_P2(sin(x))', 11.733 , 18.472, 8.9999), ('y = _R( 1 + sinh(2*x)*_P2(log(x)) )', .9, 4, .584977), ('y = (cosh(x)*sin(x))/ sqrt( pow(x,3) + _P2(sin(x)))', 1.85, 4.81, -3.34553) ]</pre>
 <p>We can now iterate over this list and see how well our algorithm works compared to Mathematica:</p>
 <pre>for f, lo, hi, expected in integral_tests:<br/>    mci = MonteCarloIntegrator(math_function=f, precision='d', lo=lo, hi=hi)<br/>    print 'The Monte Carlo numerical integration of the function\n \t f: x -&gt; %s \n \t from x = %s to x = %s is : %s ' % (f, lo, hi, mci.definite_integral())<br/>    print 'where the expected value is : %s\n' % expected</pre>
 <p>Let's run this right now:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/b788faff-a6b9-4c86-ad21-26edd0e614e6.png" style="" width="1092" height="548"/></div>
-<div class="packt_infobox">This is also available as the <kbd>monte_carlo_integrator.py</kbd> file under the <kbd>Chapter08</kbd> directory in this book's repository.</div>
+<div><img src="img/b788faff-a6b9-4c86-ad21-26edd0e614e6.png" style="" width="1092" height="548"/></div>
+<p>This is also available as the <kbd>monte_carlo_integrator.py</kbd> file under the <kbd>Chapter08</kbd> directory in this book's repository.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">The CUDA Thrust library</h1>
-                </header>
+<div><div><h1 class="header-title">The CUDA Thrust library</h1>
+                
             
-            <article>
+            
                 
 <p>We will now look at the CUDA Thrust Library. This library's central feature is a high-level vector container that is similar C++'s own vector container. While this may sound trivial, this will allow us to program in CUDA C with less reliance on pointers, mallocs, and frees. Like the C++ vector container, Thrust's vector container handles the resizing and concatenation of elements automatically, and with the magic of C++ destructors, <em>freeing</em> is also handled automatically when a Thrust vector object goes out of scope.</p>
 <p>Thrust actually provides two vector containers: one for the host-side, and one for the device-side. The host-side Thrust vector is more or less identical to the STL vector, with the main difference being that it can interact more easily with the GPU. Let's write a little bit of code in proper CUDA C to get a feel for how this works. </p>
@@ -287,7 +260,7 @@
 <p>Now, let's append some integers to the end of <kbd>v</kbd> by using <kbd>push_back</kbd>, exactly how we would do so with a regular STL vector:</p>
 <pre>v.push_back(1);<br/>v.push_back(2);<br/>v.push_back(3);<br/>v.push_back(4);</pre>
 <p>We will now iterate through all of the values in the vector, and output each value:</p>
-<div class="packt_infobox">The output here should be <kbd>v[0] == 1</kbd> through <kbd>v[3] == 4</kbd>.</div>
+<p>The output here should be <kbd>v[0] == 1</kbd> through <kbd>v[3] == 4</kbd>.</p>
 <pre class="mce-root">for (int i = 0; i &lt; v.size(); i++)<br/>    cout &lt;&lt; "v[" &lt;&lt; i &lt;&lt; "] == " &lt;&lt; v[i] &lt;&lt; endl;</pre>
 <p>This may have seemed trivial so far. Let's set up a Thrust vector on the GPU and then copy the contents from <kbd>v</kbd>:</p>
 <pre>thrust::device_vector&lt;int&gt; v_gpu = v;</pre>
@@ -304,30 +277,27 @@
 <p class="mceNonEditable"/>
 <p>We will now check the contents of <kbd>v_gpu</kbd>, like so:</p>
 <pre>for (int i = 0; i &lt; v_gpu.size(); i++)<br/>    std::cout &lt;&lt; "v_gpu[" &lt;&lt; i &lt;&lt; "] == " &lt;&lt; v_gpu[i] &lt;&lt; std::endl;</pre>
-<div class="packt_infobox">This part should output <kbd>v_gpu[0] == 1</kbd> through <kbd>v_gpu[4] == 5</kbd>.</div>
+<p>This part should output <kbd>v_gpu[0] == 1</kbd> through <kbd>v_gpu[4] == 5</kbd>.</p>
 <p>Again, thanks to the destructors of these objects, we don't have to do any cleanup in the form of freeing any chunks of allocated memory. We can now just return from the program, and we are done:</p>
 <pre>    return 0;<br/>}</pre>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Using functors in Thrust</h1>
-                </header>
+<div><div><h1 class="header-title">Using functors in Thrust</h1>
+                
             
-            <article>
+            
                 
 <p>Let's see how we can use a concept known as <strong>functors</strong> in Thrust. In C++, a <strong>functor</strong> is a class or struct object that looks and acts like a function; this lets us use something that looks and acts like a function, but can hold some parameters that don't have to be set every time it is used.</p>
 <p>Let's start a new Thrust program with the appropriate include statements, and use the standard namespace:</p>
 <pre>#include &lt;thrust/host_vector.h&gt;<br/>#include &lt;thrust/device_vector.h&gt;<br/>#include &lt;iostream&gt;<br/>using namespace std;</pre>
 <p>Now, let's set up a basic functor. We will use a <kbd>struct</kbd> to represent this, rather than <kbd>class</kbd>. This will be a weighted multiplication function, and we will store the weight in a float called <kbd>w</kbd>. We will make a constructor that sets up the weight with a default value of <kbd>1</kbd>:</p>
 <pre>struct multiply_functor {<br/> float w;<br/> multiply_functor(float _w = 1) : w(_w) {}</pre>
-<p><span>We will now set up our functor with the</span> <kbd>operator()</kbd><span> keyword; this will indicate to the compiler to treat the following block of code as the <kbd>default</kbd> function for objects of this type. Remember that this will be running on the GPU as a device function, so we precede the whole thing with <kbd>__device__</kbd>. We indicate the inputs with parentheses and output the appropriate value, which is just a scaled multiple. Now, we can close off the definition of our struct with <kbd>};</kbd>:</span></p>
+<p>We will now set up our functor with the <kbd>operator()</kbd> keyword; this will indicate to the compiler to treat the following block of code as the <kbd>default</kbd> function for objects of this type. Remember that this will be running on the GPU as a device function, so we precede the whole thing with <kbd>__device__</kbd>. We indicate the inputs with parentheses and output the appropriate value, which is just a scaled multiple. Now, we can close off the definition of our struct with <kbd>};</kbd>:</p>
 <pre>    __device__ float operator() (const float &amp; x, const float &amp; y) { <br/>        return w * x * y;<br/>     }<br/>};</pre>
 <p>Now, let's use this to make a basic dot product function; recall that this requires a pointwise multiplication between two arrays, followed by a <kbd>reduce</kbd> type sum. Let's start by declaring our function and creating a new vector, <kbd>z</kbd>, that will hold the values of the point-wise multiplication:</p>
 <pre>float dot_product(thrust::device_vector&lt;float&gt; &amp;v, thrust::device_vector&lt;float&gt; &amp;w ), thrust::device_vector&lt;float&gt; &amp;z)<br/>{<br/> thrust::device_vector&lt;float&gt; z(v.size());</pre>
@@ -345,40 +315,34 @@
 <p>Now, we can check the output of our dot product, and then return from the program:</p>
 <pre>cout &lt;&lt; "dot_product(v , w) == " &lt;&lt; dot_product(v,w) &lt;&lt; endl;<br/>return 0;<br/>}</pre>
 <p>Let's compile this (from the command line in both Linux or Windows by using <kbd>nvcc thrust_dot_product.cu -o thrust_dot_product</kbd>) and run it:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/03884f6c-d05f-4127-a8b1-3f66dd0cbbf9.png" style="" width="879" height="295"/></div>
-<div class="packt_infobox">The code for this is also available in the <kbd>thrust_dot_product.cu</kbd> file in the <kbd>Chapter08</kbd> directory in this book's repository.</div>
+<div><img src="img/03884f6c-d05f-4127-a8b1-3f66dd0cbbf9.png" style="" width="879" height="295"/></div>
+<p>The code for this is also available in the <kbd>thrust_dot_product.cu</kbd> file in the <kbd>Chapter08</kbd> directory in this book's repository.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Summary</h1>
-                </header>
+<div><div><h1 class="header-title">Summary</h1>
+                
             
-            <article>
+            
                 
 <p>In this chapter, we looked at how to initialize a stream of random numbers in cuRAND by choosing the appropriate seed. Since computers are deterministic devices, they can only generate lists of pseudo-random numbers, so our seed should be something truly random; generally, adding a thread ID to the clock time in milliseconds will work well enough for most purposes.</p>
-<p>We then looked at how we can use the uniform distribution from cuRAND to do a basic estimate of Pi. Then we<span> took on a more ambitious project of creating a Python class that can compute definite integrals of arbitrary functions; we used some ideas from metaprogramming coupled with the CUDA Math API to define these <kbd>arbitrary</kbd> functions. Finally, we had a brief overview of the CUDA Thrust library, which is generally used for writing pure CUDA C programs outside of Python. Thrust most notably provides a <kbd>device_vector</kbd> container that is similar to the standard C++ <kbd>vector</kbd>. This reduces some of the cognitive overhead from using pointers in CUDA C.</span></p>
-<p><span>Finally, we looked at a brief example of how to use Thrust with an appropriate functor to do simple <kbd>point-wise</kbd> and <kbd>reduce</kbd> operations, in the form of the implementation of a simple dot product function.</span></p>
+<p>We then looked at how we can use the uniform distribution from cuRAND to do a basic estimate of Pi. Then we took on a more ambitious project of creating a Python class that can compute definite integrals of arbitrary functions; we used some ideas from metaprogramming coupled with the CUDA Math API to define these <kbd>arbitrary</kbd> functions. Finally, we had a brief overview of the CUDA Thrust library, which is generally used for writing pure CUDA C programs outside of Python. Thrust most notably provides a <kbd>device_vector</kbd> container that is similar to the standard C++ <kbd>vector</kbd>. This reduces some of the cognitive overhead from using pointers in CUDA C.</p>
+<p>Finally, we looked at a brief example of how to use Thrust with an appropriate functor to do simple <kbd>point-wise</kbd> and <kbd>reduce</kbd> operations, in the form of the implementation of a simple dot product function.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Questions</h1>
-                </header>
+<div><div><h1 class="header-title">Questions</h1>
+                
             
-            <article>
+            
                 
 <ol>
 <li> Try rewriting the Monte Carlo integration examples (in the <kbd>__main__</kbd> function in <kbd>monte_carlo_integrator.py</kbd>) to use the CUDA <kbd>instrinsic</kbd> functions. How does the accuracy compare to before?</li>
@@ -390,8 +354,8 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div></body></html>

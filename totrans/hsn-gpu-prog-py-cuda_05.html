@@ -1,17 +1,14 @@
-<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Streams, Events, Contexts, and Concurrency</h1>
-                </header>
+<html><head></head><body><div><div><h1 class="header-title">Streams, Events, Contexts, and Concurrency</h1>
+                
             
-            <article>
+            
                 
 <p>In the prior chapters, we saw that there are two primary operations we perform from the host when interacting with the GPU: </p>
 <ul>
 <li>Copying memory data to and from the GPU</li>
 <li>Launching kernel functions</li>
 </ul>
-<p>We know that <em>within</em> a single kernel, there is one level of concurrency among its many threads; however, there is another level of concurrency <em>over</em> multiple kernels <em>and</em> GPU memory operations that are also available to us. <span>This means that we can launch multiple memory and kernel operations at once, without waiting for each operation to finish. However, on the other hand, we will have to be somewhat organized to ensure that all inter-dependent operations are synchronized; this means that we shouldn't launch a particular kernel until its input data is fully copied to the device memory, or we shouldn't copy the output data of a launched kernel to the host until the kernel has finished execution. </span></p>
+<p>We know that <em>within</em> a single kernel, there is one level of concurrency among its many threads; however, there is another level of concurrency <em>over</em> multiple kernels <em>and</em> GPU memory operations that are also available to us. This means that we can launch multiple memory and kernel operations at once, without waiting for each operation to finish. However, on the other hand, we will have to be somewhat organized to ensure that all inter-dependent operations are synchronized; this means that we shouldn't launch a particular kernel until its input data is fully copied to the device memory, or we shouldn't copy the output data of a launched kernel to the host until the kernel has finished execution. </p>
 <p>To this end, we have what are known as <strong>CUDA</strong> <strong>streams</strong>—a <strong>stream</strong> is a sequence of operations that are run in order on the GPU. By itself, a single stream isn't of any use—the point is to gain concurrency over GPU operations issued by the host by using multiple streams. This means that we should interleave launches of GPU operations that correspond to different streams, in order to exploit this notion.</p>
 <p>We will be covering this notion of streams extensively in this chapter. Additionally, we will look at <strong>events</strong>, which are a feature of streams that are used to precisely time kernels and indicate to the host as to what operations have been completed within a given stream.</p>
 <p>Finally, we will briefly look at CUDA <strong>contexts</strong>. A <strong>context</strong> can be thought of as analogous to a process in your operating system, in that the GPU keeps each context's data and kernel code <em>walled off </em>and encapsulated away from the other contexts currently existing on the GPU. We will see the basics of this near the end of the chapter.</p>
@@ -27,58 +24,49 @@
 </ul>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Technical requirements</h1>
-                </header>
+<div><div><h1 class="header-title">Technical requirements</h1>
+                
             
-            <article>
+            
                 
 <p>A Linux or Windows 10 PC with a modern NVIDIA GPU (2016—onward) is required for this chapter, with all necessary GPU drivers and the CUDA Toolkit (9.0–onward) installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) with the PyCUDA module is also required.</p>
 <p>This chapter's code is also available on GitHub:</p>
 <p><a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a></p>
-<div class="packt_infobox">For more information about the prerequisites, check the <em>Preface</em> of this book, and for the software and hardware requirements, check the README in <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</div>
+<p>For more information about the prerequisites, check the <em>Preface</em> of this book, and for the software and hardware requirements, check the README in <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">CUDA device synchronization</h1>
-                </header>
+<div><div><h1 class="header-title">CUDA device synchronization</h1>
+                
             
-            <article>
+            
                 
 <p>Before we can use CUDA streams, we need to understand the notion of <strong>device synchronization</strong>. This is an operation where the host blocks any further execution until all operations issued to the GPU (memory transfers and kernel executions) have completed. This is required to ensure that operations dependent on prior operations are not executed out-of-order—for example, to ensure that a CUDA kernel launch is completed before the host tries to read its output.</p>
-<p>In CUDA C, device synchronization is performed with the <kbd>cudaDeviceSynchronize</kbd> <span>function</span>. This function effectively blocks further execution on the host until all GPU operations have completed. <kbd>cudaDeviceSynchronize</kbd> is so fundamental that it is usually one of the very first topics covered in most books on CUDA C—we haven't seen this yet, because PyCUDA has been invisibly calling this for us automatically as needed. Let's take a look at an example of CUDA C code to see how this is done manually:</p>
-<pre>// Copy an array of floats from the host to the device.<br/>cudaMemcpy(device_array, host_array, size_of_array*sizeof(float), cudaMemcpyHostToDevice);<br/>// Block execution until memory transfer to device is complete.<br/>cudaDeviceSynchronize();<br/>// Launch CUDA kernel.<br/>Some_CUDA_Kernel &lt;&lt;&lt; block_size, grid_size &gt;&gt;&gt; (device_array, size_of_array);<br/>// Block execution until GPU kernel function returns.<br/>cudaDeviceSynchronize();<br/>// Copy output of kernel to host.<br/><span>cudaMemcpy(host_array,  device_array, size_of_array*sizeof(float), cudaMemcpyDeviceToHost);<br/></span>// Block execution until memory transfer to host is complete.<br/>cudaDeviceSynchronize();</pre>
+<p>In CUDA C, device synchronization is performed with the <kbd>cudaDeviceSynchronize</kbd> function. This function effectively blocks further execution on the host until all GPU operations have completed. <kbd>cudaDeviceSynchronize</kbd> is so fundamental that it is usually one of the very first topics covered in most books on CUDA C—we haven't seen this yet, because PyCUDA has been invisibly calling this for us automatically as needed. Let's take a look at an example of CUDA C code to see how this is done manually:</p>
+<pre>// Copy an array of floats from the host to the device.<br/>cudaMemcpy(device_array, host_array, size_of_array*sizeof(float), cudaMemcpyHostToDevice);<br/>// Block execution until memory transfer to device is complete.<br/>cudaDeviceSynchronize();<br/>// Launch CUDA kernel.<br/>Some_CUDA_Kernel &lt;&lt;&lt; block_size, grid_size &gt;&gt;&gt; (device_array, size_of_array);<br/>// Block execution until GPU kernel function returns.<br/>cudaDeviceSynchronize();<br/>// Copy output of kernel to host.<br/>cudaMemcpy(host_array,  device_array, size_of_array*sizeof(float), cudaMemcpyDeviceToHost);<br/>// Block execution until memory transfer to host is complete.<br/>cudaDeviceSynchronize();</pre>
 <p>In this block of code, we see that we have to synchronize with the device directly after every single GPU operation. If we only have a need to call a single CUDA kernel at a time, as seen here, this is fine. But if we want to concurrently launch multiple independent kernels and memory operations operating on different arrays of data, it would be inefficient to synchronize across the entire device. In this case, we should synchronize across multiple streams. We'll see how to do this right now.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Using the PyCUDA stream class</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">Using the PyCUDA stream class</h1>
                 
-<p>We will start with a simple PyCUDA program; all this will do is generate a series of random GPU arrays, process each array with a simple kernel, and copy the arrays back to the host. We will then modify this to use streams. Keep in mind this program will have no point at all, beyond illustrating how to use streams and some basic performance gains you can get. (This program can be seen in the <kbd>multi-kernel.py</kbd> file, under the <kbd>5</kbd> <span>directory</span> in the GitHub repository.)</p>
+            
+            
+                
+<p>We will start with a simple PyCUDA program; all this will do is generate a series of random GPU arrays, process each array with a simple kernel, and copy the arrays back to the host. We will then modify this to use streams. Keep in mind this program will have no point at all, beyond illustrating how to use streams and some basic performance gains you can get. (This program can be seen in the <kbd>multi-kernel.py</kbd> file, under the <kbd>5</kbd> directory in the GitHub repository.)</p>
 <p>Of course, we'll start by importing the appropriate Python modules, as well as the <kbd>time</kbd> function:</p>
 <pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>import numpy as np<br/>from time import time</pre>
 <p>We now will specify how many arrays we wish to process—here, each array will be processed by a different kernel launch. We also specify the length of the random arrays we will generate, as follows:</p>
@@ -88,8 +76,8 @@
 <p>Now, we will generate some random data array, copy these arrays to the GPU, iteratively launch our kernel over each array across 64 threads, and then copy the output data back to the host and assert that the same with NumPy's <kbd>allclose</kbd> function. We will time the duration of all operations from start to finish by using Python's <kbd>time</kbd> function, as follows:</p>
 <pre>data = []<br/>data_gpu = []<br/>gpu_out = []<br/><br/># generate random arrays.<br/>for _ in range(num_arrays):<br/>    data.append(np.random.randn(array_len).astype('float32'))<br/><br/>t_start = time()<br/><br/># copy arrays to GPU.<br/>for k in range(num_arrays):<br/>    data_gpu.append(gpuarray.to_gpu(data[k]))<br/><br/># process arrays.<br/>for k in range(num_arrays):<br/>    mult_ker(data_gpu[k], np.int32(array_len), block=(64,1,1), grid=(1,1,1))<br/><br/># copy arrays from GPU.<br/>for k in range(num_arrays):<br/>    gpu_out.append(data_gpu[k].get())<br/><br/>t_end = time()<br/><br/>for k in range(num_arrays):<br/>    assert (np.allclose(gpu_out[k], data[k]))<br/><br/>print 'Total time: %f' % (t_end - t_start)</pre>
 <p>We are now prepared to run this program. I will run it right now:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/e590fec8-0e98-4fce-bd4e-091871758825.png" style="" width="888" height="73"/></div>
-<p>So, it took almost three seconds for this program to complete. We will make a few simple modifications so that our program can use streams, and then see if we can get any performance gains (this can be seen in the <kbd>multi-kernel_streams.py</kbd> <span>file </span>in the repository).</p>
+<div><img src="img/e590fec8-0e98-4fce-bd4e-091871758825.png" style="" width="888" height="73"/></div>
+<p>So, it took almost three seconds for this program to complete. We will make a few simple modifications so that our program can use streams, and then see if we can get any performance gains (this can be seen in the <kbd>multi-kernel_streams.py</kbd> file in the repository).</p>
 <p>First, we note that for each kernel launch we have a separate array of data that it processes, and these are stored in Python lists. We will have to create a separate stream object for each individual array/kernel launch pair, so let's first add an empty list, entitled <kbd>streams</kbd>, that will hold our stream objects:</p>
 <pre>data = []<br/>data_gpu = []<br/>gpu_out = []<br/>streams = []</pre>
 <p>We can now generate a series of streams that we will use to organize the kernel launches. We can get a stream object from the <kbd>pycuda.driver</kbd> submodule with the <kbd>Stream</kbd> class. Since we've imported this submodule and aliased it as <kbd>drv</kbd>, we can fill up our list with new stream objects, as follows:</p>
@@ -100,7 +88,7 @@
 </ol>
 <pre style="padding-left: 60px">for k in range(num_arrays):<br/>    data_gpu.append(gpuarray.to_gpu_async(data[k], stream=streams[k]))</pre>
 <ol start="2">
-<li>We <span>can </span>now launch our kernels. This is exactly as before, only we must specify what stream to use by using the <kbd>stream</kbd> parameter:</li>
+<li>We can now launch our kernels. This is exactly as before, only we must specify what stream to use by using the <kbd>stream</kbd> parameter:</li>
 </ol>
 <pre style="padding-left: 60px">for k in range(num_arrays):<br/>    mult_ker(data_gpu[k], np.int32(array_len), block=(64,1,1), grid=(1,1,1), stream=streams[k])</pre>
 <ol start="3">
@@ -108,60 +96,54 @@
 </ol>
 <pre style="padding-left: 60px">for k in range(num_arrays):<br/>    gpu_out.append(data_gpu[k].get_async(stream=streams[k]))</pre>
 <p>We are now ready to run our stream-friendly modified program:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/1e11ea75-4947-459b-a915-363bdad7b241.png" style="" width="1007" height="71"/></div>
+<div><img src="img/1e11ea75-4947-459b-a915-363bdad7b241.png" style="" width="1007" height="71"/></div>
 <p>In this case, we have a triple-fold performance gain, which is not too bad considering the very few numbers of modifications we had to make. But before we move on, let's try to get a deeper understanding as to why this works.</p>
 <p>Let's consider the case of two CUDA kernel launches. We will also perform GPU memory operations corresponding to each kernel before and after we launch our kernels, for a total of six operations. We can visualize the operations happening on the GPU with respect to time with a graph as such—moving to the right on the <em>x</em>-axis corresponds to time duration, while the <em>y</em>-axis corresponds to operations being executed on the GPU at a particular time. This is depicted with the following diagram:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/9c272bdc-c6e1-4438-96ad-392af521175d.png" style="" width="1956" height="1088"/></div>
+<div><img src="img/9c272bdc-c6e1-4438-96ad-392af521175d.png" style="" width="1956" height="1088"/></div>
 <p>It's not too hard to visualize why streams work so well in performance increase—since operations in a single stream are blocked until only all <em>necessary</em> prior operations are competed, we will gain concurrency among distinct GPU operations and make full use of our device. This can be seen by the large overlap of concurrent operations. We can visualize stream-based concurrency over time as follows:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/d01793e3-d5a6-4ff8-b3fc-f22c198c7962.png" style="" width="1382" height="315"/></div>
+<div><img src="img/d01793e3-d5a6-4ff8-b3fc-f22c198c7962.png" style="" width="1382" height="315"/></div>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Concurrent Conway's game of life using CUDA streams</h1>
-                </header>
+<div><div><h1 class="header-title">Concurrent Conway's game of life using CUDA streams</h1>
+                
             
-            <article>
+            
                 
 <p>We will now see a more interesting application—we will modify the LIFE (Conway's <em>Game of Life</em>) simulation from the last chapter, so that we will have four independent windows of animation displayed concurrently. (It is suggested you look at this example from the last chapter, if you haven't yet.)</p>
-<p>Let's get a copy of the old LIFE simulation from the last chapter in the repository, which should be under <kbd>conway_gpu.py</kbd> in the <kbd>4</kbd> <span>directory</span>. We will now modify this into our new CUDA-stream based concurrent LIFE simulation. (This new streams-based simulation that we will see in a moment is also available in the <kbd>conway_gpu_streams.py</kbd> <span>file </span>in this chapter's directory, <kbd>5</kbd>.)</p>
+<p>Let's get a copy of the old LIFE simulation from the last chapter in the repository, which should be under <kbd>conway_gpu.py</kbd> in the <kbd>4</kbd> directory. We will now modify this into our new CUDA-stream based concurrent LIFE simulation. (This new streams-based simulation that we will see in a moment is also available in the <kbd>conway_gpu_streams.py</kbd> file in this chapter's directory, <kbd>5</kbd>.)</p>
 <p>Go to the main function at the end of the file. We will set a new variable that indicates how many concurrent animations we will display at once with <kbd>num_concurrent</kbd> (where <kbd>N</kbd> indicates the height/width of the simulation lattice, as before). We will set it to <kbd>4</kbd> here, but you can feel free to try other values:</p>
 <pre class="mce-root">if __name__ == '__main__':<br/><br/>    N = 128<br/>    num_concurrent = 4</pre>
 <p>We will now need a collection of <kbd>num_concurrent</kbd> stream objects, and will also need to allocate a collection of input and output lattices on the GPU. We'll of course just store these in lists and initialize the lattices as before. We will set up some empty lists and fill each with the appropriate objects over a loop, as such (notice how we set up a new initial state lattice on each iteration, send it to the GPU, and concatenate it to <kbd>lattices_gpu</kbd>):</p>
 <pre>streams = []<br/>lattices_gpu = []<br/>newLattices_gpu = []<br/><br/>for k in range(num_concurrent):<br/>    streams.append(drv.Stream())<br/>    lattice = np.int32( np.random.choice([1,0], N*N, p=[0.25, 0.75]).reshape(N, N) )<br/>    lattices_gpu.append(gpuarray.to_gpu(lattice)) <br/>    newLattices_gpu.append(gpuarray.empty_like(lattices_gpu[k])) </pre>
-<div class="packt_tip">Since we're only doing this loop once during the startup of our program and the virtually all of the computational work will be in the animation loop, we really don't have to worry about actually using the streams we just immediately generated.</div>
-<p>We will <span>now </span>set up the environment with Matplotlib using the subplots function; notice how we can set up multiple animation plots by setting the <kbd>ncols</kbd> parameter. We will have another list structure that will correspond to the images that are required for the animation updates in <kbd>imgs</kbd>. Notice how we can now set this up with <kbd>get_async</kbd> and the appropriate corresponding stream:</p>
+<p>Since we're only doing this loop once during the startup of our program and the virtually all of the computational work will be in the animation loop, we really don't have to worry about actually using the streams we just immediately generated.</p>
+<p>We will now set up the environment with Matplotlib using the subplots function; notice how we can set up multiple animation plots by setting the <kbd>ncols</kbd> parameter. We will have another list structure that will correspond to the images that are required for the animation updates in <kbd>imgs</kbd>. Notice how we can now set this up with <kbd>get_async</kbd> and the appropriate corresponding stream:</p>
 <pre>fig, ax = plt.subplots(nrows=1, ncols=num_concurrent)<br/>imgs = []<br/> <br/>for k in range(num_concurrent):<br/>    imgs.append( ax[k].imshow(lattices_gpu[k].get_async(stream=streams[k]), interpolation='nearest') )<br/> </pre>
-<p>The last thing to change in the main function is the penultimate line starting with <span><kbd>ani = animation.FuncAnimation</kbd>. Let's modify the arguments to the <kbd>update_gpu</kbd> function to reflect the new lists we are using and add two more arguments, one to pass our <kbd>streams</kbd> list, plus a parameter to indicate how many concurrent animations there should be:</span></p>
+<p>The last thing to change in the main function is the penultimate line starting with <kbd>ani = animation.FuncAnimation</kbd>. Let's modify the arguments to the <kbd>update_gpu</kbd> function to reflect the new lists we are using and add two more arguments, one to pass our <kbd>streams</kbd> list, plus a parameter to indicate how many concurrent animations there should be:</p>
 <pre>ani = animation.FuncAnimation(fig, update_gpu, fargs=(imgs, newLattices_gpu, lattices_gpu, N, streams, num_concurrent) , interval=0, frames=1000, save_count=1000)    </pre>
-<p>We now duly make the required modifications to the <kbd>update_gpu</kbd> <span>function </span>to take these extra parameters. Scroll up a bit in the file and modify the parameters as follows:</p>
+<p>We now duly make the required modifications to the <kbd>update_gpu</kbd> function to take these extra parameters. Scroll up a bit in the file and modify the parameters as follows:</p>
 <p><kbd>def update_gpu(frameNum, imgs, newLattices_gpu, lattices_gpu, N, streams, num_concurrent)</kbd>:</p>
 <p>We now need to modify this function to iterate <kbd>num_concurrent</kbd> times and set each element of <kbd>imgs</kbd> as before, before finally returning the whole <kbd>imgs</kbd> list:</p>
 <pre>for k in range(num_concurrent):<br/>    conway_ker( newLattices_gpu[k], lattices_gpu[k], grid=(N/32,N/32,1), block=(32,32,1), stream=streams[k] )<br/>     imgs[k].set_data(newLattices_gpu[k].get_async(stream=streams[k]) )<br/>     lattices_gpu[k].set_async(newLattices_gpu[k], stream=streams[k])<br/> <br/> return imgs</pre>
 <p>Notice the changes we made—each kernel is launched in the appropriate stream, while <kbd>get</kbd> has been switched to a <kbd>get_async</kbd> synchronized with the same stream.</p>
 <p>Finally, the last line in the loop copies GPU data from one device array to another without any re-allocation. Before, we could use the shorthand slicing operator <kbd>[:]</kbd> to directly copy the elements between the arrays without re-allocating any memory on the GPU; in this case, the slicing operator notation acts as an alias for the PyCUDA <kbd>set</kbd> function for GPU arrays. (<kbd>set</kbd>, of course, is the function that copies one GPU array to another of the same size, without any re-allocation.) Luckily, there is indeed a stream-synchronized also version of this function, <kbd>set_async</kbd>, but we need to use this specifically to call this function, explicitly specifying the array to copy and the stream to use. </p>
 <p>We're now finished and ready to run this. Go to a Terminal and enter <kbd>python conway_gpu_streams.py</kbd> at the command line to enjoy the show:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/93d56393-5968-409d-bcab-d56330f6bc91.png" width="1950" height="504"/></div>
+<div><img src="img/93d56393-5968-409d-bcab-d56330f6bc91.png" width="1950" height="504"/></div>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Events</h1>
-                </header>
+<div><div><h1 class="header-title">Events</h1>
+                
             
-            <article>
+            
                 
 <p><strong>Events</strong> are objects that exist <em>on the GPU</em>, whose purpose is to act as milestones or progress markers for a stream of operations. Events are generally used to provide measure time duration <em>on the device side</em> to precisely time operations; the measurements we have been doing so far have been with host-based Python profilers and standard Python library functions such as <kbd>time</kbd>. Additionally, events they can also be used to provide a status update for the host as to the state of a stream and what operations it has already completed, as well as for explicit stream-based synchronization.</p>
 <p>Let's start with an example that uses no explicit streams and uses events to measure only one single kernel launch. (If we don't explicitly use streams in our code, CUDA actually invisibly defines a default stream that all operations will be placed into).</p>
@@ -170,35 +152,32 @@
 <p>We now construct our events using the <kbd>pycuda.driver.Event</kbd> constructor (where, of course, <kbd>pycuda.driver</kbd> has been aliased as <kbd>drv</kbd> by our prior import statement).</p>
 <p>We will create two event objects here, one for the start of the kernel launch, and the other for the end of the kernel launch, (We will always need <em>two</em> event objects to measure any single GPU operation, as we will see soon):</p>
 <pre>start_event = drv.Event()<br/>end_event = drv.Event()</pre>
-<p>Now, we are about ready to launch our kernel, but first, we have to mark the <kbd>start_event</kbd> instance's place in the stream of execution with the event record function. We launch the kernel and then mark the <span>place of</span> <kbd>end_event</kbd> in the stream of execution, and also with <kbd>record</kbd>:</p>
+<p>Now, we are about ready to launch our kernel, but first, we have to mark the <kbd>start_event</kbd> instance's place in the stream of execution with the event record function. We launch the kernel and then mark the place of <kbd>end_event</kbd> in the stream of execution, and also with <kbd>record</kbd>:</p>
 <pre>start_event.record()<br/>mult_ker(data_gpu, np.int32(array_len), block=(64,1,1), grid=(1,1,1))<br/>end_event.record()</pre>
 <p>Events have a binary value that indicates whether they were reached or not yet, which is given by the function query. Let's print a status update for both events, immediately after the kernel launch:</p>
 <pre>print 'Has the kernel started yet? {}'.format(start_event.query())<br/> print 'Has the kernel ended yet? {}'.format(end_event.query())</pre>
 <p>Let's run this right now and see what happens:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/b7cd2aa1-cb0c-485a-939b-cf2d7fe35d1e.png" style="" width="1006" height="109"/></div>
+<div><img src="img/b7cd2aa1-cb0c-485a-939b-cf2d7fe35d1e.png" style="" width="1006" height="109"/></div>
 <p>Our goal here is to ultimately measure the time duration of our kernel execution, but the kernel hasn't even apparently launched yet. Kernels in PyCUDA have launched asynchronously (whether they exist in a specific stream or not), so we have to have to ensure that our host code is properly synchronized with the GPU.</p>
 <p>Since <kbd>end_event</kbd> comes last, we can block further host code execution until the kernel completes by this event object's synchronize function; this will ensure that the kernel has completed before any further lines of host code are executed. Let's add a line a line of code to do this in the appropriate place:</p>
 <pre>end_event.synchronize()<br/> <br/>print 'Has the kernel started yet?  {}'.format(start_event.query())<br/><br/>print 'Has the kernel ended yet? {}'.format(end_event.query())</pre>
-<p>Finally, we are ready to measure the execution time of the kernel; we do this with the event object's <kbd>time_till</kbd> or <kbd>time_since </kbd>operations to compare to another event object to get the time between these two events in milliseconds. Let's use the <kbd>time_till </kbd>operation of <kbd><span>start_event</span></kbd> on <kbd>end_event</kbd>:</p>
+<p>Finally, we are ready to measure the execution time of the kernel; we do this with the event object's <kbd>time_till</kbd> or <kbd>time_since </kbd>operations to compare to another event object to get the time between these two events in milliseconds. Let's use the <kbd>time_till </kbd>operation of <kbd>start_event</kbd> on <kbd>end_event</kbd>:</p>
 <pre>print 'Kernel execution time in milliseconds: %f ' % start_event.time_till(end_event)</pre>
 <p>Time duration can be measured between two events that have already occurred on the GPU with the <kbd>time_till</kbd> and <kbd>time_since</kbd> functions. Note that these functions always return a value in terms of milliseconds!</p>
 <p>Let's try running our program again now:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/29aadcbf-d395-487a-ac70-f3c422ae6f12.png" style="" width="1012" height="151"/></div>
-<p>(This example is also available in the <kbd>simple_event_example.py</kbd> <span>file </span>in the repository.)</p>
+<div><img src="img/29aadcbf-d395-487a-ac70-f3c422ae6f12.png" style="" width="1012" height="151"/></div>
+<p>(This example is also available in the <kbd>simple_event_example.py</kbd> file in the repository.)</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Events and streams</h1>
-                </header>
+<div><div><h1 class="header-title">Events and streams</h1>
+                
             
-            <article>
+            
                 
 <p>We will now see how to use event objects with respect to streams; this will give us a highly intricate level of control over the flow of our various GPU operations, allowing us to know exactly how far each individual stream has progressed via the <kbd>query</kbd> function, and even allowing us to synchronize particular streams with the host while ignoring the other streams. </p>
 <p>First, though, we have to realize this—each stream has to have its own dedicated collection of event objects; multiple streams cannot share an event object. Let's see what this means exactly by modifying the prior example, <kbd>multi_kernel_streams.py</kbd>. After the kernel definition, let's add two additional empty lists—<kbd>start_events</kbd> and <kbd>end_events</kbd>. We will fill these lists up with event objects, which will correspond to each stream that we have. This will allow us to time one GPU operation in each stream, since every GPU operation requires two events:</p>
@@ -210,23 +189,20 @@
 <p>Let's now add two <kbd>print</kbd> statements at the very end, to tell us the mean and standard deviation of the kernel execution times:</p>
 <pre>print 'Mean kernel duration (milliseconds): %f' % np.mean(kernel_times)<br/>print 'Mean kernel standard deviation (milliseconds): %f' % np.std(kernel_times)</pre>
 <p>We can now run this:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/40d38973-beee-4d08-8e0b-3847ae757c8e.png" style="" width="983" height="143"/></div>
+<div><img src="img/40d38973-beee-4d08-8e0b-3847ae757c8e.png" style="" width="983" height="143"/></div>
 <p>(This example is also available as <kbd>multi-kernel_events.py</kbd> in the repository.)</p>
 <p>We see that there is a relatively low degree of standard deviation in kernel duration, which is good, considering each kernel processes the same amount of data over the same block and grid size—if there were a high degree of deviation, then that would mean that we were making highly uneven usage of the GPU in our kernel executions, and we would have to re-tune parameters to gain a greater level of concurrency.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Contexts</h1>
-                </header>
+<div><div><h1 class="header-title">Contexts</h1>
+                
             
-            <article>
+            
                 
 <p>A CUDA <strong>context</strong> is usually described as being analogous to a process in an operating system. Let's review what this means—a process is an instance of a single program running on a computer; all programs outside of the operating system kernel run in a process. Each process has its own set of instructions, variables, and allocated memory, and is, generally speaking, blind to the actions and memory of other processes. When a process ends, the operating system kernel performs a cleanup, ensuring that all memory that the process allocated has been de-allocated, and closing any files, network connections, or other resources the process has made use of. (Curious Linux users can view the processes running on their computer with the command-line <kbd>top</kbd> command, while Windows users can view them with the Windows Task Manager).</p>
 <p>Similar to a process, a context is associated with a single host program that is using the GPU. A context holds in memory all CUDA kernels and allocated memory that is making use of and is blind to the kernels and memory of other currently existing contexts. When a context is destroyed (at the end of a GPU based program, for example), the GPU performs a cleanup of all code and allocated memory within the context, freeing resources up for other current and future contexts. The programs that we have been writing so far have all existed within a single context, so these operations and concepts have been invisible to us. </p>
@@ -234,49 +210,43 @@
 <p>As in many other areas of life, we will start with a simple example. We will first see how to access a program's default context and synchronize across it.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Synchronizing the current context</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">Synchronizing the current context</h1>
                 
-<p><span>We're going to see how to explicitly synchronize our device within a context from within Python as in CUDA C; this is actually one of the most fundamental skills to know in CUDA C, and is covered in the first or second chapters in most other books on the topic. So far, we have been able to avoid this topic, since PyCUDA has performed most synchronizations for us automatically with <kbd>pycuda.gpuarray</kbd> functions such as <kbd>to_gpu</kbd> or <kbd>get</kbd></span>;<span> otherwise, synchronization was handled by streams in the case of the <kbd>to_gpu_async</kbd> or <kbd>get_async</kbd> functions, as we saw at the beginning of this chapter.</span></p>
-<p class="mce-root">We will be humble and start by modifying the program we wrote in <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml" target="_blank">Chapter 3</a>, <span><em>Getting Started with PyCUDA, </em></span>which generates an image of the Mandelbrot set using explicit context synchronization. (This is available here as the file <kbd>gpu_mandelbrot0.py</kbd> under the <kbd>3</kbd> <span>directory </span>in the repository.)</p>
-<div class="mce-root packt_infobox">We won't get any performance gains over our original Mandelbrot program here; the only point of this exercise is just to help us understand CUDA contexts and GPU synchronization.</div>
+            
+            
+                
+<p>We're going to see how to explicitly synchronize our device within a context from within Python as in CUDA C; this is actually one of the most fundamental skills to know in CUDA C, and is covered in the first or second chapters in most other books on the topic. So far, we have been able to avoid this topic, since PyCUDA has performed most synchronizations for us automatically with <kbd>pycuda.gpuarray</kbd> functions such as <kbd>to_gpu</kbd> or <kbd>get</kbd>; otherwise, synchronization was handled by streams in the case of the <kbd>to_gpu_async</kbd> or <kbd>get_async</kbd> functions, as we saw at the beginning of this chapter.</p>
+<p class="mce-root">We will be humble and start by modifying the program we wrote in <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml" target="_blank">Chapter 3</a>, <em>Getting Started with PyCUDA, </em>which generates an image of the Mandelbrot set using explicit context synchronization. (This is available here as the file <kbd>gpu_mandelbrot0.py</kbd> under the <kbd>3</kbd> directory in the repository.)</p>
+<p>We won't get any performance gains over our original Mandelbrot program here; the only point of this exercise is just to help us understand CUDA contexts and GPU synchronization.</p>
 <p>Looking at the header, we, of course, see the <kbd>import pycuda.autoinit</kbd> line. We can access the current context object with <kbd>pycuda.autoinit.context</kbd>, and we can synchronize in our current context by calling the <kbd>pycuda.autoinit.context.synchronize()</kbd> function.</p>
 <p>Now let's modify the <kbd>gpu_mandelbrot</kbd> function to handle explicit synchronization. The first GPU-related line we see is this:</p>
 <p><kbd>mandelbrot_lattice_gpu = gpuarray.to_gpu(mandelbrot_lattice)</kbd></p>
 <p>We can now change this to be explicitly synchronized. We can copy to the GPU asynchronously with <kbd>to_gpu_async</kbd>, and then synchronize as follows:</p>
-<pre><span>mandelbrot_lattice_gpu = gpuarray.to_gpu_async(mandelbrot_lattice)<br/></span>pycuda.autoinit.context.synchronize()</pre>
+<pre>mandelbrot_lattice_gpu = gpuarray.to_gpu_async(mandelbrot_lattice)<br/>pycuda.autoinit.context.synchronize()</pre>
 <p>We then see the next line allocates memory on the GPU with the <kbd>gpuarray.empty</kbd> function. Memory allocation in CUDA is, by the nature of the GPU architecture, automatically synchronized; there is no <em>asynchronous</em> memory allocation equivalent here. Hence, we keep this line as it was before.</p>
-<div class="packt_infobox">Memory allocation in CUDA is always synchronized!</div>
+<p>Memory allocation in CUDA is always synchronized!</p>
 <p>We now see the next two lines—our Mandelbrot kernel is launched with an invocation to <kbd>mandel_ker</kbd>, and we copy the contents of our Mandelbrot <kbd>gpuarray</kbd> object with an invocation to <kbd>get</kbd>. We synchronize after the kernel launch, switch <kbd>get</kbd> to <kbd>get_async</kbd>, and finally synchronize one last line:</p>
-<pre>mandel_ker( mandelbrot_lattice_gpu, mandelbrot_graph_gpu, np.int32(max_iters), np.float32(upper_bound))<br/>pycuda.autoinit.context.synchronize()<br/>mandelbrot_graph = mandelbrot_graph_gpu.get_async()<br/><span>pycuda.autoinit.context.synchronize()</span></pre>
-<p>We can now run this, and it will produce a Mandelbrot image to disk, exactly as in <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml" target="_blank">Chapter 3</a>, <em><span>Getting Started with PyCUDA.</span></em></p>
+<pre>mandel_ker( mandelbrot_lattice_gpu, mandelbrot_graph_gpu, np.int32(max_iters), np.float32(upper_bound))<br/>pycuda.autoinit.context.synchronize()<br/>mandelbrot_graph = mandelbrot_graph_gpu.get_async()<br/>pycuda.autoinit.context.synchronize()</pre>
+<p>We can now run this, and it will produce a Mandelbrot image to disk, exactly as in <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml" target="_blank">Chapter 3</a>, <em>Getting Started with PyCUDA.</em></p>
 <p>(This example is also available as <kbd>gpu_mandelbrot_context_sync.py</kbd> in the repository.)</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Manual context creation</h1>
-                </header>
-            
-            <article>
+<div><div><h1 class="header-title">Manual context creation</h1>
                 
-<p>So far, we have been importing <kbd>pycuda.autoinit</kbd> <span>at the beginning of all of our PyCUDA programs; this effectively creates a context at the beginning of our program and has it destroyed at the end. </span></p>
+            
+            
+                
+<p>So far, we have been importing <kbd>pycuda.autoinit</kbd> at the beginning of all of our PyCUDA programs; this effectively creates a context at the beginning of our program and has it destroyed at the end. </p>
 <p>Let's try doing this manually. We will make a small program that just copies a small array to the GPU, copies it back to the host, prints the array, and exits.</p>
 <p>We start with the imports:</p>
 <pre>import numpy as np<br/>from pycuda import gpuarray<br/>import pycuda.driver as drv</pre>
@@ -291,21 +261,18 @@
 <p>Now we are done. We can destroy the context by calling the <kbd>pop</kbd> function:</p>
 <pre>ctx.pop()</pre>
 <p>That's it! We should always remember to destroy contexts that we explicitly created with <kbd>pop</kbd> before our program exists.</p>
-<p>(This example can be seen in the <kbd>simple_context_create.py</kbd> <span>file </span>under this chapter's directory in the repository.)</p>
+<p>(This example can be seen in the <kbd>simple_context_create.py</kbd> file under this chapter's directory in the repository.)</p>
 
-
-            </article>
 
             
-        </section>
+
+            
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Host-side multiprocessing and multithreading</h1>
-                </header>
+<div><div><h1 class="header-title">Host-side multiprocessing and multithreading</h1>
+                
             
-            <article>
+            
                 
 <p>Of course, we may seek to gain concurrency on the host side by using multiple processes or threads on the host's CPU. Let's make the distinction right now between a host-side operating system process and thread with a quick overview.</p>
 <p>Every host-side program that exists outside the operating system kernel is executed as a process, and can also exist in multiple processes. A process has its own address space, as it runs concurrently with, and independently of, all other processes. A process is, generally speaking, blind to the actions of other processes, although multiple processes can communicate through sockets or pipes. In Linux and Unix, new processes are spawned with the fork system call.</p>
@@ -315,18 +282,15 @@
 <p>We will now see how to use both threads in Python to use GPU based operations; Linux users should note that this can be easily extended to processes by switching references of <kbd>threading</kbd> to <kbd>multiprocessing</kbd>, and references to <kbd>Thread</kbd> to <kbd>Process</kbd>, as both modules look and act similarly. By the nature of PyCUDA, however, we will have to create a new CUDA context for every thread or process that we will use that will make use of the GPU. Let's see how to do this right now.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Multiple contexts for host-side concurrency</h1>
-                </header>
+<div><div><h1 class="header-title">Multiple contexts for host-side concurrency</h1>
+                
             
-            <article>
+            
                 
 <p>Let's first briefly review how to create a single host thread in Python that can return a value to the host with a simple example. (This example can also be seen in the <kbd>single_thread_example.py</kbd> file under <kbd>5</kbd> in the repository.) We will do this by using the <kbd>Thread</kbd> class in the <kbd>threading</kbd> module to create a subclass of <kbd>Thread</kbd>, as follows:</p>
 <pre>import threading<br/>class PointlessExampleThread(threading.Thread):</pre>
@@ -339,7 +303,7 @@
 <p>Now we are done setting up our thread class. Let's start an instance of this class as the <kbd>NewThread</kbd> object, spawn the new thread by calling the <kbd>start</kbd> method, and then block execution and get the output from the host thread by calling <kbd>join</kbd>:</p>
 <pre>NewThread = PointlessExampleThread()<br/>NewThread.start()<br/>thread_output = NewThread.join()<br/>print 'The thread completed and returned this value: %s' % thread_output</pre>
 <p>Now let's run this:</p>
-<div class="CDPAlignCenter CDPAlign"><img src="assets/9dc8f524-03ac-4f2c-a21c-8736c1feb1cf.png" style="" width="1019" height="110"/></div>
+<div><img src="img/9dc8f524-03ac-4f2c-a21c-8736c1feb1cf.png" style="" width="1019" height="110"/></div>
 <p>Now, we can expand this idea among multiple concurrent threads on the host to launch concurrent CUDA operations by way of multiple contexts and threading. We will now look at one last example. Let's re-use the pointless multiply/divide kernel from the beginning of this chapter and launch it within each thread that we spawn.</p>
 <p>First, let's look at the imports. Since we are making explicit contexts, remember to remove <kbd>pycuda.autoinit</kbd> and add an import <kbd>threading</kbd> at the end:</p>
 <pre>import pycuda<br/>import pycuda.driver as drv<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>import numpy as np<br/>from time import time<br/>import threading </pre>
@@ -364,34 +328,28 @@
 <p>This example can be seen in the <kbd>multi-kernel_multi-thread.py</kbd> file in the repository.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Summary</h1>
-                </header>
+<div><div><h1 class="header-title">Summary</h1>
+                
             
-            <article>
+            
                 
 <p>We started this chapter by learning about device synchronization and the importance of synchronization of operations on the GPU from the host; this allows dependent operations to allow antecedent operations to finish before proceeding. This concept has been hidden from us, as PyCUDA has been handling synchronization for us automatically up to this point. We then learned about CUDA streams, which allow for independent sequences of operations to execute on the GPU simultaneously without synchronizing across the entire GPU, which can give us a big performance boost; we then learned about CUDA events, which allow us to time individual CUDA kernels within a given stream, and to determine if a particular operation in a stream has occurred. Next, we learned about contexts, which are analogous to processes in a host operating system. We learned how to synchronize across an entire CUDA context explicitly and then saw how to create and destroy contexts. Finally, we saw how we can generate multiple contexts on the GPU, to allow for GPU usage among multiple threads or processes on the host.</p>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div>
-<div id="book-content"><div id="sbo-rt-content"><section>
-
-                            <header>
-                    <h1 class="header-title">Questions</h1>
-                </header>
+<div><div><h1 class="header-title">Questions</h1>
+                
             
-            <article>
+            
                 
 <ol>
 <li>In the launch parameters for the kernel in the first example, our kernels were each launched over 64 threads. If we increase the number of threads to and beyond the number of cores in our GPU, how does this affect the performance of both the original to the stream version?</li>
@@ -402,8 +360,8 @@
 </ol>
 
 
-            </article>
+            
 
             
-        </section>
+        
     </div></div></body></html>
