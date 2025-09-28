@@ -3,21 +3,25 @@
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 流、事件、上下文和并发
 - en: 'In the prior chapters, we saw that there are two primary operations we perform
     from the host when interacting with the GPU:'
   id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的章节中，我们看到了在与GPU交互时，从主机执行的两个主要操作：
 - en: Copying memory data to and from the GPU
   id: totrans-2
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将内存数据复制到和从GPU
 - en: Launching kernel functions
   id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 启动内核函数
 - en: We know that *within* a single kernel, there is one level of concurrency among
     its many threads; however, there is another level of concurrency *over* multiple
     kernels *and* GPU memory operations that are also available to us. This means
@@ -30,6 +34,7 @@
   id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们知道，在单个内核中，其众多线程之间存在一个并发级别；然而，还有另一个并发级别，是针对多个内核以及我们可用的GPU内存操作。这意味着我们可以同时启动多个内存和内核操作，而无需等待每个操作完成。然而，另一方面，我们必须要有一定的组织性，以确保所有相互依赖的操作都得到同步；这意味着我们不应该在输入数据完全复制到设备内存之前启动特定的内核，或者不应该在内核执行完成之前将启动内核的输出数据复制到主机。
 - en: To this end, we have what are known as **CUDA** **streams**—a **stream** is
     a sequence of operations that are run in order on the GPU. By itself, a single
     stream isn't of any use—the point is to gain concurrency over GPU operations issued
@@ -39,6 +44,7 @@
   id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了达到这个目的，我们有了所谓的**CUDA流**——一个**流**是一系列按顺序在GPU上运行的操作。单独来看，一个流本身并没有什么用处——关键是通过使用多个流来获得对主机发出的GPU操作的并发性。这意味着我们应该交错启动对应不同流的GPU操作，以利用这个概念。
 - en: We will be covering this notion of streams extensively in this chapter. Additionally,
     we will look at **events**, which are a feature of streams that are used to precisely
     time kernels and indicate to the host as to what operations have been completed
@@ -46,6 +52,7 @@
   id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将广泛介绍流的概念。此外，我们还将探讨**事件**，这是流的一个特性，用于精确地计时内核，并向主机指示在给定流中完成了哪些操作。
 - en: Finally, we will briefly look at CUDA **contexts**. A **context** can be thought
     of as analogous to a process in your operating system, in that the GPU keeps each
     context's data and kernel code *walled off* and encapsulated away from the other
@@ -54,51 +61,61 @@
   id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们将简要介绍CUDA **上下文**。一个**上下文**可以被视为与操作系统中进程的类似，因为GPU将每个上下文的数据和内核代码*隔离*并封装起来，使其与其他当前存在于GPU上的上下文隔离开。我们将在本章末尾看到这个概念的基本内容。
 - en: 'The following are the learning outcomes for this chapter:'
   id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下为本章的学习成果：
 - en: Understanding the concepts of device and stream synchronization
   id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解设备和流同步的概念
 - en: Learning how to effectively use streams to organize concurrent GPU operations
   id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 学习如何有效地使用流来组织并发GPU操作
 - en: Learning how to effectively use CUDA events
   id: totrans-11
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 学习如何有效地使用CUDA事件
 - en: Understanding CUDA contexts
   id: totrans-12
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解CUDA上下文
 - en: Learning how to explicitly synchronize within a given context
   id: totrans-13
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 学习如何在给定上下文中显式同步
 - en: Learning how to explicitly create and destroy a CUDA context
   id: totrans-14
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 学习如何显式创建和销毁CUDA上下文
 - en: Learning how to use contexts to allow for GPU usage among multiple processes
     and threads on the host
   id: totrans-15
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 学习如何使用上下文以允许在主机上的多个进程和线程中使用GPU
 - en: Technical requirements
   id: totrans-16
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: A Linux or Windows 10 PC with a modern NVIDIA GPU (2016—onward) is required
     for this chapter, with all necessary GPU drivers and the CUDA Toolkit (9.0–onward)
     installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) with
@@ -106,14 +123,18 @@
   id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了本章，需要一个配备现代NVIDIA GPU（2016年及以后）的Linux或Windows 10 PC，并安装所有必要的GPU驱动程序和CUDA Toolkit（9.0及以后）。还需要一个合适的Python
+    2.7安装（例如Anaconda Python 2.7），并包含PyCUDA模块。
 - en: 'This chapter''s code is also available on GitHub:'
   id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的代码也可在GitHub上找到：
 - en: '[https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA](https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA)'
   id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: '[https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA](https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA)'
 - en: For more information about the prerequisites, check the *Preface* of this book,
     and for the software and hardware requirements, check the README in [https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA](https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA).
   id: totrans-20
@@ -215,6 +236,9 @@
   id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们有一个对每个数组进行操作的内核；所有这些将做的只是遍历数组中的每个点，并将其乘以 2 并除以 2 共 50 次，最终保持数组不变。我们希望限制每个内核启动使用的线程数，这将帮助我们获得
+    GPU 上多个内核启动的并发性，以便每个线程可以通过 `for` 循环遍历数组的不同部分。(再次提醒，这个内核函数除了了解流和同步之外，对其他任何用途都是完全无用的!)
+    如果每个内核启动使用太多的线程，那么在以后获得并发性将会更难：
 - en: '[PRE3]'
   id: totrans-33
   prefs: []
@@ -228,6 +252,8 @@
   id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将生成一些随机数据数组，将这些数组复制到 GPU 上，迭代地在 64 个线程上启动我们的内核，然后将输出数据复制回主机，并使用 NumPy 的
+    `allclose` 函数断言它们相同。我们将使用 Python 的 `time` 函数记录从开始到结束的所有操作的持续时间，如下所示：
 - en: '[PRE4]'
   id: totrans-35
   prefs: []
@@ -237,10 +263,12 @@
   id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们已经准备好运行这个程序。我现在就会运行它：
 - en: '![](img/e590fec8-0e98-4fce-bd4e-091871758825.png)'
   id: totrans-37
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/e590fec8-0e98-4fce-bd4e-091871758825.png)'
 - en: So, it took almost three seconds for this program to complete. We will make
     a few simple modifications so that our program can use streams, and then see if
     we can get any performance gains (this can be seen in the `multi-kernel_streams.py`
@@ -248,6 +276,8 @@
   id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，这个程序完成几乎花了三秒钟。我们将进行一些简单的修改，以便我们的程序可以使用流，然后看看我们是否能获得任何性能提升（这可以在存储库中的 `multi-kernel_streams.py`
+    文件中看到）。
 - en: 'First, we note that for each kernel launch we have a separate array of data
     that it processes, and these are stored in Python lists. We will have to create
     a separate stream object for each individual array/kernel launch pair, so let''s
@@ -255,6 +285,8 @@
   id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们注意到对于每个内核启动，我们都有一个处理的数据数组，这些数据存储在 Python 列表中。我们必须为每个单独的数组/内核启动对创建一个单独的流对象，所以让我们首先添加一个名为
+    `streams` 的空列表，它将保存我们的流对象：
 - en: '[PRE5]'
   id: totrans-40
   prefs: []
@@ -267,6 +299,8 @@
   id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以生成一系列我们将用于组织内核启动的流。我们可以从 `pycuda.driver` 子模块使用 `Stream` 类获取流对象。由于我们已经导入了这个子模块并将其别名为
+    `drv`，我们可以用新的流对象填充我们的列表，如下所示：
 - en: '[PRE6]'
   id: totrans-42
   prefs: []
@@ -277,6 +311,7 @@
   id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们首先需要修改将数据传输到 GPU 的内存操作。考虑以下步骤：
 - en: 'Look for the first loop that copies the arrays to the GPU with the `gpuarray.to_gpu`
     function. We will want to switch to the asynchronous and stream-friendly version
     of this function, `gpu_array.to_gpu_async`, instead. (We must now also specify
@@ -285,6 +320,8 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '查找第一个使用 `gpuarray.to_gpu` 函数将数组复制到 GPU 的循环。我们希望切换到异步和流友好的版本，即 `gpu_array.to_gpu_async`
+    函数。 (我们现在还必须使用 `stream` 参数指定每个内存操作应使用的流):'
 - en: '[PRE7]'
   id: totrans-45
   prefs: []
@@ -296,6 +333,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们现在可以启动我们的内核。这完全和以前一样，只是我们必须通过使用 `stream` 参数指定要使用哪个流：
 - en: '[PRE8]'
   id: totrans-47
   prefs: []
@@ -308,6 +346,8 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们需要将我们的数据从 GPU 上拉下来。我们可以通过将 `gpuarray get` 函数切换到 `get_async`，并再次使用 `stream`
+    参数来实现，如下所示：
 - en: '[PRE9]'
   id: totrans-49
   prefs: []
@@ -317,16 +357,19 @@
   id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们已经准备好运行我们的流友好修改后的程序：
 - en: '![](img/1e11ea75-4947-459b-a915-363bdad7b241.png)'
   id: totrans-51
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/1e11ea75-4947-459b-a915-363bdad7b241.png)'
 - en: In this case, we have a triple-fold performance gain, which is not too bad considering
     the very few numbers of modifications we had to make. But before we move on, let's
     try to get a deeper understanding as to why this works.
   id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，我们有三重性能提升，考虑到我们不得不做的修改非常少，这并不算太坏。但在我们继续之前，让我们尝试更深入地理解为什么这会起作用。
 - en: 'Let''s consider the case of two CUDA kernel launches. We will also perform
     GPU memory operations corresponding to each kernel before and after we launch
     our kernels, for a total of six operations. We can visualize the operations happening
@@ -337,10 +380,12 @@
   id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们考虑两个CUDA内核调用的案例。我们将在启动内核前后执行与每个内核对应的GPU内存操作，总共六个操作。我们可以用以下图表可视化GPU上随时间发生的操作——沿*x*轴向右移动对应时间长度，而*y*轴对应特定时间执行的GPU操作。这可以用以下图表表示：
 - en: '![](img/9c272bdc-c6e1-4438-96ad-392af521175d.png)'
   id: totrans-54
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/9c272bdc-c6e1-4438-96ad-392af521175d.png)'
 - en: 'It''s not too hard to visualize why streams work so well in performance increase—since
     operations in a single stream are blocked until only all *necessary* prior operations
     are competed, we will gain concurrency among distinct GPU operations and make
@@ -349,15 +394,18 @@
   id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 可视化为什么流在性能提升方面工作得如此之好并不太难——由于单个流中的操作只有在所有*必要*的先前操作都完成后才会被阻塞，我们将获得不同GPU操作之间的并发性，并充分利用我们的设备。这可以通过并发操作的巨大重叠来看到。我们可以如下可视化基于流的并发性随时间的变化：
 - en: '![](img/d01793e3-d5a6-4ff8-b3fc-f22c198c7962.png)'
   id: totrans-56
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/d01793e3-d5a6-4ff8-b3fc-f22c198c7962.png)'
 - en: Concurrent Conway's game of life using CUDA streams
   id: totrans-57
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用CUDA流并发执行康威生命游戏
 - en: We will now see a more interesting application—we will modify the LIFE (Conway's
     *Game of Life*) simulation from the last chapter, so that we will have four independent
     windows of animation displayed concurrently. (It is suggested you look at this
@@ -365,6 +413,7 @@
   id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将看到一个更有趣的应用——我们将修改上一章的LIFE（康威生命游戏）模拟，这样我们就可以同时显示四个独立的动画窗口。（如果你还没有看过上一章的例子，建议你看看这个例子。）
 - en: Let's get a copy of the old LIFE simulation from the last chapter in the repository,
     which should be under `conway_gpu.py` in the `4` directory. We will now modify
     this into our new CUDA-stream based concurrent LIFE simulation. (This new streams-based
@@ -373,6 +422,7 @@
   id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从存储库中获取上一章的旧LIFE模拟副本，它应该在`4`目录下的`conway_gpu.py`文件中。我们现在将修改它以创建基于CUDA流的新并发LIFE模拟。（我们将在下一章的`5`目录下的`conway_gpu_streams.py`文件中看到这个基于流的模拟。）
 - en: 'Go to the main function at the end of the file. We will set a new variable
     that indicates how many concurrent animations we will display at once with `num_concurrent`
     (where `N` indicates the height/width of the simulation lattice, as before). We
@@ -380,6 +430,7 @@
   id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 前往文件末尾的主函数。我们将设置一个新变量`num_concurrent`，它指示我们一次将显示多少个并发动画（其中`N`表示模拟格子的高度/宽度，如前所述）。我们在这里将其设置为`4`，但你可以自由尝试其他值：
 - en: '[PRE10]'
   id: totrans-61
   prefs: []
@@ -394,6 +445,7 @@
   id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们需要一组`num_concurrent`流对象，并且还需要在GPU上分配一组输入和输出格子。当然，我们将将这些存储在列表中，并像以前一样初始化格子。我们将设置一些空列表，并在循环中填充适当的对象，如下所示（注意我们如何在每次迭代中设置一个新的初始状态格子，将其发送到GPU，并将其连接到`lattices_gpu`）：
 - en: '[PRE11]'
   id: totrans-63
   prefs: []
@@ -406,6 +458,7 @@
   id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们只是在程序启动时执行这个循环一次，并且几乎所有计算工作都会在动画循环中完成，所以我们实际上并不需要担心使用我们刚刚立即生成的流。
 - en: 'We will now set up the environment with Matplotlib using the subplots function;
     notice how we can set up multiple animation plots by setting the `ncols` parameter.
     We will have another list structure that will correspond to the images that are
@@ -414,6 +467,8 @@
   id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将使用 Matplotlib 的子图功能设置环境；注意我们如何通过设置 `ncols` 参数来设置多个动画图。我们将有一个另一个列表结构，它将对应于
+    `imgs` 中所需的动画更新图像。注意我们现在如何使用 `get_async` 和适当的对应流来设置它：
 - en: '[PRE12]'
   id: totrans-66
   prefs: []
@@ -427,6 +482,8 @@
   id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 在主函数中最后要更改的是以 `ani = animation.FuncAnimation` 开头的倒数第二行。让我们修改 `update_gpu` 函数的参数，以反映我们正在使用的新列表，并添加两个额外的参数，一个用于传递我们的
+    `streams` 列表，以及一个参数来指示应该有多少个并发动画：
 - en: '[PRE13]'
   id: totrans-68
   prefs: []
@@ -438,16 +495,20 @@
   id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在对 `update_gpu` 函数进行必要的修改，以接受这些额外的参数。在文件中向上滚动一点，并按以下方式修改参数：
 - en: '`def update_gpu(frameNum, imgs, newLattices_gpu, lattices_gpu, N, streams,
     num_concurrent)`:'
   id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: '`def update_gpu(frameNum, imgs, newLattices_gpu, lattices_gpu, N, streams,
+    num_concurrent)`:'
 - en: 'We now need to modify this function to iterate `num_concurrent` times and set
     each element of `imgs` as before, before finally returning the whole `imgs` list:'
   id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在需要修改这个函数，使其迭代 `num_concurrent` 次，并在返回整个 `imgs` 列表之前，像之前一样设置 `imgs` 的每个元素：
 - en: '[PRE14]'
   id: totrans-72
   prefs: []
@@ -458,6 +519,7 @@
   id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意我们做出的更改——每个内核都在适当的流中启动，而 `get` 已切换到与同一流同步的 `get_async`。
 - en: Finally, the last line in the loop copies GPU data from one device array to
     another without any re-allocation. Before, we could use the shorthand slicing
     operator `[:]` to directly copy the elements between the arrays without re-allocating
@@ -470,20 +532,26 @@
   id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，循环中的最后一行将 GPU 数据从一个设备数组复制到另一个数组，而不进行任何重新分配。在此之前，我们可以使用简写切片操作符 `[:]` 直接在数组之间复制元素，而不在
+    GPU 上重新分配任何内存；在这种情况下，切片操作符的表示法充当了 PyCUDA `set` 函数的 GPU 数组的别名。（当然，“set” 是将一个 GPU
+    数组复制到另一个相同大小的数组而不进行任何重新分配的函数。）幸运的是，确实存在这个函数的流同步版本，即 `set_async`，但我们需要明确使用这个函数，并指定要复制的数组和要使用的流。
 - en: 'We''re now finished and ready to run this. Go to a Terminal and enter `python
     conway_gpu_streams.py` at the command line to enjoy the show:'
   id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在已经完成并准备好运行这个程序。转到终端，在命令行中输入 `python conway_gpu_streams.py` 来享受这个展示：
 - en: '![](img/93d56393-5968-409d-bcab-d56330f6bc91.png)'
   id: totrans-76
   prefs: []
   type: TYPE_IMG
+  zh: '![图片](img/93d56393-5968-409d-bcab-d56330f6bc91.png)'
 - en: Events
   id: totrans-77
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 事件
 - en: '**Events** are objects that exist *on the GPU*, whose purpose is to act as
     milestones or progress markers for a stream of operations. Events are generally
     used to provide measure time duration *on the device side* to precisely time operations;
@@ -495,6 +563,8 @@
   id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: '**事件**是存在于 GPU 上的对象，其目的是作为操作流的里程碑或进度标记。事件通常用于在设备端提供测量时间持续性的功能，以精确地计时操作；我们迄今为止所做的时间测量都是使用基于主机的
+    Python 性能分析器和标准 Python 库函数，如 `time`。此外，事件还可以用于向主机提供有关流的状态以及它已经完成哪些操作的状态更新，以及用于基于流的显式同步。'
 - en: Let's start with an example that uses no explicit streams and uses events to
     measure only one single kernel launch. (If we don't explicitly use streams in
     our code, CUDA actually invisibly defines a default stream that all operations
@@ -502,6 +572,7 @@
   id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从使用无显式流的示例开始，并使用事件仅测量单个内核启动。（如果我们不在我们的代码中显式使用流，CUDA实际上会无意识地定义一个默认流，所有操作都将放入该流中）。
 - en: 'Here, we will use the same useless multiply/divide loop kernel and header as
     we did at the beginning of the chapter, and modify most of the following contents.
     We want a single kernel instance to run a long time for this example, so we will
@@ -509,6 +580,7 @@
   id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们将使用与本章开头相同的无用的乘除循环内核和头文件，并修改以下大部分内容。我们希望这个示例中单个内核实例运行很长时间，因此我们将生成一个巨大的随机数数组供内核处理，如下所示：
 - en: '[PRE15]'
   id: totrans-81
   prefs: []
@@ -519,12 +591,14 @@
   id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在使用`pycuda.driver.Event`构造函数构建我们的事件（当然，`pycuda.driver`已经被我们之前的导入语句别名为`drv`）。
 - en: 'We will create two event objects here, one for the start of the kernel launch,
     and the other for the end of the kernel launch, (We will always need *two* event
     objects to measure any single GPU operation, as we will see soon):'
   id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在这里创建两个事件对象，一个用于内核启动的开始，另一个用于内核启动的结束（我们将始终需要两个事件对象来测量任何单个GPU操作，就像我们很快就会看到的那样）：
 - en: '[PRE16]'
   id: totrans-84
   prefs: []
@@ -537,6 +611,7 @@
   id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们即将启动内核，但首先，我们必须使用事件记录函数标记`start_event`实例在执行流中的位置。我们启动内核，然后标记`end_event`在执行流中的位置，并使用`record`：
 - en: '[PRE17]'
   id: totrans-86
   prefs: []
@@ -548,6 +623,7 @@
   id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 事件具有二进制值，表示它们是否已到达或尚未到达，这由函数query给出。让我们在内核启动后立即打印两个事件的更新状态：
 - en: '[PRE18]'
   id: totrans-88
   prefs: []
@@ -557,10 +633,12 @@
   id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们现在运行这个程序并看看会发生什么：
 - en: '![](img/b7cd2aa1-cb0c-485a-939b-cf2d7fe35d1e.png)'
   id: totrans-90
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/b7cd2aa1-cb0c-485a-939b-cf2d7fe35d1e.png)'
 - en: Our goal here is to ultimately measure the time duration of our kernel execution,
     but the kernel hasn't even apparently launched yet. Kernels in PyCUDA have launched
     asynchronously (whether they exist in a specific stream or not), so we have to
@@ -568,6 +646,7 @@
   id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的目标是最终测量内核执行的持续时间，但内核显然还没有启动。PyCUDA中的内核是异步启动的（无论它们是否存在于特定的流中），因此我们必须确保我们的主机代码与GPU正确同步。
 - en: 'Since `end_event` comes last, we can block further host code execution until
     the kernel completes by this event object''s synchronize function; this will ensure
     that the kernel has completed before any further lines of host code are executed.
@@ -575,6 +654,7 @@
   id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于`end_event`是最后一个到达的，我们可以通过这个事件对象的synchronize函数阻塞进一步的宿主代码执行，直到内核完成；这将确保在执行任何进一步的宿主代码行之前内核已经完成。让我们在适当的位置添加一行代码来完成这个操作：
 - en: '[PRE19]'
   id: totrans-93
   prefs: []
@@ -587,6 +667,7 @@
   id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们准备测量内核的执行时间；我们使用事件对象的`time_till`或`time_since`操作来与另一个事件对象进行比较，以获取这两个事件之间的时间（以毫秒为单位）。让我们使用`start_event`的`time_till`操作来测量`end_event`：
 - en: '[PRE20]'
   id: totrans-95
   prefs: []
@@ -598,24 +679,29 @@
   id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 可以使用`time_till`和`time_since`函数测量GPU上已经发生的两个事件之间的持续时间。请注意，这些函数始终以毫秒为单位返回值！
 - en: 'Let''s try running our program again now:'
   id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们现在再次尝试运行我们的程序：
 - en: '![](img/29aadcbf-d395-487a-ac70-f3c422ae6f12.png)'
   id: totrans-98
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/29aadcbf-d395-487a-ac70-f3c422ae6f12.png)'
 - en: (This example is also available in the `simple_event_example.py` file in the
     repository.)
   id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: （此示例也可在存储库中的`simple_event_example.py`文件中找到。）
 - en: Events and streams
   id: totrans-100
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 事件和流
 - en: We will now see how to use event objects with respect to streams; this will
     give us a highly intricate level of control over the flow of our various GPU operations,
     allowing us to know exactly how far each individual stream has progressed via
@@ -779,12 +865,14 @@
   id: totrans-121
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将谦逊地开始修改我们在[第3章](6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml)，“PyCUDA入门”中编写的程序，该程序使用显式上下文同步生成Mandelbrot集的图像。（这可以在存储库中的`3`目录下的文件`gpu_mandelbrot0.py`中找到。）
 - en: We won't get any performance gains over our original Mandelbrot program here;
     the only point of this exercise is just to help us understand CUDA contexts and
     GPU synchronization.
   id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在这里不会比原始的Mandelbrot程序获得任何性能提升；这个练习的唯一目的只是帮助我们理解CUDA上下文和GPU同步。
 - en: Looking at the header, we, of course, see the `import pycuda.autoinit` line.
     We can access the current context object with `pycuda.autoinit.context`, and we
     can synchronize in our current context by calling the `pycuda.autoinit.context.synchronize()`
@@ -792,20 +880,24 @@
   id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 查看头文件，我们当然会看到`import pycuda.autoinit`这一行。我们可以使用`pycuda.autoinit.context`访问当前上下文对象，并且我们可以通过调用`pycuda.autoinit.context.synchronize()`函数在我们的当前上下文中进行同步。
 - en: 'Now let''s modify the `gpu_mandelbrot` function to handle explicit synchronization.
     The first GPU-related line we see is this:'
   id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在让我们修改`gpu_mandelbrot`函数以处理显式同步。我们看到的第一个与GPU相关的行是这一行：
 - en: '`mandelbrot_lattice_gpu = gpuarray.to_gpu(mandelbrot_lattice)`'
   id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: '`mandelbrot_lattice_gpu = gpuarray.to_gpu(mandelbrot_lattice)`'
 - en: 'We can now change this to be explicitly synchronized. We can copy to the GPU
     asynchronously with `to_gpu_async`, and then synchronize as follows:'
   id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以将这个改为显式同步。我们可以使用`to_gpu_async`异步地将数据复制到GPU，然后按照以下方式同步：
 - en: '[PRE25]'
   id: totrans-127
   prefs: []
@@ -818,10 +910,12 @@
   id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后我们看到下一行使用`gpuarray.empty`函数在GPU上分配内存。由于GPU架构的本质，CUDA中的内存分配总是自动同步的；这里没有*异步*内存分配的等效项。因此，我们保留这一行不变。
 - en: Memory allocation in CUDA is always synchronized!
   id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 在CUDA中进行内存分配始终是同步的！
 - en: 'We now see the next two lines—our Mandelbrot kernel is launched with an invocation
     to `mandel_ker`, and we copy the contents of our Mandelbrot `gpuarray` object
     with an invocation to `get`. We synchronize after the kernel launch, switch `get`
@@ -829,6 +923,8 @@
   id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在看到接下来的两行——我们的Mandelbrot内核通过调用`mandel_ker`来启动，我们通过调用`get`来复制我们的Mandelbrot
+    `gpuarray`对象的内容。在内核启动后进行同步，将`get`切换到`get_async`，最后同步最后一行：
 - en: '[PRE26]'
   id: totrans-131
   prefs: []
@@ -840,30 +936,36 @@
   id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以运行这个程序，它将生成Mandelbrot图像到磁盘，就像在[第3章](6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml)，“PyCUDA入门”中一样。
 - en: (This example is also available as `gpu_mandelbrot_context_sync.py` in the repository.)
   id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: （此示例也可在存储库中作为`gpu_mandelbrot_context_sync.py`文件找到。）
 - en: Manual context creation
   id: totrans-134
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 手动创建上下文
 - en: So far, we have been importing `pycuda.autoinit` at the beginning of all of
     our PyCUDA programs; this effectively creates a context at the beginning of our
     program and has it destroyed at the end.
   id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们一直在所有PyCUDA程序的开始处导入`pycuda.autoinit`；这实际上在程序开始时创建了一个上下文，并在程序结束时销毁它。
 - en: Let's try doing this manually. We will make a small program that just copies
     a small array to the GPU, copies it back to the host, prints the array, and exits.
   id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们尝试手动进行。我们将编写一个小程序，该程序仅将一个小数组复制到GPU，将其复制回主机，打印数组，然后退出。
 - en: 'We start with the imports:'
   id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们从导入开始：
 - en: '[PRE27]'
   id: totrans-138
   prefs: []
@@ -874,6 +976,7 @@
   id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们使用`pycuda.driver.init`函数初始化CUDA，这里将其别名为`drv`：
 - en: '[PRE28]'
   id: totrans-140
   prefs: []
@@ -886,6 +989,7 @@
   id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们选择我们希望与之工作的GPU；在一个人拥有多个GPU的情况下，这是必要的。我们可以使用`pycuda.driver.Device`来选择一个特定的GPU；如果你只有一个GPU，就像我一样，你可以使用`pycuda.driver.Device(0)`来访问它，如下所示：
 - en: '[PRE29]'
   id: totrans-142
   prefs: []
@@ -895,6 +999,7 @@
   id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以使用`make_context`在这个设备上创建一个新的上下文，如下所示：
 - en: '[PRE30]'
   id: totrans-144
   prefs: []
@@ -1001,11 +1106,15 @@
   id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将看到如何使用 Python 中的两个线程来使用基于 GPU 的操作；Linux 用户请注意，这可以通过将 `threading` 的引用切换到
+    `multiprocessing`，并将 `Thread` 的引用切换到 `Process` 来轻松扩展到进程，因为这两个模块看起来和表现得很相似。然而，由于
+    PyCUDA 的性质，我们必须为每个将使用 GPU 的线程或进程创建一个新的 CUDA 上下文。让我们看看如何立即做到这一点。
 - en: Multiple contexts for host-side concurrency
   id: totrans-158
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 主机端并发的多个上下文
 - en: 'Let''s first briefly review how to create a single host thread in Python that
     can return a value to the host with a simple example. (This example can also be
     seen in the `single_thread_example.py` file under `5` in the repository.) We will
@@ -1014,6 +1123,8 @@
   id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们简要回顾一下如何在 Python 中创建一个可以返回值的单个主机线程的示例。 (此示例也可以在存储库中的 `5` 目录下的 `single_thread_example.py`
+    文件中找到。) 我们将通过使用 `threading` 模块中的 `Thread` 类来创建 `Thread` 的子类来实现这一点，如下所示：
 - en: '[PRE33]'
   id: totrans-160
   prefs: []
@@ -1025,6 +1136,7 @@
   id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在设置构造函数。我们调用父类的构造函数，并在对象内部设置一个空变量，该变量将是线程的返回值：
 - en: '[PRE34]'
   id: totrans-162
   prefs: []
@@ -1036,6 +1148,7 @@
   id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在在线程类中设置 `run` 函数，这是线程启动时将执行的内容。我们只需让它打印一行并设置返回值：
 - en: '[PRE35]'
   id: totrans-164
   prefs: []
@@ -1046,6 +1159,7 @@
   id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们最终必须设置 `join` 函数。这将允许我们从线程接收返回值：
 - en: '[PRE36]'
   id: totrans-166
   prefs: []
@@ -1057,6 +1171,8 @@
   id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经设置好了我们的线程类。让我们创建一个 `NewThread` 对象的实例，通过调用 `start` 方法来启动新线程，然后通过调用 `join`
+    方法阻塞执行并从主机线程获取输出：
 - en: '[PRE37]'
   id: totrans-168
   prefs: []
@@ -1066,10 +1182,12 @@
   id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们运行这个：
 - en: '![](img/9dc8f524-03ac-4f2c-a21c-8736c1feb1cf.png)'
   id: totrans-170
   prefs: []
   type: TYPE_IMG
+  zh: '![](img/9dc8f524-03ac-4f2c-a21c-8736c1feb1cf.png)'
 - en: Now, we can expand this idea among multiple concurrent threads on the host to
     launch concurrent CUDA operations by way of multiple contexts and threading. We
     will now look at one last example. Let's re-use the pointless multiply/divide
@@ -1078,11 +1196,13 @@
   id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们可以在主机上的多个并发线程中扩展这个想法，通过多个上下文和线程来启动并发 CUDA 操作。我们现在将查看最后一个示例。让我们重用本章开头提到的无意义的乘除内核，并在我们创建的每个线程中启动它。
 - en: 'First, let''s look at the imports. Since we are making explicit contexts, remember
     to remove `pycuda.autoinit` and add an import `threading` at the end:'
   id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，让我们看看导入部分。由于我们正在创建显式上下文，请记住删除 `pycuda.autoinit` 并在最后添加一个 `threading` 的导入：
 - en: '[PRE38]'
   id: totrans-173
   prefs: []
@@ -1095,6 +1215,7 @@
   id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用与之前相同的数组大小，但这次我们将线程的数量与数组数量直接对应。通常，我们不想在主机上创建超过 20 个线程，所以我们只创建 `10` 个数组。现在，考虑以下代码：
 - en: '[PRE39]'
   id: totrans-175
   prefs: []
@@ -1105,6 +1226,7 @@
   id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将我们的旧内核存储为一个字符串对象；由于这只能在上下文中编译，因此我们必须在每个线程中单独编译它：
 - en: '[PRE40]'
   id: totrans-177
   prefs: []
@@ -1116,6 +1238,8 @@
   id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们可以开始设置我们的类。我们将创建 `threading.Thread` 的另一个子类，就像之前一样，并将构造函数设置为接受一个输入数组作为参数。我们将使用
+    `None` 初始化一个输出变量，就像之前做的那样：
 - en: '[PRE41]'
   id: totrans-179
   prefs: []
@@ -1127,6 +1251,7 @@
   id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在可以编写 `run` 函数。我们选择我们的设备，在该设备上创建一个上下文，编译我们的内核，并提取内核函数引用。注意 `self` 对象的使用：
 - en: '[PRE42]'
   id: totrans-181
   prefs: []
@@ -1137,6 +1262,7 @@
   id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将数组复制到 GPU 上，启动内核，并将输出复制回主机。然后我们销毁上下文：
 - en: '[PRE43]'
   id: totrans-183
   prefs: []
@@ -1147,6 +1273,7 @@
   id: totrans-184
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们设置了 `join` 函数。这将返回 `output_array` 到主机：
 - en: '[PRE44]'
   id: totrans-185
   prefs: []
@@ -1159,6 +1286,7 @@
   id: totrans-186
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在完成了我们的子类。我们将设置一些空列表来保存我们的随机测试数据、线程对象和线程输出值，类似于之前。然后我们将生成一些随机数组进行处理，并设置一个内核启动线程列表，这些线程将操作每个相应的数组：
 - en: '[PRE45]'
   id: totrans-187
   prefs: []
@@ -1169,6 +1297,7 @@
   id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在将启动每个线程对象，并使用 `join` 将其输出提取到 `gpu_out` 列表中：
 - en: '[PRE46]'
   id: totrans-189
   prefs: []
@@ -1179,6 +1308,7 @@
   id: totrans-190
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们只是对输出数组进行简单的断言，以确保它们与输入相同：
 - en: '[PRE47]'
   id: totrans-191
   prefs: []
@@ -1188,11 +1318,13 @@
   id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个例子可以在存储库中的 `multi-kernel_multi-thread.py` 文件中看到。
 - en: Summary
   id: totrans-193
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: We started this chapter by learning about device synchronization and the importance
     of synchronization of operations on the GPU from the host; this allows dependent
     operations to allow antecedent operations to finish before proceeding. This concept
@@ -1210,11 +1342,17 @@
   id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们从学习设备同步以及从主机对 GPU 上操作同步的重要性开始本章；这允许依赖操作在继续之前完成先前的操作。这个概念一直被隐藏起来，因为 PyCUDA
+    到目前为止一直在为我们自动处理同步。然后我们学习了 CUDA 流，它允许在 GPU 上独立执行操作序列，而无需在整个 GPU 上同步，这可以给我们带来很大的性能提升；然后我们学习了
+    CUDA 事件，它允许我们在给定的流中计时单个 CUDA 内核，并确定流中的特定操作是否发生。接下来，我们学习了上下文，它在主机操作系统中的过程类似。我们学习了如何在整个
+    CUDA 上下文中显式同步，然后看到了如何创建和销毁上下文。最后，我们看到了如何在 GPU 上生成多个上下文，以便在主机上的多个线程或进程之间共享 GPU
+    使用。
 - en: Questions
   id: totrans-195
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 问题
 - en: In the launch parameters for the kernel in the first example, our kernels were
     each launched over 64 threads. If we increase the number of threads to and beyond
     the number of cores in our GPU, how does this affect the performance of both the
@@ -1223,6 +1361,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在第一个示例的内核启动参数中，我们的内核是针对 64 个线程启动的。如果我们增加线程数量到 GPU 核心数及以上，这会如何影响原始版本和流版本的性能？
 - en: Consider the CUDA C example that was given at the very beginning of this chapter,
     which illustrated the use of `cudaDeviceSynchronize`. Do you think it is possible
     to get some level of concurrency among multiple kernels without using streams
@@ -1231,12 +1370,15 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 考虑一下本章开头给出的 CUDA C 示例，它说明了 `cudaDeviceSynchronize` 的使用。你认为在不使用流而仅使用 `cudaDeviceSynchronize`
+    的情况下，是否可以在多个内核之间获得某种程度的并发性？
 - en: If you are a Linux user, modify the last example that was given to operate over
     processes rather than threads.
   id: totrans-198
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 如果你是一名 Linux 用户，请修改之前给出的最后一个示例，使其操作过程而不是线程：
 - en: Consider the `multi-kernel_events.py` program; we said it is good that there
     was a low standard deviation of kernel execution durations. Why would it be bad
     if there were a high standard deviation?
@@ -1244,6 +1386,7 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 考虑一下 `multi-kernel_events.py` 程序；我们说内核执行持续时间的低标准偏差是好事。如果存在高标准偏差，那会是什么问题？
 - en: We only used 10 host-side threads in the last example. Name two reasons why
     we have to use a relatively small number of threads or processes for launching
     concurrent GPU operations on the host.
