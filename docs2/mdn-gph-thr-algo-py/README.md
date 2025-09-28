@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Python 现代图论算法
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/543461dd673fc915b1f86bce6efafcf5`](https://zh.annas-archive.org/md5/543461dd673fc915b1f86bce6efafcf5)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

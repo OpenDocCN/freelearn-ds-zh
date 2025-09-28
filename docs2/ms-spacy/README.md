@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# 精通 Spacy
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/d848687a58d83b16a77351263479306d`](https://zh.annas-archive.org/md5/d848687a58d83b16a77351263479306d)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
