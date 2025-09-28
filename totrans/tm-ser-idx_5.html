@@ -1,0 +1,685 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer033">
+<h1 class="chapter-number" id="_idParaDest-113"><a id="_idTextAnchor124"/>5</h1>
+<h1 id="_idParaDest-114"><a id="_idTextAnchor125"/>Joining and Comparing iSAX Indexes</h1>
+<p>In the previous chapter, we developed a Python package called <strong class="source-inline">isax</strong> that creates iSAX indexes for indexing the subsequences of a time series given a <span class="No-Break">sliding window.</span></p>
+<p>In this chapter, we are going to experiment with how the sliding window size affects the number of splits and the number of accesses to subsequences while creating an <span class="No-Break">iSAX index.</span></p>
+<p>Then, we are going to use the iSAX indexes created by the <strong class="source-inline">isax</strong> package and try to join and compare them. By <em class="italic">comparing</em>, we aim to understand the efficiency of an iSAX index, and by <em class="italic">joining</em>, we mean being able to find similar nodes in two iSAX indexes based on <span class="No-Break">SAX representations.</span></p>
+<p>The last part of this chapter is going to briefly discuss Python testing before developing simple tests for the <strong class="source-inline">isax</strong> package. <em class="italic">Testing is a serious part of the development process and should not be overlooked</em>. The time spent writing tests is time <span class="No-Break">well spent!</span></p>
+<p>In this chapter, we are going to cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li>How the sliding window size affects the iSAX <span class="No-Break">construction speed</span></li>
+<li>Checking the search speed of <span class="No-Break">iSAX indexes</span></li>
+<li>Joining <span class="No-Break">iSAX indexes</span></li>
+<li>Implementing the joining of <span class="No-Break">iSAX indexes</span></li>
+<li>Explaining the <span class="No-Break">Python code</span></li>
+<li>Using the <span class="No-Break">Python code</span></li>
+<li>Writing <span class="No-Break">Python tests</span></li>
+</ul>
+<h1 id="_idParaDest-115"><a id="_idTextAnchor126"/>Technical requirements</h1>
+<p>The GitHub repository for this book can be found at <a href="https://github.com/PacktPublishing/Time-Series-Indexing">https://github.com/PacktPublishing/Time-Series-Indexing</a>. The code for each chapter is in its own directory. Therefore, the code for this chapter can be found in the <strong class="source-inline">ch05</strong> folder. You can download the entire repository on your computer using <strong class="source-inline">git(1)</strong> or you can access the desired files via the GitHub <span class="No-Break">user interface.</span></p>
+<h1 id="_idParaDest-116"><a id="_idTextAnchor127"/>How the sliding window size affects the iSAX construction speed</h1>
+<p>In this section, we <a id="_idIndexMarker310"/>are going to continue working with the <strong class="source-inline">accessSplit.py</strong> utility we developed in the previous <a id="_idIndexMarker311"/>chapter to find out whether the sliding window size affects the construction speed of an iSAX index, provided that the remaining iSAX parameters stay <span class="No-Break">the same.</span></p>
+<p>Put simply, we will use different methods to find out more about the quality of iSAX indexes and whether the sliding window size affects the construction speed. We are going to perform our experiments using the following sliding window sizes: <strong class="source-inline">16</strong>, <strong class="source-inline">256</strong>, <strong class="source-inline">1024</strong>, <strong class="source-inline">4096</strong>, and <strong class="source-inline">16384</strong>. We are going to experiment using the <strong class="source-inline">500k.gz</strong> time series from <a href="B14769_04.xhtml#_idTextAnchor102"><span class="No-Break"><em class="italic">Chapter 4</em></span></a>, 8 segments, a maximum cardinality value of <strong class="source-inline">32</strong>, and a threshold value <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">500</strong></span><span class="No-Break">.</span></p>
+<p>For the window size of <strong class="source-inline">16</strong>, the results are <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./accessSplit.py -s 8 -c 32 -t 500 -w 16 500k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 16 Threshold: 500 Default Promotion: False
+Number of splits: 1376
+Number of subsequence accesses: 2776741</pre>
+<p>For the sliding window size of <strong class="source-inline">256</strong>, the results are <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./accessSplit.py -s 8 -c 32 -t 500 -w 256 500k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 256 Threshold: 500 Default Promotion: False
+Number of splits: 4234
+Number of subsequence accesses: 10691624</pre>
+<p>Compared<a id="_idIndexMarker312"/> to the sliding window size of <strong class="source-inline">16</strong>, the iSAX index created using a sliding window size of <strong class="source-inline">256</strong> had more than<a id="_idIndexMarker313"/> three times the number of splits and four times the number of <span class="No-Break">subsequence accesses.</span></p>
+<p>Next, for the window size of <strong class="source-inline">1024</strong>, the results are <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./accessSplit.py -s 8 -c 32 -t 500 -w 1024 500k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 1024 Threshold: 500 Default Promotion: False
+Number of splits: 5983
+Number of subsequence accesses: 15403024</pre>
+<p>As before, we have more splits than the <strong class="source-inline">16</strong> and <strong class="source-inline">256</strong> sliding window sizes and more subsequence accesses. Put simply, it took more CPU time for this iSAX index to <span class="No-Break">be constructed.</span></p>
+<p>Next, for the window size of <strong class="source-inline">4096</strong>, the results are <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./accessSplit.py -s 8 -c 32 -t 500 -w 4096 500k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 4096 Threshold: 500 Default Promotion: False
+OVERFLOW: 10000_10000_01111_01111_01111_10000_10000_01111
+Number of splits: 6480
+Number of subsequence accesses: 18537820</pre>
+<p>In this case, it is not only <a id="_idIndexMarker314"/>slower to construct the iSAX index but we also have an <strong class="bold">overflow situation</strong>. Therefore, the subsequences of the <strong class="source-inline">500.gz</strong> time series are not going to fit into an iSAX index with these parameters and we are going to need to use different iSAX parameters for the iSAX index <span class="No-Break">to work.</span></p>
+<p class="callout-heading">Do overflows have an impact on the construction of iSAX indexes?</p>
+<p class="callout">When we <a id="_idIndexMarker315"/>have one or multiple overflows on an iSAX index, it means that the full cardinality has been used on all SAX words—recall that the number of SAX words is defined by the number of segments. Therefore, we have multiple splits on terminal nodes that are fully based on the current threshold value, which means that we have many more subsequence accesses than usual. Therefore, overflows have a great impact on the construction time of iSAX indexes. Additionally, as if this were not bad enough, we have to find new iSAX parameters that prevent the overflow from happening while keeping the iSAX operation efficient. Keep in mind that the number of splits is also a naïve indication of how close we are to <span class="No-Break">an overflow.</span></p>
+<p>Lastly, for<a id="_idIndexMarker316"/> the biggest<a id="_idIndexMarker317"/> window size (<strong class="source-inline">16384</strong>), the results are <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./accessSplit.py -s 8 -c 32 -t 500 -w 16384 500k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 16384 Threshold: 500 Default Promotion: False
+OVERFLOW: 01111_10000_10000_01111_10000_01111_10000_01111
+Number of splits: 6996
+Number of subsequence accesses: 19201125</pre>
+<p>Once again, we have an overflow situation with the sliding window size of <strong class="source-inline">16384</strong>, this time on a different SAX representation. We are going to leave both overflows as they are and create some plots of the results. The resolution of the overflows is left as an exercise <span class="No-Break">for you.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 5</em></span><em class="italic">.1</em> shows the number of splits per sliding window size where we can see that the bigger the sliding window size, the larger the number of splits that take place for that particular <span class="No-Break">time series.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer031">
+<img alt="Figure 5.1– Splits per sliding window size plot" height="839" src="image/Figure_5.1_B14769.jpg" width="1391"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 5.1– Splits per sliding window size plot</p>
+<p><span class="No-Break"><em class="italic">Figure 5</em></span><em class="italic">.2</em> shows <a id="_idIndexMarker318"/>the number of<a id="_idIndexMarker319"/> subsequence accesses per sliding window size. In this case, instead of plotting the absolute number of subsequence accesses, we divide the number of total subsequence accesses by the total number of subsequences to display a fraction. This is a fair calculation as bigger time series have a larger number <span class="No-Break">of subsequences.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer032">
+<img alt="Figure 5.2 – Subsequence accesses percentage per sliding window size plot" height="836" src="image/Figure_5.2_B14769.jpg" width="1391"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 5.2 – Subsequence accesses percentage per sliding window size plot</p>
+<p>In <span class="No-Break"><em class="italic">Figure 5</em></span><em class="italic">.2</em>, we <a id="_idIndexMarker320"/>can see that the bigger the sliding window size, the bigger the number of subsequence accesses. For the smallest <a id="_idIndexMarker321"/>sliding window (<strong class="source-inline">16</strong>), we have about eight times fewer accesses to the subsequence of the time series compared to the largest sliding <span class="No-Break">window (</span><span class="No-Break"><strong class="source-inline">16384</strong></span><span class="No-Break">).</span></p>
+<p>The construction speed of an iSAX index is one important factor. However, it is not the only criterion for the quality of iSAX indexes. The next section investigates the search speed of <span class="No-Break">iSAX indexes.</span></p>
+<h1 id="_idParaDest-117"><a id="_idTextAnchor128"/>Checking the search speed of iSAX indexes</h1>
+<p>This <a id="_idIndexMarker322"/>section presents a utility that takes two time series, named <strong class="source-inline">TS1</strong> and <strong class="source-inline">TS2</strong>, which ideally have<a id="_idIndexMarker323"/> similar lengths, creates two iSAX indexes, named <strong class="source-inline">D1</strong> and <strong class="source-inline">D2</strong>, and performs the <span class="No-Break">following searches:</span></p>
+<ul>
+<li>Searches <strong class="source-inline">D1</strong> for all the subsequences of <strong class="source-inline">TS2</strong>. In this case, we are not sure whether a subsequence from <strong class="source-inline">TS2</strong> is in <strong class="source-inline">D1</strong> or not. In most cases, <em class="italic">we are not going to be able to find the subsequences of TS2 in TS1</em>. This is the main reason that a <em class="italic">join</em> based on the SAX representations of the iSAX nodes might be more appropriate when looking for similarities <span class="No-Break">between subsequences.</span></li>
+<li>Searches <strong class="source-inline">D2</strong> for all the subsequences of <strong class="source-inline">TS1</strong>. In this case, we are not sure whether a subsequence from <strong class="source-inline">TS1</strong> is in <strong class="source-inline">D2</strong> or not. As before, in most cases, we are <a id="_idIndexMarker324"/>not going to be able to find the subsequences of <strong class="source-inline">TS1</strong> in <strong class="source-inline">TS2</strong> and therefore, in the iSAX index created from <span class="No-Break"><strong class="source-inline">TS2</strong></span><span class="No-Break"> (</span><span class="No-Break"><strong class="source-inline">D2</strong></span><span class="No-Break">).</span></li>
+<li>Searches <strong class="source-inline">D1</strong> for<a id="_idIndexMarker325"/> all the subsequences of <strong class="source-inline">TS1</strong>, which means that all subsequences of <strong class="source-inline">TS1</strong> are in <strong class="source-inline">D1</strong>. With that test, we just want to discover more about the speed of an iSAX index when performing search operations. This search operation mainly depends on the threshold size because a bigger threshold value means more subsequences to look for once we come to the appropriate <span class="No-Break">terminal node.</span></li>
+<li>Searches <strong class="source-inline">D2</strong> for all the subsequences of <strong class="source-inline">TS2</strong>, which means that all subsequences of <strong class="source-inline">TS2</strong> are in <strong class="source-inline">D2</strong> and are going to <span class="No-Break">be found.</span></li>
+</ul>
+<p>All these searches are implemented in a Python script <span class="No-Break">named </span><span class="No-Break"><strong class="source-inline">speed.py</strong></span><span class="No-Break">.</span></p>
+<p>The core functionality of <strong class="source-inline">speed.py</strong> is implemented in functions. The first function contains the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+def createISAX(file, w, s):
+    # Read Sequence as Pandas
+    ts = pd.read_csv(file, names=['values'],
+        compression='gzip').astype(np.float64)
+    # Convert to NParray
+    ts_numpy = ts.to_numpy()
+    length = len(ts_numpy)
+    ISAX = isax.iSAX()
+    ISAX.length = length
+    # Split sequence into subsequences
+    for i in range(length - w + 1):
+        # Get the subsequence
+        ts = ts_numpy[i:i+w]
+        # Create new TS node based on ts
+        ts_node = isax.TS(ts, s)
+        ISAX.insert(ts_node)
+    return ISAX, ts_numpy</pre>
+<p>The <strong class="source-inline">createISAX()</strong> function <a id="_idIndexMarker326"/>creates an iSAX index and<a id="_idIndexMarker327"/> returns a link to an <strong class="source-inline">isax.ISAX()</strong> class as well as a NumPy array with all the elements of the <span class="No-Break">time series.</span></p>
+<p>The second function is implemented <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def query(ISAX, q):
+    global totalQueries
+    totalQueries = totalQueries + 1
+    Accesses = 0
+    # Create TS Node
+    qTS = isax.TS(q, variables.segments)
+    segs = [1] * variables.segments
+    #If the relevant child of root is not there, we have a miss
+    lower_cardinality = tools.lowerCardinality(segs, qTS)
+    lower_cardinality_str = ""
+    for i in lower_cardinality:
+        lower_cardinality_str = lower_cardinality_str + "_"
+            + i</pre>
+<p>In the<a id="_idIndexMarker328"/> first part of <strong class="source-inline">query()</strong>, we construct the SAX representation<a id="_idIndexMarker329"/> of a potential child of the root node of the iSAX index using <strong class="source-inline">tools.lowerCardinality()</strong> and <strong class="source-inline">segs</strong>. From that, we construct the <span class="No-Break"><strong class="source-inline">lower_cardinality_str</strong></span><span class="No-Break"> string:</span></p>
+<pre class="source-code">
+    # Remove _ at the beginning
+    Lower_cardinality_str = lower_cardinality_str[1:len(
+        lower_cardinality_str)]
+    if ISAX.ht.get(lower_cardinality_str) == None:
+        <strong class="bold">return False, 0</strong>
+    # Otherwise, we have a hit
+    n = ISAX.ht.get(lower_cardinality_str)
+    while n.terminalNode == False:
+        left = n.left
+        right = n.right
+        leftSegs = left.word.split('_')
+        # Promote
+        tempCard = tools.promote(qTS, leftSegs)
+        if tempCard == left.word:
+            n = left
+        elif tempCard == right.word:
+            n = right
+    # Iterate over the subsequences of the terminal node
+    for i in range(0, variables.threshold):
+        Accesses = Accesses + 1
+        child = n.children[i]
+        if type(child) == isax.TS:
+            # print("Shapes:", child.ts.shape, qTS.ts.shape)
+            if np.allclose(child.ts, qTS.ts):
+                return True, Accesses
+        else:
+            return False, Accesses
+    return False, Accesses</pre>
+<p>In the <a id="_idIndexMarker330"/>second part of <strong class="source-inline">query()</strong>, we check whether <a id="_idIndexMarker331"/>the <strong class="source-inline">lower_cardinality_str</strong> key can be found in the <span class="No-Break">iSAX index.</span></p>
+<p>If it can be found, then we follow that subtree, which begins with a child of the root node of the iSAX index, until we find the appropriate terminal node. If it cannot be found, then we have a miss, and the <span class="No-Break">process terminates.</span></p>
+<p>The <strong class="source-inline">query()</strong> function returns <strong class="source-inline">True</strong> if the subsequence is found and <strong class="source-inline">False</strong> otherwise. Its second return value is the number of subsequence accesses that took place while trying to find that <span class="No-Break">query subsequence.</span></p>
+<p>The rest <a id="_idIndexMarker332"/>of the code of <strong class="source-inline">speed.py</strong> is placed in the <strong class="source-inline">main()</strong> function<a id="_idIndexMarker333"/> and is going to be presented in three parts – the first part being <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+    # Build iSAX for TS1
+    i1, ts1 = createISAX(f1, windowSize, segments)
+    totalSplits = totalSplits + variables.nSplits
+    totalAccesses = totalAccesses + variables.nSubsequences
+    # Build iSAX for TS2
+    variables.nSubsequences = 0
+    variables.nSplits = 0
+    i2, ts2 = createISAX(f2, windowSize, segments)
+    totalSplits = totalSplits + variables.nSplits
+    totalAccesses = totalAccesses + variables.nSubsequences</pre>
+<p>In this first part, we construct the two iSAX indexes and store the number of splits and accesses <span class="No-Break">to subsequences.</span></p>
+<p>The second part of <strong class="source-inline">speed.py</strong> contains the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+    # Query iSAX for TS1
+    for idx in range(0, len(ts1)-windowSize+1):
+        currentQuery = ts1[idx:idx+windowSize]
+        found, ac = <strong class="bold">query(i1, currentQuery)</strong>
+        if found == False:
+            print("This cannot be happening!")
+            return
+        totalAccesses = totalAccesses + ac
+    # Query iSAX for TS1
+    for idx in range(0, len(ts2)-windowSize+1):
+        currentQuery = ts2[idx:idx+windowSize]
+        found, ac = query<strong class="bold">(i1, currentQuery)</strong>
+        totalAccesses = totalAccesses + ac</pre>
+<p>In this <a id="_idIndexMarker334"/>part of the program, we query the first iSAX index. In <a id="_idIndexMarker335"/>the first <strong class="source-inline">for</strong> block, we search iSAX for all the subsequences of the first time series. As this iSAX indexes the first time series, all subsequences are going to be found in the iSAX index. While doing that, we store the number of accesses to subsequences, which is returned by the <strong class="source-inline">query()</strong> function. In the second <strong class="source-inline">for</strong> block, we do the same but this time, for the second time series. Therefore, there is a small possibility of finding the subsequences of the second time series (<strong class="source-inline">TS2</strong>) in the iSAX index of the first time <span class="No-Break">series (</span><span class="No-Break"><strong class="source-inline">TS1</strong></span><span class="No-Break">).</span></p>
+<p>The last part of <strong class="source-inline">speed.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+    # Query iSAX for TS2
+    for idx in range(0, len(ts2)-windowSize+1):
+        currentQuery = ts2[idx:idx+windowSize]
+        found, ac = query(i2, currentQuery)
+        if found == False:
+            print("This cannot be happening!")
+            return
+        totalAccesses = totalAccesses + ac
+    # Query iSAX for TS2
+    for idx in range(0, len(ts1)-windowSize+1):
+        currentQuery = ts1[idx:idx+windowSize]
+        found, ac = query(i2, currentQuery)
+        totalAccesses = totalAccesses + ac</pre>
+<p>This<a id="_idIndexMarker336"/> last part of <strong class="source-inline">main()</strong>is similar to the previous code. The<a id="_idIndexMarker337"/> only difference is that this time, we query the second iSAX index instead of the first one. Once again, we store the number of accesses <span class="No-Break">to subsequences.</span></p>
+<p>Before running <strong class="source-inline">speed.py</strong>, we need to create another time series, which is going to be stored in <strong class="source-inline">506k.gz</strong>. In this case, the second time series was created <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ ../ch01/synthetic_data.py 506218 -10 10 &gt; 506k
+$ gzip 506k</pre>
+<p>Although the two time series do not need to have the same length, we have decided to make them pretty close <span class="No-Break">in length.</span></p>
+<p>Using <strong class="source-inline">speed.py</strong> generates the following kind <span class="No-Break">of output:</span></p>
+<pre class="source-code">
+$ ./speed.py -s 8 500k.gz 506k.gz
+Max Cardinality: 16 Segments: 8 Sliding Window: 16 Threshold: 1000 Default Promotion: False
+Total subsequence accesses: 1060326778
+Total splits: 1106
+Total queries: 2012376</pre>
+<p>Keep in mind that the previous command took <em class="italic">more than three hours</em> on a MacBook Pro machine! The speed will depend on <span class="No-Break">your CPU.</span></p>
+<p>If we used different SAX parameters, the output would look <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ ./speed.py -s 4 -c 64 500k.gz 506k.gz
+Max Cardinality: 64 Segments: 4 Sliding Window: 16 Threshold: 1000 Default Promotion: False
+Total subsequence accesses: 1083675402
+Total splits: 2034
+Total queries: 2012376</pre>
+<p>Although the first run of <strong class="source-inline">speed.py</strong> required 1,106 splits and the second one 2,034 splits, both<a id="_idIndexMarker338"/> results were close as far as the total number of subsequence accesses <span class="No-Break">is concerned.</span></p>
+<p>As expected, the<a id="_idIndexMarker339"/> number of total queries is the same in both cases because we are dealing with the same time series and, therefore, the same number <span class="No-Break">of subsequences.</span></p>
+<p>Now that we know how to perform lookups and searches on iSAX indexes, it is time to learn about another important operation, which is the joining of <span class="No-Break">iSAX indexes.</span></p>
+<h1 id="_idParaDest-118"><a id="_idTextAnchor129"/>Joining iSAX indexes</h1>
+<p>At this <a id="_idIndexMarker340"/>point, we have iSAX indexes that we want to use to perform basic time series data mining tasks. One of them is <strong class="bold">finding similar subsequences</strong> between two or more time series. In our case, we are working with two time series, but the method can be extended to more time series with <span class="No-Break">small changes.</span></p>
+<p class="callout-heading">How to join iSAX indexes</p>
+<p class="callout">Given two or more iSAX indexes, it is up to us to decide how and why we are going to join them. We can even join them using SAX representations with a cardinality value of <strong class="source-inline">2</strong>. However, using the SAX representations of the nodes as our keys for the join is the most logical choice.In our case, we are going to use the iSAX indexes and the SAX representations of the nodes to look for similar subsequences. This is because we have the intuition that subsequences in nodes with the same SAX representation are <em class="italic">close</em> to each other. The term <em class="italic">close</em> is defined relative to <a id="_idIndexMarker341"/>a <strong class="bold">distance metric</strong>. For the purposes of this chapter, we are going to use the Euclidean distance to compare subsequences of the <span class="No-Break">same size.</span></p>
+<p>Now, let us rephrase that in a more precise way. A <strong class="bold">join</strong> of <a id="_idIndexMarker342"/>two iSAX indexes that is based on the SAX representation is a way of finding the most similar node (based on the SAX representation) for each of the nodes of the first iSAX index when searching the nodes of the second iSAX index, which was constructed using the same parameters. This way, we save time because we only have to compare subsequences of similar terminal nodes. Is similarity based on SAX representation perfect? No, it is not. But we are using a time series index to make <span class="No-Break">things faster.</span></p>
+<p>The idea behind this <a id="_idIndexMarker343"/>join came after reading the <em class="italic">Scalable Hybrid Similarity Join over Geolocated Time Series</em> paper, which was written by Georgios Chatzigeorgakidis, Kostas Patroumpas, Dimitrios Skoutas, Spiros Athanasiou, and <span class="No-Break">Spiros Skiadopoulos.</span></p>
+<p>The next section is going to show how to implement the joining of iSAX indexes based on the SAX representations of <span class="No-Break">their nodes.</span></p>
+<h1 id="_idParaDest-119"><a id="_idTextAnchor130"/>Implementing the joining of iSAX indexes</h1>
+<p>For the<a id="_idIndexMarker344"/> implementation of the iSAX index join, we are going to assume <a id="_idIndexMarker345"/>that we have two iSAX indexes ready to be used saved in two separate Python variables, and continue from there. We are going to need a Python function that accepts two iSAX indexes and returns a list of Euclidean distances, which are the nearest neighbors of all subsequences in both time series. Keep in mind that if a node from one of the iSAX indexes does not match the other iSAX index, then that node, and as a consequence its subsequences, is not going to get processed. Therefore, the list of Euclidean distances might be a little shorter than expected. That is the main reason why we must not use unnecessarily big iSAX parameters. Put simply, do not use 16 segments when 4 segments can do <span class="No-Break">the job.</span></p>
+<p>Additionally, keep in mind that the real nearest neighbor of a subsequence might not be located in the terminal node with the same SAX representation – this is the price we pay for the extra speed and avoiding the quadratic processing cost (comparing every subsequence of the first time series with all subsequences of the second time series, and <span class="No-Break">vice versa).</span></p>
+<p>So, we need to implement the previous functionality for the <strong class="source-inline">isax</strong> package based on the current implementation and representation of the <span class="No-Break">iSAX index.</span></p>
+<p>As a result, we are going to put that functionality inside the <strong class="source-inline">isax</strong> package, using a separate file <span class="No-Break">named </span><span class="No-Break"><strong class="source-inline">iSAXjoin.py</strong></span><span class="No-Break">.</span></p>
+<p>Apart from that file, we added a function for calculating the Euclidean distance between two subsequences <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">isax/tools.py</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+def euclidean(a, b):
+    return np.linalg.norm(a-b)</pre>
+<p>If you recall from <a href="B14769_01.xhtml#_idTextAnchor015"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, in the <strong class="source-inline">ch01/ed.py</strong> script, <strong class="source-inline">euclidean()</strong> uses the magic of <a id="_idIndexMarker346"/>NumPy to calculate Euclidean distances between two <a id="_idIndexMarker347"/>subsequences. Do not forget that we always <a id="_idIndexMarker348"/>compare <strong class="bold">normalized subsequences</strong> in <span class="No-Break">this book.</span></p>
+<p>Lastly, we added the following variable <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">isax/variables.py</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+# List of Euclidean distances
+ED = []</pre>
+<p>The <strong class="source-inline">ED</strong> global variable is a Python list used to hold the result of the join between two iSAX indexes, which is a list of <span class="No-Break">Euclidean distances.</span></p>
+<p>Let us now present and explain the code <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">isax/iSAXjoin.py</strong></span><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-120"><a id="_idTextAnchor131"/>Explaining the Python code</h1>
+<p>The <a id="_idIndexMarker349"/>code in <strong class="source-inline">iSAXjoin.py</strong> is going <a id="_idIndexMarker350"/>to be presented in <span class="No-Break">five parts.</span></p>
+<p>The first part is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+from isax import variables
+from isax import tools
+def Join(iSAX1, iSAX2):
+    # Begin with the children of the root node.
+    # That it, the nodes with SAX words
+    # with a Cardinality of 1.
+    for t1 in iSAX1.children:
+        k1 = iSAX1.children[t1]
+        if k1 == None:
+            continue
+        for t2 in iSAX2.children:
+            k2 = iSAX2.children[t2]
+            if k2 == None:
+                continue
+            # J_AB
+            _Join(k1, k2)
+            # J_BA
+            _Join(k2, k1)
+    return</pre>
+<p>The <strong class="source-inline">Join()</strong> function<a id="_idIndexMarker351"/> is the entry point to the join of the two iSAX indexes. However, that <a id="_idIndexMarker352"/>function has a single purpose, which is creating all the combinations between the children of the two iSAX root nodes in order to pass control to <strong class="source-inline">_Join()</strong>. As the order of the arguments in <strong class="source-inline">_Join()</strong> is significant, <strong class="source-inline">_Join()</strong> is called two times. The first time, a root child node from the first iSAX index is the first parameter, and the second time, a root child node from the second iSAX index is the <span class="No-Break">first parameter.</span></p>
+<p>The second part of <strong class="source-inline">iSAXjoin.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def _Join(t1, t2):
+    if t1.word != t2.word:
+        return
+    # Inner + Inner
+    if t1.terminalNode==False and t2.terminalNode==False:
+        _Join(t1.left, t2.left)
+        _Join(t1.right, t2.left)
+        _Join(t1.left, t2.right)
+        _Join(t1.right, t2.right)</pre>
+<p>When we are dealing with inner nodes from both iSAX indexes, we just combine all their children – remember <a id="_idIndexMarker353"/>that each inner node has two children – and recursion<a id="_idIndexMarker354"/> takes care of <span class="No-Break">the rest.</span></p>
+<p>The third part contains the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+    # Terminal + Inner
+    elif t1.terminalNode==True and t2.terminalNode==False:
+        _Join(t1, t2.left)
+        _Join(t1, t2.right)</pre>
+<p>If we are dealing with an inner node and a terminal node, we expand the inner node, and recursion takes care of <span class="No-Break">the rest.</span></p>
+<p>The fourth part of <strong class="source-inline">iSAXjoin.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+    # Inner + Terminal
+    elif t1.terminalNode == False and t2.terminalNode == True:
+        _Join(t1.left, t2)
+        _Join(t1.right, t2)</pre>
+<p>As before, when dealing with an inner node and a terminal node, we expand the inner node, and recursion takes care of <span class="No-Break">the rest.</span></p>
+<p>The last part comes with the following <span class="No-Break">Python code:</span></p>
+<pre class="source-code">
+    # Terminal + Terminal
+    # As both are terminal nodes, calculate
+    # Euclidean Distances between Time Series pairs
+    elif t1.terminalNode==True and t2.terminalNode==True:
+        for i in range(t1.nTimeSeries()):
+            minDistance = None
+            for j in range(t2.nTimeSeries()):
+                distance =round(tools.euclidean
+                (t1.children[i].ts, t2.children[j].ts),
+                variables.precision)
+                # Keeping the smallest Euclidean Distance for each node
+                # of the t1 Terminal node
+                if minDistance == None:
+                    minDistance = distance
+                elif minDistance &gt; distance:
+                    minDistance = distance
+            # Insert distance to PQ
+            if minDistance != None:
+                variables.ED.append(minDistance)
+    else:
+        print("This cannot happen!")</pre>
+<p>This<a id="_idIndexMarker355"/> last part is where the recursive calling to <strong class="source-inline">_Join()</strong> stops because<a id="_idIndexMarker356"/> we are dealing with two terminal nodes. This means that we are able to calculate the Euclidean distances of their subsequences. The fact that we are not normalizing the subsequences before calling <strong class="source-inline">tools.euclidean()</strong> means that we expect to have the subsequences in all terminal nodes in a normalized form. Notice that we store the results in the <span class="No-Break"><strong class="source-inline">variables.ED</strong></span><span class="No-Break"> list.</span></p>
+<p>That is all regarding the implementation of the joining of two iSAX indexes. The next section covers how to use the (similarity) <span class="No-Break">join code.</span></p>
+<h1 id="_idParaDest-121"><a id="_idTextAnchor132"/>Using the Python code</h1>
+<p>In this <a id="_idIndexMarker357"/>section, we are going to use the similarity join code we have developed to start joining iSAX indexes. The source code of <strong class="source-inline">join.py</strong> is presented in three parts. The first part is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+from isax import variables
+from isax import isax
+from isax import tools
+from isax.sax import normalize
+from isax.iSAXjoin import Join
+import sys
+import pandas as pd
+import time
+import argparse
+def buildISAX(file, windowSize):
+    variables.overflow = 0
+    # Read Sequence as Pandas
+    ts = pd.read_csv(file, names=['values'],
+        compression='gzip', header = None)
+    ts_numpy = ts.to_numpy()
+    length = len(ts_numpy)
+    ISAX = isax.iSAX()
+    ISAX.length = length
+    for i in range(length - windowSize + 1):
+        ts = ts_numpy[i:i+windowSize]
+        # Create new TS node based on ts
+        # Store the normalized version of the subsequence
+        ts_node = isax.TS(normalize(ts),
+            variables.segments)
+        ISAX.insert(ts_node)
+    if variables.overflow != 0:
+        print("Number of overflows:", variables.overflow)
+    return ISAX</pre>
+<p>Nothing new<a id="_idIndexMarker358"/> here – we just have to import the necessary external packages, including <strong class="source-inline">isax.iSAXjoin</strong>, and develop a function that creates an iSAX index given a time series file and a sliding window size. The function returns the root node of the iSAX index. However, please note that <em class="italic">subsequences are stored in their normalized form</em> inside all <span class="No-Break"><strong class="source-inline">TS()</strong></span><span class="No-Break"> objects.</span></p>
+<p>The second part is the beginning of the <strong class="source-inline">main()</strong> function and comes with the following <span class="No-Break">Python code:</span></p>
+<pre class="source-code">
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--segments",
+        dest = "segments", default = "16",
+        help="Number of Segments", type=int)
+    parser.add_argument("-c", "--cardinality",
+        dest = "cardinality", default = "256",
+        help="Cardinality", type=int)
+    parser.add_argument("-w", "--window", dest = "window",
+        default = "16", help="Sliding Window Size",
+        type=int)
+    parser.add_argument("-t", "--threshold",
+        dest = "threshold", default = "50",
+        help="Threshold for split", type=int)
+    parser.add_argument("-p", "--promotion",
+        action='store_true',
+        help="Define Promotion Strategy")
+    parser.add_argument("TS1")
+    parser.add_argument("TS2")
+    args = parser.parse_args()
+    variables.segments = args.segments
+    variables.maximumCardinality = args.cardinality
+    variables.slidingWindowSize = args.window
+    variables.threshold = args.threshold
+    variables.defaultPromotion = args.promotion
+    windowSize = variables.slidingWindowSize
+    maxCardinality = variables.maximumCardinality
+    f1 = args.TS1
+    f2 = args.TS2
+    if tools.power_of_two(maxCardinality) == -1:
+        print("Not a power of 2:", maxCardinality)
+        sys.exit()
+    if variables.segments &gt; variables.slidingWindowSize:
+        print("Segments:", variables.segments,
+            "Sliding window:", variables.slidingWindowSize)
+        print("Sliding window size should be bigger than # of segments.")
+        sys.exit()
+    print("Max Cardinality:", maxCardinality, "Segments:",
+        variables.segments,
+        "Sliding Window:", variables.slidingWindowSize,
+        "Threshold:", variables.threshold,
+        "Default Promotion:", variables.defaultPromotion)</pre>
+<p>As we are joining <a id="_idIndexMarker359"/>two iSAX indexes, we need two separate command-line arguments (<strong class="source-inline">TS1</strong> and <strong class="source-inline">TS2</strong>) to define the paths of the compressed plain text files with the time <span class="No-Break">series data.</span></p>
+<p>The last part of <strong class="source-inline">join.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+    # Build iSAX for TS1
+    start_time = time.time()
+    i1 = buildISAX(f1, windowSize)
+    print("i1: %.2f seconds" % (time.time() - start_time))
+    # Build iSAX for TS2
+    start_time = time.time()
+    i2 = buildISAX(f2, windowSize)
+    print("i2: %.2f seconds" % (time.time() - start_time))
+    # Join the two iSAX indexes
+    Join(i1, i2)
+    variables.ED.sort()
+    print("variables.ED length:", len(variables.ED))
+    maximumLength = i1.length+i2.length - 2*windowSize + 2
+    print("Maximum length:", maximumLength)
+if __name__ == '__main__':
+    main()</pre>
+<p>Here, we <a id="_idIndexMarker360"/>create the two iSAX indexes by calling <strong class="source-inline">buildISAX()</strong> two times and then join them using <strong class="source-inline">Join()</strong>, which returns no values. In order to look at the list of computed values, we need to access <strong class="source-inline">variables.ED</strong>. We print the length of the list of Euclidean distances as well as the theoretical maximum length of it, which is equal to <strong class="source-inline">time_series_length – sliding_window_size + 1</strong>, to have a better idea of the number of subsequences without a match. In the output, we also print the time it took to create each iSAX index as extra information about <span class="No-Break">the process.</span></p>
+<p>At this point, we are ready to use <strong class="source-inline">join.py</strong>. This means that we should provide it with the necessary parameters <span class="No-Break">and input.</span></p>
+<p>Using <strong class="source-inline">join.py</strong> produces the following kind <span class="No-Break">of output:</span></p>
+<pre class="source-code">
+$ ./join.py -s 8 -c 32 -t 1000 500k.gz 506k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 16 Threshold: 1000 Default Promotion: False
+i1: 170.94 seconds
+i2: 179.80 seconds
+variables.ED length: 970603
+Maximum length: 1006188</pre>
+<p>So, it took <strong class="source-inline">170.94</strong> seconds <a id="_idIndexMarker361"/>to create the first index and <strong class="source-inline">179.80</strong> seconds to create the second iSAX index. The list of Euclidean distances has <strong class="source-inline">970603</strong> elements, whereas the maximum number of elements is <strong class="source-inline">1006188</strong>, which means that we missed some terminal nodes because their SAX representation did not have a match in the other iSAX index. This is not unusual and we should expect it most of the time as time series and their iSAX <span class="No-Break">indexes differ.</span></p>
+<h2 id="_idParaDest-122"><a id="_idTextAnchor133"/>We have a long list of Euclidean distances, so what?</h2>
+<p>You might be asking, “What do we do with that list of Euclidean distances?” Put simply, what is the main purpose of creating such a list of distances? There<a id="_idIndexMarker362"/> are many uses, including <span class="No-Break">the following:</span></p>
+<ul>
+<li>Finding out how close two time series are by finding the minimum Euclidean distance in <span class="No-Break">the list.</span></li>
+<li>Finding out the list of Euclidean distances that are in a given numeric range. This is another way of comparing the similarity of two <span class="No-Break">time series.</span></li>
+<li>Finding subsequences that are more different than others based on a distance measure. In data mining terminology, these subsequences are<a id="_idIndexMarker363"/> <span class="No-Break">called </span><span class="No-Break"><strong class="bold">outliers</strong></span><span class="No-Break">.</span></li>
+</ul>
+<p>I think you get the idea of why we perform the join computation – we need to be able to better understand the connection between the two time series involved in the join. The reason for using the SAX representation is to prune nodes and subsequences and save <span class="No-Break">CPU time.</span></p>
+<p>As the joining operation can be slow, the next subsection presents a handy technique for saving the list of Euclidean distances on disk and loading the list from disk in order to use it without having to carry out the entire process <span class="No-Break">from scratch.</span></p>
+<h2 id="_idParaDest-123"><a id="_idTextAnchor134"/>Saving the output</h2>
+<p>The<a id="_idIndexMarker364"/> joining of iSAX indexes can take time. Is there a way to make that process less painful? Yes, we can save the contents of the similarity join, which<a id="_idIndexMarker365"/> is a list, into a file, which saves us from having to recreate that list from scratch each time we need it. Keep in mind that for this to work, the two iSAX indexes must be created with the same parameters for the exact same <span class="No-Break">time series.</span></p>
+<p>The <strong class="source-inline">saveLoadList.py</strong> script demonstrates the idea in the <strong class="source-inline">main()</strong> function – you can see the implementation of <strong class="source-inline">buildISAX()</strong> in <strong class="source-inline">join.py</strong>. The first part of <strong class="source-inline">main()</strong> is as follows. Some code is omitted <span class="No-Break">for brevity:</span></p>
+<pre class="source-code">
+def main():
+. . .
+    # Reading command line parameters
+. . .
+    # Build iSAX for TS1
+    start_time = time.time()
+    i1 = buildISAX(f1, windowSize)
+    print("i1: %.2f seconds" % (time.time() - start_time))
+    # Build iSAX for TS2
+    start_time = time.time()
+    i2 = buildISAX(f2, windowSize)
+    print("i2: %.2f seconds" % (time.time() - start_time))
+    # Now, join the two iSAX indexes
+    <strong class="bold">Join(i1, i2)</strong>
+    variables.ED.sort()
+    print("variables.ED length:", len(variables.ED))
+    # Now save it to disk
+    #
+    # Define filename
+    <strong class="bold">filename</strong> = "List_" + basename(f1) + "_" + basename(f2) + "_" + str(maxCardinality) + "_" + str(variables.segments) + "_" + str(windowSize) + ".txt"
+    print("Output file:", filename)
+    f = open(filename, "w")
+    # Write to disk
+    for item in variables.ED:
+        f.write('%s\n' %item)
+    f.close()</pre>
+<p>In the previous <a id="_idIndexMarker366"/>code, we put the similarity join data into <strong class="source-inline">variables.ED</strong> by calling <strong class="source-inline">Join()</strong> from <strong class="source-inline">isax.iSAXjoin</strong> and printing its length. After that, we computed the filename of the output file that is saved in the <strong class="source-inline">filename</strong> variable, which is based on the parameters of the program. This is a handy way of creating <strong class="bold">descriptive filenames</strong> that <a id="_idIndexMarker367"/>reveal information about their components. After that, we wrote the contents of <strong class="source-inline">variables.ED</strong> into <span class="No-Break">that file.</span></p>
+<p>The second part of <strong class="source-inline">main()</strong> contains the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+    # Now try to open it
+    f = open(filename, "r")
+    PQ = []
+    for item in f.readlines():
+        PQ.append(float(item.rstrip()))
+    f.close()
+    print("PQ length:", len(PQ))</pre>
+<p>In the<a id="_idIndexMarker368"/> previous code, we tried to read the filename that we used for storing the contents of <strong class="source-inline">variables.ED</strong> and put the contents of the plain text file into the <strong class="source-inline">PQ</strong> variable. Lastly, we printed the length of <strong class="source-inline">PQ</strong> in order to compare it with the length of <strong class="source-inline">variables.ED</strong> and make sure that everything worked <span class="No-Break">as expected.</span></p>
+<p>Running the <strong class="source-inline">saveLoadList.py</strong> script generates the <span class="No-Break">following output:</span></p>
+<pre class="source-code">
+$ ./saveLoadList.py -s 8 -c 32 -t 1000 500k.gz 506k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 16 Threshold: 1000 Default Promotion: False
+i1: 168.73 seconds
+i2: 172.39 seconds
+variables.ED length: 970603
+Output file: List_500k.gz_506k.gz_32_8_16.txt
+PQ length: 970603</pre>
+<p>From the previous output, we understand that the list contains <strong class="source-inline">970603</strong> elements. Additionally, the filename where we saved the contents of the list is <strong class="source-inline">List_500k.gz_506k.gz_32_8_16.txt</strong>. The only information missing from the filename is the <span class="No-Break">threshold value.</span></p>
+<p>The next subsection presents a utility that finds the nodes of an iSAX index that do not have a match in another iSAX index, and <span class="No-Break">vice versa.</span></p>
+<h2 id="_idParaDest-124"><a id="_idTextAnchor135"/>Finding iSAX nodes without a match</h2>
+<p>In this subsection, we specify<a id="_idIndexMarker369"/> the nodes of an iSAX index that do not have a match in another iSAX index, and vice versa. In reality, we are going to print the SAX representations of the terminal nodes of each iSAX index that do not have a match to a terminal node on the <span class="No-Break">other iSAX.</span></p>
+<p>The <strong class="source-inline">noMatch.py</strong> script implements the idea using the following code – we assume that we have already created two iSAX indexes for the two time series so that we do not have to repeat the code for creating <span class="No-Break">iSAX indexes:</span></p>
+<pre class="source-code">
+    # Visit all entries in Dictionary
+    sum = 0
+    for k in i1.ht:
+        t = i1.ht[k]
+        if t.terminalNode:
+            saxWord = t.word
+            # Look for a match in the other iSAX
+            if saxWord in i2.ht.keys():
+                i2Node = i2.ht[saxWord]
+                # Need that to be a terminal node
+                if i2Node.terminalNode == False:
+                    sum = sum + 1
+                    print(saxWord, end=' ')
+    print()</pre>
+<p>The previous code visits all the nodes of the first iSAX index looking for terminal nodes. Once a terminal node is found, we get its SAX representation and look in the other iSAX index for a terminal node with the same SAX representation. If such a node cannot be found, we print the SAX representation of the terminal node of the first iSAX index that does not have <span class="No-Break">a match.</span></p>
+<p>We should <a id="_idIndexMarker370"/>now use the same process for the second time series and the second iSAX index. The code presented here is similar to the <span class="No-Break">previous one:</span></p>
+<pre class="source-code">
+    # Look at the other iSAX
+    for k in i2.ht:
+        t = i2.ht[k]
+        if t.terminalNode:
+            saxWord = t.word
+            # Look for a match in the other iSAX
+            if saxWord in i1.ht.keys():
+                i1Node = i1.ht[saxWord]
+                # Sstill need that to be a terminal node
+                if i1Node.terminalNode == False:
+                    sum = sum + 1
+                    print(saxWord, end=' ')
+    print()
+    print("Number of iSAX nodes without a match:", sum)</pre>
+<p>So, right after examining the second iSAX index, we print the total number of terminal nodes without <span class="No-Break">a match.</span></p>
+<p>Running <strong class="source-inline">noMatch.py</strong> generates the following kind <span class="No-Break">of output:</span></p>
+<pre class="source-code">
+$ ./noMatch.py -s 8 -c 32 -t 1500 -w 128 500k.gz 506k.gz
+Max Cardinality: 32 Segments: 8 Sliding Window: 128 Threshold: 1500 Default Promotion: False
+011_10_10_10_01_10_10_01 011_01_01_10_10_10_10_10 011_01_10_01_10_10_10_10 011_10_01_10_10_10_10_01 100_01_01_10_01_01_01_10 011_10_10_01_01_10_10_10 100_01_01_01_10_10_01_01 011_01_10_10_10_01_10_10 100_100_011_100_01_10_01_01 100_011_100_100_01_01_01_10 100_011_011_011_10_01_10_10 011_011_100_011_10_10_01_10 100_100_011_100_10_01_01_01 100_011_011_011_10_10_10_01 100_011_100_100_10_01_01_01 011_100_011_100_01_01_10_10 100_011_011_011_10_10_01_10 011_011_011_100_01_10_10_10 100_100_011_011_01_01_10_10 011_011_011_100_10_01_10_10 011_100_011_100_10_10_01_01 100_100_100_10_10_01_01_01 011_011_011_10_10_01_01_10 100_100_100_10_01_10_01_01 100_100_100_01_01_01_10_10
+100_10_01_10_01_01_01_01 100_01_01_10_01_10_01_01 100_01_01_01_10_01_10_01 100_01_01_01_10_01_01_10 100_01_10_01_01_01_10_01 011_10_10_10_10_01_01_10 100_011_100_100_01_01_10_01 011_011_100_011_10_01_10_10 011_100_100_100_01_10_01_01 011_100_100_100_10_01_01_01 011_100_011_100_10_01_01_10 011_011_011_100_10_10_01_10 011_011_100_100_10_10_01_01 011_011_011_01_01_10_10_10 011_011_011_01_10_10_10_01 100_100_100_011_01_01_10_01 011_011_011_10_01_10_01_10 011_011_011_100_10_10_10_01 100_100_100_01_01_10_01_10 011_011_011_10_10_01_10_01 100_100_100_10_01_01_10_01
+Total number of SAX nodes without a match: 46</pre>
+<p>As we are <a id="_idIndexMarker371"/>using the same promotion strategy for both iSAX indexes, the output shows that the two iSAX indexes have a different structure, hence the dissimilarities in the list of SAX representations without a match on the second iSAX index. Additionally, we can see that the maximum cardinality in the printed SAX representations is just <strong class="source-inline">8</strong> and that most SAX words have a cardinality of <strong class="source-inline">4</strong>, which means that there were not so <span class="No-Break">many splits.</span></p>
+<p>Lastly, keep in mind that, in general, the smaller the number of segments in a SAX representation, the smaller the number of nodes without a match is going to be. Additionally, the larger the threshold value, the smaller the number of nodes without a match is going to be, because large threshold values minimize splits. In general, <em class="italic">the smaller the number of possible SAX representations is, the smaller the number of nodes without a match is going </em><span class="No-Break"><em class="italic">to be</em></span><span class="No-Break">.</span></p>
+<p>This can be seen in the following output, where we have reduced the number of segments to <strong class="source-inline">4</strong> and increased the cardinality <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">64</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+$ ./noMatch.py -s 4 -c 64 -t 1500 -w 128 500k.gz 506k.gz
+Max Cardinality: 64 Segments: 4 Sliding Window: 128 Threshold: 1500 Default Promotion: False
+101_01_01_10 010_10_01_10 1001_0110_0110_100 01100_1001_1000_0111 01100_0111_1000_1001 01100_1001_0111_1000 10011_1000_0110_0111 01100_1000_0111_1001 011110_01111_10000_10000 0101_1000_1000_100 1000_0101_1000_100 0111_0111_011_101 01111_01101_1001_1000 10000_01101_10000_10001 10001_01110_10001_01110 01110_01101_1001_1000 01110_10001_01110_10001 01111_10010_01110_01111 01110_10000_01110_1001 01101_10001_10000_10000 10001_10010_0111_0110 01101_10000_10001_10000 01110_01110_10010_1000
+1001_0110_1001_011 10011_0110_1000_0111 011110_10000_01111_10000 10010_01111_01111_01110 10001_01110_01110_10001 10001_10010_0110_0111 10001_10000_01101_10000 10010_01111_01110_01111 01110_01111_01111_10010 01111_01110_01111_10010 10001_10001_01101_0111
+Total number of SAX nodes without a match: 34</pre>
+<p>In this case, we <a id="_idIndexMarker372"/>have fewer terminal nodes without <span class="No-Break">a match.</span></p>
+<p>The next section briefly touches on the topic of testing Python code by writing three basic Python tests for the <span class="No-Break"><strong class="source-inline">isax</strong></span><span class="No-Break"> package.</span></p>
+<h1 id="_idParaDest-125"><a id="_idTextAnchor136"/>Writing Python tests</h1>
+<p>In this last section<a id="_idIndexMarker373"/> of this chapter, we are going to learn about Python testing and write three tests for our code with the help of the <span class="No-Break"><strong class="source-inline">pytest</strong></span><span class="No-Break"> package.</span></p>
+<p>As the <strong class="source-inline">pytest</strong> package is not installed by default, the first task you should carry out is installing it using your favorite method. Part of the <strong class="source-inline">pytest</strong> package is the <strong class="source-inline">pytest</strong> command-line utility, which is used for running <span class="No-Break">the tests.</span></p>
+<p class="callout-heading">Unit testing</p>
+<p class="callout">In this section, we are writing unit tests, which are usually functions that we write to make sure that our code works as expected. The result of a unit test is either <strong class="source-inline">PASS</strong> or <strong class="source-inline">FAIL</strong>. The more extensive the unit testing is, the more useful <span class="No-Break">it is.</span></p>
+<p>After a <a id="_idIndexMarker374"/>successful installation, if you execute the <strong class="source-inline">pytest</strong> command on a directory that does not contain any valid tests, you are going to get information about your system and your Python installation. On a macOS machine, the output is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ pytest
+========================= test session starts ==========
+platform darwin -- Python 3.10.9, pytest-7.2.1, pluggy-1.0.0
+rootdir: /Users/mtsouk/code/ch05
+collected 0 items
+================ no tests ran in 0.00s ====================</pre>
+<p>As far as testing functions are concerned, there is a simple rule that you have to keep in mind. A testing function when using the <strong class="source-inline">pytest</strong> package is any Python function that is prefixed with <strong class="source-inline">test_</strong> in a file where its filename is also prefixed <span class="No-Break">by </span><span class="No-Break"><strong class="source-inline">test_</strong></span><span class="No-Break">.</span></p>
+<p>There are many tests that could be written. Usually, we want to test as much as possible, starting from the most critical parts of the code and moving to the less critical ones. For the purposes of this chapter, we have decided to test the core logic of the implementation by writing <span class="No-Break">three tests.</span></p>
+<p>The next subsection talks about the three tests that we are going to implement in this chapter in <span class="No-Break">more detail.</span></p>
+<h2 id="_idParaDest-126"><a id="_idTextAnchor137"/>What are we going to test?</h2>
+<p>The first thing to define<a id="_idIndexMarker375"/> is what we are going to test and why. For this chapter, we are <a id="_idIndexMarker376"/>going to write the following <span class="No-Break">three tests:</span></p>
+<ul>
+<li>We are going to count the number of subsequences in an iSAX index and make sure that the iSAX index holds all <span class="No-Break">the subsequences.</span></li>
+<li>We are going to test the number of node splits of an iSAX construction – this time, the correct number of splits is going to be stored in a <span class="No-Break">global variable.</span></li>
+<li>Lastly, we are going to join the same time series with itself. This means that we should get a list of Euclidean distances where all values are equal to 0. Keep in mind that as we are talking about floating-point numbers, the Euclidean distances might be very close to 0 but not <span class="No-Break">exactly 0.</span></li>
+</ul>
+<p>The list of tests is far from complete, but it is a good way to illustrate the use and usefulness <span class="No-Break">of tests.</span></p>
+<p>The filenames of the time series and the iSAX parameters, as well as the number of splits and subsequences, are going to be given as global variables in the source code file that holds the testing code for reasons of simplicity. If you want to dynamically pass parameters to <strong class="source-inline">pytest</strong> tests, visit the <em class="italic">Basic patterns and examples of pytest</em> link in the <em class="italic">Useful links</em> section at the end of the chapter for <span class="No-Break">more information.</span></p>
+<h2 id="_idParaDest-127"><a id="_idTextAnchor138"/>Comparing the number of subsequences</h2>
+<p>In this test, we <a id="_idIndexMarker377"/>compare the number of subsequences in an iSAX index to the theoretical number of subsequences based on the sliding window size and the time <span class="No-Break">series length.</span></p>
+<p>The relevant code is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def test_count_subsequences():
+    variables.nSplits = 0
+    variables.segments = segments
+    variables.maximumCardinality = cardinality
+    variables.slidingWindowSize = slidingWindow
+    variables.threshold = threshold
+    i, ts = <strong class="bold">createISAX</strong>(TS, slidingWindow, segments)
+    sum = 0
+    for k in i.ht:
+        t = i.ht[k]
+        if t.terminalNode:
+            sum += t.nTimeSeries()
+    assert sum == len(ts) - slidingWindow + 1</pre>
+<p>First, we<a id="_idIndexMarker378"/> appropriately set the global variables in <strong class="source-inline">./isax/variables.py</strong> based on the global values found in the preamble <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">test_isax.py</strong></span><span class="No-Break">.</span></p>
+<p>The <strong class="source-inline">createISAX()</strong> helper function is used to create iSAX indexes for testing. You have seen that function before in the <span class="No-Break"><strong class="source-inline">speed.py</strong></span><span class="No-Break"> utility.</span></p>
+<p>What is important and closely related to the test is the use of the <strong class="source-inline">assert</strong> keyword. <strong class="source-inline">assert</strong> checks the trueness of the statement that follows. If the statement is <strong class="source-inline">True</strong>, then the <strong class="source-inline">assert</strong> statement passes. Otherwise, it throws an exception, and as a result, the test function fails. The <strong class="source-inline">assert</strong> keyword is used in all our <span class="No-Break">test functions.</span></p>
+<p>Next, we are going to discuss the test that checks the number of <span class="No-Break">node splits.</span></p>
+<h2 id="_idParaDest-128"><a id="_idTextAnchor139"/>Checking the number of node splits</h2>
+<p>For the purposes <a id="_idIndexMarker379"/>of this test, we assume that we have a different program in any programming language that we consider correct that gives us the actual number of node splits. This number of node splits is stored in a global variable (<strong class="source-inline">splits</strong>) and read by the <span class="No-Break">test function.</span></p>
+<p>The relevant Python code is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def test_count_splits():
+    variables.nSplits = 0
+    variables.segments = segments
+    variables.maximumCardinality = cardinality
+    variables.slidingWindowSize = slidingWindow
+    variables.threshold = threshold
+    variables.defaultPromotion = False
+    i, ts = createISAX(TS, slidingWindow, segments)
+    assert variables.nSplits == splits</pre>
+<p>In this code, we<a id="_idIndexMarker380"/> first appropriately set the global variables in <strong class="source-inline">./isax/variables.py</strong> based on the global values found in <strong class="source-inline">test_isax.py</strong>. Do not forget to reset <strong class="source-inline">variables.nSplits</strong> and select the correct promotion strategy (<strong class="source-inline">variables.defaultPromotion</strong>) in your <span class="No-Break">test function.</span></p>
+<p>The last test function computes the join of a time series with itself, which means that all Euclidean distances after the join should be equal <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">0</strong></span><span class="No-Break">.</span></p>
+<h2 id="_idParaDest-129"><a id="_idTextAnchor140"/>All Euclidean distances are 0</h2>
+<p>In this <a id="_idIndexMarker381"/>test, we are going to create the iSAX index of a time series and join it with itself. As we are comparing a time series with itself, the list of Euclidean distances should only <em class="italic">contain zeros</em>. Therefore, with this unit test, we examine the logical correctness of <span class="No-Break">our code.</span></p>
+<p>The relevant Python test function is implemented <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def test_join_same():
+    variables.nSplits = 0
+    variables.segments = segments
+    variables.maximumCardinality = cardinality
+    variables.slidingWindowSize = slidingWindow
+    variables.threshold = threshold
+    i, _ = createISAX(TS, slidingWindow, segments)
+    Join(i, i)
+    assert <strong class="bold">np.allclose</strong>(variables.ED, np.zeros(len(variables.ED))) == True</pre>
+<p>First, we <a id="_idIndexMarker382"/>appropriately set the global variables in <strong class="source-inline">./isax/variables.py</strong> based on the global values found in <strong class="source-inline">test_isax.py</strong>. After that, we call <strong class="source-inline">createISAX()</strong> to construct the iSAX index and then call the <strong class="source-inline">Join()</strong> function to populate the list of <span class="No-Break">Euclidean distances.</span></p>
+<p>The NumPy <strong class="source-inline">zeros()</strong> function creates a NumPy array with all zeros. Its parameter defines the length of the NumPy array that is going to be returned. The NumPy <strong class="source-inline">allclose()</strong> function returns <strong class="source-inline">True</strong> if its two NumPy array arguments are equal within a tolerance. This is mainly the case because when using floating-point values, there might be small differences due <span class="No-Break">to rounding.</span></p>
+<p>In the next subsection, we are going to run the tests and see <span class="No-Break">the results.</span></p>
+<h2 id="_idParaDest-130"><a id="_idTextAnchor141"/>Running the tests</h2>
+<p>In this <a id="_idIndexMarker383"/>section, we are going to run the tests and see their results. All the previous code can be found in the <strong class="source-inline">./</strong><span class="No-Break"><strong class="source-inline">ch05/test_isax.py</strong></span><span class="No-Break"> file.</span></p>
+<p>The results of the tests, which are all successful, are <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ pytest
+================= test session starts =====================
+platform darwin -- Python 3.10.9, pytest-7.2.1, pluggy-1.0.0
+rootdir: /Users/mtsouk/TSi/code/ch05
+collected 3 items
+test_isax.py ...                                    [100%]
+============= 3 passed in 2784.53s (0:46:24) ==============</pre>
+<p>In the case that there <a id="_idIndexMarker384"/>were one or more failed tests, the output would look like the following (in this case, only one <span class="No-Break">test failed):</span></p>
+<pre class="source-code">
+$ pytest
+====================== test session starts ================
+platform darwin -- Python 3.10.9, pytest-7.2.1, pluggy-1.0.0
+rootdir: /Users/mtsouk/TSi/code/ch05
+collected 3 items
+test_isax.py .F.                                  [100%]
+=====================FAILURES ============================
+____________________ test_count_splits ___________________
+    variables.nSplits = 0
+    variables.segments = segments
+    variables.maximumCardinality = cardinality
+    variables.slidingWindowSize = slidingWindow
+    variables.threshold = threshold
+    _, _ = createISAX(TS, slidingWindow, segments)
+&gt;   assert variables.nSplits == splits
+E   assert 5669 == 5983
+E    +  where 5669 = variables.nSplits
+test_isax.py:58: AssertionError
+================ short test summary info ==================
+FAILED test_isax.py::test_count_splits - assert 5669 == 5983
+=========== 1 failed, 2 passed in 2819.21s (0:46:59) ======</pre>
+<p>The good thing is<a id="_idIndexMarker385"/> that the output shows the reason that one or more tests have failed and includes the relevant code. In this case, it is the <strong class="source-inline">assert variables.nSplits == splits</strong> statement <span class="No-Break">that failed.</span></p>
+<p>This is the last section of this chapter, yet the most important one, as testing can save you lots of time during development. The main purpose of our tests is to test the logic and the correctness of the code, which is <span class="No-Break">very important.</span></p>
+<h1 id="_idParaDest-131"><a id="_idTextAnchor142"/>Summary</h1>
+<p>In this chapter, we have seen code for testing the speed of an iSAX index and joining two iSAX indexes based on the SAX representations of their nodes. Then, we briefly discussed the subject of testing Python code and implemented three tests for the <span class="No-Break"><strong class="source-inline">isax</strong></span><span class="No-Break"> package.</span></p>
+<p>We also discussed the joining of iSAX indexes, which is based on the node types. Additionally, the tests we carried out made sure that the core logic of our code <span class="No-Break">is correct.</span></p>
+<p>In the next chapter, we are going to learn how to visualize iSAX indexes to better understand their structure <span class="No-Break">and performance.</span></p>
+<p>Before you start reading and working through <a href="B14769_06.xhtml#_idTextAnchor145"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>, experiment with the command-line utilities that we have developed in this chapter and try to create <span class="No-Break">your own.</span></p>
+<h1 id="_idParaDest-132"><a id="_idTextAnchor143"/>Useful links</h1>
+<ul>
+<li>The <strong class="source-inline">pytest</strong> <span class="No-Break">package: </span><span class="No-Break">https://pypi.org/project/pytest/</span></li>
+<li>Official <strong class="source-inline">pytest</strong> <span class="No-Break">documentation: </span><a href="https://docs.pytest.org/%0D"><span class="No-Break">https://docs.pytest.org/</span></a></li>
+<li><em class="italic">Practices of the Python Pro</em>, written by <span class="No-Break">Dane Hillard</span></li>
+<li><em class="italic">Mastering Python, 2nd Edition</em>, written by Rick <span class="No-Break">van Hattem</span></li>
+<li><em class="italic">Robust Python: Write Clean and Maintainable Code</em>, written by <span class="No-Break">Patrick Viafore</span></li>
+<li><em class="italic">Python Testing with pytest, 2nd Edition</em>, written by <span class="No-Break">Brian Okken</span></li>
+<li>Basic patterns and examples of <span class="No-Break"><strong class="source-inline">pytest</strong></span><span class="No-Break">: </span><a href="https://docs.pytest.org/en/latest/example/simple.xhtml%0D"><span class="No-Break">https://docs.pytest.org/en/latest/example/simple.xhtml</span></a></li>
+</ul>
+<h1 id="_idParaDest-133"><a id="_idTextAnchor144"/>Exercises</h1>
+<p>Try to work through the <span class="No-Break">following exercises:</span></p>
+<ul>
+<li>Use <strong class="source-inline">accessSplit.py</strong> to learn how the sliding window size affects the construction speed of the <strong class="source-inline">2M.gz</strong> time series from <a href="B14769_04.xhtml#_idTextAnchor102"><span class="No-Break"><em class="italic">Chapter 4</em></span></a>. Perform your experiments for the following sliding window sizes: <strong class="source-inline">16</strong>, <strong class="source-inline">256</strong>, <strong class="source-inline">1024</strong>, <strong class="source-inline">4096</strong>, <strong class="source-inline">16384</strong>, <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">32786</strong></span><span class="No-Break">.</span></li>
+<li>Can you resolve the overflow situations with <strong class="source-inline">accessSplit.py</strong> and the <strong class="source-inline">500.gz</strong> time series we came across at the beginning of <span class="No-Break">the chapter?</span></li>
+<li>Try reducing the threshold values in the <strong class="source-inline">speed.py</strong> examples presented in the <em class="italic">Checking the search speed of iSAX indexes</em> section and see <span class="No-Break">what happens.</span></li>
+<li>Create two time series with 250,000 elements each and use <strong class="source-inline">speed.py</strong> to understand their behavior when the number of segments is in the 20 to 40 range. Do not forget to use an appropriate sliding <span class="No-Break">window size.</span></li>
+<li>Experiment with <strong class="source-inline">speed.py</strong> but this time, change the threshold value instead of the number of segments. Is the threshold value more important than the number of segments in the search speed of an <span class="No-Break">iSAX index?</span></li>
+<li>Modify <strong class="source-inline">speed.py</strong> to display the number of misses in <span class="No-Break">subsequence queries.</span></li>
+<li>Modify <strong class="source-inline">join.py</strong> to print the time it took to perform <span class="No-Break">the join.</span></li>
+<li>Modify <strong class="source-inline">saveLoadList.py</strong> to include the threshold value in the filename where we save the contents of the list with the <span class="No-Break">Euclidean distances.</span></li>
+<li>Run the <strong class="source-inline">pytest</strong> command on your own machines and see the output that <span class="No-Break">you get.</span></li>
+</ul>
+</div>
+</div></body></html>

@@ -1,0 +1,298 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Working with Compiled GPU Code</h1>
+                </header>
+            
+            <article>
+                
+<p><span><span>Throughout the</span></span> course of this book, we have generally been reliant on the PyCUDA library to interface our inline CUDA-C code for us automatically, using just-in-time compilation and linking with our Python code. We might recall, however, that sometimes the compilation process can take a while. In <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml">Chapter 3</a>, <em>Getting Started With PyCUDA</em>, we even saw in detail how the compilation process can contribute to slowdown, and how it can even be somewhat arbitrary as to when inline code will be compiled and retained. In some cases, this may be inconvenient and cumbersome given the application, or even unacceptable in the case of a real-time system. </p>
+<p>To this end, we will finally see how to use pre-compiled GPU code from Python. In particular, we will look at three distinct ways to do this. First, we will look at how we can do this by writing a host-side CUDA-C function that can indirectly launch a CUDA kernel. This method will involve invoking the host-side function with the standard Python Ctypes library. Second, we will compile our kernel into what is known as a PTX module, which is effectively a DLL file containing compiled binary GPU. We can then load this file with PyCUDA and launch our kernel directly. Finally, we will end this chapter by looking at how to write our own full-on Ctypes interface to the CUDA Driver API. We can then use the appropriate functions from the Driver API to load our PTX file and launch a kernel.</p>
+<p>The learning outcomes for this chapter are as follows:</p>
+<ul>
+<li>Launching compiled (host-side) code with the Ctypes module</li>
+<li>Using host-side CUDA C wrappers with Ctypes to launch a kernel from Python</li>
+<li>How to compile a CUDA C module into a PTX file</li>
+<li>How to load a PTX module into PyCUDA to launch pre-compiled kernels</li>
+<li>How to write your own custom Python interface to the CUDA Driver API</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Launching compiled code with Ctypes</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now give a brief overview of the Ctypes module from the Python Standard Library. Ctypes is used for calling functions from the Linux <kbd>.so</kbd> (shared object) or Windows. DLL (Dynamically Linked Library) pre-compiled binaries. This will allow us to break out of the world of pure Python and interface with libraries and code that have been written in compiled languages, notably C and C++—it just so happens that Nvidia only provides such pre-compiled binaries for interfacing with our CUDA device, so if we want to sidestep PyCUDA, we will have to use Ctypes.</p>
+<p>Let's start with a very basic example: we will show you how to call <kbd>printf</kbd> directly from Ctypes. Open up an instance of IPython and type <kbd>import ctypes</kbd>. We are now going to look at how to call the standard <kbd>printf</kbd> function from Ctypes. First, we will have to import the appropriate library: in Linux, load the LibC library by typing <kbd>libc = ctypes.CDLL('libc.so.6')</kbd> (in Windows, replace <span><span><span><kbd>'libc.so.6'</kbd></span></span></span> with <kbd>'msvcrt.dll'</kbd>). We can now directly call <kbd>printf</kbd> from the IPython prompt by typing <kbd>libc.printf("Hello from ctypes!\n")</kbd>. Try it for yourself!</p>
+<p>Now let's try something else: type <kbd>libc.printf("Pi is approximately %f.\n", 3.14)</kbd> from IPython; you should get an error. This is because the <kbd>3.14</kbd> was not appropriately typecast from a Python float variable to a C double variable<span>—</span>we can do this with Ctypes like so:</p>
+<pre>libc.printf("Pi is approximately %f.\n", ctypes.c_double(3.14)) </pre>
+<p>The output should be as expected. As in the case of launching a CUDA kernel from PyCUDA, we have to be equally careful to typecast inputs into functions with Ctypes.</p>
+<div class="packt_tip">Always be sure to appropriately typecast inputs into any function that you call with Ctypes from Python to the appropriate C datatypes (in Ctypes, these are preceded by c_: <kbd>c_float</kbd>, <kbd>c_double</kbd>, <kbd>c_char</kbd>, <kbd>c_int</kbd>, and so on).</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The Mandelbrot set revisited (again)</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's revisit the Mandelbrot set that we looked at in <a href="f9c54d0e-6a18-49fc-b04c-d44a95e011a2.xhtml">Chapter 1</a>, <em>Why GPU Programming?</em>, and <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml">Chapter 3</a>, <em>Getting Started with PyCUDA</em>. First, we will write a full-on CUDA kernel that will compute the Mandelbrot set, given a particular set of parameters, along with an appropriate host-side wrapper function that we may interface to from Ctypes later. We will first be writing these functions into a single CUDA-C <kbd>.cu</kbd> source file and then compile this into a DLL or <kbd>.so</kbd> binary with the NVCC compiler. Finally, we will write some Python code so that we can run our binary code and display the Mandelbrot set.</p>
+<p><span>We will now apply our knowledge of Ctypes to launch a pre-compiled CUDA kernel from Python without any assistance from PyCUDA. This will require us to write a host-side <em>k</em></span><span><em>ernel launcher</em> wrapper function in CUDA-C that we may call directly, which itself has been compiled into a dynamic library binary with any necessary GPU code—that is, a Dynamically Linked Library (DLL) binary on Windows, or a shared-object (so) binary on Linux.</span></p>
+<p>We will start, of course, by writing our CUDA-C code, so open up your favorite text editor and follow along. We will begin with the standard <kbd>include</kbd> statements:</p>
+<pre>#include &lt;cuda_runtime.h&gt;<br/>#include &lt;stdio.h&gt;<br/>#include &lt;stdlib.h&gt;<br/>#include &lt;math.h&gt;</pre>
+<p>We'll now jump directly into writing our kernel. Notice <kbd>extern "C"</kbd> in the code, which will allow us to link to this function externally:</p>
+<pre>extern "C" __global__ void mandelbrot_ker(float * lattice, float * mandelbrot_graph, int max_iters, float upper_bound_squared, int lattice_size)<br/>{</pre>
+<p>Let's think for a minute about how this will work: we will use a single one-dimensional array for both the real and imaginary components called <kbd>lattice</kbd>, which is of length <kbd>lattice_size</kbd>. We will use this to compute a two-dimensional Mandelbrot graph of the shape (<kbd>lattice_size</kbd>, <kbd>lattice_size</kbd>) into the pre-allocated array, <kbd>mandelbrot_graph</kbd>. We will specify the number of iterations to check for divergence at each point with <kbd>max_iters</kbd>, specifying the maximum upper bound as before by providing its squared value with <kbd>upper_bound_squared</kbd>. (We'll look at the motivation for using the square in a second.)</p>
+<p>We will launch this kernel over a one-dimensional grid/block structure, with each thread corresponding to a single point in the graph image of the Mandelbrot set. We can then determine the real/imaginary lattice values for the corresponding point, like so:</p>
+<pre>    int tid = blockIdx.x * blockDim.x + threadIdx.x;<br/>    <br/>    if ( tid &lt; lattice_size*lattice_size )<br/>    {<br/>        int i = tid % lattice_size;<br/>        int j = lattice_size - 1 - (tid / lattice_size);<br/>        <br/>        float c_re = lattice[i];<br/>        float c_im = lattice[j];</pre>
+<p>Let's talk about this for a minute. First, remember that we may have to use slightly more threads than necessary, so it's important that we check that the thread ID will correspond to some point in the output image with the <kbd>if</kbd> statement. Let's also remember that the output array, <kbd>mandelbrot_graph</kbd>, will be stored as a one-dimensional array that represents a two-dimensional image stored in a row-wise format, and that we will be using <kbd>tid</kbd> as the index to write in this array. We will use <kbd>i</kbd> and <kbd>j</kbd>, as well as the <kbd>x</kbd> and <kbd>y</kbd> coordinates of the graph on the complex plane. Since lattice is a series of real values sorted from small to large, we will have to reverse their order to get the appropriate imaginary values. Also, notice that we will be using plain floats here, rather than some structure or object to represent a complex value. Since there are real and imaginary components in every complex number, we will have to use two floats here to store the complex number corresponding to this thread's lattice point (<kbd>c_re</kbd> and <kbd>c_im</kbd>).</p>
+<p>We will set up two more variables to handle the divergence check, <kbd>z_re</kbd> and <kbd>z_im</kbd>, and set the initial value of this thread's point on the graph to <kbd>1</kbd> before we check for divergence:</p>
+<pre>        float z_re = 0.0f;<br/>        float z_im = 0.0f;<br/>        <br/>        mandelbrot_graph[tid] = 1;</pre>
+<p>Now we will do our check for divergence; if it does diverge after <kbd>max_iters</kbd> iterations, we set the point to <kbd>0</kbd>. Otherwise, it is left at 1:</p>
+<pre>        for (int k = 0; k &lt; max_iters; k++)<br/>        {<br/>            float temp;<br/>            <br/>            temp = z_re*z_re - z_im*z_im + c_re;<br/>            z_im = 2*z_re*z_im + c_im;<br/>            z_re = temp;<br/>            <br/>            if ( (z_re*z_re + z_im*z_im) &gt; upper_bound_squared )<br/>            {<br/>                mandelbrot_graph[tid] = 0;<br/>                break;<br/>            }<br/>        }</pre>
+<p>Let's talk about this chunk of code for a minute before we continue. Let's remember<span><span> </span></span>that each iteration of a Mandelbrot set is computed with complex multiplication and addition for example, <kbd>z_new = z*z + c</kbd>. Since we are not working with a class that will handle complex values for us, the preceding operation is exactly what we need to do to compute the new real and imaginary values of <kbd>z</kbd>. We also need to compute the absolute value and see if it exceeds a particular value<span>—</span>remember that the absolute value of a complex number, <em>c = x + iy</em>, is computed with <em>√(x<sup>2</sup>+y<sup>2</sup>)</em>. It will actually save us some time here to compute the square of the upper bound and then plug that into the kernel, since it will save us the time of computing the square root of <kbd>z_re*z_re + z_im*z_im</kbd> for each iteration here.</p>
+<p>We're now pretty much done with this kernel<span>—</span>we just need to close off the <kbd>if</kbd> statement and return from the kernel, and we're done:</p>
+<pre>    }<br/>    return;<br/>}</pre>
+<p>However, we are not completely finished just yet. We need to write a host-side wrapper function with only <kbd>extern "C"</kbd> in the case of Linux, and <kbd>extern "C" __declspec(dllexport)</kbd> in the case of Windows. (In contrast to a compiled CUDA kernel, this extra word is necessary if we want to be able to access a host-side function from Ctypes in Windows.) The parameters that we put into this function will correspond directly to those that go into the kernel, except these will be stored on the host:</p>
+<pre>extern "C" __declspec(dllexport) void launch_mandelbrot(float * lattice,  float * mandelbrot_graph, int max_iters, float upper_bound, int lattice_size)<br/>{</pre>
+<p>Now, the first task we will have to do is allocate sufficient memory to store the lattice and output on the GPU with <kbd>cudaMalloc</kbd>, and then copy the lattice to the GPU with <kbd>cudaMemcpy</kbd>:</p>
+<pre>    int num_bytes_lattice = sizeof(float) * lattice_size;<br/>    int num_bytes_graph = sizeof(float)* lattice_size*lattice_size;<br/>    <br/>    float * d_lattice;<br/>    float * d_mandelbrot_graph;<br/>    <br/>    cudaMalloc((float **) &amp;d_lattice, num_bytes_lattice);<br/>    cudaMalloc((float **) &amp;d_mandelbrot_graph, num_bytes_graph);<br/>    <br/>    cudaMemcpy(d_lattice, lattice, num_bytes_lattice, cudaMemcpyHostToDevice);</pre>
+<p class="mce-root"/>
+<p>Like many of our other kernels, we will launch this over one-dimensional blocks of size 32 over a one-dimensional grid. We will take the ceiling value of the number of output points to compute, divided by 32, to determine the grid size, like so:</p>
+<pre>    int grid_size = (int)  ceil(  ( (double) lattice_size*lattice_size ) / ( (double) 32 ) );</pre>
+<p>Now we are ready to launch our kernel by using the traditional CUDA-C triple-triangle brackets to specify grid and block size. Notice how we square the upper bound beforehand here:</p>
+<pre>    mandelbrot_ker &lt;&lt;&lt; grid_size, 32 &gt;&gt;&gt; (d_lattice,  d_mandelbrot_graph, max_iters, upper_bound*upper_bound, lattice_size);</pre>
+<p>Now we just need to copy the output to the host after this is done, and then call <kbd>cudaFree</kbd> on the appropriate arrays. Then we can return from this function:</p>
+<pre>    cudaMemcpy(mandelbrot_graph, d_mandelbrot_graph, num_bytes_graph, cudaMemcpyDeviceToHost);    <br/>    cudaFree(d_lattice);<br/>    cudaFree(d_mandelbrot_graph);<br/>}</pre>
+<p>And with that, we are done with all of the CUDA-C code that we will need. Save this to a file named <kbd>mandelbrot.cu</kbd>, and let's continue to the next step.</p>
+<div class="packt_infobox">You can also download this file from <a href="https://github.com/btuomanen/handsongpuprogramming/blob/master/10/mandelbrot.cu">https://github.com/btuomanen/handsongpuprogramming/blob/master/10/mandelbrot.cu</a>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Compiling the code and interfacing with Ctypes</h1>
+                </header>
+            
+            <article>
+                
+<p>Now let's compile the code we just wrote into a DLL or <kbd>.so</kbd> binary. This is actually fairly painless: if you are a Linux user, type the following into the command line to compile this file into <kbd>mandelbrot.so</kbd>:</p>
+<pre><strong>nvcc -Xcompiler -fPIC -shared -o mandelbrot.so mandelbrot.cu</strong></pre>
+<p>If you are a Windows user, type the following into the command line to compile the file into <kbd>mandelbrot.dll</kbd>: </p>
+<pre><strong>nvcc -shared -o mandelbrot.dll mandelbrot.cu</strong></pre>
+<p>Now we can write our Python interface. We will start with the appropriate import statements, excluding PyCUDA completely and using just Ctypes. For ease of use, we'll just import all of the classes and functions from Ctypes directly into the default Python namespace, like so:</p>
+<pre>from __future__ import division<br/>from time import time<br/>import matplotlib<br/>from matplotlib import pyplot as plt<br/>import numpy as np<br/>from ctypes import *</pre>
+<p>Let's set up an interface for the <kbd>launch_mandelbrot</kbd> host-side function using Ctypes. First, we will have to load our compiled DLL or <kbd>.so</kbd> file as such (Linux users will, of course, have to change the file name to <kbd>mandelbrot.so</kbd>):</p>
+<pre>mandel_dll = CDLL('./mandelbrot.dll')</pre>
+<div>Now we can get a reference to <kbd>launch_mandelbrot</kbd> from the library, like so; we'll call it <kbd>mandel_c</kbd> for short:</div>
+<pre>mandel_c = mandel_dll.launch_mandelbrot</pre>
+<p>Now before we call a function with Ctypes, we will have to make Ctypes aware of what the input types are. Let's remember that for <kbd>launch_mandelbrot</kbd>, the inputs were <kbd>float-pointer</kbd>, <kbd>float-pointer</kbd>, <kbd>integer</kbd>, <kbd>float</kbd>, and <kbd>integer</kbd>. We set this up with the <kbd>argtypes</kbd> parameter, using the appropriate Ctypes datatypes (<kbd>c_float</kbd>, <kbd>c_int</kbd>), as well as the Ctypes <kbd>POINTER</kbd> class:</p>
+<pre>mandel_c.argtypes = [POINTER(c_float), POINTER(c_float), c_int, c_float, c_int]</pre>
+<p>Now let's write a Python function that will run this for us. We will specify the width and height of the square output image with <kbd>breadth</kbd>, and the minimum and maximum values in the complex lattice for both the real and imaginary components. We will also specify the maximum number of iterations, as well as the upper bound:</p>
+<pre>def mandelbrot(breadth, low, high, max_iters, upper_bound):</pre>
+<p>Now, we will create our lattice array with NumPy's <kbd>linspace</kbd> function, like so:</p>
+<pre> lattice = np.linspace(low, high, breadth, dtype=np.float32)</pre>
+<p>Let's remember that we will have to pass a pre-allocated float array to <kbd>launch_mandelbrot</kbd> to get the output in the form of an output graph. We can do this by calling NumPy's <kbd>empty</kbd> command to set up an array of the appropriate shape and size, which will act as a C <kbd>malloc</kbd> call here:</p>
+<pre>    out = np.empty(shape=(lattice.size,lattice.size), dtype=np.float32)</pre>
+<p>Now, we are ready to compute the Mandelbrot graph. Notice that we can pass the NumPy arrays to C by using their <kbd>ctypes.data_as</kbd> method with the appropriate corresponding types. After we have done this, we can return the output; that is, the Mandelbrot graph in the form of a two-dimensional NumPy array:</p>
+<pre> mandel_c(lattice.ctypes.data_as(POINTER(c_float)), out.ctypes.data_as(POINTER(c_float)), c_int(max_iters), c_float(upper_bound), c_int(lattice.size) ) <br/> return out</pre>
+<p>Now, let's write our main function to compute, time, and view the Mandelbrot graph with Matplotlib:</p>
+<pre>if __name__ == '__main__':<br/>    t1 = time()<br/>    mandel = mandelbrot(512,-2,2,256, 2)<br/>    t2 = time()<br/>    mandel_time = t2 - t1<br/>    print 'It took %s seconds to calculate the Mandelbrot graph.' % mandel_time<br/>    plt.figure(1)<br/>    plt.imshow(mandel, extent=(-2, 2, -2, 2))<br/>    plt.show()</pre>
+<p>We will now try running this. You should get an output that looks exactly like the Mandelbrot graph from <a href="f9c54d0e-6a18-49fc-b04c-d44a95e011a2.xhtml">Chapter 1</a>, <em>Why GPU Programming?</em> and <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml">Chapter 3,</a> <em>Getting Started with PyCUDA</em>:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/0620985f-949b-4f6b-bba4-1be7b0bf7eff.png" style="" width="858" height="820"/></div>
+<div class="packt_infobox">The code for this Python example is also available as the file <span><kbd>mandelbrot_ctypes.py</kbd> in the GitHub repository.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Compiling and launching pure PTX code</h1>
+                </header>
+            
+            <article>
+                
+<p>We have just seen how to call a pure-C function from Ctypes. In some ways, this may seem a little inelegant, as our binary file must contain both host code as well as the compiled GPU code, which may seem cumbersome. Can we just use pure, compiled GPU code and then launch it appropriately onto the GPU without writing a C wrapper each and every time? Fortunately, we can.</p>
+<p>The NVCC compiler compiles CUDA-C into <strong>PTX</strong> (<strong>Parallel Thread Execution</strong>), which is an interpreted pseudo-assembly language that is compatible across <span>NVIDIA </span>'s various GPU architectures. Whenever you compile a program that uses a CUDA kernel with <span>NVCC </span>into an executable EXE, DLL, <kbd>.so</kbd>, or ELF file, there will be PTX code for that kernel contained within the file. We can also directly compile a file with the extension PTX, which will contain only the compiled GPU kernels from a compiled CUDA .cu file. Luckily for us, PyCUDA includes an interface to load a CUDA kernel directly from a PTX, freeing us from the shackles of just-in-time compilation while still allowing us to use all of the other nice features from PyCUDA.</p>
+<p>Now let's compile the Mandelbrot code we just wrote into a PTX file; we don't need to make any changes to it. Just type the following into the command line in either Linux or Windows:</p>
+<pre><strong><span>nvcc -ptx -o mandelbrot.ptx mandelbrot.cu</span></strong></pre>
+<p>Now let's modify the Python program from the last section to use PTX code instead. We will remove <kbd>ctypes</kbd> from the imports and add the appropriate PyCUDA imports:</p>
+<pre>from __future__ import division<br/>from time import time<br/>import matplotlib<br/>from matplotlib import pyplot as plt<br/>import numpy as np<br/>import pycuda<br/>from pycuda import gpuarray<br/>import pycuda.autoinit</pre>
+<p>Now let's load the PTX file using PyCUDA's <kbd>module_from_file</kbd> function, like so:</p>
+<pre>mandel_mod = pycuda.driver.module_from_file('./mandelbrot.ptx')</pre>
+<p>Now we can get a reference to our kernel with <kbd>get_function</kbd>, just like did with PyCUDA's <kbd>SourceModule</kbd>:</p>
+<pre>mandel_ker = mandel_mod.get_function('mandelbrot_ker')</pre>
+<p>We can now rewrite the Mandelbrot function to handle using this kernel with the appropriate <kbd>gpuarray</kbd> objects and <kbd>typecast</kbd> inputs. (We won't go over this one line-by-line since its functionality should be obvious at this point.):</p>
+<pre>def mandelbrot(breadth, low, high, max_iters, upper_bound):<br/>    lattice = gpuarray.to_gpu(np.linspace(low, high, breadth, dtype=np.   <br/>    out_gpu = gpuarray.empty(shape=(lattice.size,lattice.size), dtype=np.float32)<br/>    gridsize = int(np.ceil(lattice.size**2 / 32))<br/>    mandel_ker(lattice, out_gpu, np.int32(256), np.float32(upper_bound**2), np.int32(lattice.size), grid=(gridsize, 1, 1), block=(32,1,1))<br/>    out = out_gpu.get()<br/> <br/>    return out</pre>
+<p>The <kbd>main</kbd> function will be exactly the same as in the last section:</p>
+<pre>if __name__ == '__main__':<br/>    t1 = time()<br/>    mandel = mandelbrot(512,-2,2,256,2)<br/>    t2 = time()<br/>    mandel_time = t2 - t1<br/>    print 'It took %s seconds to calculate the Mandelbrot graph.' % mandel_time<br/>    plt.figure(1)<br/>    plt.imshow(mandel, extent=(-2, 2, -2, 2))<br/>    plt.show()</pre>
+<p>Now, try running this to ensure that the output is correct. You may also notice some speed improvements over the Ctypes version. </p>
+<div class="packt_infobox">This code is also available in the <kbd>mandelbrot_ptx.py</kbd> file under the "10" directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Writing wrappers for the CUDA Driver API</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at how we can write our very own wrappers for some pre-packaged binary CUDA library functions using Ctypes. In particular, we will be writing wrappers for the CUDA Driver API, which will allow us to perform all of the necessary operations needed for basic GPU usage<span>—</span>including GPU initialization, memory allocation/transfers/deallocation, kernel launching, and context creation/synchronization/destruction. This is a very powerful piece of knowledge; it will allow us to use our GPU without going through PyCUDA, and also without writing any cumbersome host-side C-function wrappers.</p>
+<p>We will now write a small module that will act as a wrapper library for the <strong>CUDA Driver API</strong>. Let's talk about what this means for a minute. The Driver API is slightly different and a little more technical than the <strong>CUDA Runtime API</strong>, the latter being what we have been working within this text from CUDA-C. The Driver API is designed to be used with a regular C/C++ compiler rather than with NVCC, with some different conventions like using the <kbd>cuLaunchKernel</kbd> function to launch a kernel rather than using the <kbd>&lt;&lt;&lt; gridsize, blocksize &gt;&gt;&gt;</kbd> bracket notation. This will allow us to directly access the necessary functions that we need to launch a kernel from a PTX file with Ctypes.</p>
+<p>Let's start writing this module by importing all of the Ctypes into the module's namespace, and then importing the sys module. We will make our module usable from both Windows and Linux by loading the proper library file (either <kbd>nvcuda.dll</kbd> or <kbd>libcuda.so</kbd>) by checking the system's OS with <kbd>sys.platform</kbd>, like so:</p>
+<pre>from ctypes import *<br/>import sys<br/>if 'linux' in sys.platform:<br/> cuda = CDLL('libcuda.so')<br/>elif 'win' in sys.platform:<br/> cuda = CDLL('nvcuda.dll')</pre>
+<p>We have successfully loaded the CUDA Driver API, and we can now begin writing wrappers for the necessary functions for basic GPU usage. We will look at the prototypes of each Driver API function as we go along, which is generally necessary to do when you are writing Ctypes wrappers.</p>
+<div class="packt_tip">The reader is encouraged to look up all of the functions we will be using in this section in the official Nvidia CUDA Driver API Documentation, which is available here: <a href="https://docs.nvidia.com/cuda/cuda-driver-api/">https://docs.nvidia.com/cuda/cuda-driver-api/</a>.</div>
+<p>Let's start with the most fundamental function from the Driver API, <kbd>cuInit</kbd>, which will initialize the Driver API. This takes an unsigned integer used for flags as an input parameter and returns a value of type CUresult, which is actually just an integer value. We can write our wrapper like so:</p>
+<pre>cuInit = cuda.cuInit<br/>cuInit.argtypes = [c_uint]<br/>cuInit.restype = int</pre>
+<p>Now let's start on the next function, <kbd>cuDeviceCount</kbd>, which will tell us how many <span>NVIDIA </span>GPUs we have installed on our computer. This takes in an integer pointer as its single input, which is actually a single integer output value that is returned by reference. The return value is another CUresult integer<span>—</span>all of the functions will use CUresult, which is a standardization of the error values for all of the Driver API functions. For instance, if any function we see returns a <kbd>0</kbd>, this means the result is <kbd>CUDA_SUCCESS</kbd>, while non-zero results will always mean an error or warning:</p>
+<pre>cuDeviceGetCount = cuda.cuDeviceGetCount<br/>cuDeviceGetCount.argtypes = [POINTER(c_int)]<br/>cuDeviceGetCount.restype = int</pre>
+<p>Now let's write a wrapper for <kbd>cuDeviceGet</kbd>, which will return a device handle by reference in the first input. This will correspond to the ordinal GPU given in the second input. The first parameter is of the type <kbd>CUdevice *</kbd>, which is actually just an integer pointer:</p>
+<pre>cuDeviceGet = cuda.cuDeviceGet<br/>cuDeviceGet.argtypes = [POINTER(c_int), c_int]<br/>cuDeviceGet.restype = int</pre>
+<p>Let's remember that every CUDA session will require at least one CUDA Context, which can be thought of as analogous to a process running on the CPU. Since this is handled automatically with the Runtime API, here we will have to create a context manually on a device (using a device handle) before we can use it, and we will have to destroy this context when our CUDA session is over. </p>
+<p>We can create a CUDA context with the <kbd>cuCtxCreate</kbd> function, which will, of course, create a context. Let's look at the prototype listed in the documentation: </p>
+<pre> CUresult cuCtxCreate ( CUcontext* pctx, unsigned int flags, CUdevice dev )</pre>
+<p>Of course, the return value is <kbd>CUresult</kbd>. The first input is a pointer to a type called <kbd>CUcontext</kbd>, which is actually itself a pointer to a particular C structure used internally by CUDA. Since our only interaction with <kbd>CUcontext</kbd> from Python will be to hold onto its value to pass between other functions, we can just store <kbd>CUcontext</kbd> as a C <kbd>void *</kbd> type, which is used to store a generic pointer address for any type. Since this is actually a pointer to a CU context (again, which is itself a pointer to an internal data structure—this is another pass-by-reference return value), we can set the type to be just a plain <kbd>void *</kbd>, which is a <kbd>c_void_p</kbd> type in Ctypes. The second value is an unsigned integer, while the final value is the device handle on which to create the new context—let's remember that this is itself just an integer. We are now prepared to create our wrapper for <kbd>cuCtxCreate</kbd>:</p>
+<pre>cuCtxCreate = cuda.cuCtxCreate<br/>cuCtxCreate.argtypes = [c_void_p, c_uint, c_int]<br/>cuCtxCreate.restype = int</pre>
+<div class="packt_tip">You can always use the <kbd>void *</kbd> type in C/C++ (<kbd>c_void_p</kbd> in Ctypes) to point to any arbitrary data or variable—even structures and objects whose definition may not be available.</div>
+<p>The next function is <kbd>cuModuleLoad</kbd>, which will load a PTX module file for us. The first argument is a CUmodule by reference (again, we can just use a <kbd>c_void_p</kbd> here), and the second is the file name, which will be a typical null-terminated C-string<span>—</span>this is a <kbd>char *</kbd>, or <kbd>c_char_p</kbd> in Ctypes:</p>
+<pre>cuModuleLoad = cuda.cuModuleLoad<br/>cuModuleLoad.argtypes = [c_void_p, c_char_p]<br/>cuModuleLoad.restype = int</pre>
+<p>The next function is for synchronizing all launched operations over the current CUDA context, and is called <kbd>cuCtxSynchronize</kbd> (this takes no arguments):</p>
+<pre>cuCtxSynchronize = cuda.cuCtxSynchronize<br/>cuCtxSynchronize.argtypes = []<br/>cuCtxSynchronize.restype = int</pre>
+<p>The next function is used for retrieving a kernel function handle from a loaded module so that we may launch it onto the GPU, which corresponds exactly to PyCUDA's <kbd>get_function</kbd> method, which we've seen many times at this point. The documentation tells us that the prototype is <kbd>CUresult cuModuleGetFunction ( CUfunction* hfunc, CUmodule hmod, const char* name )</kbd>. We can now write the wrapper:</p>
+<pre>cuModuleGetFunction = cuda.cuModuleGetFunction<br/> cuModuleGetFunction.argtypes = [c_void_p, c_void_p, c_char_p ]<br/> cuModuleGetFunction.restype = int</pre>
+<p>Now let's write the wrappers for the standard dynamic memory operations; these will be necessary since we won't have the vanity of using PyCUDA gpuarray objects. These are practically the same as the CUDA runtime operations that we have worked with before; that is, <kbd>cudaMalloc</kbd>, <kbd>cudaMemcpy</kbd>, and <kbd>cudaFree</kbd>:</p>
+<pre>cuMemAlloc = cuda.cuMemAlloc<br/>cuMemAlloc.argtypes = [c_void_p, c_size_t]<br/>cuMemAlloc.restype = int<br/><br/>cuMemcpyHtoD = cuda.cuMemcpyHtoD<br/>cuMemcpyHtoD.argtypes = [c_void_p, c_void_p, c_size_t]<br/>cuMemAlloc.restype = int<br/><br/>cuMemcpyDtoH = cuda.cuMemcpyDtoH<br/>cuMemcpyDtoH.argtypes = [c_void_p, c_void_p, c_size_t]<br/>cuMemcpyDtoH.restype = int<br/><br/>cuMemFree = cuda.cuMemFree<br/>cuMemFree.argtypes = [c_void_p] <br/>cuMemFree.restype = int</pre>
+<p>Now, we will write a wrapper for the <kbd>cuLaunchKernel</kbd> function. Of course, this is what we will use to launch a CUDA kernel onto the GPU, provided that we have already initialized the CUDA Driver API, set up a context, loaded a module, allocated memory and configured inputs, and have extracted the kernel function handle from the loaded module. This one is a little more complex than the other functions, so we will look at the prototype: </p>
+<pre>CUresult cuLaunchKernel ( CUfunction f, unsigned int gridDimX, unsigned int gridDimY, unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY, unsigned int blockDimZ, unsigned int sharedMemBytes, CUstream hStream, void** kernelParams, void** extra )  </pre>
+<p>The first parameter is a handle to the kernel function we want to launch, which we can represent as <kbd>c_void_p</kbd>. The six <kbd>gridDim</kbd> and <kbd>blockDim</kbd> parameters are used to indicate the grid and block dimensions. The unsigned integer, <kbd>sharedMemBytes</kbd>, is used to indicate how many bytes of shared memory will be allocated for each block upon kernel launch. <kbd>CUstream hStream</kbd> is an optional parameter that we can use to set up a custom stream, or set to NULL (0) if we wish to use the default stream, which we can represent as <kbd>c_void_p</kbd> in Ctypes. Finally, the <kbd>kernelParams</kbd> and <kbd>extra</kbd> parameters are used to set the inputs to a kernel; these are a little involved, so for now just know that we can also represent these as <kbd>c_void_p</kbd>:</p>
+<pre>cuLaunchKernel = cuda.cuLaunchKernel<br/>cuLaunchKernel.argtypes = [c_void_p, c_uint, c_uint, c_uint, c_uint, c_uint, c_uint, c_uint, c_void_p, c_void_p, c_void_p]<br/>cuLaunchKernel.restype = int</pre>
+<p>Now we have one last function to write a wrapper for, <kbd>cuCtxDestroy</kbd>. We use this at the end of a CUDA session to destroy a context on the GPU. The only input is a <kbd>CUcontext</kbd> object, which is represented by <kbd>c_void_p</kbd>:</p>
+<pre>cuCtxDestroy = cuda.cuCtxDestroy<br/>cuCtxDestroy.argtypes = [c_void_p]<br/>cuCtxDestroy.restype = int</pre>
+<p><span>Let's save this into the <kbd>cuda_driver.py</kbd> file. We have now completed our Driver API wrapper module! Next, we will look at how to load a PTX module and launch a kernel using only our module and our Mandelbrot PTX. </span></p>
+<div class="packt_infobox"><span>This example is also available as the <kbd>cuda_driver.py</kbd> file in this book's GitHub repository.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using the CUDA Driver API</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now translate our little Mandelbrot generation program so that we can use our wrapper library. Let's start with the appropriate import statements; notice how we load all of our wrappers into the current namespace:</p>
+<pre>from __future__ import division<br/>from time import time<br/>import matplotlib<br/>from matplotlib import pyplot as plt<br/>import numpy as np<br/>from cuda_driver import *</pre>
+<p>Let's put all of our GPU code into the <kbd>mandelbrot</kbd> function, as we did previously. We will start by initializing the CUDA D<span>river </span>API with <kbd>cuInit</kbd> and then checking if there is at least one GPU installed on the system, raising an exception otherwise:</p>
+<pre>def mandelbrot(breadth, low, high, max_iters, upper_bound):<br/> cuInit(0)<br/> cnt = c_int(0)<br/> cuDeviceGetCount(byref(cnt))<br/> if cnt.value == 0:<br/>  raise Exception('No GPU device found!')</pre>
+<p><span>Notice the <kbd>byref</kbd> here: this is the Ctypes equivalent of the reference operator (<kbd>&amp;</kbd>) from C programming. We'll now apply this idea again, remembering that the device handle and CUDA context can be represented as <kbd>c_int</kbd> and <kbd>c_void_p</kbd> with Ctypes:</span></p>
+<pre> cuDevice = c_int(0)<br/> cuDeviceGet(byref(cuDevice), 0)<br/> cuContext = c_void_p()<br/> cuCtxCreate(byref(cuContext), 0, cuDevice)</pre>
+<p>We will now load our PTX module, remembering to typecast the filename to a C string with <kbd>c_char_p</kbd>:</p>
+<pre> cuModule = c_void_p()<br/> cuModuleLoad(byref(cuModule), c_char_p('./mandelbrot.ptx'))</pre>
+<p>Now we will set up the lattice on the host side, as well as a NumPy array of zeros called <kbd>graph</kbd> that will be used to store the output on the host side. We will also allocate memory on the GPU for both the lattice and the graph output, and then copy the lattice to the GPU with <kbd>cuMemcpyHtoD</kbd>:</p>
+<pre> lattice = np.linspace(low, high, breadth, dtype=np.float32)<br/> lattice_c = lattice.ctypes.data_as(POINTER(c_float))<br/> lattice_gpu = c_void_p(0)<br/> graph = np.zeros(shape=(lattice.size, lattice.size), dtype=np.float32)<br/> cuMemAlloc(byref(lattice_gpu), c_size_t(lattice.size*sizeof(c_float)))<br/> graph_gpu = c_void_p(0)<br/> cuMemAlloc(byref(graph_gpu), c_size_t(lattice.size**2 * sizeof(c_float)))<br/> cuMemcpyHtoD(lattice_gpu, lattice_c, c_size_t(lattice.size*sizeof(c_float)))</pre>
+<p>Now we will get a handle to the Mandelbrot kernel with <kbd>cuModuleGetFunction</kbd> and set up some of the inputs:</p>
+<pre> mandel_ker = c_void_p(0)<br/> cuModuleGetFunction(byref(mandel_ker), cuModule, c_char_p('mandelbrot_ker'))<br/> max_iters = c_int(max_iters)<br/> upper_bound_squared = c_float(upper_bound**2)<br/> lattice_size = c_int(lattice.size)</pre>
+<p>The next step is a little complex to understand. Before we continue, we have to understand how the parameters are passed into a CUDA kernel with <kbd>cuLaunchKernel</kbd>. Let's see how this works in CUDA-C first.</p>
+<p>We express the input parameters in <kbd>kernelParams</kbd> as an array of <kbd>void *</kbd> values, which are, themselves, pointers to the inputs we desire to plug into our kernel. In the case of our Mandelbrot kernel, it would look like this:</p>
+<pre>void * mandel_params [] = {&amp;lattice_gpu, &amp;graph_gpu, &amp;max_iters, &amp;upper_bound_squared, &amp;lattice_size};</pre>
+<p>Now let's see how we can express this in Ctypes, which isn't immediately obvious. First, let's put all of our inputs into a Python list, in the proper order:</p>
+<pre>mandel_args0 = [lattice_gpu, graph_gpu, max_iters, upper_bound_squared, lattice_size ]</pre>
+<p>Now we need pointers to each of these values, typecast to the <kbd>void *</kbd> type. Let's use the Ctypes function <kbd>addressof</kbd> to get the address of each Ctypes variable here (which is similar to <kbd>byref</kbd>, only not bound to a particular type), and then typecast it to <kbd>c_void_p</kbd>. We'll store these values in another list:</p>
+<pre>mandel_args = [c_void_p(addressof(x)) for x in mandel_args0]</pre>
+<p>Now let's use Ctypes to convert this Python list to an array of <kbd>void *</kbd> pointers, like so:</p>
+<pre> mandel_params = (c_void_p * len(mandel_args))(*mandel_args)</pre>
+<p>We can now set up our grid's size, as we did previously, and launch our kernel with this set of parameters using <kbd>cuLaunchKernel</kbd>. We then synchronize the context afterward:</p>
+<pre> gridsize = int(np.ceil(lattice.size**2 / 32))<br/> cuLaunchKernel(mandel_ker, gridsize, 1, 1, 32, 1, 1, 10000, None, mandel_params, None)<br/> cuCtxSynchronize()</pre>
+<p>We will now copy the data from the GPU into our NumPy array using <kbd>cuMemcpyDtoH</kbd> with the NumPy <kbd>array.ctypes.data</kbd> member, which is a C pointer that will allow us to directly access the array from C as a chunk of heap memory. We will typecast this to <kbd>c_void_p</kbd> using the Ctypes typecast function <kbd>cast</kbd>:</p>
+<pre> cuMemcpyDtoH( cast(graph.ctypes.data, c_void_p), graph_gpu,  c_size_t(lattice.size**2 *sizeof(c_float)))</pre>
+<p>We are now done! Let's free the arrays we allocated on the GPU and end our GPU session by destroying the current context. We will then return the graph NumPy array to the calling function:</p>
+<pre> cuMemFree(lattice_gpu)<br/> cuMemFree(graph_gpu)<br/> cuCtxDestroy(cuContext)<br/> return graph</pre>
+<p>Now we can set up our <kbd>main</kbd> function exactly as before:</p>
+<pre>if __name__ == '__main__':<br/> t1 = time()<br/> mandel = mandelbrot(512,-2,2,256, 2)<br/> t2 = time()<br/> mandel_time = t2 - t1<br/> print 'It took %s seconds to calculate the Mandelbrot graph.' % mandel_time<br/> <br/> fig = plt.figure(1)<br/> plt.imshow(mandel, extent=(-2, 2, -2, 2))<br/> plt.show()</pre>
+<p>Now try running this function to ensure that it yields the same output as the other Mandelbrot programs we just wrote. </p>
+<p>Congratulations—you've just written a direct interface to the low-level CUDA D<span>river </span>API and successfully launched a kernel with it! </p>
+<div class="packt_infobox">This program is also available as the <kbd>mandelbrot_driver.py</kbd> file under the directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We started this chapter with a brief overview of the Python Ctypes library, which is used to interface directly with compiled binary code, and particularly dynamic libraries written in C/C++. We then looked at how to write a C-based wrapper with CUDA-C that launches a CUDA kernel, and then used this to indirectly launch our CUDA kernel from Python by writing an interface to this function with Ctypes. We then learned how to compile a CUDA kernel into a PTX module binary, which can be thought of as a DLL but with CUDA kernel functions, and saw how to load a PTX file and launch pre-compiled kernels with PyCUDA. Finally, we wrote a collection of Ctypes wrappers for the CUDA D<span>river </span>API and saw how we can use these to perform basic GPU operations, including launching a pre-compiled kernel from a PTX file onto the GPU.</p>
+<p>We will now proceed to what will arguably be the most technical chapter of this book: Chapter 11, <em>Performance Optimization in CUDA</em>. In this chapter, we will learn about some of the technical ins and outs of NVIDIA GPUs that will assist us in increasing performance levels in our applications.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Suppose that you use <kbd>nvcc</kbd> to compile a single <kbd>.cu</kbd> file containing both host and kernel code into an EXE file, and also into a PTX file. Which file will contain the host functions, and which file will contain the GPU code?</li>
+<li>Why do we have to destroy a context if we are using the CUDA Driver API?</li>
+<li>At the beginning of this chapter when we first saw how to use Ctypes, notice that we had to typecast the floating point value 3.14 to a Ctypes <kbd>c_double</kbd> object in a call to <kbd>printf</kbd> before it would work. Yet we can see many working cases of not typecasting to Ctypes in this chapter. Why do you think <kbd>printf</kbd> is an exception here?</li>
+<li>Suppose you want to add functionality to our Python CUDA Driver interface module to support CUDA streams. How would you represent a single stream object in Ctypes?</li>
+<li>Why do we use <kbd>extern "C"</kbd> for functions in <kbd>mandelbrot.cu</kbd>?</li>
+<li>Look at <kbd>mandelbrot_driver.py</kbd> again. Why do we <em>not</em> use the <kbd>cuCtxSynchronize</kbd> function after GPU memory allocations and host/GPU memory transfers, and only after the single kernel invocation?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div></div></body></html>

@@ -1,0 +1,705 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer015">
+<h1 class="chapter-number" id="_idParaDest-45"><a id="_idTextAnchor053"/>2</h1>
+<h1 id="_idParaDest-46"><a id="_idTextAnchor054"/>Implementing SAX</h1>
+<p>This chapter is about the <strong class="bold">Symbolic Aggregate Approximation</strong> (<strong class="bold">SAX</strong>) component of the iSAX index and is divided into two parts – the first part with the theoretical knowledge, and the second part with the code to compute SAX and the practical examples. At the end of the chapter, you will see how to calculate some handy statistical quantities that can give you a higher overview of your time series and plot a histogram of <span class="No-Break">your data.</span></p>
+<p>In this chapter, we will cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li>The <span class="No-Break">required theory</span></li>
+<li>An introduction <span class="No-Break">to SAX</span></li>
+<li>Developing a <span class="No-Break">Python package</span></li>
+<li>Working with the <span class="No-Break">SAX package</span></li>
+<li>Counting the SAX representations of a <span class="No-Break">time series</span></li>
+<li>The <strong class="source-inline">tsfresh</strong> <span class="No-Break">Python package</span></li>
+<li>Creating a histogram of a <span class="No-Break">time series</span></li>
+<li>Calculating the percentiles of a <span class="No-Break">time series</span></li>
+</ul>
+<h1 id="_idParaDest-47"><a id="_idTextAnchor055"/>Technical requirements</h1>
+<p>The GitHub repository for the book is <a href="https://github.com/PacktPublishing/Time-Series-Indexing">https://github.com/PacktPublishing/Time-Series-Indexing</a>. The code for each chapter is in its own directory. Therefore, the code for <a href="B14769_02_MA.xhtml#_idTextAnchor053"><span class="No-Break"><em class="italic">Chapter 2</em></span></a> can be found in the <strong class="source-inline">ch02</strong> folder. If you already used <strong class="source-inline">git(1)</strong> to get a local copy of the entire GitHub repository, there is no need to get that again. Just make your current working directory <strong class="source-inline">ch02</strong> while working with <span class="No-Break">this chapter.</span></p>
+<h1 id="_idParaDest-48"><a id="_idTextAnchor056"/>The required theory</h1>
+<p>In this section, you are <a id="_idIndexMarker061"/>going to learn the required theory that supports the SAX representation. However, keep in mind that this book is more practical than it is theoretical. If you want to learn the theory in depth, you should read the research papers mentioned in this chapter, as well as the forthcoming ones, and the <em class="italic">Useful links</em> section found at the end of each chapter. Thus, the theory is about serving our main purpose, which is the implementation of techniques <span class="No-Break">and algorithms.</span></p>
+<p>The operation and the details of SAX are fully described in a research paper titled <em class="italic">Experiencing SAX: a novel symbolic representation of time series</em>, which was written by Jessica Lin, Eamonn Keogh, Li Wei, and Stefano Lonardi. This paper (<a href="https://doi.org/10.1007/s10618-007-0064-z">https://doi.org/10.1007/s10618-007-0064-z</a>) was officially published back in 2007. You do not have to read all of it from the front cover to the back cover, but it is a great idea to download it and read the first pages of it, giving special attention to the abstract and the <span class="No-Break">introduction section.</span></p>
+<p>We will begin by explaining the <a id="_idIndexMarker062"/>terms <em class="italic">PAA</em> and <em class="italic">SAX</em>. <strong class="bold">PAA</strong> stands <a id="_idIndexMarker063"/>for <strong class="bold">Piecewise Aggregate Approximation</strong>. The PAA representation offers a way to reduce the dimensionality of a time series. This means that it takes a long time series and creates a smaller version of it that is easier to <span class="No-Break">work with.</span></p>
+<p>PAA is also explained in the <em class="italic">Experiencing SAX: a novel symbolic representation of time series</em> paper (<a href="https://doi.org/10.1007/s10618-007-0064-z">https://doi.org/10.1007/s10618-007-0064-z</a>). From that, we can easily understand that PAA and SAX are closely related, as the idea behind SAX is based on PAA. The <em class="italic">SAX representation</em> is a <strong class="bold">symbolic representation of time series</strong>. Put simply, it offers a way of representing a time series in a summary form, in order to save space and <span class="No-Break">increase speed.</span></p>
+<p class="callout-heading">The difference between PAA and SAX</p>
+<p class="callout">The main difference <a id="_idIndexMarker064"/>between PAA and <a id="_idIndexMarker065"/>the SAX representation is that PAA just calculates the mean values of a time series, based on a sliding window size, whereas the SAX representation utilizes those mean values and further transforms PAA to get a discrete representation of a time series (or subsequence). In other words, the SAX representation converts the PAA representation into something that is better to work with. As you will find out in a while, this transformation takes place with the help of <strong class="bold">breakpoints</strong>, which divide the numeric space of the mean values into subspaces. Each subspace has a discrete representation based on the given <span class="No-Break">breakpoint values.</span></p>
+<p>Both PAA and SAX are techniques for dimensionality reduction. SAX is going to be explained in much more detail in a while, whereas the discussion about PAA <span class="No-Break">ends here.</span></p>
+<p>The next subsection tells us why we <span class="No-Break">need SAX.</span></p>
+<h2 id="_idParaDest-49"><a id="_idTextAnchor057"/>Why do we need SAX?</h2>
+<p>Time series are difficult to <a id="_idIndexMarker066"/>search. The longer a time series (or subsequence) is, the more computationally intensive it is to search for it or compare it with another one. The same applies to working with indexes that index time series – iSAX is such <span class="No-Break">an index.</span></p>
+<p>To make things simpler for you, what we will do is take a subsequence with <em class="italic">x</em> elements and transform it into a representation with <em class="italic">w</em> elements, where <em class="italic">w</em> is much smaller than <em class="italic">x</em>. In strict terms, this is called <strong class="bold">dimensionality reduction</strong>, and it <a id="_idIndexMarker067"/>allows us to work with long subsequences using less data. However, once we decide that we need to work with a given subsequence, we need to work with it using its full dimensions – that is, all its <span class="No-Break"><em class="italic">x</em></span><span class="No-Break"> elements.</span></p>
+<p>The next subsection talks about normalization, which, among other things, allows us to compare values at <span class="No-Break">different scales.</span></p>
+<h2 id="_idParaDest-50"><a id="_idTextAnchor058"/>Normalization</h2>
+<p>The first two questions<a id="_idIndexMarker068"/> you might ask are what normalization is and why we <span class="No-Break">need it.</span></p>
+<p><strong class="bold">Normalization</strong> is the process of <a id="_idIndexMarker069"/>adjusting values that use different scales to a common scale. A simple example is comparing Fahrenheit and Celsius temperatures – we cannot do that unless we bring all values to the same scale. This is the simplest form <span class="No-Break">of normalization.</span></p>
+<p>Although various types of normalization exist, what is needed <a id="_idIndexMarker070"/>here is <strong class="bold">standard score normalization</strong>, which is the simplest form of normalization, because this is what is used for time series and subsequences. Please do not confuse database normalization and normal forms with value normalization, as they are totally <span class="No-Break">different concepts.</span></p>
+<p>The reasons that we introduce normalization into the process are <span class="No-Break">as follows:</span></p>
+<ul>
+<li>The first and most important reason is that we can compare datasets that use a different range of values. A simple case is comparing Celsius and <span class="No-Break">Fahrenheit temperatures.</span></li>
+<li>A side effect of the previous point is that data anomalies are reduced but <span class="No-Break">not eliminated.</span></li>
+<li>In general, normalized data is easier to understand and process because we deal with values in a <span class="No-Break">predefined range.</span></li>
+<li>Searching using an index that uses normalized values might be faster than when working with <span class="No-Break">bigger values.</span></li>
+<li>Searching, sorting, and creating indexes is faster since values <span class="No-Break">are smaller.</span></li>
+<li>Normalization is conceptually cleaner and easier to maintain and change as your <span class="No-Break">needs change.</span></li>
+</ul>
+<p>Another simple example that supports the need for normalization is when comparing positive values with negative ones. It is almost impossible to draw useful conclusions when comparing such different kinds of observations. Normalization solves <span class="No-Break">such issues.</span></p>
+<p>Although we are not going to need to, bear in mind that we cannot go from the normalized version of a subsequence to the original subsequence, so the normalization process <span class="No-Break">is irreversible.</span></p>
+<p>The following function shows how to normalize a time series with some help from the NumPy <span class="No-Break">Python package:</span></p>
+<pre class="source-code">
+def normalize(x):
+     eps = 1e-6
+     mu = np.mean(x)
+     std = np.std(x)
+     if std &lt; eps:
+           return np.zeros(shape=x.shape)
+     else:
+           return (x-mu)/std</pre>
+<p>The previous function reveals the formula of normalization. Given a dataset, the normalized form of each one of its elements is equal to the value of the observation, minus<a id="_idIndexMarker071"/> the <strong class="bold">mean value</strong> of the dataset over the <strong class="bold">standard deviation</strong> of<a id="_idIndexMarker072"/> the dataset – both these statistical terms are explained in <em class="italic">The tsfresh Python package</em> section of <span class="No-Break">this chapter.</span></p>
+<p>This is seen in the return value of the previous function, <strong class="source-inline">(x-mu)/std</strong>. NumPy is clever enough to calculate that value <a id="_idIndexMarker073"/>for each <a id="_idIndexMarker074"/>observation without the need to use a <strong class="source-inline">for</strong> loop. If the standard deviation is close to <strong class="source-inline">0</strong>, which is simulated by the value of the <strong class="source-inline">eps</strong> variable, then the return value of <strong class="source-inline">normalize()</strong> is equal to a NumPy array full <span class="No-Break">of zeros.</span></p>
+<p>The <strong class="source-inline">normalize.py</strong> script, which uses the previously developed function that does not appear here, gets a time series as input and returns its normalized version. Its code is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import numpy as np
+def main():
+     if len(sys.argv) != 2:
+           print("TS")
+           sys.exit()
+     F = sys.argv[1]
+     ts = pd.read_csv(F, compression='gzip', header = None)
+     ta = ts.to_numpy()
+     ta = ta.reshape(len(ta))
+     taNorm = normalize(ta)
+     print("[", end = ' ')
+     <strong class="bold">for i in taNorm.tolist():</strong>
+           print("%.4f" % i, end = ' ')
+     print("]")
+if __name__ == '__main__':
+     main()</pre>
+<p>The last <strong class="source-inline">for</strong> loop of the program is used to print the contents of the <strong class="source-inline">taNorm</strong> NumPy array with a smaller precision in order to take up less space. To do that, we need to convert the <strong class="source-inline">taNorm</strong> NumPy array into a regular Python list using the <span class="No-Break"><strong class="source-inline">tolist()</strong></span><span class="No-Break"> method.</span></p>
+<p>We are going to feed <strong class="source-inline">normalize.py</strong> a short time series; however, the script also works with longer ones. The output of <strong class="source-inline">normalize.py</strong> looks <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ ./normalize.py ts1.gz
+[ -1.2272 0.9487 -0.1615 -1.0444 -1.3362 1.4861 -1.0620 0.7451 -0.4858 -0.9965 0.0418 1.7273 -1.1343 0.6263 0.3455 0.9238 1.2197 0.3875 -0.0483 -1.7054 1.3272 1.5999 1.4479 -0.4033 0.1525 1.0673 0.7019 -1.0114 0.4473 -0.2815 1.1239 0.7516 -1.3102 -0.6428 -0.3186 -0.3670 -1.6163 -1.2383 0.5692 1.2341 -0.0372 1.3250 -0.9227 0.2945 -0.5290 -0.3187 1.4103 -1.3385 -1.1540 -1.2135 ]</pre>
+<p>With normalization in<a id="_idIndexMarker075"/> mind, let us <a id="_idIndexMarker076"/>now proceed to the next subsection, where we are going to visualize a time series and show the visual difference between the original version and the normalized version <span class="No-Break">of it.</span></p>
+<h2 id="_idParaDest-51"><a id="_idTextAnchor059"/>Visualizing normalized time series</h2>
+<p>In this subsection, we <a id="_idIndexMarker077"/>are going to show the<a id="_idIndexMarker078"/> difference between the normalized and the original version of a time series with the help of visualization. Keep in mind that we usually <em class="italic">do not normalize the entire time series</em>. The normalization takes place on a subsequence level based on the sliding window size. In other words, for the purposes of this book, we will normalize subsequences, not an entire time series. Additionally, for the calculation of the SAX representation, we process the normalized subsequences based on<a id="_idIndexMarker079"/> the <strong class="bold">segment value</strong>, which specifies the parts that a SAX representation will have. So, for a segment value of 2, we split the normalized subsequence into two. For a segment value of 4, we split the normalized subsequence into <span class="No-Break">four sets.</span></p>
+<p>Nevertheless, viewing the normalized and original versions of a time series is very educational. The Python code of <strong class="source-inline">visualize_normalized.py</strong>, without the implementation of <strong class="source-inline">normalize()</strong>, is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+def main():
+     if len(sys.argv) != 2:
+           print("TS")
+           sys.exit()
+     F = sys.argv[1]
+     ts = pd.read_csv(F, compression='gzip', header = None)
+     ta = ts.to_numpy()
+     ta = ta.reshape(len(ta))
+     # Find its normalized version
+     taNorm = normalize(ta)
+     <strong class="bold">plt.plot</strong>(ta, label="Regular", linestyle='-', markevery=10, marker='o')
+     <strong class="bold">plt.plot</strong>(taNorm, label="Normalized", linestyle='-.', markevery=10, marker='o')
+     plt.xlabel('Time Series', fontsize=14)
+     plt.ylabel('Values', fontsize=14)
+     plt.legend()
+     plt.grid()
+     plt.savefig("CH02_01.png", dpi=300, format='png', bbox_inches='tight')
+if __name__ == '__main__':
+     main()</pre>
+<p>The <strong class="source-inline">plt.plot()</strong> function <a id="_idIndexMarker080"/>is called <a id="_idIndexMarker081"/>twice, plotting a line each time. Feel free to experiment with the Python code in order to change the look of <span class="No-Break">the output.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.1</em> shows the output of <strong class="source-inline">visualize_normalized.py ts1.gz</strong>, which uses a time series with <span class="No-Break">50 elements.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer009">
+<img alt="Figure 2.1 – The plotting of a time series and its normalized version" height="879" src="image/Figure_2.1_B14769.jpg" width="1137"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.1 – The plotting of a time series and its normalized version</p>
+<p>I think that <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.1</em> speaks for itself! The values of the normalized version are located <em class="italic">around the value of 0</em>, whereas the values of the original time series can be anywhere! Additionally, we make the original time series<a id="_idIndexMarker082"/> smoother <a id="_idIndexMarker083"/>without completely losing its original shape <span class="No-Break">and edges.</span></p>
+<p>The next section is about the details of the SAX representation, which is a key component of every <span class="No-Break">iSAX index.</span></p>
+<h1 id="_idParaDest-52"><a id="_idTextAnchor060"/>An introduction to SAX</h1>
+<p>As mentioned previously, <strong class="bold">SAX</strong> stands<a id="_idIndexMarker084"/> for <strong class="bold">Symbolic Aggregate Approximation</strong>. The SAX representation was officially announced back in 2007 in the <em class="italic">Experiencing SAX: a novel symbolic representation of time series</em> <span class="No-Break">paper (</span><a href="https://doi.org/10.1007/s10618-007-0064-z"><span class="No-Break">https://doi.org/10.1007/s10618-007-0064-z</span></a><span class="No-Break">).</span></p>
+<p>Keep in mind that we do not want to find the SAX representation of an entire time series. We just want to find the SAX representation of a subsequence of a time series. The main difference between a time series and a subsequence is that a time series is many times bigger than <span class="No-Break">a subsequence.</span></p>
+<p>Each SAX representation has two parameters named <strong class="bold">cardinality</strong> and the number of <strong class="bold">segments</strong>. We will begin by explaining the <span class="No-Break">cardinality parameter.</span></p>
+<h2 id="_idParaDest-53"><a id="_idTextAnchor061"/>The cardinality parameter</h2>
+<p>The <em class="italic">cardinality</em> parameter<a id="_idIndexMarker085"/> specifies the<a id="_idIndexMarker086"/> number of possible values each segment can have. As a side effect, the cardinality parameter <em class="italic">defines the way the y axis is divided</em> – this is used to get the value of each segment. There exist multiple ways to specify the value of a segment based on the cardinality. These include alphabet characters, decimal numbers, and binary numbers. In this book, we will use binary numbers because they are easier to understand and interpret, using a file with the <strong class="bold">precalculated breakpoints</strong> for <a id="_idIndexMarker087"/>cardinalities up <span class="No-Break">to 256.</span></p>
+<p>So, a cardinality of 4, which is 2<span class="superscript">2</span>, gives us four possible values, as we use 2 bits. However, we can easily replace <strong class="source-inline">00</strong> with the letter <strong class="source-inline">a</strong>, <strong class="source-inline">01</strong> with the letter <strong class="source-inline">b</strong>, <strong class="source-inline">10</strong> with the letter <strong class="source-inline">c</strong>, <strong class="source-inline">11</strong> with the letter <strong class="source-inline">d</strong>, and so on, in order to use letters instead of binary numbers. Keep in mind that this might require minimal code changes in the presented code, and it would be good to try this as an exercise when you feel comfortable with SAX and the provided <span class="No-Break">Python code.</span></p>
+<p>The format of the file with the breakpoints, which in our case supports cardinalities up to 256 and is called <strong class="source-inline">SAXalphabet</strong>, is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ head -7 SAXalphabet
+0
+-0.43073,0.43073
+-0.67449,0,0.67449
+-0.84162,-0.25335,0.25335,0.84162
+-0.96742,-0.43073,0,0.43073,0.96742
+-1.0676,-0.56595,-0.18001,0.18001,0.56595,1.0676
+-1.1503,-0.67449,-0.31864,0,0.31864,0.67449,1.1503</pre>
+<p>The values presented here are called breakpoints in the SAX terminology. The value in the first line divides the <em class="italic">y</em> axis into two areas, separated by the <em class="italic">x</em> axis. So, in this case, we need 1 bit to define whether we are in the upper space (the positive <em class="italic">y</em> value) or the lower one (the negative <span class="No-Break"><em class="italic">y</em></span><span class="No-Break"> value).</span></p>
+<p>As we will use binary numbers to represent each SAX segment, there is no point in wasting them. Therefore, the values that we will use are the powers of 2, from 2 <span class="superscript">1 </span>(<em class="italic">cardinality 2</em>) to <span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">8</span> (<span class="No-Break"><em class="italic">cardinality 256</em></span><span class="No-Break">).</span></p>
+<p>Let us now present <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.2</em>, which shows how <strong class="source-inline">-0.67449, 0, 0.67449</strong> divides the <em class="italic">y</em> axis, which is used in the <span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span> cardinality. The bottom part begins from the minus infinitive up to <strong class="source-inline">-0.67449</strong>, the second part from <strong class="source-inline">-0.67449</strong> up to <strong class="source-inline">0</strong>, the third part from <strong class="source-inline">0</strong> to <strong class="source-inline">0.67449</strong>, and the last part from <strong class="source-inline">0.67449</strong> up to <span class="No-Break">plus infinitive.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer010">
+<img alt="Figure 2.2 – The y axis for cardinality 4 (three breakpoints)" height="860" src="image/Figure_2.2_B14769.jpg" width="1169"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.2 – The y axis for cardinality 4 (three breakpoints)</p>
+<p>Let us now present <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.3</em>, which<a id="_idIndexMarker088"/> shows <a id="_idIndexMarker089"/>how <strong class="source-inline">-1.1503, -0.67449, -0.31864, 0, 0.31864, 0.67449, 1.1503</strong> divides the <em class="italic">y</em> axis. This is for the 2 <span class="No-Break"><span class="superscript">3</span></span><span class="No-Break"> cardinality.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer011">
+<img alt="Figure 2.3 – The y axis for cardinality 8 (7 breakpoints)" height="860" src="image/Figure_2.3_B14769.jpg" width="1169"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.3 – The y axis for cardinality 8 (7 breakpoints)</p>
+<p>As this can be a tedious job, we have created a utility that does all the plotting. Its name is <strong class="source-inline">cardinality.py</strong>, and it reads the <strong class="source-inline">SAXalphabet</strong> file to find <a id="_idIndexMarker090"/>the <a id="_idIndexMarker091"/>breakpoints of the desired cardinality before <span class="No-Break">plotting them.</span></p>
+<p>The Python code for <strong class="source-inline">cardinality.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+breakpointsFile = "./sax/SAXalphabet"
+def main():
+     if len(sys.argv) != 3:
+           print("cardinality output")
+           sys.exit()
+     n = int(sys.argv[1]) - 1
+     output = sys.argv[2]
+     path = os.path.dirname(__file__)
+     file_variable = open(path + "/" + breakpointsFile)
+     alphabet = file_variable.readlines()
+     myLine = alphabet[n - 1].rstrip()
+     elements = myLine.split(',')
+     <strong class="bold">lines = [eval(i) for i in elements]</strong>
+     minValue = min(lines) - 1
+     maxValue = max(lines) + 1
+     fig, ax = plt.subplots()
+     for i in lines:
+           plt.axhline(y=i, color='r', linestyle='-.', linewidth=2)
+     xLabel = "Cardinality " + str(n)
+     ax.set_ylim(minValue, maxValue)
+     ax.set_xlabel(xLabel, fontsize=14)
+     ax.set_ylabel('Breakpoints', fontsize=14)
+     ax.grid()
+     fig.savefig(output, dpi=300, format='png', bbox_inches='tight')
+if __name__ == '__main__':
+     main()</pre>
+<p>The script requires two <a id="_idIndexMarker092"/>command-line <a id="_idIndexMarker093"/>parameters – the cardinality and the output file, which is used to save the image. Note that a cardinality value of 8 requires 7 breakpoints, a cardinality value of 32 requires 31 breakpoints, and so on. Therefore, the Python code for <strong class="source-inline">cardinality.py</strong> decreases the line number that it is going to search for in the <strong class="source-inline">SAXalphabet</strong> file to support that functionality. Therefore, when given a cardinality value of 8, the script is going to look for the line with 7 breakpoints in <strong class="source-inline">SAXalphabet</strong>. Additionally, as the script reads the breakpoint values as strings, we need to convert these strings into floating-point values using the <strong class="source-inline">lines = [eval(i) for i in elements]</strong> statement. The rest of the code is related to the Matplotlib Python package and how to draw lines <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">plt.axhline()</strong></span><span class="No-Break">.</span></p>
+<p>The next subsection is about the <span class="No-Break">segments parameter.</span></p>
+<h2 id="_idParaDest-54"><a id="_idTextAnchor062"/>The segments parameter</h2>
+<p>The (number of) <em class="italic">segments</em> parameter <a id="_idIndexMarker094"/>specifies the <a id="_idIndexMarker095"/>number of parts (<em class="italic">words</em>) a SAX representation is going to have. Therefore, a segments value of 2 means that the SAX representation is going to have two words, each one using the specified cardinality. Therefore, the values of each part are determined by <span class="No-Break">the cardinality.</span></p>
+<p>A side effect of this parameter is that, after normalizing a subsequence, we divide it by the number of segments and work with these different parts separately. This is the way the SAX <span class="No-Break">representation works.</span></p>
+<p>Both cardinality and segments values control the data compression ratio and the accuracy of the subsequences of a time series and, therefore, the entire <span class="No-Break">time series.</span></p>
+<p>The next subsection shows how to manually compute the SAX representation of a subsequence – this is the best way to fully understand the process and be able to identify bugs or errors in <span class="No-Break">the code.</span></p>
+<h2 id="_idParaDest-55"><a id="_idTextAnchor063"/>How to manually find the SAX representation of a subsequence</h2>
+<p>Finding the SAX representation<a id="_idIndexMarker096"/> of a subsequence <a id="_idIndexMarker097"/>looks easy but requires lots of computations, which makes the process ideal for a computer. Here are the steps to find the SAX representation of a time series <span class="No-Break">or subsequence:</span></p>
+<ol>
+<li>First, we need to have the number of segments and <span class="No-Break">the cardinality.</span></li>
+<li>Then, we normalize the subsequence or the <span class="No-Break">time series.</span></li>
+<li>After that, we divide the normalized subsequence by the number <span class="No-Break">of segments.</span></li>
+<li>For each one of these parts, we find its <span class="No-Break">mean value.</span></li>
+<li>Finally, based on each mean value, we calculate its representation based on the cardinality. The cardinality is what defines the breakpoint values that are going to <span class="No-Break">be used.</span></li>
+</ol>
+<p>We will use two simple examples to illustrate the manual computation of the SAX representation of a time series. The time series is the same in both cases. What will be different are the SAX parameters and the sliding <span class="No-Break">window size.</span></p>
+<p>Let’s imagine we have the following time series and a sliding window size <span class="No-Break">of 4:</span></p>
+<pre class="source-code">
+{-1, 2, 3, 4, 5, -1, -3, 4, 10, 11, . . .}</pre>
+<p>Based on the sliding window size, we extract the first two subsequences from the <span class="No-Break">time series:</span></p>
+<ul>
+<li><strong class="source-inline">S1 = {-1, 2, </strong><span class="No-Break"><strong class="source-inline">3, 4}</strong></span></li>
+<li><strong class="source-inline">S2 = {2, 3, </strong><span class="No-Break"><strong class="source-inline">4, 5}</strong></span></li>
+</ul>
+<p>The first step that we should take is to <strong class="bold">normalize these two subsequences</strong>. For that, we will use the <strong class="source-inline">normalize.py</strong> script we developed earlier – we just have to save each subsequence into its own plain text file and compress it using the <strong class="source-inline">gzip</strong> utility, before giving it as input to <strong class="source-inline">normalize.py</strong>. If you use a Microsoft Windows machine, you should look for a utility that allows you to create such ZIP files. An alternative is to work with plain text files, which might require some small code changes in the <strong class="source-inline">pd.read_csv()</strong> <span class="No-Break">function call.</span></p>
+<p>The output of the <strong class="source-inline">normalize.py</strong> script when processing <strong class="source-inline">S1</strong> (<strong class="source-inline">s1.txt.gz</strong>) and <strong class="source-inline">S2</strong> (<strong class="source-inline">s2.txt.gz</strong>) is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./normalize.py s1.txt.gz
+[ -1.6036 0.0000 0.5345 1.0690 ]
+$ ./normalize.py s2.txt.gz
+[ -1.3416 -0.4472 0.4472 1.3416 ]</pre>
+<p>So, the normalized versions of <strong class="source-inline">S1</strong> and <strong class="source-inline">S2</strong> are <span class="No-Break">as follows:</span></p>
+<ul>
+<li><strong class="source-inline">N1 = {-1.6036, 0.0000, </strong><span class="No-Break"><strong class="source-inline">0.5345, 1.0690}</strong></span></li>
+<li><strong class="source-inline">N2 = {-1.3416, -0.4472, </strong><span class="No-Break"><strong class="source-inline">0.4472, 1.3416}</strong></span></li>
+</ul>
+<p>In this first example, we use a segments value of 2 and a cardinality value of 4 (22). A segment value of 2 means that we must divide each <em class="italic">normalized subsequence</em> into two parts. These two parts contain the following data, based on<a id="_idIndexMarker098"/> the <a id="_idIndexMarker099"/>normalized versions of <strong class="source-inline">S1</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">S2</strong></span><span class="No-Break">:</span></p>
+<ul>
+<li>For <strong class="source-inline">S1</strong>, the two parts are <strong class="source-inline">{-1.6036, 0.0000}</strong> and <strong class="source-inline">{</strong><span class="No-Break"><strong class="source-inline">0.5345, 1.0690}</strong></span></li>
+<li>For <strong class="source-inline">S2</strong>, the two parts are <strong class="source-inline">{-1.3416, -0.4472}</strong> and <strong class="source-inline">{</strong><span class="No-Break"><strong class="source-inline">0.4472, 1.3416}</strong></span></li>
+</ul>
+<p>The mean values of each part are <span class="No-Break">as follows:</span></p>
+<ul>
+<li>For <strong class="source-inline">S1</strong>, they are <strong class="source-inline">-0.8018</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">0.80175</strong></span></li>
+<li>For <strong class="source-inline">S2</strong>, they are <strong class="source-inline">-0.8944</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">0.8944</strong></span></li>
+</ul>
+<p>For the cardinality of 4, we are going to look at <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.2</em> and the respective breakpoints, which are <strong class="source-inline">-0.67449</strong>, <strong class="source-inline">0</strong>, and <strong class="source-inline">0.67449</strong>. So, the SAX values of each segment are <span class="No-Break">as follows:</span></p>
+<ul>
+<li>For S1, they are <strong class="source-inline">00</strong> because <strong class="source-inline">-0.8018</strong> falls at the bottom of the plot <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">11</strong></span></li>
+<li>For S2, they are <strong class="source-inline">00</strong> and <strong class="source-inline">11</strong> because <strong class="source-inline">0.8944</strong> falls at the top of <span class="No-Break">the plot</span></li>
+</ul>
+<p>Therefore, the SAX representation of <strong class="source-inline">S1</strong> is <strong class="source-inline">[00, 11]</strong> and for <strong class="source-inline">S2</strong>, it is <strong class="source-inline">[00, 11]</strong>. It turns out that both subsequences have the same SAX representation. This makes sense, as they only differ in one element, which means that their normalized versions <span class="No-Break">are similar.</span></p>
+<p>Note that in both cases, the lower cardinality begins from the bottom of the plot. For <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.2</em>, this means that <strong class="source-inline">00</strong> is at the bottom of the plot, <strong class="source-inline">01</strong> is next, followed by <strong class="source-inline">10</strong>, and <strong class="source-inline">11</strong> is at the top of <span class="No-Break">the plot.</span></p>
+<p>In the second example, we will use a sliding window size of 8, a segments value of 4, and a cardinality value of <span class="No-Break">8 (23).</span></p>
+<p class="callout-heading">About the sliding window size</p>
+<p class="callout">Keep in mind that the normalized representation of the subsequence remains the same when the sliding window size remains the same. However, if either the cardinality or the segments change, the resulting SAX representation might be <span class="No-Break">completely different.</span></p>
+<p>Based on the sliding window size, we extract the first two subsequences from the time series – <strong class="source-inline">S1 = {-1, 2, 3, 4, 5, -1, -3, 4}</strong> and <strong class="source-inline">S2 = {2, 3, 4, 5, -1, -3, </strong><span class="No-Break"><strong class="source-inline">4, 10}</strong></span><span class="No-Break">.</span></p>
+<p>The output of the <strong class="source-inline">normalize.py</strong> script is going to be <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./normalize.py T1.txt.gz
+[ -0.9595 0.1371 0.5026 0.8681 1.2337 -0.9595 -1.6906 0.8681 ]
+$ ./normalize.py T2.txt.gz
+[ -0.2722 0.0000 0.2722 0.5443 -1.0887 -1.6330 0.2722 1.9052 ]</pre>
+<p>So, the normalized versions of <strong class="source-inline">S1</strong> and <strong class="source-inline">S2</strong> are <strong class="source-inline">N1 = {-0.9595, 0.1371, 0.5026, 0.8681, 1.2337, -0.9595, -1.6906, 0.8681}</strong> and <strong class="source-inline">N2 = {-0.2722, 0.0000, 0.2722, 0.5443, -1.0887, -1.6330, 0.2722, </strong><span class="No-Break"><strong class="source-inline">1.9052}</strong></span><span class="No-Break">, respectively.</span></p>
+<p>A segment <a id="_idIndexMarker100"/>value of 4 means that<a id="_idIndexMarker101"/> we must divide each one of the <em class="italic">normalized subsequences</em> into four parts. For <strong class="source-inline">S1</strong>, these parts are <strong class="source-inline">{-0.9595, 0.1371}</strong>, <strong class="source-inline">{0.5026, 0.8681}</strong>, <strong class="source-inline">{1.2337, -0.9595}</strong>, and <strong class="source-inline">{-</strong><span class="No-Break"><strong class="source-inline">1.6906, 0.8681}</strong></span><span class="No-Break">.</span></p>
+<p>For <strong class="source-inline">S2</strong>, these parts are <strong class="source-inline">{-0.2722, 0.0000}</strong>, <strong class="source-inline">{0.2722, 0.5443}</strong>, <strong class="source-inline">{-1.0887, -1.6330}</strong>, and <strong class="source-inline">{</strong><span class="No-Break"><strong class="source-inline">0.2722, 1.9052}</strong></span><span class="No-Break">.</span></p>
+<p>For <strong class="source-inline">S1</strong>, the mean values are <strong class="source-inline">-0.4112</strong>, <strong class="source-inline">0.68535</strong>, <strong class="source-inline">0.1371</strong>, and <strong class="source-inline">-0.41125</strong>. For <strong class="source-inline">S2</strong>, the mean values are <strong class="source-inline">-0.1361</strong>, <strong class="source-inline">0.40825</strong>, <strong class="source-inline">-1.36085</strong>, <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">1.0887</strong></span><span class="No-Break">.</span></p>
+<p class="callout-heading">About the breakpoints of the cardinality value of 8</p>
+<p class="callout">Just a reminder here that for the cardinality value of 8, the breakpoints are (000) <strong class="source-inline">-1.1503</strong>, (001) <strong class="source-inline">-0.67449</strong>, (010) <strong class="source-inline">-0.31864</strong>, (011) <strong class="source-inline">0</strong>, (100) <strong class="source-inline">0.31864</strong>, (101) <strong class="source-inline">0.67449</strong>, and (110) <strong class="source-inline">1.1503</strong> (111). In parentheses, we present the SAX values for each breakpoint. For the first breakpoint, we have the 000 value to its left and 001 to its right. For the last breakpoint, we have the 110 value to its left and 111 to its right. Remember that we use seven breakpoints for a cardinality value <span class="No-Break">of 8.</span></p>
+<p>Therefore, the SAX representation of <strong class="source-inline">S1</strong> is <strong class="source-inline">['010', '110', '100', '010']</strong>, and for <strong class="source-inline">S2</strong>, it is<strong class="source-inline">['011', '101', '000', '110']</strong>. The use of single quotes around SAX words means that internally we store SAX words as strings, despite the fact that we calculate them as binary numbers because it is easier to search and <span class="No-Break">compare strings.</span></p>
+<p>The next subsection <a id="_idIndexMarker102"/>examines a <a id="_idIndexMarker103"/>case where a subsequence cannot be divided perfectly by the number <span class="No-Break">of segments.</span></p>
+<h2 id="_idParaDest-56"><a id="_idTextAnchor064"/>Ηow can we divide 10 data points into 3 segments?</h2>
+<p>So far, we have seen<a id="_idIndexMarker104"/> examples where the length of the subsequence can be perfectly divided by the number of segments. However, what happens if that is <span class="No-Break">not possible?</span></p>
+<p>In that case, there exist data points that contribute to two adjacent segments at the same time. However, instead of putting the whole point into a segment, we put part of it into one segment and part of it <span class="No-Break">into another!</span></p>
+<p>This is further explained on page 18 of the <em class="italic">Experiencing SAX: a novel symbolic representation of time series</em> paper. As stated in the paper, if we cannot divide the sliding window length by the number of segments, we can use a part of a point in a segment and a part of a point in another segment. We do that for points that are between two segments and not for any random points. This can be explained using an example. Imagine we have a time series such as <em class="italic">T</em> = {<em class="italic">t</em><span class="subscript">1</span>, <em class="italic">t</em><span class="subscript">2</span>, <em class="italic">t</em><span class="subscript">3</span>, <em class="italic">t</em><span class="subscript">4</span>, <em class="italic">t</em><span class="subscript">5</span>, <em class="italic">t</em><span class="subscript">6</span>, <em class="italic">t</em><span class="subscript">7</span>, <em class="italic">t</em><span class="subscript">8</span>, <em class="italic">t</em><span class="subscript">9</span>, <em class="italic">t</em><span class="subscript">10</span>}<em class="italic">.</em> For the <em class="italic">S</em><span class="subscript">1</span> segment, we take the values of {<em class="italic">t</em><span class="subscript">1</span>, <em class="italic">t</em><span class="subscript">2</span>, <em class="italic">t</em><span class="subscript">3</span>} and one-third of the value of <em class="italic">t</em><span class="subscript">4</span>. For the <em class="italic">S</em><span class="subscript">2</span> segment, we take the values of {<em class="italic">t</em><span class="subscript">5</span>, <em class="italic">t</em><span class="subscript">6</span>} and two-thirds of the values of <em class="italic">t</em><span class="subscript">4</span> and <em class="italic">t</em><span class="subscript">7</span>. For the <em class="italic">S</em><span class="subscript">3</span> segment, we take the values of {<em class="italic">t</em><span class="subscript">8</span>, <em class="italic">t</em><span class="subscript">9</span>, <em class="italic">t</em><span class="subscript">10</span>} and the third of the value of <em class="italic">t</em><span class="subscript">7</span> that we have not used so far. This is also explained in <span class="No-Break"><em class="italic">Figure 2</em></span><span class="No-Break"><em class="italic">.4</em></span><span class="No-Break">:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer012">
+<img alt="Figure 2.4 – Dividing 10 data points into 3 segments" height="615" src="image/Figure_2.4_B14769.jpg" width="1213"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.4 – Dividing 10 data points into 3 segments</p>
+<p>Put simply, this is a convention decided by the creators of SAX that applies to all cases where we cannot perfectly divide the number of elements by that of <span class="No-Break">the segments.</span></p>
+<p>In this book, we will not deal with that case. The sliding window size, which is the length of the generated subsequences, and the number of segments are both part of a perfect division, with a remainder of 0. This simplification does <a id="_idIndexMarker105"/>not change the way SAX works, but it makes our lives a <span class="No-Break">little easier.</span></p>
+<p>The subject of the next subsection is how to go from higher cardinalities to lower ones without doing <span class="No-Break">every computation.</span></p>
+<h2 id="_idParaDest-57"><a id="_idTextAnchor065"/>Reducing the cardinality of a SAX representation</h2>
+<p>The knowledge gained from this<a id="_idIndexMarker106"/> subsection will be applicable when we discuss the iSAX index. However, as what you will learn is directly related to SAX, we have decided to discuss it <span class="No-Break">here first.</span></p>
+<p>Imagine that we have a SAX representation at a given cardinality and that we want to reduce the cardinality. Is that possible? Can we do this without calculating everything from scratch? The answer is simple – this can be done by ignoring trailing bits. Given a binary value of 10,100, the first trailing bit is 0, then the next trailing bit is 0, then 1, and so on. So, we start from the bits at the end, and we remove them one <span class="No-Break">by one.</span></p>
+<p>As most of you, including me when I first read about it, might find this unclear, let me show you some practical examples. Let us take the following two SAX representations from the <em class="italic">How to manually find the SAX representation of a subsequence</em> subsection of this chapter – <strong class="source-inline">[00, 11]</strong> and <strong class="source-inline">[010, 110, 100, 010]</strong>. To convert <strong class="source-inline">[00, 11]</strong> into the cardinality of 2, we must just delete the digits at the end of each SAX word. So, the new version of <strong class="source-inline">[00, 11]</strong> will be <strong class="source-inline">[0, 1]</strong>. Similarly, <strong class="source-inline">[010, 110, 100, 010]</strong> is going to be <strong class="source-inline">[01, 11, 10, 01]</strong> for the cardinality of 4 and <strong class="source-inline">[0, 1, 1, 0]</strong> for the cardinality <span class="No-Break">of 2.</span></p>
+<p>So, from a higher cardinality – a cardinality with more digits – we can go to a lower cardinality by <em class="italic">subtracting the appropriate number of digits from the right side</em> of one or more segments (the trailing bits). Can we go in the opposite direction? Not without losing accuracy, but that would still be better than nothing. However, generally, we don’t go in the opposite direction. So far, we know the theory regarding the SAX representation. The section that follows briefly explains the basics of Python packages and shows the development of our own package, <span class="No-Break">named </span><span class="No-Break"><strong class="source-inline">sax</strong></span><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-58"><a id="_idTextAnchor066"/>Developing a Python package</h1>
+<p>In this section, we describe the <a id="_idIndexMarker107"/>process of developing a Python package that calculates the SAX representation of a subsequence. Apart from this being a good programming exercise, the package is going to be enriched in the chapters that follow when we create the <span class="No-Break">iSAX index.</span></p>
+<p>We will begin by explaining the basics of <span class="No-Break">Python packages.</span></p>
+<h2 id="_idParaDest-59"><a id="_idTextAnchor067"/>The basics of Python packages</h2>
+<p>I am not a Python expert, and <a id="_idIndexMarker108"/>the presented information is far from complete. However, it covers the required knowledge regarding <span class="No-Break">Python packages.</span></p>
+<p>In all but the latest Python versions, we used to need a file named <strong class="source-inline">__init__.py</strong> inside the directory of every Python package. Its purpose is to perform initialization actions and imports, as well as define variables. Although this is not the case with most recent Python versions, our packages will still have a <strong class="source-inline">__init__.py</strong> file in them. The good thing is that it is allowed to be empty if you have nothing to put into it. There is a link at the end of the chapter to the official Python documentation regarding packages, regular packages, and namespace packages, where the use of <strong class="source-inline">__init__.py</strong> is explained in <span class="No-Break">more detail.</span></p>
+<p>The next subsection discusses the details of the Python package that we are going <span class="No-Break">to develop.</span></p>
+<h2 id="_idParaDest-60"><a id="_idTextAnchor068"/>The SAX Python package</h2>
+<p>The code of the <strong class="source-inline">sax</strong> Python <a id="_idIndexMarker109"/>package is included in a directory named <strong class="source-inline">sax</strong>. The contents of the <strong class="source-inline">sax</strong> directory are presented with the help of the <strong class="source-inline">tree(1)</strong> command, which you might need to install on <span class="No-Break">your own:</span></p>
+<pre class="source-code">
+$ tree sax
+sax
+├── SAXalphabet
+├── __init__.py
+├── __pycache__
+│   __init__.cpython-310.pyc
+│   sax.cpython-310.pyc
+│   tools.cpython-310.pyc
+│   variables.cpython-310.pyc
+├── sax.py
+├── tools.py
+└── variables.py
+2 directories, 9 files</pre>
+<p>The <strong class="source-inline">__pycache__</strong> directory is automatically generated by Python once you begin using the Python package and contains precompiled bytecode Python code. You can completely ignore <span class="No-Break">that directory.</span></p>
+<p>Let us begin by showing the contents of <strong class="source-inline">sax.py</strong>, which is going to be presented in multiple <span class="No-Break">code chunks.</span></p>
+<p>First, we have the <strong class="source-inline">import</strong> section and the implementation of the <strong class="source-inline">normalize()</strong> function, which normalizes a <span class="No-Break">NumPy array:</span></p>
+<pre class="source-code">
+import numpy as np
+from scipy.stats import norm
+from sax import tools
+import sys
+sys.path.insert(0,'..')
+def normalize(x):
+     eps = 1e-6
+     mu = np.mean(x)
+     std = np.std(x)
+     if std &lt; eps:
+           return np.zeros(shape=x.shape)
+     else:
+           return (x-mu)/std</pre>
+<p>After that, we have the<a id="_idIndexMarker110"/> implementation of the <strong class="source-inline">createPAA()</strong> function, which returns the SAX representation of a time series, given the cardinality and <span class="No-Break">the segments:</span></p>
+<pre class="source-code">
+def createPAA(ts, cardinality, segments):
+     SAXword = ""
+     ts_norm = normalize(ts)
+     segment_size = len(ts_norm) // segments
+     mValue = 0
+     for I in range(segments):
+           ts_segment = ts_norm[segment_size * i :(i+1) * segment_size]
+           mValue = meanValue(ts_segment)
+           index = getIndex(mValue, cardinality)
+           SAXword += str(index) +""""</pre>
+<p>Python uses the double slash <strong class="source-inline">//</strong> operator to perform floor division. What the <strong class="source-inline">//</strong> operator does is divide the first number by the second number before rounding the result down to the nearest integer – this is used for the <span class="No-Break"><strong class="source-inline">segment_size</strong></span><span class="No-Break"> variable.</span></p>
+<p>The rest of the code is about specifying the correct index numbers when working with the given time series (or subsequence). Hence, the <strong class="source-inline">for</strong> loop is used to process the entire time series (or subsequence) based on the <span class="No-Break">segments value.</span></p>
+<p>Next, we have the implementation of a function that computes the mean value of a <span class="No-Break">NumPy array:</span></p>
+<pre class="source-code">
+def meanValue(ts_segment):
+     sum = 0
+     for i in range(len(ts_segment)):
+           sum += ts_segment[i]
+     mean_value = sum / len(ts_segment)
+     return mean_value</pre>
+<p>Finally, we have the function that returns the SAX value of a SAX word, given its mean value and its cardinality. Remember that <a id="_idIndexMarker111"/>we calculate the mean value of each SAX word separately in the <span class="No-Break"><strong class="source-inline">createPAA()</strong></span><span class="No-Break"> function:</span></p>
+<pre class="source-code">
+def getIndex(mValue, cardinality):
+     index = 0
+     # With cardinality we get cardinality + 1
+     bPoints = tools.breakpoints(cardinality-1)
+     while mValue &lt; float(bPoints[index]):
+           if index == len(bPoints)–- 1:
+                 # This means that index should be advanced
+                 # before breaking out of the while loop
+                 index += 1
+                 break
+           else:
+                 index += 1
+     digits = tools.power_of_two(cardinality)
+     # Inverse the result
+     inverse_s = ""
+     for i in binary_index:
+           if i == '0':
+                 inverse_s += '1'
+           else:
+                 inverse_s += '0'
+     return inverse_s</pre>
+<p>The previous code computes the SAX value of a SAX word using its mean value. It iteratively visits the breakpoints, from the lowest value to the biggest, up to the point that the mean value exceeds the current breakpoint. This way, we find the index of the SAX word (mean value) in the list <span class="No-Break">of breakpoints.</span></p>
+<p>Now, let us discuss a tricky point, which has to do with the last statements that reverse the SAX word. This mainly has to do with whether we begin counting from the top or the bottom of the different areas that the breakpoints create. All ways are equivalent – we just decided to go that way. This is because a previous implementation of SAX used that order, and we wanted to make sure that we created the same results for testing reasons. If you want to alter that functionality, you just have to remove the last <span class="No-Break"><strong class="source-inline">for</strong></span><span class="No-Break"> loop.</span></p>
+<p>As you saw at the beginning of this section, the <strong class="source-inline">sax</strong> package is composed of three Python files, not just the one that we just presented. So, we will present the remaining <span class="No-Break">two files.</span></p>
+<p>First, we will present the contents <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">variables.py</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+# This file includes all variables for the sax package
+maximumCardinality = 32
+# Where to find the breakpoints file
+# In this case, in the current directory
+breakpointsFile =""SAXalphabe""
+# Sliding window size
+slidingWindowSize = 16
+# Segments
+segments = 0
+# Breakpoints in breakpointsFile
+elements ="""
+# Floating point precision
+precision = 5</pre>
+<p>You might wonder what <a id="_idIndexMarker112"/>the main reason is for having such a file. The answer is that we need to have a place to keep our global parameters and options, and having a separate file for that is a perfect solution. This will make much more sense when the code becomes longer and <span class="No-Break">more complex.</span></p>
+<p>Second, we present the code <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">tools.py</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+import os
+import numpy as np
+import sys
+from sax import variables
+breakpointsFile = variables.breakpointsFile
+maxCard = variables.maximumCardinality</pre>
+<p>Here, we reference two variables from the <strong class="source-inline">variable.py</strong> file, which are <strong class="source-inline">variables.breakpointsFile</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">variables.maximumCardinality</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+def power_of_two(n):
+     power = 1
+     while n/2 != 1:
+           # Not a power of 2
+           if n % 2 == 1:
+                 return -1
+           n = n / 2
+           power += 1
+     return power</pre>
+<p>This is a helper function that we use<a id="_idIndexMarker113"/> when we want to make sure that a value is a power <span class="No-Break">of 2:</span></p>
+<pre class="source-code">
+def load_sax_alphabet():
+     path = os.path.dirname(__file__)
+     file_variable = open(path +"""" + breakpointsFile)
+     variables.elements = file_variable.readlines()
+def breakpoints(cardinality):
+     if variables.elements ==""":
+           load_sax_alphabet()
+     myLine = variables.elements[cardinality–- 1].rstrip()
+     elements = myLine.split'''')
+     elements.reverse()
+     return elements</pre>
+<p>The <strong class="source-inline">load_sax_alphabet()</strong> function loads the contents of the file with the definitions of breakpoints and assigns them to the <strong class="source-inline">variables.elements</strong> variable. The <strong class="source-inline">breakpoints()</strong> function returns the breakpoint values when given <span class="No-Break">the cardinality.</span></p>
+<p>As you can see, the code of the entire package is relatively short, which is a <span class="No-Break">good thing.</span></p>
+<p>In this section, we developed a Python package to compute SAX representations. In the next section, we are going to begin working with the <span class="No-Break"><strong class="source-inline">sax</strong></span><span class="No-Break"> package.</span></p>
+<h1 id="_idParaDest-61"><a id="_idTextAnchor069"/>Working with the SAX package</h1>
+<p>Now that we have the SAX package <a id="_idIndexMarker114"/>at hand, it is time to use it by developing various utilities, starting with a utility that computes the SAX representations of the subsequences of a <span class="No-Break">time series.</span></p>
+<h2 id="_idParaDest-62"><a id="_idTextAnchor070"/>Computing the SAX representations of the subsequences of a time series</h2>
+<p>In this subsection, we will <a id="_idIndexMarker115"/>develop a<a id="_idIndexMarker116"/> utility that computes the SAX representations for all the subsequences of a time series and also presents their normalized forms. The name of the utility is <strong class="source-inline">ts2PAA.py</strong> and contains the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import numpy as np
+import pandas as pd
+from sax import sax
+def main():
+     if len(sys.argv) != 5:
+           print("TS1 sliding_window cardinality segments")
+           sys.exit()
+     file = sys.argv[1]
+     sliding = int(sys.argv[2])
+     cardinality = int(sys.argv[3])
+     segments = int(sys.argv[4])
+     if sliding % segments != 0:
+           print("sliding MODULO segments != 0...")
+           sys.exit()
+     if sliding &lt;= 0:
+           print("Sliding value is not allowed:", sliding)
+           sys.exit()
+     if cardinality &lt;= 0:
+           print("Cardinality Value is not allowed:", cardinality)
+           sys.exit()
+     # Read Sequence as Pandas
+     ts = pd.read_csv(file, names=['values'], compression='gzip')
+     # Convert to NParray
+     ts_numpy = ts.to_numpy()
+     length = len(ts_numpy)
+     PAA_representations = []
+     # Split sequence into subsequences
+     for i in range(length - sliding + 1):
+           t1_temp = ts_numpy[i:i+sliding]
+           # Generate SAX for each subsequence
+           tempSAXword = <strong class="bold">sax.createPAA</strong>(t1_temp, cardinality, segments)
+           SAXword = tempSAXword.split("_")[:-1]
+           print(SAXword, end = ' ')
+           PAA_representations.append(SAXword)
+           print("[", end = ' ')
+           for i in t1_temp.tolist():
+                 for k in i:
+                       print("%.2f" % k, end = ' ')
+           print("]", end = ' ')
+           print("[", end = ' ')
+           for i in <strong class="bold">sax.normalize</strong>(t1_temp).tolist():
+                 for k in i:
+                       print("%.2f" % k, end = ' ')
+           print("]")
+if __name__ == '__main__':
+     main()</pre>
+<p>The <strong class="source-inline">ts2PAA.py</strong> script <a id="_idIndexMarker117"/>takes a<a id="_idIndexMarker118"/> time series, breaks it into subsequences, and computes the normalized version of each subsequence <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">sax.normalize()</strong></span><span class="No-Break">.</span></p>
+<p>The output of <strong class="source-inline">ts2PAA.py</strong> is as follows (some output is omitted <span class="No-Break">for brevity):</span></p>
+<pre class="source-code">
+$ ./ts2PAA.py ts1.gz 8 4 2
+['01', '10'] [ 5.22 23.44 14.14 6.75 4.31 27.94 6.61 21.73 ] [ -0.97 1.10 0.04 -0.80 -1.07 1.61 -0.81 0.90 ]
+['01', '10'] [ 23.44 14.14 6.75 4.31 27.94 6.61 21.73 11.43 ] [ 1.07 -0.05 -0.94 -1.24 1.62 -0.96 0.87 -0.38 ]
+['10', '01'] [ 14.14 6.75 4.31 27.94 6.61 21.73 11.43 7.15 ] [ 0.21 -0.73 -1.05 1.97 -0.75 1.18 -0.14 -0.68 ]
+['01', '10'] [ 6.75 4.31 27.94 6.61 21.73 11.43 7.15 15.85 ] [ -0.76 -1.07 1.93 -0.77 1.14 -0.16 -0.70 0.40 ]
+['01', '10'] [ 4.31 27.94 6.61 21.73 11.43 7.15 15.85 29.96 ] [ -1.22 1.32 -0.97 0.66 -0.45 -0.91 0.02 1.54 ]
+['10', '01'] [ 27.94 6.61 21.73 11.43 7.15 15.85 29.96 6.00 ] [ 1.34 -1.02 0.65 -0.49 -0.96 0.00 1.56 -1.08 ]
+. . .</pre>
+<p>The previous output shows the SAX representation, the original subsequence, and the normalized version of the subsequence for all the subsequences of a time series. Each subsequence is on a <span class="No-Break">separate line.</span></p>
+<p class="callout-heading">Using Python packages</p>
+<p class="callout">Most of the chapters that follow will need the SAX package we developed here. For reasons of simplicity, we will copy the SAX package implementation into all directories that use that package. This might not be the best practice on production systems where we want a single copy of each software or package, but it is the best practice when learning <span class="No-Break">and experimenting.</span></p>
+<p>So far, we have<a id="_idIndexMarker119"/> learned how to <a id="_idIndexMarker120"/>use the basic functionality of the <span class="No-Break"><strong class="source-inline">sax</strong></span><span class="No-Break"> package.</span></p>
+<p>The next section presents a utility that counts the SAX representations of the subsequences of a time series and prints <span class="No-Break">the results.</span></p>
+<h1 id="_idParaDest-63"><a id="_idTextAnchor071"/>Counting the SAX representations of a time series</h1>
+<p>This section of the chapter <a id="_idIndexMarker121"/>presents a<a id="_idIndexMarker122"/> utility that counts the SAX representations of a time series. The Python data structure behind the logic of the utility is a dictionary, where the keys are the SAX representations converted into strings and the values <span class="No-Break">are integers.</span></p>
+<p>The code for <strong class="source-inline">counting.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+from sax import sax
+def main():
+     if len(sys.argv) != 5:
+           print("TS1 sliding_window cardinality segments")
+           print("Suggestion: The window be a power of 2.")
+           print("The cardinality SHOULD be a power of 2.")
+           sys.exit()
+     file = sys.argv[1]
+     sliding = int(sys.argv[2])
+     cardinality = int(sys.argv[3])
+     segments = int(sys.argv[4])
+     if sliding % segments != 0:
+           print("sliding MODULO segments != 0...")
+           sys.exit()
+     if sliding &lt;= 0:
+           print("Sliding value is not allowed:", sliding)
+           sys.exit()
+     if cardinality &lt;= 0:
+           print("Cardinality Value is not allowed:", cardinality)
+           sys.exit()
+     ts = pd.read_csv(file, names=['values'], compression='gzip')
+     ts_numpy = ts.to_numpy()
+     length = len(ts_numpy)
+     <strong class="bold">KEYS = {}</strong>
+     <strong class="bold">for i in range(length - sliding + 1):</strong>
+           t1_temp = ts_numpy[i:i+sliding]
+           # Generate SAX for each subsequence
+           tempSAXword = sax.createPAA(t1_temp, cardinality, segments)
+           tempSAXword = tempSAXword[:-1]
+           if KEYS.get(tempSAXword) == None:
+                 KEYS[tempSAXword] = 1
+           else:
+                 KEYS[tempSAXword] = KEYS[tempSAXword] + 1
+     for k in KEYS.keys():
+           print(k, ":", KEYS[k])
+if __name__ == '__main__':
+     main()</pre>
+<p>The <strong class="source-inline">for</strong> loop splits the time<a id="_idIndexMarker123"/> series into<a id="_idIndexMarker124"/> subsequences and computes the SAX representation of each subsequence using <strong class="source-inline">sax.createPAA()</strong>, before updating the relevant counter in the <strong class="source-inline">KEYS</strong> dictionary. The <strong class="source-inline">tempSAXword = tempSAXword[:-1]</strong> statement removes an unneeded underscore character from the SAX representation. Finally, we print the content of the <span class="No-Break"><strong class="source-inline">KEYS</strong></span><span class="No-Break"> dictionary.</span></p>
+<p>The output of <strong class="source-inline">counting.py</strong> should be similar to <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./counting.py ts1.gz 4 4 2
+10_01 : 18
+11_00 : 8
+01_10 : 14
+00_11 : 7</pre>
+<p>What does this output <span class="No-Break">tell us?</span></p>
+<p>For a time series with 50 elements (<strong class="source-inline">ts1.gz</strong>) and a sliding window size of 4, there exist <strong class="source-inline">18</strong> subsequences with the <strong class="source-inline">10_01</strong> SAX representation, <strong class="source-inline">8</strong> subsequences with the <strong class="source-inline">11_00</strong> SAX representation, <strong class="source-inline">14</strong> subsequences with the <strong class="source-inline">01_10</strong> SAX representation, and <strong class="source-inline">7</strong> subsequences with the <strong class="source-inline">00_11</strong> SAX representation. For easier comparison, and to be able to use a SAX representation as a key to a dictionary, we convert <strong class="source-inline">[01 10]</strong> into the <strong class="source-inline">01_10</strong> string, <strong class="source-inline">[11 00]</strong> into <strong class="source-inline">11_00</strong>, and <span class="No-Break">so on.</span></p>
+<p class="callout-heading">How many subsequences does a time series have?</p>
+<p class="callout">Keep in mind that given a time series with <strong class="source-inline">n</strong> elements and a sliding window size of <strong class="source-inline">w</strong>, the total number of subsequences is <strong class="source-inline">n – w + </strong><span class="No-Break"><strong class="source-inline">1</strong></span><span class="No-Break">.</span></p>
+<p><strong class="source-inline">counting.py</strong> can<a id="_idIndexMarker125"/> be used for <a id="_idIndexMarker126"/>many practical tasks and will be updated in <a href="B14769_03.xhtml#_idTextAnchor081"><span class="No-Break"><em class="italic">Chapter 3</em></span></a><span class="No-Break">.</span></p>
+<p>The next section discusses a handy Python package that can help us learn more about processing our time series from a statistical point <span class="No-Break">of view.</span></p>
+<h1 id="_idParaDest-64"><a id="_idTextAnchor072"/>The tsfresh Python package</h1>
+<p>This is a bonus section not<a id="_idIndexMarker127"/> directly related to the subject of the book, but it is helpful, nonetheless. It is about a handy Python package called <strong class="source-inline">tsfresh</strong>, which can give you a good overview of your time series from a statistical perspective. We are not going to present all the capabilities of <strong class="source-inline">tsfresh</strong>, just the ones that you can easily use to get information about your time series data – at this point, you might need to install <strong class="source-inline">tsfresh</strong> on your machine. Keep in mind that the <strong class="source-inline">tsfresh</strong> package has lots of <span class="No-Break">package dependencies.</span></p>
+<p>So, we are going to compute the following properties of a dataset – in this case, a <span class="No-Break">time series:</span></p>
+<ul>
+<li><strong class="bold">Mean value</strong>: The mean value of a <a id="_idIndexMarker128"/>dataset is the summary of all the values divided by the number <span class="No-Break">of values.</span></li>
+<li><strong class="bold">Standard deviation</strong>: The standard deviation of a<a id="_idIndexMarker129"/> dataset measures the amount of variation in it. There is a formula to calculate the standard deviation, but we usually compute it using a function from a <span class="No-Break">Python package.</span></li>
+<li><strong class="bold">Skewness</strong>: The skewness of a <a id="_idIndexMarker130"/>dataset is a measure of the asymmetry in it. The value of skewness can be positive, negative, zero, <span class="No-Break">or undefined.</span></li>
+<li><strong class="bold">Kurtosis</strong>: The kurtosis of a<a id="_idIndexMarker131"/> dataset is a measure of the tailedness of a dataset. In more mathematical terms, kurtosis measures the heaviness of the tail of a distribution compared to a <span class="No-Break">normal distribution.</span></li>
+</ul>
+<p>All these quantities will make much more sense once you plot your data, which is left as an exercise for you; otherwise, they will be just numbers. So, now that we know some basic statistic terms, let us present a Python script that <a id="_idIndexMarker132"/>calculates all these quantities for a <span class="No-Break">time series.</span></p>
+<p>The Python code for <strong class="source-inline">using_tsfresh.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import tsfresh
+def main():
+     if len(sys.argv) != 2:
+           print("TS")
+           sys.exit()
+     TS1 = sys.argv[1]
+     ts1Temp = pd.read_csv(TS1, compression='gzip')
+     ta = ts1Temp.to_numpy()
+     ta = ta.reshape(len(ta))
+     # Mean value
+     meanValue = <strong class="bold">tsfresh.feature_extraction.feature_calculators.mean</strong>(ta)
+     print("Mean value:\t\t", meanValue)
+     # Standard deviation
+     stdDev = <strong class="bold">tsfresh.feature_extraction.feature_calculators.standard_deviation</strong>(ta)
+     print("Standard deviation:\t", stdDev)
+     # Skewness
+     skewness = <strong class="bold">tsfresh.feature_extraction.feature_calculators.skewness</strong>(ta)
+     print("Skewness:\t\t", skewness)
+     # Kurtosis
+     kurtosis = <strong class="bold">tsfresh.feature_extraction.feature_calculators.kurtosis</strong>(ta)
+     print("Kurtosis:\t\t", kurtosis)
+if __name__ == '__main__':
+     main()</pre>
+<p>The output of <strong class="source-inline">using_tsfresh.py</strong> when processing <strong class="source-inline">ts1.gz</strong> should look similar to <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./using_tsfresh.py ts1.gz
+Mean value:  15.706410001204729
+Standard deviation:  8.325017802111901
+Skewness:     0.008971113265160474
+Kurtosis:    -1.2750042973761417</pre>
+<p>The <strong class="source-inline">tsfresh</strong> package can do <a id="_idIndexMarker133"/>many more things; we have just presented the tip of the iceberg of the capabilities <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">tsfresh</strong></span><span class="No-Break">.</span></p>
+<p>The next section is about creating a histogram of a <span class="No-Break">time series.</span></p>
+<h1 id="_idParaDest-65"><a id="_idTextAnchor073"/>Creating a histogram of a time series</h1>
+<p>This is another bonus<a id="_idIndexMarker134"/> section, where we<a id="_idIndexMarker135"/> will illustrate how to create a histogram of a time series to get a better overview of <span class="No-Break">its values.</span></p>
+<p>A <strong class="bold">histogram</strong>, which<a id="_idIndexMarker136"/> looks a lot like a bar chart, defines buckets (bins) and counts the number of values that fall into each bin. Strictly speaking, a histogram allows you to understand your data by creating a plot of <a id="_idIndexMarker137"/>the <strong class="bold">distribution of values</strong>. You can see the maximum and the minimum values, as well as find out data patterns, just by looking at <span class="No-Break">a histogram.</span></p>
+<p>The Python code for <strong class="source-inline">histogram.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import math
+import os
+if len(sys.argv) != 2:
+     print("TS1")
+     sys.exit()
+TS1 = sys.argv[1]
+ts1Temp = pd.read_csv(TS1, compression='gzip')
+ta = ts1Temp.to_numpy()
+ta = ta.reshape(len(ta))
+min = np.min(ta)
+max = np.max(ta)
+plt.style.use('Solarize_Light2')
+bins = np.linspace(min, max, 2 * <strong class="bold">abs</strong>(math.floor(max) + 1))
+plt.hist([ta], bins, label=[os.path.basename(TS1)])
+plt.legend(loc='upper right')
+plt.show()</pre>
+<p>The third argument of the <strong class="source-inline">np.linespace()</strong> function helps us define the number of bins the histogram has. The first parameter is the minimum value, and the second parameter is the maximum value of the presented samples. This script does not save its output in a file but, instead, opens a window on your GUI to display<a id="_idIndexMarker138"/> the<a id="_idIndexMarker139"/> output. The <strong class="source-inline">plt.hist()</strong> function creates the histogram, whereas the <strong class="source-inline">plt.legend()</strong> function puts the legend in <span class="No-Break">the output.</span></p>
+<p>A sample output of <strong class="source-inline">histogram.py</strong> can be seen in <span class="No-Break"><em class="italic">Figure 2</em></span><span class="No-Break"><em class="italic">.5</em></span><span class="No-Break">:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer013">
+<img alt="Figure 2.5 – A sample histogram" height="803" src="image/Figure_2.5_B14769.jpg" width="1633"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.5 – A sample histogram</p>
+<p>A different sample output from <strong class="source-inline">histogram.py</strong> can be seen in <span class="No-Break"><em class="italic">Figure 2</em></span><span class="No-Break"><em class="italic">.6</em></span><span class="No-Break">:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer014">
+<img alt="Figure 2.6 – A sample histogram" height="753" src="image/Figure_2.6_B14769.jpg" width="1643"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.6 – A sample histogram</p>
+<p>So, what is the difference between the histograms in <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.5</em> and <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.6</em>? There exist many differences, including the fact that the histogram in <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.5</em> does not have empty bins and it contains both negative and positive values. On <a id="_idIndexMarker140"/>the other<a id="_idIndexMarker141"/> hand, the histogram in <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.6</em> contains negative values only that are far away <span class="No-Break">from 0.</span></p>
+<p>Now that we know about histograms, let us learn about another interesting statistical quantity – <span class="No-Break"><em class="italic">percentiles</em></span><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-66"><a id="_idTextAnchor074"/>Calculating the percentiles of a time series</h1>
+<p>In this last bonus section of this <a id="_idIndexMarker142"/>chapter, we<a id="_idIndexMarker143"/> are going to learn how to compute the percentiles of a time series or a list (and if you find the information presented here difficult to understand, feel free to skip it). The main usage of such information is to better understand your time <span class="No-Break">series data.</span></p>
+<p>A <em class="italic">percentile</em> is a score where a given percentage of scores in the frequency distribution falls. Therefore, the 20th percentile is the score below which 20% of the scores of the distribution of the values of a <span class="No-Break">dataset falls.</span></p>
+<p>A <strong class="bold">quartile</strong> is one of the <a id="_idIndexMarker144"/>following three percentiles – 25%, 50%, or 75%. So, we have the first quartile, the second quartile, and the third <span class="No-Break">quartile, respectively.</span></p>
+<p>Both percentiles and quartiles are calculated in datasets sorted in ascending order. Even if you have not sorted that dataset, the relevant NumPy function, which is called <strong class="source-inline">quantile()</strong>, does that behind <span class="No-Break">the scenes.</span></p>
+<p>The Python code of <strong class="source-inline">percentiles.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import numpy as np
+def main():
+     if len(sys.argv) != 2:
+           print("TS")
+           sys.exit()
+     F = sys.argv[1]
+     ts = pd.read_csv(F, compression='gzip')
+     ta = ts.to_numpy()
+     ta = ta.reshape(len(ta))
+     per01 = round(np.<strong class="bold">quantile</strong>(ta, .01), 5)
+     per25 = round(np.<strong class="bold">quantile</strong>(ta, .25), 5)
+     per75 = round(np.<strong class="bold">quantile</strong>(ta, .75), 5)
+     print("Percentile 1%:", per01, "Percentile 25%:", per25, "Percentile 75%:", per75)
+if __name__ == '__main__':
+     main()</pre>
+<p>All the work is done by the <strong class="source-inline">quantile()</strong> function of the NumPy package. Among other things, <strong class="source-inline">quantile()</strong> appropriately<a id="_idIndexMarker145"/> arranges its elements before performing any calculations. We do not know what happens internally, but most likely, <strong class="source-inline">quantile()</strong> sorts its input in <span class="No-Break">ascending order.</span></p>
+<p>The first parameter of <strong class="source-inline">quantile()</strong> is the NumPy array, and its second parameter is the percentage (percentile) that interests us. A 25% percentage is equal to the first quantile, a 50% percentage is equal to the second quantile, and a 75% percentage<a id="_idIndexMarker146"/> is equal<a id="_idIndexMarker147"/> to the third quantile. A 1% percentage is equal to the 1% percentile, and <span class="No-Break">so on.</span></p>
+<p>The output of <strong class="source-inline">percentiles.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ ./percentiles.py ts1.gz
+Percentile 1%: 1.57925 Percentile 25%: 7.15484 Percentile 75%: 23.2298</pre>
+<h1 id="_idParaDest-67"><a id="_idTextAnchor075"/>Summary</h1>
+<p>This chapter included the theory behind and practical implementation of SAX and an understanding of a time series from a statistical viewpoint. As the iSAX index construction is based on the SAX representation, we cannot construct an iSAX index without computing <span class="No-Break">SAX representations.</span></p>
+<p>Before you begin reading <a href="B14769_03.xhtml#_idTextAnchor081"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>, please make sure that you know how to calculate the SAX representation of a time series or a subsequence, given the sliding window size, the number of segments, and <span class="No-Break">the cardinality.</span></p>
+<p>The next chapter contains the theory related to the iSAX index, shows you how to manually construct an iSAX index (which you will find very entertaining), and includes the development of some <span class="No-Break">handy utilities.</span></p>
+<h1 id="_idParaDest-68"><a id="_idTextAnchor076"/>Useful links</h1>
+<ul>
+<li>About Python <span class="No-Break">packages: </span><a href="https://docs.python.org/3/reference/import.xhtml"><span class="No-Break">https://docs.python.org/3/reference/import.xhtml</span></a></li>
+<li>The <strong class="source-inline">tsfresh</strong> <span class="No-Break">package: </span><a href="https://pypi.org/project/tsfresh/"><span class="No-Break">https://pypi.org/project/tsfresh/</span></a></li>
+<li>The documentation for the <strong class="source-inline">tsfresh</strong> package can be found <span class="No-Break">at </span><a href="https://tsfresh.readthedocs.io/en/latest/"><span class="No-Break">https://tsfresh.readthedocs.io/en/latest/</span></a></li>
+<li>The <strong class="source-inline">scipy</strong> package: <a href="https://pypi.org/project/scipy/">https://pypi.org/project/scipy/</a> <span class="No-Break">and </span><a href="https://scipy.org/"><span class="No-Break">https://scipy.org/</span></a></li>
+<li><span class="No-Break">Normalization: </span><a href="https://en.wikipedia.org/wiki/Normalization_(statistics)"><span class="No-Break">https://en.wikipedia.org/wiki/Normalization_(statistics)</span></a></li>
+<li><span class="No-Break">Histogram: </span><a href="https://en.wikipedia.org/wiki/Histogram"><span class="No-Break">https://en.wikipedia.org/wiki/Histogram</span></a></li>
+<li><span class="No-Break">Percentile: </span><a href="https://en.wikipedia.org/wiki/Percentile"><span class="No-Break">https://en.wikipedia.org/wiki/Percentile</span></a></li>
+<li>Normal <span class="No-Break">distribution: </span><a href="https://en.wikipedia.org/wiki/Normal_distribution"><span class="No-Break">https://en.wikipedia.org/wiki/Normal_distribution</span></a></li>
+</ul>
+<h1 id="_idParaDest-69"><a id="_idTextAnchor077"/>Exercises</h1>
+<p>Try to solve the following exercises <span class="No-Break">in Python:</span></p>
+<ul>
+<li>Divide <em class="italic">by hand</em> the <em class="italic">y</em> axis for the 16 = 24 cardinality. Did you divide it into 16 areas or 17 areas? How many breakpoints did <span class="No-Break">you use?</span></li>
+<li>Divide <em class="italic">by hand</em> the <em class="italic">y</em> axis for the 64 = 26 cardinality. Did you divide it into <span class="No-Break">64 areas?</span></li>
+<li>Use the <strong class="source-inline">cardinality.py</strong> utility to plot the breakpoints of the 16 = <span class="No-Break">2</span><span class="No-Break"><span class="superscript">4</span></span><span class="No-Break"> cardinality.</span></li>
+<li>Use the <strong class="source-inline">cardinality.py</strong> utility to plot the breakpoints of the 128 = <a id="_idTextAnchor078"/><span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">7</span> <span class="No-Break">cardinality.</span></li>
+<li>Find the SAX representation of the <strong class="source-inline">{0, 2, -1, 2, 3, 4, -2, 4}</strong> subsequence using 4 segments and a cardinality of 4 (<a id="_idTextAnchor079"/><span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span>). Do not forget to normalize <span class="No-Break">it first.</span></li>
+<li>Find the SAX representation of the <strong class="source-inline">{0, 2, -1, 2, 3, 4, -2, 4}</strong> subsequence using 2 segments and a cardinality of 2 (<a id="_idTextAnchor080"/><span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">1</span>). Do not forget to normalize <span class="No-Break">it first.</span></li>
+<li>Find the SAX representation of the <strong class="source-inline">{0, 2, -1, 2, 3, 1, -2, -4}</strong> subsequence using 4 segments and a cardinality <span class="No-Break">of 2.</span></li>
+<li>Given the <strong class="source-inline">{0, -1, 1.5, -1.5, 0, 1, 0}</strong> time series and a sliding window size of 4, find the SAX representation of all its subsequences using 2 segments and a cardinality <span class="No-Break">of 2.</span></li>
+<li>Create a synthetic time series and process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">using_tsfresh.py</strong></span><span class="No-Break">.</span></li>
+<li>Create a synthetic time series with 1,000 elements and process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">histogram.py</strong></span><span class="No-Break">.</span></li>
+<li>Create a synthetic time series with 5,000 elements and process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">histogram.py</strong></span><span class="No-Break">.</span></li>
+<li>Create a synthetic time series with 10,000 elements and process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">counting.py</strong></span><span class="No-Break">.</span></li>
+<li>Create a synthetic time series with 100 elements and process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">percentiles.py</strong></span><span class="No-Break">.</span></li>
+<li>Create a synthetic dataset with 100 elements and examine it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">counting.py</strong></span><span class="No-Break">.</span></li>
+<li>Modify <strong class="source-inline">histogram.py</strong> to save its graphical output in a <span class="No-Break">PNG file.</span></li>
+<li>Plot a time series using <strong class="source-inline">histogram.py</strong> and then process it <span class="No-Break">using </span><span class="No-Break"><strong class="source-inline">using_tsfresh.py</strong></span></li>
+</ul>
+</div>
+</div></body></html>

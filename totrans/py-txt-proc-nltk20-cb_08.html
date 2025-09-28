@@ -1,0 +1,366 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;8.&#xA0;Distributed Processing and Handling Large Datasets"><div class="titlepage"><div><div><h1 class="title"><a id="ch08"/>Chapter 8. Distributed Processing and Handling Large Datasets</h1></div></div></div><p>In this chapter, we will cover:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Distributed tagging with execnet</li><li class="listitem" style="list-style-type: disc">Distributed chunking with execnet</li><li class="listitem" style="list-style-type: disc">Parallel list processing with execnet</li><li class="listitem" style="list-style-type: disc">Storing a frequency distribution in Redis</li><li class="listitem" style="list-style-type: disc">Storing a conditional frequency distribution in Redis</li><li class="listitem" style="list-style-type: disc">Storing an ordered dictionary in Redis</li><li class="listitem" style="list-style-type: disc">Distributed word scoring with Redis and execnet</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec81"/>Introduction</h1></div></div></div><a id="id636" class="indexterm"/><p>NLTK is great for in-memory single-processor natural language processing. However, there are times when you have a lot of data to process and want to take advantage of multiple CPUs, multi-core CPUs, and even multiple computers. Or perhaps you want to store frequencies and probabilities in a persistent, shared database so multiple processes can access it simultaneously. For the first case, we'll be using execnet to do parallel and distributed processing with NLTK. For the second case, you'll learn how to use the Redis data structure server/database to store frequency distributions and more.</p></div></div>
+<div class="section" title="Distributed tagging with execnet"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec82"/>Distributed tagging with execnet</h1></div></div></div><a id="id637" class="indexterm"/><a id="id638" class="indexterm"/><a id="id639" class="indexterm"/><p>
+<span class="strong"><strong>Execnet</strong></span> is a distributed execution library for python. It allows you to create gateways and channels for remote code execution. A <span class="strong"><strong>gateway</strong></span>
+<a id="id640" class="indexterm"/> is a connection from the calling process to a remote environment. The remote environment can be a local subprocess or an SSH connection to a remote node. <a id="id641" class="indexterm"/>A <span class="strong"><strong>channel</strong></span> is created from a gateway and handles communication between the channel creator and the remote code.</p><p>Since many NLTK processes require 100 percent CPU utilization during computation, execnet is an ideal way to distribute that computation for maximum resource usage. You can create one gateway per CPU core, and it doesn't matter whether the cores are in your local computer or spread across remote machines. In many situations, you only need to have the trained objects and data on a single machine, and can send the objects and data to the remote nodes as needed.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec293"/>Getting ready</h2></div></div></div><p>You'll need to install execnet for this to work. It should be as simple as <code class="literal">sudo pip install execnet</code> or <code class="literal">sudo easy_install execnet</code>. The current version of execnet, as of this writing, is <code class="literal">1.0.8</code>. The execnet homepage, which has API documentation and examples, is at <a class="ulink" href="http://codespeak.net/execnet/">http://codespeak.net/execnet/</a>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec294"/>How to do it...</h2></div></div></div><a id="id642" class="indexterm"/><a id="id643" class="indexterm"/><p>We start by importing the required modules, as well as an additional module <code class="literal">remote_tag.py</code> that will be explained in the next section. We also need to import <code class="literal">pickle</code> so we can serialize the tagger. Execnet does not natively know how to deal with complex objects such as  a part-of-speech tagger, so we must dump the tagger to a string using <code class="literal">pickle.dumps()</code>. We'll use the default tagger that's used by the<a id="id644" class="indexterm"/> <code class="literal">nltk.tag.pos_tag()</code> function, but you could load and dump any pre-trained part-of-speech tagger as long as it implements the <code class="literal">TaggerI</code> interface.</p><a id="id645" class="indexterm"/><p>Once we have a serialized tagger, we start execnet by making a gateway with <code class="literal">execnet.makegateway()</code>. The default gateway creates a Python <span class="emphasis"><em>subprocess</em></span>, and we can call the <code class="literal">remote_exec()</code> method<a id="id646" class="indexterm"/> with the <code class="literal">remote_tag</code> module to create a <code class="literal">channel</code>. With an open channel, we send over the serialized tagger and then the first tokenized sentence of the <code class="literal">treebank</code> corpus.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note26"/>Note</h3><p>You don't have to do any special serialization of simple types such as lists and tuples, since execnet already knows how to handle serializing the built-in types.</p></div></div><p>Now if we call <code class="literal">channel.receive()</code>, we get back a tagged sentence that is equivalent to the first tagged sentence in the <code class="literal">treebank</code> corpus, so we know the tagging worked. We end by exiting the gateway, which closes the channel and kills the subprocess.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; import execnet, remote_tag, nltk.tag, nltk.data
+&gt;&gt;&gt; from nltk.corpus import treebank
+&gt;&gt;&gt; import cPickle as pickle
+&gt;&gt;&gt; tagger = pickle.dumps(nltk.data.load(nltk.tag._POS_TAGGER))
+&gt;&gt;&gt; gw = execnet.makegateway()
+&gt;&gt;&gt; channel = gw.remote_exec(remote_tag)
+&gt;&gt;&gt; channel.send(tagger)
+&gt;&gt;&gt; channel.send(treebank.sents()[0])
+&gt;&gt;&gt; tagged_sentence = channel.receive()
+&gt;&gt;&gt; tagged_sentence == treebank.tagged_sents()[0]
+True
+&gt;&gt;&gt; gw.exit()</pre></div><p>Visually, the communication process looks like this:</p><div class="mediaobject"><img src="graphics/3609OS_08_01.jpg" alt="How to do it..."/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec295"/>How it works...</h2></div></div></div><a id="id647" class="indexterm"/><a id="id648" class="indexterm"/><p>The gateway's <code class="literal">remote_exec()</code> method takes a single argument that can be one of the following three types:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem"><a id="id649" class="indexterm"/>A string of code to execute remotely.</li><li class="listitem">The name of a <span class="strong"><strong>pure</strong></span> <span class="strong"><strong>function</strong></span> that will be serialized and executed remotely.</li><li class="listitem">The name of a <span class="strong"><strong>pure</strong></span> <span class="strong"><strong>module</strong></span> whose source will be executed remotely.</li></ol></div><p>We use the third option with the <code class="literal">remote_tag.py</code> module, which is defined as follows:</p><div class="informalexample"><pre class="programlisting">  import cPickle as pickle
+  
+  if __name__ == '__channelexec__':
+    tagger = pickle.loads(channel.receive())
+    
+    for sentence in channel:
+      channel.send(tagger.tag(sentence))</pre></div><p>A pure module is a module that is self-contained. It can only access Python modules that are available where it executes, and does not have access to any variables or states that exist wherever the gateway is initially created. To detect that the module is being executed by <code class="literal">execnet</code>, you can look at the <code class="literal">__name__</code> variable. If it's equal to <code class="literal">'__channelexec__'</code>, then it is being used to create a remote channel. This is similar to doing <code class="literal">if __name__ == '__main__'</code> to check if a module is being executed on the command line.</p><a id="id650" class="indexterm"/><a id="id651" class="indexterm"/><p>The first thing we do is call <code class="literal">channel.receive()</code> to get the serialized <code class="literal">tagger</code>, which we load using <code class="literal">pickle.loads()</code>. You may notice that <code class="literal">channel</code> is not imported anywhere—that's because it is included in the global namespace of the module. Any module that <code class="literal">execnet</code> executes remotely has access to the <code class="literal">channel</code> variable in order to communicate with the <code class="literal">channel</code> creator.</p><p>Once we have the <code class="literal">tagger</code>, we iteratively <code class="literal">tag()</code> each tokenized sentence that we receive from the channel. This allows us to tag as many sentences as the sender wants to send, as iteration will not stop until the <code class="literal">channel</code> is closed. What we've essentially created is a compute node for part-of-speech tagging that dedicates 100 percent of its resources to tagging whatever sentences it receives. As long as the <code class="literal">channel</code> remains open, the node is available for processing.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec296"/>There's more...</h2></div></div></div><p>This is a simple example that opens a single gateway and channel. But execnet can do a lot more, such as opening multiple channels to increase parallel processing, as well as opening gateways to remote hosts over SSH to do distributed processing.</p><div class="section" title="Multiple channels"><div class="titlepage"><div><div><h3 class="title"><a id="ch08lvl3sec80"/>Multiple channels</h3></div></div></div><a id="id652" class="indexterm"/><a id="id653" class="indexterm"/><p>We can create multiple channels, one per gateway, to make the processing more parallel. Each gateway creates a new subprocess (or remote interpreter if using an SSH gateway) and we use one channel per gateway for communication. Once we've created two channels, we can combine them using the <code class="literal">MultiChannel</code> class, which allows us to iterate over the channels, and make a receive queue to receive messages from each channel.</p><p>After creating each channel and sending the tagger, we cycle through the channels to send an even number of sentences to each channel for tagging. Then we collect all the responses from the <code class="literal">queue</code>. A call to <code class="literal">queue.get()</code> will return a 2-tuple of <code class="literal">(channel, message)</code> in case you need to know which channel the message came from.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip07"/>Tip</h3><p>If you don't want to wait forever, you can also pass a <code class="literal">timeout</code> keyword argument with the maximum number of seconds you want to wait, as in <code class="literal">queue.get(timeout=4)</code>. This can be a good way to handle network errors.</p></div></div><a id="id654" class="indexterm"/><a id="id655" class="indexterm"/><p>Once all the tagged sentences have been collected, we can exit the gateways. Here's the code:</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; import itertools
+&gt;&gt;&gt; gw1 = execnet.makegateway()
+&gt;&gt;&gt; gw2 = execnet.makegateway()
+&gt;&gt;&gt; ch1 = gw1.remote_exec(remote_tag)
+&gt;&gt;&gt; ch1.send(tagger)
+&gt;&gt;&gt; ch2 = gw2.remote_exec(remote_tag)
+&gt;&gt;&gt; ch2.send(tagger)
+&gt;&gt;&gt; mch = execnet.MultiChannel([ch1, ch2])
+&gt;&gt;&gt; queue = mch.make_receive_queue()
+&gt;&gt;&gt; channels = itertools.cycle(mch)
+&gt;&gt;&gt; for sentence in treebank.sents()[:4]:
+...    channel = channels.next()
+...    channel.send(sentence)
+&gt;&gt;&gt; tagged_sentences = []
+&gt;&gt;&gt; for i in range(4):
+...    channel, tagged_sentence = queue.get()
+...    tagged_sentences.append(tagged_sentence)
+&gt;&gt;&gt; len(tagged_sentences)
+4
+&gt;&gt;&gt; gw1.exit()
+&gt;&gt;&gt; gw2.exit()</pre></div></div><div class="section" title="Local versus remote gateways"><div class="titlepage"><div><div><h3 class="title"><a id="ch08lvl3sec81"/>Local versus remote gateways</h3></div></div></div><a id="id656" class="indexterm"/><a id="id657" class="indexterm"/><a id="id658" class="indexterm"/><p>The default gateway spec is <code class="literal">popen</code>, which creates a Python subprocess on the local machine. This means <code class="literal">execnet.makegateway()</code> is equivalent to <code class="literal">execnet.makegateway('popen')</code>. If you have passwordless SSH access to a remote machine, then you can create a remote gateway using <code class="literal">execnet.makegateway('ssh=remotehost')</code> where <code class="literal">remotehost</code> should be the hostname of the machine. A SSH gateway spawns a new Python interpreter for executing the code remotely. As long as the code you're using for remote execution is <span class="strong"><strong>pure</strong></span>, you only need a Python interpreter on the remote machine.</p><p>Channels work exactly the same no matter what kind of gateway is used; the only difference will be communication time. This means you can mix and match local subprocesses with remote interpreters to distribute your computations across many machines in a network. There are many more details on gateways in the API documentation at <a class="ulink" href="http://codespeak.net/execnet/basics.html">http://codespeak.net/execnet/basics.html</a>.</p></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec297"/>See also</h2></div></div></div><p>Part-of-speech tagging and taggers are covered in detail in <a class="link" href="ch04.html" title="Chapter 4. Part-of-Speech Tagging">Chapter 4</a>, <span class="emphasis"><em>Part-of-Speech Tagging</em></span>. In the next recipe, we'll use <code class="literal">execnet</code> to do distributed chunk extraction.</p></div></div>
+<div class="section" title="Distributed chunking with execnet"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec83"/>Distributed chunking with execnet</h1></div></div></div><a id="id659" class="indexterm"/><a id="id660" class="indexterm"/><p>In this recipe, we'll do chunking and tagging over an <code class="literal">execnet</code> gateway. This will be very similar to the tagging in the previous recipe, but we'll be sending two objects instead of one, and we will be receiving a <code class="literal">Tree</code> instead of a list, which requires pickling and unpickling for serialization.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec298"/>Getting ready</h2></div></div></div><p>As in the previous recipe, you must have <code class="literal">execnet</code> installed.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec299"/>How to do it...</h2></div></div></div><p>The setup code is very similar to the last recipe, and we'll use the same pickled <code class="literal">tagger</code> as well. First we'll pickle the default <code class="literal">chunker</code> used by <code class="literal">nltk.chunk.ne_chunk()</code>, though any chunker would do. Next, we make a gateway for the <code class="literal">remote_chunk</code> module, get a <code class="literal">channel</code>, and send the pickled <code class="literal">tagger</code> and <code class="literal">chunker</code> over. Then we receive back a pickled <code class="literal">Tree</code>, which we can unpickle and inspect to see the result. Finally, we exit the gateway.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; import execnet, remote_chunk
+&gt;&gt;&gt; import nltk.data, nltk.tag, nltk.chunk
+&gt;&gt;&gt; import cPickle as pickle
+&gt;&gt;&gt; from nltk.corpus import treebank_chunk
+&gt;&gt;&gt; tagger = pickle.dumps(nltk.data.load(nltk.tag._POS_TAGGER))
+&gt;&gt;&gt; chunker = pickle.dumps(nltk.data.load(nltk.chunk._MULTICLASS_NE_CHUNKER))
+&gt;&gt;&gt; gw = execnet.makegateway()
+&gt;&gt;&gt; channel = gw.remote_exec(remote_chunk)
+&gt;&gt;&gt; channel.send(tagger)
+&gt;&gt;&gt; channel.send(chunker)
+&gt;&gt;&gt; channel.send(treebank_chunk.sents()[0])
+&gt;&gt;&gt; chunk_tree = pickle.loads(channel.receive())
+&gt;&gt;&gt; chunk_tree
+Tree('S', [Tree('PERSON', [('Pierre', 'NNP')]), Tree('ORGANIZATION', [('Vinken', 'NNP')]), (',', ','), ('61', 'CD'), ('years', 'NNS'), ('old', 'JJ'), (',', ','), ('will', 'MD'), ('join', 'VB'), ('the', 'DT'), ('board', 'NN'), ('as', 'IN'), ('a', 'DT'), ('nonexecutive', 'JJ'), ('director', 'NN'), ('Nov.', 'NNP'), ('29', 'CD'), ('.', '.')])
+&gt;&gt;&gt; gw.exit()</pre></div><p>The communication this time is slightly different.</p><div class="mediaobject"><img src="graphics/3609OS_08_02.jpg" alt="How to do it..."/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec300"/>How it works...</h2></div></div></div><a id="id661" class="indexterm"/><a id="id662" class="indexterm"/><p>The <code class="literal">remote_chunk.py</code> module is just a little bit more complicated than the <code class="literal">remote_tag.py</code> module from the previous recipe. In addition to receiving a pickled <code class="literal">tagger</code>, it also expects to receive a pickled <code class="literal">chunker</code> that implements the <code class="literal">ChunkerI</code> interface. Once it has both a <code class="literal">tagger</code> and a <code class="literal">chunker</code>, it expects to receive any number of tokenized sentences, which it tags and parses into a <code class="literal">Tree</code>. This <code class="literal">tree</code> is then pickled and sent back over the <code class="literal">channel</code>.</p><div class="informalexample"><pre class="programlisting">import cPickle as pickle
+
+if __name__ == '__channelexec__':
+  tagger = pickle.loads(channel.receive())
+  chunker = pickle.loads(channel.receive())
+
+  for sent in channel:
+    tree = chunker.parse(tagger.tag(sent))
+    channel.send(pickle.dumps(tree))</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note27"/>Note</h3><p>The <code class="literal">Tree</code> must be pickled because it is not a simple built-in type.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec301"/>There's more...</h2></div></div></div><p>Note that the <code class="literal">remote_chunk</code> module is pure. Its only external dependency is the <code class="literal">pickle</code> (or <code class="literal">cPickle</code>) module, which is part of the Python standard library. It doesn't need to import any NLTK modules in order to use the <code class="literal">tagger</code> or <code class="literal">chunker</code>, because all the necessary data is pickled and sent over the <code class="literal">channel</code>. As long as you structure your remote code like this, with no external dependencies, you only need NLTK to be installed on a single machine—the one that starts the gateway and sends the objects over the channel.</p><div class="section" title="Python subprocesses"><div class="titlepage"><div><div><h3 class="title"><a id="ch08lvl3sec82"/>Python subprocesses</h3></div></div></div><a id="id663" class="indexterm"/><p>If you look at your task/system monitor (or <code class="literal">top</code> in <code class="literal">*nix</code>) while running the <code class="literal">execnet</code> code, you may notice a few extra python Processes. Every gateway spawns a new, self-contained, <span class="emphasis"><em>shared-nothing</em></span> Python interpreter process, which is killed when you call the <code class="literal">exit()</code> method. Unlike with threads, there is no shared memory to worry about, and no global interpreter lock to slow things down. All you have are separate communicating processes. This is true whether the processes are local or remote. Instead of locking and synchronization, all you have to worry about is the order in which the messages are sent and received.</p></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec302"/>See also</h2></div></div></div><p>The previous recipe explains <code class="literal">execnet</code> gateways and channels in detail. In the next recipe, we'll use <code class="literal">execnet</code> to process a list in parallel.</p></div></div>
+<div class="section" title="Parallel list processing with execnet"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec84"/>Parallel list processing with execnet</h1></div></div></div><a id="id664" class="indexterm"/><a id="id665" class="indexterm"/><p>This recipe presents a pattern for using <code class="literal">execnet</code> to process a list in parallel. It's a function pattern for mapping each element in the list to a new value, using <code class="literal">execnet</code> to do the mapping in parallel.</p><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec303"/>How to do it...</h2></div></div></div><p>First, we need to decide exactly what we want to do. In this example, we'll just double integers, but we could do any pure computation. Following is the module <code class="literal">remote_double.py</code>, which will be executed by <code class="literal">execnet</code>. It receives a 2-tuple of <code class="literal">(i, arg)</code>, assumes <code class="literal">arg</code> is a number, and sends back <code class="literal">(i, arg*2)</code>. The need for <code class="literal">i</code> will be explained in the next section.</p><div class="informalexample"><pre class="programlisting">if __name__ == '__channelexec__':
+  for (i, arg) in channel:
+    channel.send((i, arg * 2))</pre></div><p>To use this module to double every element in a list, we import the <code class="literal">plists</code> module (explained in the next section) and call <code class="literal">plists.map()</code> with the <code class="literal">remote_double</code> module, and a list of integers to double.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; import plists, remote_double
+&gt;&gt;&gt; plists.map(remote_double, range(10))
+[0, 2, 4, 6, 8, 10, 12, 14, 16, 18]</pre></div><p>Communication between channels is very simple, as shown in the following diagram:</p><div class="mediaobject"><img src="graphics/3609OS_08_03.jpg" alt="How to do it..."/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec304"/>How it works...</h2></div></div></div><a id="id666" class="indexterm"/><a id="id667" class="indexterm"/><a id="id668" class="indexterm"/><p>The <code class="literal">map()</code> function is defined in <code class="literal">plists.py</code>. It takes a pure module, a list of arguments, and an optional list of 2-tuples consisting of <code class="literal">(spec, count)</code>. The default <code class="literal">specs</code> are <code class="literal">[('popen', 2)]</code> , which means we'll open two local gateways and channels. Once these channels are opened, we put them into an <code class="literal">itertools</code> cycle, which creates an infinite iterator that cycles back to the beginning once it hits the end.</p><p>Now we can send each argument in <code class="literal">args</code> to a <code class="literal">channel</code> for processing, and since the channels are cycled, each channel gets an almost even distribution of arguments. This is where <code class="literal">i</code> comes in—we don't know in what order we'll get the results back, so <code class="literal">i</code>, as the index of each <code class="literal">arg</code> in the list, is passed to the channel and back so we can combine the results in the original order. We then wait for results with a <code class="literal">MultiChannel</code> receive queue and insert them into a pre-filled list that's the same length as the original <code class="literal">args</code>. Once we have all the expected results, we can exit the gateways and return the results.</p><div class="informalexample"><pre class="programlisting">import itertools, execnet
+
+def map(mod, args, specs=[('popen', 2)]):
+  gateways = []
+  channels = []
+
+  for spec, count in specs:
+    for i in range(count):
+      gw = execnet.makegateway(spec)
+      gateways.append(gw)
+      channels.append(gw.remote_exec(mod))
+
+  cyc = itertools.cycle(channels)
+
+  for i, arg in enumerate(args):
+    channel = cyc.next()
+    channel.send((i, arg))
+
+  mch = execnet.MultiChannel(channels)
+  queue = mch.make_receive_queue()
+  l = len(args)
+  results = [None] * l
+
+  for j in range(l):
+    channel, (i, result) = queue.get()
+    results[i] = result
+
+  for gw in gateways:
+    gw.exit()
+
+  return results</pre></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec305"/>There's more...</h2></div></div></div><a id="id669" class="indexterm"/><a id="id670" class="indexterm"/><p>You can increase the parallelization by modifying the specs, as follows:</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; plists.map(remote_double, range(10), [('popen', 4)])
+[0, 2, 4, 6, 8, 10, 12, 14, 16, 18]</pre></div><p>However, more parallelization does not necessarily mean faster processing. It depends on the available resources, and the more gateways and channels you have open, the more overhead is required. Ideally there should be one gateway and channel per CPU core.</p><p>You can use <code class="literal">plists.map()</code> with any pure module as long as it receives and sends back 2-tuples where <code class="literal">i</code> is the first element. This pattern is most useful when you have a bunch of numbers to crunch, and want to process them as quickly as possible.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec306"/>See also</h2></div></div></div><p>The previous recipes cover <code class="literal">execnet</code> features in greater detail.</p></div></div>
+<div class="section" title="Storing a frequency distribution in Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec85"/>Storing a frequency distribution in Redis</h1></div></div></div><a id="id671" class="indexterm"/><a id="id672" class="indexterm"/><p>The <code class="literal">nltk.probability.FreqDist</code> class is used in many classes throughout NLTK for storing and managing frequency distributions. It's quite useful, but it's all in-memory, and doesn't provide a way to persist the data. A single <code class="literal">FreqDist</code> is also not accessible to multiple processes. We can change all that by building a <code class="literal">FreqDist</code> on top of Redis.</p><a id="id673" class="indexterm"/><p>Redis is a <span class="strong"><strong>data</strong></span> <span class="strong"><strong>structure</strong></span> <span class="strong"><strong>server</strong></span> that is one of the more popular <span class="emphasis"><em>NoSQL</em></span> databases. Among other things, it provides a network accessible database for storing dictionaries (also known as <span class="emphasis"><em>hash maps</em></span>). Building a <code class="literal">FreqDist</code> interface to a Redis hash map will allow us to create a persistent <code class="literal">FreqDist</code> that is accessible to multiple local and remote processes at the same time.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note28"/>Note</h3><p>Most Redis operations are <span class="strong"><strong>atomic</strong></span>, so it's even possible to have multiple processes write to the <code class="literal">FreqDist</code> concurrently.</p></div></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec307"/>Getting ready</h2></div></div></div><p>For this and subsequent recipes, we need to install both <code class="literal">Redis</code> and <code class="literal">redis-py</code>. A quick start install guide for Redis is available at <a class="ulink" href="http://code.google.com/p/redis/wiki/QuickStart">http://code.google.com/p/redis/wiki/QuickStart</a>. To use hash maps, you should install at least version <code class="literal">2.0.0</code> (the latest version as of this writing).</p><p>The <code class="literal">Redis</code> Python driver <code class="literal">redis-py</code> can be installed using <code class="literal">pip install redis</code> or <code class="literal">easy_install redis</code>. Ensure you install at least version <code class="literal">2.0.0</code> to use hash maps. The <code class="literal">redis-py</code> homepage is at <a class="ulink" href="http://github.com/andymccurdy/redis-py/">http://github.com/andymccurdy/redis-py/</a>.</p><p>Once both are installed and a <code class="literal">redis-server</code> process is running, you're ready to go. Let's assume <code class="literal">redis-server</code> is running on <code class="literal">localhost</code> on port <code class="literal">6379</code> (the default host and port).</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec308"/>How to do it...</h2></div></div></div><a id="id674" class="indexterm"/><a id="id675" class="indexterm"/><p>The <code class="literal">FreqDist</code> class extends the built-in <code class="literal">dict</code> class, which makes a <code class="literal">FreqDist</code> an enhanced dictionary. The <code class="literal">FreqDist</code> class provides two additional key methods: <code class="literal">inc()</code> and <code class="literal">N()</code>. The <code class="literal">inc()</code> method takes a single <code class="literal">sample</code> argument for the key, along with an optional <code class="literal">count</code> keyword argument that defaults to <code class="literal">1</code>, and increments the value at <code class="literal">sample</code> by <code class="literal">count</code>. <code class="literal">N()</code> returns the number of sample outcomes, which is the sum of all the values in the frequency distribution.</p><p>We can create an API-compatible class on top of Redis by extending a <code class="literal">RedisHashMap</code> (that will be explained in the next section), then implementing the <code class="literal">inc()</code> and <code class="literal">N()</code> methods. Since the <code class="literal">FreqDist</code> only stores integers, we also override a few other methods to ensure values are always integers. This <code class="literal">RedisHashFreqDist</code> (defined in <code class="literal">redisprob.py</code>) uses the <code class="literal">hincrby</code> command for the <code class="literal">inc()</code> method to increment the <code class="literal">sample</code> value by <code class="literal">count</code>, and sums all the values in the hash map for the <code class="literal">N()</code> method.</p><div class="informalexample"><pre class="programlisting">from rediscollections import RedisHashMap
+
+class RedisHashFreqDist(RedisHashMap):
+  def inc(self, sample, count=1):
+    self._r.hincrby(self._name, sample, count)
+
+  def N(self):
+    return int(sum(self.values()))
+
+  def __getitem__(self, key):
+    return int(RedisHashMap.__getitem__(self, key) or 0)
+
+  def values(self):
+    return [int(v) for v in RedisHashMap.values(self)]
+
+  def items(self):
+    return [(k, int(v)) for (k, v) in RedisHashMap.items(self)]</pre></div><p>We can use this class just like a <code class="literal">FreqDist</code>. To instantiate it, we must pass a <code class="literal">Redis</code> connection and the <code class="literal">name</code> of our hash map. The <code class="literal">name</code> should be a unique reference to this particular <code class="literal">FreqDist</code> so that it doesn't clash with any other keys in <code class="literal">Redis</code>.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; from redis import Redis
+&gt;&gt;&gt; from redisprob import RedisHashFreqDist
+&gt;&gt;&gt; r = Redis()
+&gt;&gt;&gt; rhfd = RedisHashFreqDist(r, 'test')
+&gt;&gt;&gt; len(rhfd)
+0
+&gt;&gt;&gt; rhfd.inc('foo')
+&gt;&gt;&gt; rhfd['foo']
+1
+&gt;&gt;&gt; rhfd.items()
+&gt;&gt;&gt; len(rhfd)
+1</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note29"/>Note</h3><p>The name of the hash map and the sample keys will be encoded to replace whitespace and <code class="literal">&amp;</code> characters with <code class="literal">_</code>. This is because the <code class="literal">Redis</code> protocol uses these characters for communication. It's best if the name and keys don't include whitespace to begin with.</p></div></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec309"/>How it works...</h2></div></div></div><a id="id676" class="indexterm"/><a id="id677" class="indexterm"/><p>Most of the work is done in the <code class="literal">RedisHashMap</code> class, found in <code class="literal">rediscollections.py</code>, which extends <code class="literal">collections.MutableMapping</code>, then overrides all methods that require Redis-specific commands. Here's an outline of each method that uses a specific <code class="literal">Redis</code> command:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">__len__()</code>: <a id="id678" class="indexterm"/>Uses the <code class="literal">hlen</code> command to get the number of elements in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">__contains__()</code>:<a id="id679" class="indexterm"/> Uses the <code class="literal">hexists</code> command to check if an element exists in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">__getitem__()</code>: <a id="id680" class="indexterm"/>Uses the <code class="literal">hget</code> command to get a value from the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">__setitem__()</code>: <a id="id681" class="indexterm"/>Uses the <code class="literal">hset</code> command to set a value in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">__delitem__()</code>: <a id="id682" class="indexterm"/>Uses the <code class="literal">hdel</code> command to remove a value from the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">keys()</code>: <a id="id683" class="indexterm"/>Uses the <code class="literal">hkeys</code> command to get all the keys in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">values()</code>: <a id="id684" class="indexterm"/>Uses the <code class="literal">hvals</code> command to get all the values in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">items()</code>: <a id="id685" class="indexterm"/>Uses the <code class="literal">hgetall</code> command to get a dictionary containing all the keys and values in the hash map</li><li class="listitem" style="list-style-type: disc"><code class="literal">clear()</code>: <a id="id686" class="indexterm"/>Uses the <code class="literal">delete</code> command to remove the entire hash map from <code class="literal">Redis</code></li></ul></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note30"/>Note</h3><p>Extending <code class="literal">collections.MutableMapping</code> provides a number of other <code class="literal">dict</code> compatible methods based on the previous methods, such as <code class="literal">update()</code> and <code class="literal">setdefault()</code>, so we don't have to implement them ourselves.</p></div></div><a id="id687" class="indexterm"/><a id="id688" class="indexterm"/><p>The initialization used for the <code class="literal">RedisHashFreqDist</code> is actually implemented here, and requires a <code class="literal">Redis</code> connection and a name for the hash map. The connection and name are both stored internally to use with all the subsequent commands. As mentioned before, whitespace is replaced by underscore in the name and all keys, for compatibility with the Redis network protocol.</p><div class="informalexample"><pre class="programlisting">import collections, re
+
+white = r'[\s&amp;]+'
+
+def encode_key(key):
+  return re.sub(white, '_', key.strip())
+
+class RedisHashMap(collections.MutableMapping):
+  def __init__(self, r, name):
+    self._r = r
+    self._name = encode_key(name)
+
+  def __iter__(self):
+    return iter(self.items())
+
+  def __len__(self):
+    return self._r.hlen(self._name)
+
+  def __contains__(self, key):
+    return self._r.hexists(self._name, encode_key(key))
+
+  def __getitem__(self, key):
+    return self._r.hget(self._name, encode_key(key))
+  
+  def __setitem__(self, key, val):
+    self._r.hset(self._name, encode_key(key), val)
+  
+  def __delitem__(self, key):
+    self._r.hdel(self._name, encode_key(key))
+  
+  def keys(self):
+    return self._r.hkeys(self._name)
+  
+  def values(self):
+    return self._r.hvals(self._name)
+  
+  def items(self):
+    return self._r.hgetall(self._name).items()
+  
+  def get(self, key, default=0):
+    return self[key] or default
+  
+  def iteritems(self):
+    return iter(self)
+  
+  def clear(self):
+    self._r.delete(self._name)</pre></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec310"/>There's more...</h2></div></div></div><a id="id689" class="indexterm"/><a id="id690" class="indexterm"/><p>The <code class="literal">RedisHashMap</code> can be used by itself as a persistent key-value dictionary. However, while the hash map can support a large number of keys and arbitrary string values, its storage structure is more optimal for integer values and smaller numbers of keys. However, don't let that stop you from taking full advantage of Redis. It's very fast (for a network server) and does its best to efficiently encode whatever data you throw at it.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note31"/>Note</h3><p>While Redis is quite fast for a network database, it will be significantly slower than the in-memory <code class="literal">FreqDist</code>. There's no way around this, but while you sacrifice speed, you gain persistence and the ability to do concurrent processing.</p></div></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec311"/>See also</h2></div></div></div><p>In the next recipe, we'll create a conditional frequency distribution based on the <code class="literal">Redis</code> frequency distribution created here.</p></div></div>
+<div class="section" title="Storing a conditional frequency distribution in Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec86"/>Storing a conditional frequency distribution in Redis</h1></div></div></div><a id="id691" class="indexterm"/><a id="id692" class="indexterm"/><p>The <code class="literal">nltk.probability.ConditionalFreqDist</code> class is a container for <code class="literal">FreqDist</code> instances, with one <code class="literal">FreqDist</code> per condition. It is used to count frequencies that are dependent on another condition, such as another word or a class label. We used this class in the <span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification</em></span>. Here, we'll create an API-compatible class on top of <code class="literal">Redis</code> using the <code class="literal">RedisHashFreqDist</code> from the previous recipe.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec312"/>Getting ready</h2></div></div></div><p>As in the previous recipe, you'll need to have <code class="literal">Redis</code> and <code class="literal">redis-py</code> installed with an instance of <code class="literal">redis-server</code> running.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec313"/>How to do it...</h2></div></div></div><p>We define a <code class="literal">RedisConditionalHashFreqDist</code> class in <code class="literal">redisprob.py</code> that extends <code class="literal">nltk.probability.ConditionalFreqDist</code> and overrides the <code class="literal">__contains__()</code> and <code class="literal">__getitem__()</code> methods. We then override <code class="literal">__getitem__()</code> so we can create an instance of <code class="literal">RedisHashFreqDist</code> instead of a <code class="literal">FreqDist</code>, and override <code class="literal">__contains__()</code> so we can call <code class="literal">encode_key()</code> from the <code class="literal">rediscollections</code> module before checking if the <code class="literal">RedisHashFreqDist</code> exists.</p><div class="informalexample"><pre class="programlisting">from nltk.probability import ConditionalFreqDist
+from rediscollections import encode_key
+
+class RedisConditionalHashFreqDist(ConditionalFreqDist):
+  def __init__(self, r, name, cond_samples=None):
+    self._r = r
+    self._name = name
+    ConditionalFreqDist.__init__(self, cond_samples)
+    # initialize self._fdists for all matching keys
+    for key in self._r.keys(encode_key('%s:*' % name)):
+      condition = key.split(':')[1]
+      self[condition] # calls self.__getitem__(condition)
+  
+  def __contains__(self, condition):
+    return encode_key(condition) in self._fdists
+  
+  def __getitem__(self, condition):
+    if condition not in self._fdists:
+      key = '%s:%s' % (self._name, condition)
+      self._fdists[condition] = RedisHashFreqDist(self._r, key)
+  
+    return self._fdists[condition]
+  
+  def clear(self):
+    for fdist in self._fdists.values():
+      fdist.clear()</pre></div><p>An instance of this class can be created by passing in a <code class="literal">Redis</code> connection and a <span class="emphasis"><em>base name</em></span>. After that, it works just like a <code class="literal">ConditionalFreqDist</code>.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; from redis import Redis
+&gt;&gt;&gt; from redisprob import RedisConditionalHashFreqDist
+&gt;&gt;&gt; r = Redis()
+&gt;&gt;&gt; rchfd = RedisConditionalHashFreqDist(r, 'condhash')
+&gt;&gt;&gt; rchfd.N()
+0
+&gt;&gt;&gt; rchfd.conditions()
+[]
+&gt;&gt;&gt; rchfd['cond1'].inc('foo')
+&gt;&gt;&gt; rchfd.N()
+1
+&gt;&gt;&gt; rchfd['cond1']['foo']
+1
+&gt;&gt;&gt; rchfd.conditions()
+['cond1']
+&gt;&gt;&gt; rchfd.clear()</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec314"/>How it works...</h2></div></div></div><a id="id693" class="indexterm"/><a id="id694" class="indexterm"/><p>The <code class="literal">RedisConditionalHashFreqDist</code> uses <span class="emphasis"><em>name prefixes</em></span> to reference <code class="literal">RedisHashFreqDist</code> instances. The name passed in to the <code class="literal">RedisConditionalHashFreqDist</code> is a <span class="emphasis"><em>base name</em></span> that is combined with each condition to create a unique name for each <code class="literal">RedisHashFreqDist</code>. For example, if the <span class="emphasis"><em>base name</em></span> of the <code class="literal">RedisConditionalHashFreqDist</code> is <code class="literal">'condhash'</code>, and the <span class="emphasis"><em>condition</em></span> is <code class="literal">'cond1'</code>, then the final name for the <code class="literal">RedisHashFreqDist</code> is <code class="literal">'condhash:cond1'</code>. This naming pattern is used at initialization to find all the existing hash maps using the <code class="literal">keys</code> command. By searching for all keys matching <code class="literal">'condhash:*'</code>, we can identify all the existing conditions and create an instance of <code class="literal">RedisHashFreqDist</code> for each.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note32"/>Note</h3><p>Combining strings with colons is a common naming convention for <code class="literal">Redis</code> keys as a way to define <span class="emphasis"><em>namespaces</em></span>. In our case, each <code class="literal">RedisConditionalHashFreqDist</code> instance defines a single namespace of hash maps.</p></div></div><p>The <code class="literal">ConditionalFreqDist</code> class stores an internal dictionary at <code class="literal">self._fdists</code> that is a mapping of <code class="literal">condition</code> to <code class="literal">FreqDist</code>. The <code class="literal">RedisConditionalHashFreqDist</code> class still uses <code class="literal">self._fdists</code>, but the values are instances of <code class="literal">RedisHashFreqDist</code> instead of <code class="literal">FreqDist</code>. <code class="literal">self._fdists</code> is created when we call <code class="literal">ConditionalFreqDist.__init__()</code>, and values are initialized as necessary in the <code class="literal">__getitem__()</code> method.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec315"/>There's more...</h2></div></div></div><p>
+<code class="literal">RedisConditionalHashFreqDist</code> also defines a <code class="literal">clear()</code> method. This is a helper method that calls <code class="literal">clear()</code> on all the internal <code class="literal">RedisHashFreqDist</code> instances. The <code class="literal">clear()</code> method is not defined in <code class="literal">ConditionalFreqDist</code>.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec316"/>See also</h2></div></div></div><p>The previous recipe covers the <code class="literal">RedisHashFreqDist</code> in detail. Also see the <span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification</em></span>, for example usage of a <code class="literal">ConditionalFreqDist</code>.</p></div></div>
+<div class="section" title="Storing an ordered dictionary in Redis"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec87"/>Storing an ordered dictionary in Redis</h1></div></div></div><a id="id695" class="indexterm"/><a id="id696" class="indexterm"/><a id="id697" class="indexterm"/><p>An ordered dictionary is like a normal <code class="literal">dict</code>, but the keys are ordered by an ordering function. In the case of <code class="literal">Redis</code>, it supports ordered dictionaries whose <span class="emphasis"><em>keys are strings</em></span> and whose <span class="emphasis"><em>values are floating point scores</em></span>. This structure can come in handy for cases such as calculating information gain (covered in the <span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification</em></span>) when you want to store all the words and scores for later use.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec317"/>Getting ready</h2></div></div></div><p>Again, you'll need <code class="literal">Redis</code> and <code class="literal">redis-py</code> installed, with an instance of <code class="literal">redis-server</code> running.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec318"/>How to do it...</h2></div></div></div><p>The <code class="literal">RedisOrderedDict</code> class in <code class="literal">rediscollections.py</code> extends <code class="literal">collections.MutableMapping</code> to get a number of <code class="literal">dict</code> compatible methods for free. Then it implements all the key methods that require <code class="literal">Redis</code> ordered set (also known as <span class="strong"><strong>Zset</strong></span>) commands.</p><div class="informalexample"><pre class="programlisting">class RedisOrderedDict(collections.MutableMapping):
+  def __init__(self, r, name):
+    self._r = r
+    self._name = encode_key(name)
+  
+  def __iter__(self):
+    return iter(self.items())
+  
+  def __len__(self):
+    return self._r.zcard(self._name)
+  
+  def __getitem__(self, key):
+    val = self._r.zscore(self._name, encode_key(key))
+  
+    if val is None:
+      raise KeyError
+    else:
+      return val
+  
+  def __setitem__(self, key, score):
+    self._r.zadd(self._name, encode_key(key), score)
+  
+  def __delitem__(self, key):by brain feels dead
+
+    self._r.zrem(self._name, encode_key(key))
+  
+  def keys(self, start=0, end=-1):
+    # we use zrevrange to get keys sorted by high value instead of by lowest
+    return self._r.zrevrange(self._name, start, end)
+  
+  def values(self, start=0, end=-1):
+    return [v for (k, v) in self.items(start=start, end=end)]
+  
+  def items(self, start=0, end=-1):
+    return self._r.zrevrange(self._name, start, end, withscores=True)
+  
+  def get(self, key, default=0):
+    return self[key] or default
+  
+  def iteritems(self):</pre></div><div class="informalexample"><pre class="programlisting">    return iter(self)
+  
+  def clear(self):
+    self._r.delete(self._name)</pre></div><a id="id698" class="indexterm"/><a id="id699" class="indexterm"/><a id="id700" class="indexterm"/><p>You can create an instance of <code class="literal">RedisOrderedDict</code> by passing in a <code class="literal">Redis</code> connection and a unique name.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; from redis import Redis
+&gt;&gt;&gt; from rediscollections import RedisOrderedDict
+&gt;&gt;&gt; r = Redis()
+&gt;&gt;&gt; rod = RedisOrderedDict(r, 'test.txt')
+&gt;&gt;&gt; rod.get('bar')
+&gt;&gt;&gt; len(rod)
+0
+&gt;&gt;&gt; rod['bar'] = 5.2
+&gt;&gt;&gt; rod['bar']
+5.2000000000000002
+&gt;&gt;&gt; len(rod)
+1
+&gt;&gt;&gt; rod.items()
+[('bar', 5.2000000000000002)]
+&gt;&gt;&gt; rod.clear()</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec319"/>How it works...</h2></div></div></div><p>Much of the code may look similar to the <code class="literal">RedisHashMap</code>, which is to be expected since they both extend <code class="literal">collections.MutableMapping</code>. The main difference here is that <code class="literal">RedisOrderedSet</code> orders keys by floating point values, and so is not suited for arbitrary key-value storage like the <code class="literal">RedisHashMap</code>. Here's an outline explaining each key method and how it works with <code class="literal">Redis</code>:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">__len__()</code>: <a id="id701" class="indexterm"/>Uses the <code class="literal">zcard</code> command to get the number of elements in the ordered set.</li><li class="listitem" style="list-style-type: disc"><code class="literal">__getitem__()</code>: <a id="id702" class="indexterm"/>Uses the <code class="literal">zscore</code> command to get the score of a key, and returns <code class="literal">0</code> if the key does not exist.</li><li class="listitem" style="list-style-type: disc"><code class="literal">__setitem__()</code>: <a id="id703" class="indexterm"/>Uses the <code class="literal">zadd</code> command to add a key to the ordered set with the given score, or updates the score if the key already exists.</li><li class="listitem" style="list-style-type: disc"><code class="literal">__delitem__()</code>: <a id="id704" class="indexterm"/>Uses the <code class="literal">zrem</code> command to remove a key from the ordered set.</li><li class="listitem" style="list-style-type: disc"><code class="literal">keys()</code>: <a id="id705" class="indexterm"/>Uses the <code class="literal">zrevrange</code> command to get all the keys in the ordered set, sorted by highest score. It takes two optional keyword arguments <code class="literal">start</code> and <code class="literal">end</code> to more efficiently get a slice of the ordered keys.</li><li class="listitem" style="list-style-type: disc"><code class="literal">values()</code>: <a id="id706" class="indexterm"/>Extracts all the scores from the <code class="literal">items()</code> method.</li><li class="listitem" style="list-style-type: disc"><code class="literal">items()</code>: <a id="id707" class="indexterm"/>Uses the <code class="literal">zrevrange</code> command to get the scores of each key in order to return a list of 2-tuples ordered by highest score. Like <code class="literal">keys()</code>, it takes <code class="literal">start</code> and <code class="literal">end</code> keyword arguments to efficiently get a slice.</li><li class="listitem" style="list-style-type: disc"><code class="literal">clear()</code>: <a id="id708" class="indexterm"/>Uses the <code class="literal">delete</code> command to remove the entire ordered set from <code class="literal">Redis</code>.</li></ul></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note33"/>Note</h3><p>The default ordering of items in a <code class="literal">Redis</code> ordered set is <span class="emphasis"><em>low-to-high</em></span>, so that the key with the lowest score comes first. This is the same as Python's default list ordering when you call <code class="literal">sort()</code> or <code class="literal">sorted()</code>, but it's not what we want when it comes to <span class="emphasis"><em>scoring</em></span>. For storing <span class="emphasis"><em>scores</em></span>, we expect items to be sorted from <span class="emphasis"><em>high-to-low</em></span>, which is why <code class="literal">keys()</code> and <code class="literal">items()</code> use <code class="literal">zrevrange</code> instead of <code class="literal">zrange</code>.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec320"/>There's more...</h2></div></div></div><p>As mentioned previously, the <code class="literal">keys()</code> and <code class="literal">items()</code> methods take optional <code class="literal">start</code> and <code class="literal">end</code> keyword arguments to get a slice of the results. This makes the <code class="literal">RedisOrderedDict</code> optimal for storing scores, then getting the top N keys. Here's a simple example where we assign three word scores, then get the top two:</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; from redis import Redis
+&gt;&gt;&gt; from rediscollections import RedisOrderedDict
+&gt;&gt;&gt; r = Redis()
+&gt;&gt;&gt; rod = RedisOrderedDict(r, 'scores')
+&gt;&gt;&gt; rod['best'] = 10
+&gt;&gt;&gt; rod['worst'] = 0.1
+&gt;&gt;&gt; rod['middle'] = 5
+&gt;&gt;&gt; rod.keys()
+['best', 'middle', 'worst']
+&gt;&gt;&gt; rod.keys(start=0, end=1)
+['best', 'middle']
+&gt;&gt;&gt; rod.clear()</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec321"/>See also</h2></div></div></div><p>
+<span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification,</em></span> describes how to calculate information gain, which is a good case for storing word scores in a <code class="literal">RedisOrderedDict</code>. The <span class="emphasis"><em>Storing a frequency distribution in Redis</em></span> recipe introduces <code class="literal">Redis</code> and the <code class="literal">RedisHashMap</code>.</p></div></div>
+<div class="section" title="Distributed word scoring with Redis and execnet"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec88"/>Distributed word scoring with Redis and execnet</h1></div></div></div><a id="id709" class="indexterm"/><a id="id710" class="indexterm"/><p>We can use <code class="literal">Redis</code> and <code class="literal">execnet</code> together to do distributed word scoring. In the <span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification</em></span>, we calculated the information gain of each word in the <code class="literal">movie_reviews</code> corpus using a <code class="literal">FreqDist</code> and <code class="literal">ConditionalFreqDist</code>. Now that we have <code class="literal">Redis</code>, we can do the same thing using a <code class="literal">RedisHashFreqDist</code> and a <code class="literal">RedisConditionalHashFreqDist</code>, then store the scores in a <code class="literal">RedisOrderedDict</code>. We can use <code class="literal">execnet</code> to distribute the counting in order to get better performance out of <code class="literal">Redis</code>.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec322"/>Getting ready</h2></div></div></div><p>
+<code class="literal">Redis</code>, <code class="literal">redis-py</code>, and <code class="literal">execnet</code> must be installed, and an instance of <code class="literal">redis-server</code> must be running on <code class="literal">localhost</code>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec323"/>How to do it...</h2></div></div></div><p>We start by getting a list of <code class="literal">(label, words)</code> tuples for each label in the <code class="literal">movie_reviews</code> corpus (which only has <code class="literal">pos</code> and <code class="literal">neg</code> labels). Then we get the <code class="literal">word_scores</code> using <code class="literal">score_words()</code> from the <code class="literal">dist_featx</code> module. <code class="literal">word_scores</code> is an instance of <code class="literal">RedisOrderedDict</code>, and we can see that the total number of words is 39,764. Using the <code class="literal">keys()</code> method, we can then get the top 1000 words, and inspect the top five just to see what they are. Once we have all we want from <code class="literal">word_scores</code>, we can delete the keys in <code class="literal">Redis</code> as we no longer need the data.</p><div class="informalexample"><pre class="programlisting">&gt;&gt;&gt; from dist_featx import score_words
+&gt;&gt;&gt; from nltk.corpus import movie_reviews
+&gt;&gt;&gt; labels = movie_reviews.categories()
+&gt;&gt;&gt; labelled_words = [(l, movie_reviews.words(categories=[l])) for l in labels]
+&gt;&gt;&gt; word_scores = score_words(labelled_words)
+&gt;&gt;&gt; len(word_scores)
+39764
+&gt;&gt;&gt; topn_words = word_scores.keys(end=1000)
+&gt;&gt;&gt; topn_words[0:5]
+['_', 'bad', '?', 'movie', 't']
+&gt;&gt;&gt; from redis import Redis
+&gt;&gt;&gt; r = Redis()
+&gt;&gt;&gt; [r.delete(key) for key in ['word_fd', 'label_word_fd:neg', 'label_word_fd:pos', 'word_scores']]
+[True, True, True, True]</pre></div><p>The <code class="literal">score_words()</code> function in <code class="literal">dist_featx</code> can take a while to complete, so expect to wait a couple of minutes. The overhead of using <code class="literal">execnet</code> and <code class="literal">Redis</code> means it will take significantly longer than a non-distributed in-memory version of the function.</p></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec324"/>How it works...</h2></div></div></div><a id="id711" class="indexterm"/><a id="id712" class="indexterm"/><p>The <code class="literal">dist_featx.py</code> module contains the <code class="literal">score_words()</code> function, which does the following:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Opens gateways and channels, sending initialization data to each.</li><li class="listitem">Sends each <code class="literal">(label, words)</code> tuple over a channel for counting.</li><li class="listitem">Sends a <code class="literal">done</code> message to each channel, waits for a <code class="literal">done</code> reply back, then closes the channels and gateways.</li><li class="listitem">Calculates the score of each word based on the counts and stores in a <code class="literal">RedisOrderedDict</code>.</li></ol></div><p>In our case of counting words in the <code class="literal">movie_reviews</code> corpus, calling <code class="literal">score_words()</code> opens two gateways and channels, one for counting the <code class="literal">pos</code> words, and the other for counting the <code class="literal">neg</code> words. The communication is as follows:</p><div class="mediaobject"><img src="graphics/3609OS_08_04.jpg" alt="How it works..."/></div><a id="id713" class="indexterm"/><a id="id714" class="indexterm"/><p>Once the counting is finished, we can score all the words and store the results. The code itself is as follows:</p><div class="informalexample"><pre class="programlisting">import itertools, execnet, remote_word_count
+from nltk.metrics import BigramAssocMeasures
+from redis import Redis
+from redisprob import RedisHashFreqDist, RedisConditionalHashFreqDist
+from rediscollections import RedisOrderedDict
+
+def score_words(labelled_words, score_fn=BigramAssocMeasures.chi_sq, host='localhost', specs=[('popen', 2)]):
+  gateways = []
+  channels = []
+  
+  for spec, count in specs:
+    for i in range(count):
+      gw = execnet.makegateway(spec)
+      gateways.append(gw)
+      channel = gw.remote_exec(remote_word_count)
+      channel.send((host, 'word_fd', 'label_word_fd'))
+      channels.append(channel)
+  
+  cyc = itertools.cycle(channels)
+  
+  for label, words in labelled_words:
+    channel = cyc.next()
+    channel.send((label, list(words)))
+  
+  for channel in channels:
+    channel.send('done')
+    assert 'done' == channel.receive()
+    channel.waitclose(5)
+  
+  for gateway in gateways:
+    gateway.exit()
+  
+  r = Redis(host)
+  fd = RedisHashFreqDist(r, 'word_fd')
+  cfd = RedisConditionalHashFreqDist(r, 'label_word_fd')
+  word_scores = RedisOrderedDict(r, 'word_scores')
+  n_xx = cfd.N()
+  
+  for label in cfd.conditions():
+    n_xi = cfd[label].N()
+  
+    for word, n_ii in cfd[label].iteritems():
+      n_ix = fd[word]
+  
+      if n_ii and n_ix and n_xi and n_xx:
+        score = score_fn(n_ii, (n_ix, n_xi), n_xx)
+        word_scores[word] = score
+  
+  return word_scores</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note34"/>Note</h3><a id="id715" class="indexterm"/><a id="id716" class="indexterm"/><p>Note that this scoring method will only be accurate when there are two labels. If there are more than two labels, then word scores for each label should be stored in separate <code class="literal">RedisOrderedDict</code> instances, one per label.</p></div></div><p>The <code class="literal">remote_word_count.py</code> module looks as follows:</p><div class="informalexample"><pre class="programlisting">from redis import Redis
+from redisprob import RedisHashFreqDist, RedisConditionalHashFreqDist
+  
+if __name__ == '__channelexec__':
+  host, fd_name, cfd_name = channel.receive()
+  r = Redis(host)
+  fd = RedisHashFreqDist(r, fd_name)
+  cfd = RedisConditionalHashFreqDist(r, cfd_name)
+  
+  for data in channel:
+    if data == 'done':
+      channel.send('done')
+      break
+  
+    label, words = data
+  
+    for word in words:
+      fd.inc(word)
+      cfd[label].inc(word)</pre></div><p>You'll notice this is not a pure module as it requires being able to import both <code class="literal">redis</code> and <code class="literal">redisprob</code>. The reason is that instances of <code class="literal">RedisHashFreqDist</code> and <code class="literal">RedisConditionalHashFreqDist</code> cannot be pickled and sent over the <code class="literal">channel</code>. Instead, we send the host name and key names over the channel so we can create the instances in the remote module. Once we have the instances, there are two kinds of data we can receive over the channel:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">A <code class="literal">done</code> message, which signals that there is no more data coming in over the channel. We reply back with another <code class="literal">done</code> message, then exit the loop to close the channel.</li><li class="listitem">A 2-tuple of <code class="literal">(label, words)</code>, which we then iterate over to increment counts in both the <code class="literal">RedisHashFreqDist</code> and <code class="literal">RedisConditionalHashFreqDist</code>.</li></ol></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec325"/>There's more...</h2></div></div></div><p>In this particular case, it would be faster to compute the scores without using <code class="literal">Redis</code> or <code class="literal">execnet</code>. However, by using <code class="literal">Redis</code>, we can store the scores persistently for later examination and usage. Being able to inspect all the word counts and scores manually is a great way to learn about your data. We can also tweak feature extraction without having to re-compute the scores. For example, you could use <code class="literal">featx.bag_of_words_in_set()</code> (found in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, Text Classification) with the top <code class="literal">N</code> words from the <code class="literal">RedisOrderedDict</code>, where <code class="literal">N</code> could be 1,000, 2,000, or whatever number you want. If our data size is much greater, the benefits of <code class="literal">execnet</code> will be much more apparent. Horizontal scalability using <code class="literal">execnet</code> or some other method to distribute computations across many nodes becomes more valuable, as the size of the data you need to process increases. </p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec326"/>See also</h2></div></div></div><p>The <span class="emphasis"><em>Calculating high information words</em></span> recipe in <a class="link" href="ch07.html" title="Chapter 7. Text Classification">Chapter 7</a>, <span class="emphasis"><em>Text Classification</em></span> introduces information gain scoring of words for feature extraction and classification. The first three recipes of this chapter show how to use <code class="literal">execnet</code>, while the next three recipes describe <code class="literal">RedisHashFreqDist</code>, <code class="literal">RedisConditionalHashFreqDist</code>, and <code class="literal">RedisOrderedDict</code> respectively.</p></div></div></body></html>

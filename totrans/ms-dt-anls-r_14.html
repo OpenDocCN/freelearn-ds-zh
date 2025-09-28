@@ -1,0 +1,356 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;14.&#xA0;Analyzing the R Community"><div class="titlepage"><div><div><h1 class="title"><a id="ch14"/>Chapter 14. Analyzing the R Community</h1></div></div></div><p>In this final chapter, I will try to summarize what you have learned in the past 13 chapters. To this end, we will create an actual case study, independent from the previously used <code class="literal">hflights</code> and <code class="literal">mtcars</code> datasets, and will now try to estimate the size of the R community. This is a rather difficult task as there is no list of R users around the world; thus, we will have to build some predicting models on a number of partial datasets.</p><p>To this end, we will do the following in this chapter:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Collect live data from different data sources on the Internet</li><li class="listitem" style="list-style-type: disc">Cleanse the data and transform it to a standard format</li><li class="listitem" style="list-style-type: disc">Run some quick descriptive, exploratory analysis methods</li><li class="listitem" style="list-style-type: disc">Visualize the extracted data</li><li class="listitem" style="list-style-type: disc">Build some log-linear models on the number of R users based on an independent list of names</li></ul></div><div class="section" title="R Foundation members"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec98"/>R Foundation members</h1></div></div></div><p>One of the easiest <a class="indexterm" id="id997"/>things we can do is count the members of the R Foundation—the organization coordinating the development of the core R program. As the ordinary members of the Foundation include only the <span class="emphasis"><em>R Development Core Team</em></span>, we had better check the supporting members. Anyone can become a supporting member of the Foundation by paying a nominal yearly fee— I highly suggest you do this, by the way. The list is available<a class="indexterm" id="id998"/> on the <a class="ulink" href="http://r-project.org">http://r-project.org</a> site, and we will use<a class="indexterm" id="id999"/> the <code class="literal">XML</code> package (for more detail, see <a class="link" href="ch02.html" title="Chapter 2. Getting Data from the Web">Chapter 2</a>, <span class="emphasis"><em>Getting Data from the Web</em></span>) to parse the HTML page:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(XML)</strong></span>
+<span class="strong"><strong>&gt; page &lt;- htmlParse('http://r-project.org/foundation/donors.html')</strong></span>
+</pre></div><p>Now that we have the HTML page loaded into R, we can use the XML Path Language to extract the list of the supporting members of the Foundation, by reading the list after the <code class="literal">Supporting members</code> header:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; list &lt;- unlist(xpathApply(page,</strong></span>
+<span class="strong"><strong>+     "//h3[@id='supporting-members']/following-sibling::ul[1]/li", </strong></span>
+<span class="strong"><strong>+     xmlValue))</strong></span>
+<span class="strong"><strong>&gt; str(list)</strong></span>
+<span class="strong"><strong> chr [1:279] "Klaus Abberger (Germany)" "Claudio Agostinelli (Italy)" </strong></span>
+</pre></div><p>Form this character vector of 279 names and countries, let's extract the list of supporting members and the countries separately:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; supporterlist &lt;- sub(' \\([a-zA-Z ]*\\)$', '', list)</strong></span>
+<span class="strong"><strong>&gt; countrylist   &lt;- substr(list, nchar(supporterlist) + 3,</strong></span>
+<span class="strong"><strong>+                               nchar(list) - 1)</strong></span>
+</pre></div><p>So we first extracted <a class="indexterm" id="id1000"/>the names by removing everything starting from the opening parenthesis in the strings, and then we matched the countries by the character positions computed from the number of characters in the names and the original strings.</p><p>Besides the name list of 279 supporting members of the R Foundation, we also know the proportion of the citizenship or residence of the members:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tail(sort(prop.table(table(countrylist)) * 100), 5)</strong></span>
+<span class="strong"><strong>     Canada Switzerland          UK     Germany         USA </strong></span>
+<span class="strong"><strong>   4.659498    5.017921    7.168459   15.770609   37.992832 </strong></span>
+</pre></div><div class="section" title="Visualizing supporting members around the world"><div class="titlepage"><div><div><h2 class="title"><a id="ch14lvl2sec80"/>Visualizing supporting members around the world</h2></div></div></div><p>Probably it's not that <a class="indexterm" id="id1001"/>surprising that most supporting members are from the USA, and some European countries are also at the top of this list. Let's save this table so that we can generate a map on this count data after some quick data transformations:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; countries &lt;- as.data.frame(table(countrylist))</strong></span>
+</pre></div><p>As mentioned in <a class="link" href="ch13.html" title="Chapter 13. Data Around Us">Chapter 13</a>, <span class="emphasis"><em>Data Around Us</em></span>, the <code class="literal">rworldmap</code> package<a class="indexterm" id="id1002"/> can render country-level maps in a very easy way; we just have to map the values with some polygons. Here, we will use the <code class="literal">joinCountryData2Map</code> function, first enabling the <code class="literal">verbose</code> option to see what country names have been missed:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(rworldmap)</strong></span>
+<span class="strong"><strong>&gt; joinCountryData2Map(countries, joinCode = 'NAME',</strong></span>
+<span class="strong"><strong>+    nameJoinColumn = 'countrylist', verbose = TRUE)</strong></span>
+<span class="strong"><strong>32 codes from your data successfully matched countries in the map</strong></span>
+<span class="strong"><strong>4 codes from your data failed to match with a country code in the map</strong></span>
+<span class="strong"><strong>     failedCodes failedCountries</strong></span>
+<span class="strong"><strong>[1,] NA          "Brasil"       </strong></span>
+<span class="strong"><strong>[2,] NA          "CZ"           </strong></span>
+<span class="strong"><strong>[3,] NA          "Danmark"      </strong></span>
+<span class="strong"><strong>[4,] NA          "NL"           </strong></span>
+<span class="strong"><strong>213 codes from the map weren't represented in your data</strong></span>
+</pre></div><p>So we tried to match the country names stored in the countries data frame, but failed for the previously listed four strings. Although we could manually fix this, in most cases it's better to automate what we can, so let's pass all the failed strings to the Google Maps geocoding API and see what it returns:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(ggmap)</strong></span>
+<span class="strong"><strong>&gt; for (fix in c('Brasil', 'CZ', 'Danmark', 'NL')) {</strong></span>
+<span class="strong"><strong>+   countrylist[which(countrylist == fix)] &lt;-</strong></span>
+<span class="strong"><strong>+       geocode(fix, output = 'more')$country</strong></span>
+<span class="strong"><strong>+ }</strong></span>
+</pre></div><p>Now that we have<a class="indexterm" id="id1003"/> fixed the country names with the help of the Google geocoding service, let's regenerate the frequency table and map those values to the polygon names with the<a class="indexterm" id="id1004"/> <code class="literal">rworldmap</code> package:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; countries &lt;- as.data.frame(table(countrylist))</strong></span>
+<span class="strong"><strong>&gt; countries &lt;- joinCountryData2Map(countries, joinCode = 'NAME',</strong></span>
+<span class="strong"><strong>+   nameJoinColumn = 'countrylist')</strong></span>
+<span class="strong"><strong>36 codes from your data successfully matched countries in the map</strong></span>
+<span class="strong"><strong>0 codes from your data failed to match with a country code in the map</strong></span>
+<span class="strong"><strong>211 codes from the map weren't represented in your data</strong></span>
+</pre></div><p>These results are much more satisfying! Now we have the number of supporting members of the R Foundation mapped to the countries, so we can easily plot this data:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; mapCountryData(countries, 'Freq', catMethod = 'logFixedWidth',</strong></span>
+<span class="strong"><strong>+   mapTitle = 'Number of R Foundation supporting members')</strong></span>
+</pre></div><div class="mediaobject"><img alt="Visualizing supporting members around the world" src="graphics/2028OS_14_01.jpg"/></div><p>Well, it's clear that<a class="indexterm" id="id1005"/> most supporting members of the R Foundation are based in the USA, Europe, Australia, and New Zealand (where R was born more than 20 years ago).</p><p>But the number of supporters is unfortunately really low, so let's see what other data sources we can find and utilize in order to estimate the number of R users around the world.</p></div></div></div>
+<div class="section" title="R package maintainers"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec99"/>R package maintainers</h1></div></div></div><p>Another similarly straightforward data source might be the list of<a class="indexterm" id="id1006"/> R package maintainers. We can download the names and e-mail addresses of the package maintainers from a public page of CRAN, where this data is stored in a nicely structured HTML table that is extremely easy to parse:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; packages &lt;- readHTMLTable(paste0('http://cran.r-project.org', </strong></span>
+<span class="strong"><strong>+   '/web/checks/check_summary.html'), which = 2)</strong></span>
+</pre></div><p>Extracting the names from the <code class="literal">Maintainer</code> column can be done via some quick data cleansing and transformations, mainly using regular expressions. Please note that the column name starts with a space—that's why we quoted the column name:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; maintainers &lt;- sub('(.*) &lt;(.*)&gt;', '\\1', packages$' Maintainer')</strong></span>
+<span class="strong"><strong>&gt; maintainers &lt;- gsub(' ', ' ', maintainers)</strong></span>
+<span class="strong"><strong>&gt; str(maintainers)</strong></span>
+<span class="strong"><strong> chr [1:6994] "Scott Fortmann-Roe" "Gaurav Sood" "Blum Michael" ...</strong></span>
+</pre></div><p>This list of almost 7,000 package maintainers includes some duplicated names (they maintain multiple packages). Let's see the list of the top, most prolific R package developers:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tail(sort(table(maintainers)), 8)</strong></span>
+<span class="strong"><strong>   Paul Gilbert     Simon Urbanek Scott Chamberlain   Martin Maechler </strong></span>
+<span class="strong"><strong>             22                22                24                25 </strong></span>
+<span class="strong"><strong>       ORPHANED       Kurt Hornik    Hadley Wickham Dirk Eddelbuettel </strong></span>
+<span class="strong"><strong>             26                29                31                36 </strong></span>
+</pre></div><p>Although there's an<a class="indexterm" id="id1007"/> odd name in the preceding list (orphaned packages do not have a maintainer—it's worth mentioning that having only 26 packages out of the 6,994 no longer actively maintained is a pretty good ratio), but the other names are indeed well known in the R community and work on a number of useful packages.</p><div class="section" title="The number of packages per maintainer"><div class="titlepage"><div><div><h2 class="title"><a id="ch14lvl2sec81"/>The number of packages per maintainer</h2></div></div></div><p>On the other<a class="indexterm" id="id1008"/> hand, there are a lot more names in the list associated with only one or a few R packages. Instead of visualizing the number of packages per maintainer on a simple bar chart or histogram, let's load the<a class="indexterm" id="id1009"/> <code class="literal">fitdistrplus</code> package, which we will use on the forthcoming pages to fit various theoretical distributions on this analyzed dataset:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; N &lt;- as.numeric(table(maintainers))</strong></span>
+<span class="strong"><strong>&gt; library(fitdistrplus)</strong></span>
+<span class="strong"><strong>&gt; plotdist(N)</strong></span>
+</pre></div><div class="mediaobject"><img alt="The number of packages per maintainer" src="graphics/2028OS_14_02.jpg"/></div><p>The preceding plots also show that most people in the list maintain only one, but no more than two or three, packages. If we are interested in how long/heavy tailed this distribution is, we might want to call the <code class="literal">descdist</code> function, which returns some important descriptive statistics on the <a class="indexterm" id="id1010"/>empirical distribution and also plots how different theoretical distributions fit our data on a skewness-kurtosis plot:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; descdist(N, boot = 1e3)</strong></span>
+<span class="strong"><strong>summary statistics</strong></span>
+<span class="strong"><strong>------</strong></span>
+<span class="strong"><strong>min:  1   max:  36 </strong></span>
+<span class="strong"><strong>median:  1 </strong></span>
+<span class="strong"><strong>mean:  1.74327 </strong></span>
+<span class="strong"><strong>estimated sd:  1.963108 </strong></span>
+<span class="strong"><strong>estimated skewness:  7.191722 </strong></span>
+<span class="strong"><strong>estimated kurtosis:  82.0168 </strong></span>
+</pre></div><div class="mediaobject"><img alt="The number of packages per maintainer" src="graphics/2028OS_14_03.jpg"/></div><p>Our empirical<a class="indexterm" id="id1011"/> distribution seems to be rather long-tailed with a very high kurtosis, and it seems that the gamma distribution is the best fit for this dataset. Let's see the estimate parameters of this gamma distribution:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; (gparams &lt;- fitdist(N, 'gamma'))</strong></span>
+<span class="strong"><strong>Fitting of the distribution ' gamma ' by maximum likelihood </strong></span>
+<span class="strong"><strong>Parameters:</strong></span>
+<span class="strong"><strong>      estimate Std. Error</strong></span>
+<span class="strong"><strong>shape 2.394869 0.05019383</strong></span>
+<span class="strong"><strong>rate  1.373693 0.03202067</strong></span>
+</pre></div><p>We can use these <a class="indexterm" id="id1012"/>parameters to simulate a lot more R package maintainers with the <code class="literal">rgamma</code> function. Let's see how many R packages would be available on CRAN with, for example, 100,000 package maintainers:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; gshape &lt;- gparams$estimate[['shape']]</strong></span>
+<span class="strong"><strong>&gt; grate  &lt;- gparams$estimate[['rate']]</strong></span>
+<span class="strong"><strong>&gt; sum(rgamma(1e5, shape = gshape, rate = grate))</strong></span>
+<span class="strong"><strong>[1] 173655.3</strong></span>
+<span class="strong"><strong>&gt; hist(rgamma(1e5, shape = gshape, rate = grate))</strong></span>
+</pre></div><div class="mediaobject"><img alt="The number of packages per maintainer" src="graphics/2028OS_14_04.jpg"/></div><p>It's rather clear that this distribution is not as long-tailed as our real dataset: even with 100,000 simulations, the largest number was below 10, as we can see in the preceding plot; in reality, though, the R package maintainers are a lot more productive with up to 20 or 30 packages.</p><p>Let's verify this by estimating the proportion of R package maintainers with no more than two packages based on the preceding gamma distribution:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; pgamma(2, shape = gshape, rate = grate)</strong></span>
+<span class="strong"><strong>[1] 0.6672011</strong></span>
+</pre></div><p>But this percentage is a lot higher in the real dataset:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; prop.table(table(N &lt;= 2))</strong></span>
+<span class="strong"><strong>    FALSE      TRUE </strong></span>
+<span class="strong"><strong>0.1458126 0.8541874 </strong></span>
+</pre></div><p>This may suggest trying<a class="indexterm" id="id1013"/> to fit a longer-tailed distribution. Let's see for example how Pareto distribution would fit our data. To this end, let's follow the analytical approach by using the lowest value as the location of the distribution, and the number of values divided by the sum of the logarithmic difference of all these values from the location as the shape parameter:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; ploc &lt;- min(N)</strong></span>
+<span class="strong"><strong>&gt; pshp &lt;- length(N) / sum(log(N) - log(ploc))</strong></span>
+</pre></div><p>Unfortunately, there is no <code class="literal">ppareto</code> function in the base <code class="literal">stats</code> package, so we have to first load <a class="indexterm" id="id1014"/>the <code class="literal">actuar</code> or<a class="indexterm" id="id1015"/> <code class="literal">VGAM</code> package to compute the distribution function:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(actuar)</strong></span>
+<span class="strong"><strong>&gt; ppareto(2, pshp, ploc)</strong></span>
+<span class="strong"><strong>[1] 0.9631973</strong></span>
+</pre></div><p>Well, now this is even higher than the real proportion! It seems that none of the preceding theoretical distributions fit our data perfectly—which is pretty normal by the way. But let's see how these distributions fit our original data set on a joint plot:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; fg &lt;- fitdist(N, 'gamma')</strong></span>
+<span class="strong"><strong>&gt; fw &lt;- fitdist(N, 'weibull')</strong></span>
+<span class="strong"><strong>&gt; fl &lt;- fitdist(N, 'lnorm')</strong></span>
+<span class="strong"><strong>&gt; fp &lt;- fitdist(N, 'pareto', start = list(shape = 1, scale = 1))</strong></span>
+<span class="strong"><strong>&gt; par(mfrow = c(1, 2))</strong></span>
+<span class="strong"><strong>&gt; denscomp(list(fg, fw, fl, fp), addlegend = FALSE)</strong></span>
+<span class="strong"><strong>&gt; qqcomp(list(fg, fw, fl, fp),</strong></span>
+<span class="strong"><strong>+   legendtext = c('gamma', 'Weibull', 'Lognormal', 'Pareto')) </strong></span>
+</pre></div><div class="mediaobject"><img alt="The number of packages per maintainer" src="graphics/2028OS_14_05.jpg"/></div><p>After all, it seems<a class="indexterm" id="id1016"/> that the Pareto distribution is the closest fit to our long-tailed data. But more importantly, we know about more than 4,000 R users besides the previously identified 279 R Foundation supporting members:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; length(unique(maintainers))</strong></span>
+<span class="strong"><strong>[1] 4012</strong></span>
+</pre></div><p>What other data sources can we use to find information on the (number of) R users?</p></div></div>
+<div class="section" title="The R-help mailing list"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec100"/>The R-help mailing list</h1></div></div></div><p>R-help is the official, main<a class="indexterm" id="id1017"/> mailing list providing general discussion about problems and solutions using R, with many active users and several dozen e-mails every day. Fortunately, this public mailing list is archived on several sites, and we can easily download the compressed monthly files from, for example, ETH Zurich's R-help archives:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(RCurl)</strong></span>
+<span class="strong"><strong>&gt; url &lt;- getURL('https://stat.ethz.ch/pipermail/r-help/')</strong></span>
+</pre></div><p>Now let's extract the URL of the monthly compressed archives from this page via an XPath query:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; R.help.toc &lt;- htmlParse(url)</strong></span>
+<span class="strong"><strong>&gt; R.help.archives &lt;- unlist(xpathApply(R.help.toc,</strong></span>
+<span class="strong"><strong>+      "//table//td[3]/a", xmlAttrs), use.names = FALSE)</strong></span>
+</pre></div><p>And now let's download these files to our computer for future parsing:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; dir.create('r-help')</strong></span>
+<span class="strong"><strong>&gt; for (f in R.help.archives)</strong></span>
+<span class="strong"><strong>+     download.file(url = paste0(url, f),</strong></span>
+<span class="strong"><strong>+          file.path('help-r', f), method = 'curl'))</strong></span>
+</pre></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note73"/>Note</h3><p>Depending on your operating system and R version, the <code class="literal">curl</code> option that we used to download files via the HTTPS protocol might not be available. In such cases, you can try other another method or update the query to use the <code class="literal">RCurl</code>, <code class="literal">curl</code>, or <code class="literal">httr</code> packages.</p></div></div><p>Downloading<a class="indexterm" id="id1018"/> these ~200 files takes some time and you might also want to add a <code class="literal">Sys.sleep</code> call in the loop so as not to overload the server. Anyway, after some time, you will have a local copy of the <code class="literal">R-help</code> mailing list in the <code class="literal">r-help</code> folder, ready to be parsed for some interesting data:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; lines &lt;- system(paste0(</strong></span>
+<span class="strong"><strong>+     "zgrep -E '^From: .* at .*' ./help-r/*.txt.gz"),</strong></span>
+<span class="strong"><strong>+                 intern = TRUE)</strong></span>
+<span class="strong"><strong>&gt; length(lines)</strong></span>
+<span class="strong"><strong>[1] 387218</strong></span>
+<span class="strong"><strong>&gt; length(unique(lines))</strong></span>
+<span class="strong"><strong>[1] 110028</strong></span>
+</pre></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note74"/>Note</h3><p>Instead of loading all the text files into R and using <code class="literal">grep</code> there, I pre-filtered the files via the Linux command line <code class="literal">zgrep</code> utility, which can search in <code class="literal">gzipped</code> (compressed) text files efficiently. If you do not have <code class="literal">zgrep</code> installed (it is available on both Windows and the Mac), you can extract the files first and use the standard <code class="literal">grep</code> approach with the very same regular expression.</p></div></div><p>So we filtered for all lines of the e-mails and headers, starting with the <code class="literal">From</code> string, that hold information on the senders in the e-mail address and name. Out of the ~387,000 e-mails, we have found around ~110,000 unique e-mail sources. To understand the following regular expressions, let's see how one of these lines looks:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; lines[26]</strong></span>
+<span class="strong"><strong>[1] "./1997-April.txt.gz:From: pcm at ptd.net (Paul C. Murray)"</strong></span>
+</pre></div><p>Now let's process these lines by removing the static prefix and extracting the names found between parentheses after the e-mail address:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; lines    &lt;- sub('.*From: ', '', lines)</strong></span>
+<span class="strong"><strong>&gt; Rhelpers &lt;- sub('.*\\((.*)\\)', '\\1', lines)</strong></span>
+</pre></div><p>And we can see the list of the most active <code class="literal">R-help</code> posters:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tail(sort(table(Rhelpers)), 6)</strong></span>
+<span class="strong"><strong>       jim holtman     Duncan Murdoch         Uwe Ligges </strong></span>
+<span class="strong"><strong>              4284               6421               6455 </strong></span>
+<span class="strong"><strong>Gabor Grothendieck  Prof Brian Ripley    David Winsemius </strong></span>
+<span class="strong"><strong>              8461               9287              10135</strong></span>
+</pre></div><p>This list <a class="indexterm" id="id1019"/>seems to be legitimate, right? Although my first guess was that Professor Brian Ripley with his brief messages will be the first one in this list. As a result of some earlier experiences, I know that matching names can be tricky and cumbersome, so let's verify that our data is clean enough and there's only one version of the Professor's name:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; grep('Brian( D)? Ripley', names(table(Rhelpers)), value = TRUE)</strong></span>
+<span class="strong"><strong> [1] "Brian D Ripley"</strong></span>
+<span class="strong"><strong> [2] "Brian D Ripley [mailto:ripley at stats.ox.ac.uk]"</strong></span>
+<span class="strong"><strong> [3] "Brian Ripley"</strong></span>
+<span class="strong"><strong> [4] "Brian Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong> [5] "Prof Brian D Ripley"</strong></span>
+<span class="strong"><strong> [6] "Prof Brian D Ripley [mailto:ripley at stats.ox.ac.uk]"</strong></span>
+<span class="strong"><strong> [7] "         Prof Brian D Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong> [8] "\"Prof Brian D Ripley\" &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong> [9] "Prof Brian D Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[10] "Prof Brian Ripley"</strong></span>
+<span class="strong"><strong>[11] "Prof. Brian Ripley"</strong></span>
+<span class="strong"><strong>[12] "Prof Brian Ripley [mailto:ripley at stats.ox.ac.uk]"</strong></span>
+<span class="strong"><strong>[13] "Prof Brian Ripley [mailto:ripley at stats.ox.ac.uk] "</strong></span>
+<span class="strong"><strong>[14] "          \tProf Brian Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[15] "  Prof Brian Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[16] "\"Prof Brian Ripley\" &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[17] "Prof Brian Ripley&lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[18] "Prof Brian Ripley &lt;ripley at stats.ox.ac.uk&gt;"</strong></span>
+<span class="strong"><strong>[19] "Prof Brian Ripley [ripley at stats.ox.ac.uk]"</strong></span>
+<span class="strong"><strong>[20] "Prof Brian Ripley &lt;ripley at toucan.stats&gt;"</strong></span>
+<span class="strong"><strong>[21] "Professor Brian Ripley"</strong></span>
+<span class="strong"><strong>[22] "r-help-bounces at r-project.org [mailto:r-help-bounces at r-project.org] On Behalf Of Prof Brian Ripley"        </strong></span>
+<span class="strong"><strong>[23] "r-help-bounces at stat.math.ethz.ch [mailto:r-help-bounces at stat.math.ethz.ch] On Behalf Of Prof Brian Ripley"</strong></span>
+</pre></div><p>Well, it seems that the Professor used some alternative <code class="literal">From</code> addresses as well, so a more valid estimate of the number of his messages should be something like:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; sum(grepl('Brian( D)? Ripley', Rhelpers))</strong></span>
+<span class="strong"><strong>[1] 10816</strong></span>
+</pre></div><p>So using quick, regular <a class="indexterm" id="id1020"/>expressions to extract the names from the e-mails returned most of the information we were interested in, but it seems that we have to spend a lot more time to get the whole information set. As usual, the Pareto rule applies: we can spend around 80 percent of our time on preparing data, and we can get 80 percent of the data in around 20 percent of the whole project timeline.</p><p>Due to page limitations, we will not cover data cleansing on this dataset in greater detail at this point, but I highly suggest checking Mark van der Loo's<a class="indexterm" id="id1021"/> <code class="literal">stringdist</code> package, which can compute string distances and similarities to, for example, merge similar names in cases like this.</p><div class="section" title="Volume of the R-help mailing list"><div class="titlepage"><div><div><h2 class="title"><a id="ch14lvl2sec82"/>Volume of the R-help mailing list</h2></div></div></div><p>But besides the <a class="indexterm" id="id1022"/>sender, these e-mails also include some other really interesting <a class="indexterm" id="id1023"/>data as well. For example, we can extract the date and time when the e-mail was sent—to model the frequency and temporal pattern of the mailing list.</p><p>To this end, let's filter for some other lines in the compressed text files:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; lines &lt;- system(paste0(</strong></span>
+<span class="strong"><strong>+     "zgrep -E '^Date: [A-Za-z]{3}, [0-9]{1,2} [A-Za-z]{3} ",</strong></span>
+<span class="strong"><strong>+     "[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} [-+]{1}[0-9]{4}' ",</strong></span>
+<span class="strong"><strong>+     "./help-r/*.txt.gz"),</strong></span>
+<span class="strong"><strong>+                 intern = TRUE)</strong></span>
+</pre></div><p>This returns fewer lines when compared to the previously extracted <code class="literal">From</code> lines:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; length(lines)</strong></span>
+<span class="strong"><strong>[1] 360817</strong></span>
+</pre></div><p>This is due to the various date and time formats used in the e-mail headers, as sometimes the day of the week was not included in the string or the order of year, month, and day was off compared to the vast majority of other mails. Anyway, we will only concentrate on this significant portion of mails with the standard date and time format but, if you are interested in transforming these other time formats, you might want to check Hadley Wickham's<a class="indexterm" id="id1024"/> <code class="literal">lubridate</code> package to help your workflow. But please note that there's no general algorithm to guess the order of decimal year, month, and day—so you <a class="indexterm" id="id1025"/>will end up with some manual data cleansing for <a class="indexterm" id="id1026"/>sure!</p><p>Let's see how these (subset of) lines look:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; head(sub('.*Date: ', '', lines[1]))</strong></span>
+<span class="strong"><strong>[1] "Tue, 1 Apr 1997 20:35:48 +1200 (NZST)"</strong></span>
+</pre></div><p>Then we can simply get rid of the <code class="literal">Date</code> prefix and parse the time stamps via <code class="literal">strptime</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; times &lt;- strptime(sub('.*Date: ', '', lines),</strong></span>
+<span class="strong"><strong>+            format = '%a, %d %b %Y %H:%M:%S %z')</strong></span>
+</pre></div><p>Now that the data is in a parsed format (even the local time-zones were converted to UTC), it's relatively easy to see, for example, the number of e-mails on the mailing list per year:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; plot(table(format(times, '%Y')), type = 'l')</strong></span>
+</pre></div><div class="mediaobject"><img alt="Volume of the R-help mailing list" src="graphics/2028OS_14_06.jpg"/></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note75"/>Note</h3><p>Although the volume on the <code class="literal">R-help</code> mailing list<a class="indexterm" id="id1027"/> seems to have decreased in the past few years, it's not due to the lower R activity: R users, okay as is or no/. others on the Internet, nowadays tend to use other information channels more often than e-mail—for example: StackOverflow and GitHub (or even Facebook and LinkedIn). For a related research, please see the paper of Bogdan Vasilescu at al at <a class="ulink" href="http://web.cs.ucdavis.edu/~filkov/papers/r_so.pdf">http://web.cs.ucdavis.edu/~filkov/papers/r_so.pdf</a>.</p></div></div><p>Well, we can do a lot better than this, right? Let's massage our data a bit and visualize the frequency of mails based on the day of week and hour of the day via a more elegant graph—inspired by GitHub's punch card plot:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(data.table)</strong></span>
+<span class="strong"><strong>&gt; Rhelp &lt;- data.table(time = times)</strong></span>
+<span class="strong"><strong>&gt; Rhelp[, H := hour(time)]</strong></span>
+<span class="strong"><strong>&gt; Rhelp[, D := wday(time)]</strong></span>
+</pre></div><p>Visualizing this dataset<a class="indexterm" id="id1028"/> is relatively<a class="indexterm" id="id1029"/> straightforward with <code class="literal">ggplot</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(ggplot2)</strong></span>
+<span class="strong"><strong>&gt; ggplot(na.omit(Rhelp[, .N, by = .(H, D)]),</strong></span>
+<span class="strong"><strong>+      aes(x = factor(H), y = factor(D), size = N)) + geom_point() +</strong></span>
+<span class="strong"><strong>+      ylab('Day of the week') + xlab('Hour of the day') +</strong></span>
+<span class="strong"><strong>+      ggtitle('Number of mails posted on [R-help]') +</strong></span>
+<span class="strong"><strong>+      theme_bw() + theme('legend.position' = 'top')</strong></span>
+</pre></div><div class="mediaobject"><img alt="Volume of the R-help mailing list" src="graphics/2028OS_14_07.jpg"/></div><p>As the times are by UTC, the early morning mails might suggest that where most <code class="literal">R-help</code> posters live has a positive GMT offset—if we suppose that most e-mails were written in business hours. Well, at least the lower number of e-mails on the weekends seems to suggest this statement.</p><p>And it seems that the<a class="indexterm" id="id1030"/> UTC, UTC+1, and UTC+2 time zones are indeed rather frequent, but the US time <a class="indexterm" id="id1031"/>zones are also pretty common for the <code class="literal">R-help</code> posters:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tail(sort(table(sub('.*([+-][0-9]{4}).*', '\\1', lines))), 22)</strong></span>
+<span class="strong"><strong>-1000 +0700 +0400 -0200 +0900 -0000 +0300 +1300 +1200 +1100 +0530 </strong></span>
+<span class="strong"><strong>  164   352   449  1713  1769  2585  2612  2917  2990  3156  3938 </strong></span>
+<span class="strong"><strong>-0300 +1000 +0800 -0600 +0000 -0800 +0200 -0500 -0400 +0100 -0700 </strong></span>
+<span class="strong"><strong> 4712  5081  5493 14351 28418 31661 42397 47552 50377 51390 55696</strong></span>
+</pre></div></div><div class="section" title="Forecasting the e-mail volume in the future"><div class="titlepage"><div><div><h2 class="title"><a id="ch14lvl2sec83"/>Forecasting the e-mail volume in the future</h2></div></div></div><p>And we can also use this <a class="indexterm" id="id1032"/>relatively clean dataset to forecast the future volume of the <code class="literal">R-help</code> mailing list. To this end, let's aggregate the original dataset to count data daily, as we saw in <a class="link" href="ch03.html" title="Chapter 3. Filtering and Summarizing Data">Chapter 3</a>, <span class="emphasis"><em>Filtering and Summarizing Data</em></span>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; Rhelp[, date := as.Date(time)]</strong></span>
+<span class="strong"><strong>&gt; Rdaily &lt;- na.omit(Rhelp[, .N, by = date])</strong></span>
+</pre></div><p>Now let's transform this <code class="literal">data.table</code> object into a time-series object by referencing the actual mail counts as values and the dates as the index:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; Rdaily &lt;- zoo(Rdaily$N, Rdaily$date)</strong></span>
+</pre></div><p>Well, this daily dataset is a lot spikier than the previously rendered yearly graph:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; plot(Rdaily)</strong></span>
+</pre></div><div class="mediaobject"><img alt="Forecasting the e-mail volume in the future" src="graphics/2028OS_14_08.jpg"/></div><p>But instead of smoothing or<a class="indexterm" id="id1033"/> trying to decompose this time-series, like we did in <a class="link" href="ch12.html" title="Chapter 12. Analyzing Time-series">Chapter 12</a>, <span class="emphasis"><em>Analyzing Time-series</em></span>, let's rather see how we can provide some quick estimates (based on historical data) on the forthcoming number of mails on this mailing list with some automatic models. To this end, we will use<a class="indexterm" id="id1034"/> the <code class="literal">forecast</code> package:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(forecast)</strong></span>
+<span class="strong"><strong>&gt; fit &lt;- ets(Rdaily)</strong></span>
+</pre></div><p>The <code class="literal">ets</code> function implements a fully automatic method that can select the optimal trend, season, and error type for the given time-series. Then we can simply call the <code class="literal">predict</code> or <code class="literal">forecast</code> function to see the specified number of estimates, only for the next day in this case:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; predict(fit, 1)</strong></span>
+<span class="strong"><strong>     Point Forecast   Lo 80    Hi 80        Lo 95    Hi 95</strong></span>
+<span class="strong"><strong>5823       28.48337 9.85733 47.10942 -0.002702251 56.96945</strong></span>
+</pre></div><p>So it seems that, for the next day, our model estimated around 28 e-mails with a confidence interval of 80 percent being somewhere between 10 and 47. Visualizing predictions for a slightly longer period of time with some historical data can be done via the standard <code class="literal">plot</code> function with some useful new parameters:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; plot(forecast(fit, 30), include = 365)</strong></span>
+</pre></div><div class="mediaobject"><img alt="Forecasting the e-mail volume in the future" src="graphics/2028OS_14_09.jpg"/></div></div></div>
+<div class="section" title="Analyzing overlaps between our lists of R users"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec101"/>Analyzing overlaps between our lists of R users</h1></div></div></div><p>But our original idea<a class="indexterm" id="id1035"/> was to predict the number of R users <a class="indexterm" id="id1036"/>around the world and not to focus on some minor segments, right? Now that we have multiple data sources, we can start building some models combining those to provide estimates on the global number of R users.</p><p>The basic idea behind this approach is the capture-recapture method, which is well known in ecology, where we first try to identify the probability of capturing a unit from the population, and then we use this probability to estimate the number of not captured units.</p><p>In our current study, units will be R users and the samples are the previously captured name lists on the:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Supporters of the <span class="emphasis"><em>R Foundation</em></span></li><li class="listitem" style="list-style-type: disc">R package maintainers who submitted at least one package to <span class="emphasis"><em>CRAN</em></span></li><li class="listitem" style="list-style-type: disc"><span class="emphasis"><em>R-help</em></span> mailing list e-mail senders</li></ul></div><p>Let's merge these lists with a tag referencing the data source:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; lists &lt;- rbindlist(list(</strong></span>
+<span class="strong"><strong>+     data.frame(name = unique(supporterlist), list = 'supporter'),</strong></span>
+<span class="strong"><strong>+     data.frame(name = unique(maintainers),   list = 'maintainer'),</strong></span>
+<span class="strong"><strong>+     data.frame(name = unique(Rhelpers),      list = 'R-help')))</strong></span>
+</pre></div><p>Next let's see the number of names we can find in one, two or all three groups:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; t &lt;- table(lists$name, lists$list)</strong></span>
+<span class="strong"><strong>&gt; table(rowSums(t))</strong></span>
+<span class="strong"><strong>    1     2     3 </strong></span>
+<span class="strong"><strong>44312   860    40</strong></span>
+</pre></div><p>So there are (at least) 40 persons who support the R Foundation, maintain at least one R package on CRAN, and have posted at least one mail to <code class="literal">R-help</code> since 1997! I am happy and proud to be one of these guys -- especially with an accent in my name, which often makes matching of strings more complex.</p><p>Now, if we suppose these lists refer to the same population, namely R users around the world, then we can use these common occurrences to predict the number of R users who somehow missed supporting the R Foundation, maintaining a package on CRAN, and writing a mail to the R-help mailing list. Although this assumption is obviously off, let's run this quick experiment and get back to these outstanding questions later.</p><p>One of the best <a class="indexterm" id="id1037"/>things in R is that we have a package<a class="indexterm" id="id1038"/> for almost any problem. Let's load the<a class="indexterm" id="id1039"/> <code class="literal">Rcapture</code> package, which provides some sophisticated, yet easily accessible, methods for capture-recapture models:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(Rcapture)</strong></span>
+<span class="strong"><strong>&gt; descriptive(t)</strong></span>
+
+<span class="strong"><strong>Number of captured units: 45212 </strong></span>
+ 
+<span class="strong"><strong>Frequency statistics:</strong></span>
+<span class="strong"><strong>          fi     ui     vi     ni   </strong></span>
+<span class="strong"><strong>i = 1  44312    279    157    279</strong></span>
+<span class="strong"><strong>i = 2    860   3958   3194   4012</strong></span>
+<span class="strong"><strong>i = 3     40  40975  41861  41861</strong></span>
+<span class="strong"><strong>fi: number of units captured i times</strong></span>
+<span class="strong"><strong>ui: number of units captured for the first time on occasion i</strong></span>
+<span class="strong"><strong>vi: number of units captured for the last time on occasion i</strong></span>
+<span class="strong"><strong>ni: number of units captured on occasion i </strong></span>
+</pre></div><p>These numbers from the first <code class="literal">fi</code> column are familiar from the previous table, and represent the number of R users identified on one, two, or all three lists. It's a lot more interesting to fit some models on this data with a simple call such as:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; closedp(t)</strong></span>
+
+<span class="strong"><strong>Number of captured units: 45212 </strong></span>
+
+<span class="strong"><strong>Abundance estimations and model fits:</strong></span>
+<span class="strong"><strong>               abundance     stderr  deviance df       AIC       BIC</strong></span>
+<span class="strong"><strong>M0              750158.4    23800.7 73777.800  5 73835.630 73853.069</strong></span>
+<span class="strong"><strong>Mt              192022.2     5480.0   240.278  3   302.109   336.986</strong></span>
+<span class="strong"><strong>Mh Chao (LB)    806279.2    26954.8 73694.125  4 73753.956 73780.113</strong></span>
+<span class="strong"><strong>Mh Poisson2    2085896.4   214443.8 73694.125  4 73753.956 73780.113</strong></span>
+<span class="strong"><strong>Mh Darroch     5516992.8  1033404.9 73694.125  4 73753.956 73780.113</strong></span>
+<span class="strong"><strong>Mh Gamma3.5   14906552.8  4090049.0 73694.125  4 73753.956 73780.113</strong></span>
+<span class="strong"><strong>Mth Chao (LB)   205343.8     6190.1    30.598  2    94.429   138.025</strong></span>
+<span class="strong"><strong>Mth Poisson2   1086549.0   114592.9    30.598  2    94.429   138.025</strong></span>
+<span class="strong"><strong>Mth Darroch    6817027.3  1342273.7    30.598  2    94.429   138.025</strong></span>
+<span class="strong"><strong>Mth Gamma3.5  45168873.4 13055279.1    30.598  2    94.429   138.025</strong></span>
+<span class="strong"><strong>Mb                 -36.2        6.2   107.728  4   167.559   193.716</strong></span>
+<span class="strong"><strong>Mbh               -144.2       25.9    84.927  3   146.758   181.635</strong></span>
+</pre></div><p>Once again, I have to<a class="indexterm" id="id1040"/> emphasize that these estimates are not <a class="indexterm" id="id1041"/>actually on the abundance of all R users around the world, because:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Our non-independent lists refer to far more specific groups</li><li class="listitem" style="list-style-type: disc">The model assumptions do not stand</li><li class="listitem" style="list-style-type: disc">The R community is definitely not a closed population and some open-population models would be more reliable</li><li class="listitem" style="list-style-type: disc">We missed some very important data-cleansing steps, as noted</li></ul></div><div class="section" title="Further ideas on extending the capture-recapture models"><div class="titlepage"><div><div><h2 class="title"><a id="ch14lvl2sec84"/>Further ideas on extending the capture-recapture models</h2></div></div></div><p>Although this playful<a class="indexterm" id="id1042"/> example did not really help us to find out the number of R users around the world, with some extensions the basic idea is definitely viable. First of all, we might consider analyzing the source data in smaller chunks—for example, looking for the same e-mail addresses or names in different years of the R-help archives. This might help with estimating the number of persons who were thinking about submitting a question to <code class="literal">R-help</code>, but did not actually send the e-mail after all (for example, because another poster's question had already been answered or she/he resolved the problem without external help).</p><p>On the other hand, we could also add a number of other data sources to the models, so that we can do more reliable estimates on some other R users who do not contribute to the R Foundation, CRAN, or R-help.</p><p>I have been <a class="indexterm" id="id1043"/>working on a similar study over the past 2 years, collecting data on the number of:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">R Foundation ordinary and supporting members, donators and benefactors</li><li class="listitem" style="list-style-type: disc">Attendees at the annual R conference between 2004 and 2015</li><li class="listitem" style="list-style-type: disc">CRAN downloads per package and country in 2013 and 2014</li><li class="listitem" style="list-style-type: disc">R User Groups and meet-ups with the number of members</li><li class="listitem" style="list-style-type: disc">The <a class="ulink" href="http://www.r-bloggers.com">http://www.r-bloggers.com</a> visitors in <a class="indexterm" id="id1044"/>2013</li><li class="listitem" style="list-style-type: disc">GitHub users with at least one repository with R source code</li><li class="listitem" style="list-style-type: disc">Google search trends on R-related terms</li></ul></div><p>You can find the<a class="indexterm" id="id1045"/> results on an interactive map and the country-level aggregated data in a CSV file at <a class="ulink" href="http://rapporter.net/custom/R-activity">http://rapporter.net/custom/R-activity</a> and an offline data visualization presented in the past two <span class="emphasis"><em>useR!</em></span> conferences at <a class="ulink" href="http://bit.ly/useRs2015">http://bit.ly/useRs2015</a>.</p></div></div>
+<div class="section" title="The number of R users in social media"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec102"/>The number of R users in social media</h1></div></div></div><p>An alternative way to try to <a class="indexterm" id="id1046"/>estimate the number of R users could be to analyze the occurrence of the related terms on social media. This is relatively easy on Facebook, where the marketing API allows us to query the size of the so-called target audiences, which we can use to define targets for some paid ads.</p><p>Well, we are not actually interested in creating a paid advertisement on Facebook right now, although this can be easily done with<a class="indexterm" id="id1047"/> the <code class="literal">fbRads</code> package, but we can use this feature to see the estimated size of the <span class="emphasis"><em>target</em></span> group of persons interested in R:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(fbRads)</strong></span>
+<span class="strong"><strong>&gt; fbad_init(FB account ID, FB API token)</strong></span>
+<span class="strong"><strong>&gt; fbad_get_search(q = 'rstats', type = 'adinterest')</strong></span>
+<span class="strong"><strong>         id                       name audience_size path description</strong></span>
+<span class="strong"><strong>6003212345926 R (programming language)       1308280 NULL          NA</strong></span>
+</pre></div><p>Of course, to run this quick example you will need to have a (free) Facebook developer account, a registered application, and a generated token (please see the package docs for more details), but it is definitely worth it: we have just found out that there are more than 1.3M users around the <a class="indexterm" id="id1048"/>world interested in R! That's really impressive, although it seems to be rather high to me, especially when compared with some other statistical software, such as:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; fbad_get_search(fbacc = fbacc, q = 'SPSS', type = 'adinterest')</strong></span>
+<span class="strong"><strong>             id      name audience_size path description</strong></span>
+<span class="strong"><strong>1 6004181236095      SPSS        203840 NULL          NA</strong></span>
+<span class="strong"><strong>2 6003262140109 SPSS Inc.          2300 NULL          NA</strong></span>
+</pre></div><p>Having said this, comparing R with other programming languages suggests that the audience size might actually be correct:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; res &lt;- fbad_get_search(fbacc = fbacc, q = 'programming language',</strong></span>
+<span class="strong"><strong>+                        type = 'adinterest')</strong></span>
+<span class="strong"><strong>&gt; res &lt;- res[order(res$audience_size, decreasing = TRUE), ]</strong></span>
+<span class="strong"><strong>&gt; res[1:10, 1:3]</strong></span>
+<span class="strong"><strong>              id                          name audience_size</strong></span>
+<span class="strong"><strong>1  6003030200185          Programming language     295308880</strong></span>
+<span class="strong"><strong>71 6004131486306                           C++      27812820</strong></span>
+<span class="strong"><strong>72 6003017204650                           PHP      23407040</strong></span>
+<span class="strong"><strong>73 6003572165103               Lazy evaluation      18251070</strong></span>
+<span class="strong"><strong>74 6003568029103   Object-oriented programming      14817330</strong></span>
+<span class="strong"><strong>2  6002979703120   Ruby (programming language)      10346930</strong></span>
+<span class="strong"><strong>75 6003486129469                      Compiler      10101110</strong></span>
+<span class="strong"><strong>76 6003127967124                    JavaScript       9629170</strong></span>
+<span class="strong"><strong>3  6003437022731   Java (programming language)       8774720</strong></span>
+<span class="strong"><strong>4  6003682002118 Python (programming language)       7932670</strong></span>
+</pre></div><p>There are many programmers around the world, it seems! But what are they talking about and what are the trending topics? We will cover these questions in the next section.</p></div>
+<div class="section" title="R-related posts in social media"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec103"/>R-related posts in social media</h1></div></div></div><p>One option to collect posts from <a class="indexterm" id="id1049"/>the past few days of social media is processing Twitter's global stream of Tweet data. This stream data and API provides access to around 1 percent of all tweets. If you are interested in all this data, then a commercial Twitter Firehouse account is needed. In the following examples, we will use the free Twitter search API, which provides access to no more than 3,200 tweets based on any search query—but this will be more than enough to do some quick analysis on the trending topics among R users.</p><p>So let's load the<a class="indexterm" id="id1050"/> <code class="literal">twitteR</code> package and initialize the connection to the API by <a class="indexterm" id="id1051"/>providing our application tokens and secrets, generated at <a class="ulink" href="https://apps.twitter.com">https://apps.twitter.com</a>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(twitteR)</strong></span>
+<span class="strong"><strong>&gt; setup_twitter_oauth(...)</strong></span>
+</pre></div><p>Now we can start using <a class="indexterm" id="id1052"/>the <code class="literal">searchTwitter</code> function to search tweets for any keywords, including hashtags and mentions. This query can be fine-tuned with a couple of arguments. <code class="literal">Since</code>, <code class="literal">until</code>, and <span class="emphasis"><em>n</em></span> set the beginning and end date, also the number of tweets to return respectively. Language can be set with the <code class="literal">lang</code> attribute by the ISO 639-1 format—for example, use <code class="literal">en</code> for English.</p><p>Let's search for the most recent tweet with the official R hashtag:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; str(searchTwitter("#rstats", n = 1, resultType = 'recent'))</strong></span>
+<span class="strong"><strong>Reference class 'status' [package "twitteR"] with 17 fields</strong></span>
+<span class="strong"><strong> $ text         : chr "7 #rstats talks in 2014"| __truncated__</strong></span>
+<span class="strong"><strong> $ favorited    : logi FALSE</strong></span>
+<span class="strong"><strong> $ favoriteCount: num 2</strong></span>
+<span class="strong"><strong> $ replyToSN    : chr(0) </strong></span>
+<span class="strong"><strong> $ created      : POSIXct[1:1], format: "2015-07-21 19:31:23"</strong></span>
+<span class="strong"><strong> $ truncated    : logi FALSE</strong></span>
+<span class="strong"><strong> $ replyToSID   : chr(0) </strong></span>
+<span class="strong"><strong> $ id           : chr "623576019346280448"</strong></span>
+<span class="strong"><strong> $ replyToUID   : chr(0) </strong></span>
+<span class="strong"><strong> $ statusSource : chr "Twitter Web Client"</strong></span>
+<span class="strong"><strong> $ screenName   : chr "daroczig"</strong></span>
+<span class="strong"><strong> $ retweetCount : num 2</strong></span>
+<span class="strong"><strong> $ isRetweet    : logi FALSE</strong></span>
+<span class="strong"><strong> $ retweeted    : logi FALSE</strong></span>
+<span class="strong"><strong> $ longitude    : chr(0) </strong></span>
+<span class="strong"><strong> $ latitude     : chr(0) </strong></span>
+<span class="strong"><strong> $ urls         :'data.frame':	2 obs. of  5 variables:</strong></span>
+<span class="strong"><strong>  ..$ url         : chr [1:2] </strong></span>
+<span class="strong"><strong>      "http://t.co/pStTeyBr2r" "https://t.co/5L4wyxtooQ"</strong></span>
+<span class="strong"><strong>  ..$ expanded_url: chr [1:2] "http://budapestbiforum.hu/2015/en/cfp" </strong></span>
+<span class="strong"><strong>      "https://twitter.com/BudapestBI/status/623524708085067776"</strong></span>
+<span class="strong"><strong>  ..$ display_url : chr [1:2] "budapestbiforum.hu/2015/en/cfp" </strong></span>
+<span class="strong"><strong>      "twitter.com/BudapestBI/sta…"</strong></span>
+<span class="strong"><strong>  ..$ start_index : num [1:2] 97 120</strong></span>
+<span class="strong"><strong>  ..$ stop_index  : num [1:2] 119 143</strong></span>
+</pre></div><p>This is quite an impressive amount of information for a character string with no more than 140 characters, isn't it? Besides the text including the actual tweet, we got some meta-information as well—for example, the author, post time, the number of times other users favorited or retweeted the post, the Twitter client name, and the URLs in the post along with the shortened, expanded, and displayed format. The location of the tweet is also available in some cases, if the user enabled that feature.</p><p>Based on this piece of <a class="indexterm" id="id1053"/>information, we could focus on the Twitter R community in very different ways. Examples include:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Counting the users mentioning R</li><li class="listitem" style="list-style-type: disc">Analyzing social network or Twitter interactions</li><li class="listitem" style="list-style-type: disc">Time-series analysis on the time of posts</li><li class="listitem" style="list-style-type: disc">Spatial analysis on the location of tweets</li><li class="listitem" style="list-style-type: disc">Text mining of the tweet contents</li></ul></div><p>Probably a mixture of these (and other) methods would be the best approach, and I highly suggest you do that as an exercise to practice what you have learned in this book. However, in the following pages we will only concentrate on the last item.</p><p>So first, we need some recent tweets on the R programming language. To search for <code class="literal">#rstats</code> posts, instead of providing the related hashtag (like we did previously), we can use the <code class="literal">Rtweets</code> wrapper function as well:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tweets &lt;- Rtweets(n = 500)</strong></span>
+</pre></div><p>This function returned 500 reference classes similar to those we saw previously. We can count the number of original tweets excluding retweets:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; length(strip_retweets(tweets))</strong></span>
+<span class="strong"><strong>[1] 149</strong></span>
+</pre></div><p>But, as we are looking for the trending topics, we are interested in the original list of tweets, where the retweets are also important as they give a natural weight to the trending posts. So let's transform the list of reference classes to a <code class="literal">data.frame</code>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; tweets &lt;- twListToDF(tweets)</strong></span>
+</pre></div><p>This dataset consists of 500 rows (tweets) and 16 variables on the content, author, and location of the posts, as described previously. Now, as we are only interested in the actual text of the tweets, let's load the <code class="literal">tm</code> package and import our corpus as seen in <a class="link" href="ch07.html" title="Chapter 7. Unstructured Data">Chapter 7</a>, <span class="emphasis"><em>Unstructured Data</em></span>:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(tm)</strong></span>
+<span class="strong"><strong>Loading required package: NLP</strong></span>
+<span class="strong"><strong>&gt; corpus &lt;- Corpus(VectorSource(tweets$text))</strong></span>
+</pre></div><p>As the data is in the right format, we can start to clean the data from the common English words and transform everything into lowercase format; we might also want to remove any extra whitespace:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; corpus &lt;- tm_map(corpus, removeWords, stopwords("english"))</strong></span>
+<span class="strong"><strong>&gt; corpus &lt;- tm_map(corpus, content_transformer(tolower))</strong></span>
+<span class="strong"><strong>&gt; corpus &lt;- tm_map(corpus, removePunctuation)</strong></span>
+<span class="strong"><strong>&gt; corpus &lt;- tm_map(corpus, stripWhitespace)</strong></span>
+</pre></div><p>It's also wise to remove the R hashtag, as this is part of all tweets:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; corpus &lt;- tm_map(corpus, removeWords, 'rstats')</strong></span>
+</pre></div><p>And then we can use <a class="indexterm" id="id1054"/>the <code class="literal">wordcloud</code> package to plot the most important words:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>&gt; library(wordcloud)</strong></span>
+<span class="strong"><strong>Loading required package: RColorBrewer</strong></span>
+<span class="strong"><strong>&gt; wordcloud(corpus)</strong></span>
+</pre></div><div class="mediaobject"><img alt="R-related posts in social media" src="graphics/2028OS_14_10.jpg"/></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch14lvl1sec104"/>Summary</h1></div></div></div><p>In the past few pages, I have tried to cover a variety of data science and R programming topics, although many important methods and questions were not addressed due to page limitation. To this end, I've compiled a short reading list in the <span class="emphasis"><em>References</em></span> chapter of the book. And don't forget: now it's your turn to practice everything you learned in the previous chapters. I wish you a lot of fun and success in this journey!</p><p>And once again, thanks for reading this book; I hope you found it useful. If you have any questions, comments, or any kind of feedback, please feel free to get in touch, I'm looking forward to hearing from you!</p></div></body></html>

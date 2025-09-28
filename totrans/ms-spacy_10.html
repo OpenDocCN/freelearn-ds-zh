@@ -1,0 +1,277 @@
+<html><head></head><body><div id="sbo-rt-content"><div id="_idContainer116">
+			<h1 id="_idParaDest-118"><a id="_idTextAnchor120"/>Chapter 7: Customizing spaCy Models</h1>
+			<p>In this chapter, you will learn how to train, store, and use custom statistical pipeline components. First, we will discuss when exactly we should perform custom model training. Then, you will learn a fundamental step of model training – how to collect and label your own data.</p>
+			<p>In this chapter, you will also learn how to make the best use of <strong class="bold">Prodigy</strong>, the annotation tool. Next, you will learn how to update an existing statistical pipeline component with your own data. We will update the spaCy pipeline's <strong class="bold">named entity recognizer</strong> (<strong class="bold">NER</strong>) component with our own labeled data.</p>
+			<p>Finally, you will learn how to create a statistical pipeline component from scratch with your own data and labels. For this purpose, we will again train an NER model. This chapter takes you through a complete machine learning practice, including collecting data, annotating data, and training a model for information extraction.</p>
+			<p>By the end of this chapter, you'll be ready to train spaCy models on your own data. You'll have the full skillset of collecting data, preprocessing data in to the format that spaCy can recognize, and finally, training spaCy models with this data. In this chapter, we're going to cover the following main topics: </p>
+			<ul>
+				<li>Getting started with data preparation</li>
+				<li>Annotating and preparing data </li>
+				<li>Updating an existing pipeline component</li>
+				<li>Training a pipeline component from scratch</li>
+			</ul>
+			<h1 id="_idParaDest-119"><a id="_idTextAnchor121"/>Technical requirements</h1>
+			<p>The chapter code can be found at the book's GitHub repository: <a href="https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07">https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07</a>.</p>
+			<h1 id="_idParaDest-120"><a id="_idTextAnchor122"/>Getting started with data preparation</h1>
+			<p>In the previous chapters, we saw how to make the best of spaCy's pre-trained statistical models (including the <strong class="bold">POS tagger</strong>, NER, and <strong class="bold">dependency parser</strong>) in our applications. In this <a id="_idIndexMarker437"/>chapter, we will see how to customize the statistical <a id="_idIndexMarker438"/>models for our custom domain and data.</p>
+			<p>spaCy models are very successful for general NLP purposes, such as understanding a sentence's syntax, splitting a paragraph into sentences, and extracting some entities. However, sometimes, we work on very specific domains that spaCy models didn't see during training.</p>
+			<p>For example, the Twitter text contains many non-regular words, such as hashtags, emoticons, and mentions. Also, Twitter sentences are usually just phrases, not full sentences. Here, it's entirely reasonable that spaCy's POS tagger performs in a substandard manner as the POS tagger is trained on full, grammatically correct English sentences. </p>
+			<p>Another example is the medical domain. The medical domain contains many entities, such as drug, disease, and chemical compound names. These entities are not expected to be recognized by spaCy's NER model because it has no disease or drug entity labels. NER does not know anything about the medical domain at all.</p>
+			<p>Training your custom models requires time and effort. Before even starting the training process, you should decide <em class="italic">whether the training is really necessary</em>. To determine whether you really need custom training, you will need to ask yourself the following questions:</p>
+			<ul>
+				<li>Do spaCy models perform well enough on your data?</li>
+				<li>Does your domain include many labels that are absent in spaCy models?</li>
+				<li>Is there a pre-trained model/application in GitHub or elsewhere already? (We wouldn't want to reinvent the wheel.)</li>
+			</ul>
+			<p>Let's discuss these questions in detail in the following sections.</p>
+			<h2 id="_idParaDest-121"><a id="_idTextAnchor123"/>Do spaCy models perform well enough on your data?</h2>
+			<p>If the model <a id="_idIndexMarker439"/>performs well enough (above 0.75 accuracy), then you can customize the model output by means of another spaCy component. For example, let's say we work on the navigation domain and we have utterances such as the following:</p>
+			<p class="source-code">navigate to my home</p>
+			<p class="source-code">navigate to Oxford Street</p>
+			<p>Let's see what entities spaCy's NER model outputs for these sentences:</p>
+			<p class="source-code">import spacy</p>
+			<p class="source-code">nlp = spacy.load("en_core_web_md")</p>
+			<p class="source-code">doc1 = nlp("navigate to my home")</p>
+			<p class="source-code">doc1.ents</p>
+			<p class="source-code">()</p>
+			<p class="source-code">doc2 = nlp("navigate to Oxford Street")</p>
+			<p class="source-code">doc2.ents</p>
+			<p class="source-code">(Oxford Street,)</p>
+			<p class="source-code">doc2.ents[0].label_</p>
+			<p class="source-code">'FAC'</p>
+			<p class="source-code">spacy.explain("FAC")</p>
+			<p class="source-code">'Buildings, airports, highways, bridges, etc.'</p>
+			<p>Here, <strong class="source-inline">home</strong> isn't recognized as an entity at all, but we want it to be recognized as a location entity. Also, spaCy's NER model labels <strong class="source-inline">Oxford Street</strong> as <strong class="source-inline">FAC</strong>, which means a building/highway/airport/bridge type entity, which is not what we want. </p>
+			<p>We want <a id="_idIndexMarker440"/>this entity to be recognized as <strong class="source-inline">GPE</strong>, a location. Here, we can train NER further to recognize street names as <strong class="source-inline">GPE</strong>, as well as also recognizing some location words, such as <em class="italic">work</em>, <em class="italic">home</em>, and <em class="italic">my mama's house</em>, as <strong class="source-inline">GPE</strong>.</p>
+			<p>Another example is the newspaper domain. In this domain, person, place, date, time, and organization entities are extracted, but you need one more entity type – <strong class="source-inline">vehicle</strong> (car, bus, airplane, and so on). Hence, instead of training from scratch, you can add a new entity type by using spaCy's <strong class="source-inline">EntityRuler</strong> (explained in <a href="B16570_04_Final_JM_ePub.xhtml#_idTextAnchor069"><em class="italic">Chapter 4</em></a>, <em class="italic">Rule-Based Matching</em>). Always examine your data first and calculate the spaCy models' success rate. If the success rate is satisfying, then use other spaCy components to customize.</p>
+			<h2 id="_idParaDest-122"><a id="_idTextAnchor124"/>Does your domain include many labels that are absent in spaCy models?</h2>
+			<p>For instance, in the preceding newspaper example, only one entity label, <strong class="source-inline">vehicle</strong>, is missing from <a id="_idIndexMarker441"/>the spaCy's NER model's labels. Other entity types are recognized. In this case, you don't need custom training.</p>
+			<p>Consider the medical domain again. The entities are diseases, symptoms, drugs, dosages, chemical compound names, and so on. This is a specialized and long list of entities. Obviously, for the medical domain, you require custom model training.</p>
+			<p>If we need custom model training, we usually follow these steps:</p>
+			<ol>
+				<li>Collect your data.</li>
+				<li>Annotate your data.</li>
+				<li>Decide to update an existing model or train a model from scratch.</li>
+			</ol>
+			<p>In the data collection step, we decide how much data to collect: 1,000 sentences, 5,000 sentences, or more. The amount of data depends on the complexity of your task and domain. Usually, we start with an acceptable amount of data, make a first model training, and see how it performs; then we can add more data and retrain the model.</p>
+			<p>After collecting your dataset, you need to annotate your data in such a way that the spaCy training code recognizes it. In the next section, we will see the training data format and how to annotate data with spaCy's Prodigy tool.</p>
+			<p>The third point is to decide on training a blank model from scratch or make updates to an existing model. Here, the rule of thumb is as follows: if your entities/labels are present in the existing model but you don't see a very good performance, then update the model with your own data, such as in the preceding navigation example. If your entities are not present in the current spaCy model at all, then most probably you need custom training.</p>
+			<p class="callout-heading">Tip</p>
+			<p class="callout">Don't rush into training your own models. First, examine if you really need to customize the models. Always keep in mind that training a model from scratch requires data preparation, training a model, and saving it, which means spending your time, money, and effort. Good engineering is about spending your resources wisely.</p>
+			<p>We'll start <a id="_idIndexMarker442"/>our journey of building a model with the first step: preparing our training data. Let's move on to the next section and see how to prepare and annotate our training data.</p>
+			<h1 id="_idParaDest-123"><a id="_idTextAnchor125"/>Annotating and preparing data</h1>
+			<p>The first step of training a model is always preparing training data. You usually collect data from <a id="_idIndexMarker443"/>customer logs and then turn them into a dataset by dumping <a id="_idIndexMarker444"/>the data as a CSV file or a JSON file. spaCy model training code works with JSON files, so we will be working with JSON files in this chapter.</p>
+			<p>After collecting our data, we <strong class="bold">annotate</strong> our data. Annotation means labeling the intent, entities, POS tags, and so on.</p>
+			<p>This is an example of annotated data:</p>
+			<p class="source-code">{</p>
+			<p class="source-code">"sentence": "I visited JFK Airport."</p>
+			<p class="source-code">"entities": {</p>
+			<p class="source-code">             "label": "LOC"</p>
+			<p class="source-code">             "value": "JFK Airport"</p>
+			<p class="source-code">}</p>
+			<p>As you see, we point the statistical algorithm to <em class="italic">what we want the model to learn</em>. In this example, we want the model to learn about the entities, hence, we feed examples with entities annotated.</p>
+			<p>Writing down JSON files manually can be error-prone and time-consuming. Hence, in this section, we'll also <a id="_idIndexMarker445"/>see spaCy's annotation tool, Prodigy, along with an open source data annotation tool, <strong class="bold">Brat</strong>. Prodigy is not open source or free, but we will go over how it works to give you a better view of how annotation tools work in general. Brat is open source and immediately available for your use.</p>
+			<h2 id="_idParaDest-124"><a id="_idTextAnchor126"/>Annotating data with Prodigy</h2>
+			<p>Prodigy is a <a id="_idIndexMarker446"/>modern tool for data annotation. We will be using the Prodigy <a id="_idIndexMarker447"/>web demo (<a href="https://prodi.gy/demo">https://prodi.gy/demo</a>) to exhibit <a id="_idIndexMarker448"/>how an annotation tool works.</p>
+			<p>Let's get started:</p>
+			<ol>
+				<li value="1">We navigate to the Prodigy web demo and view an example text by Prodigy, to be annotated as seen in the following screenshot:<div id="_idContainer108" class="IMG---Figure"><img src="Images/B16570_7_1.jpg" alt="Figure 7.1 – Prodigy interface; photo taken from their web demo page&#13;&#10;" width="581" height="381"/></div><p class="figure-caption">Figure 7.1 – Prodigy interface; photo taken from their web demo page</p><p>The preceding screenshot shows an example text that we want to annotate. The buttons at the bottom of the screenshot showcase the means to accept this training example, to reject this example, or to ignore this example. If the example is irrelevant to our domain/task (but involved in the dataset somehow), we ignore this example. If the text is relevant and the annotation is good, then we accept this example, and it joins our dataset.</p></li>
+				<li>Next, we'll <a id="_idIndexMarker449"/>label the entities. Labeling an entity is <a id="_idIndexMarker450"/>easy. First, we select an entity type from the upper bar (here, this corpus includes two types of entities, <strong class="source-inline">PERSON</strong> and <strong class="source-inline">ORG</strong>. Which entities you want to annotate depends on you; these are the labels you provide to the tool.) Then, we'll just select the words we want to label as an entity with the cursor, as seen in the following screenshot:</li>
+			</ol>
+			<div>
+				<div id="_idContainer109" class="IMG---Figure">
+					<img src="Images/B16570_7_2.jpg" alt=" Figure 7.2 – Annotating PERSON entities on the web demo &#13;&#10;" width="639" height="317"/>
+				</div>
+			</div>
+			<p class="figure-caption"> Figure 7.2 – Annotating PERSON entities on the web demo </p>
+			<p>After we're finished with annotating the text, we click the accept button. Once the session is <a id="_idIndexMarker451"/>finished, you can dump the annotated data as <a id="_idIndexMarker452"/>a JSON file. When you're finished with your annotation job, you can click the <strong class="bold">Save</strong> button to finish the session properly. Clicking <strong class="bold">Save</strong> will dump the annotated data as a JSON file automatically. That's it. Prodigy offers a really efficient way of annotating your data.</p>
+			<h2 id="_idParaDest-125"><a id="_idTextAnchor127"/>Annotating data with Brat</h2>
+			<p>Another <a id="_idIndexMarker453"/>annotation tool is <strong class="bold">Brat</strong>, which is a free and web-based tool for text annotation (<a href="https://brat.nlplab.org/introduction.html">https://brat.nlplab.org/introduction.html</a>). It's possible to annotate relations <a id="_idIndexMarker454"/>as well as entities in Brat. You can also download Brat <a id="_idIndexMarker455"/>onto your local machine and use it for annotation tasks. Basically, you upload your dataset to Brat and annotate the text on the interface. The following screenshot shows an annotated sentence from an example of a CoNLL dataset:</p>
+			<div>
+				<div id="_idContainer110" class="IMG---Figure">
+					<img src="Images/B16570_7_3.jpg" alt="  Figure 7.3 – An example annotated sentence&#13;&#10;" width="1402" height="162"/>
+				</div>
+			</div>
+			<p class="figure-caption">  Figure 7.3 – An example annotated sentence</p>
+			<p>You can play with example datasets on the Brat demo website (<a href="https://brat.nlplab.org/examples.html%20">https://brat.nlplab.org/examples.html</a>) or get started by uploading a small subset of your own data. After the annotation session is finished, Brat dumps a JSON of annotated data as well.</p>
+			<h2 id="_idParaDest-126"><a id="_idTextAnchor128"/>spaCy training data format</h2>
+			<p>As we <a id="_idIndexMarker456"/>remarked earlier, spaCy training code works with JSON file format. Let's see the details of training the data format.</p>
+			<p>For the <a id="_idIndexMarker457"/>NER, you need to provide a <a id="_idIndexMarker458"/>list of pairs of sentences and their annotations. Each annotation should include the entity type, the start position of the entity in terms of characters, and the end position of the entity in terms of characters. Let's see an example of a dataset:</p>
+			<p class="source-code">training_data = [</p>
+			<p class="source-code">("I will visit you in Munich.",  {"entities": [(20, 26, "GPE")]}),</p>
+			<p class="source-code">("I'm going to Victoria's house.", {</p>
+			<p class="source-code">                                                       </p>
+			<p class="source-code">"entities": [</p>
+			<p class="source-code">                                                                </p>
+			<p class="source-code">        (13, 23, "PERSON"),  </p>
+			<p class="source-code">                                                                </p>
+			<p class="source-code">       (24, 29, "GPE")</p>
+			<p class="source-code">                                                         ]})</p>
+			<p class="source-code">("I go there.", {"entities": []})</p>
+			<p class="source-code">]  </p>
+			<p>This dataset consists of three example pairs. Each example pair includes a sentence as the first element. The second element of the pair is a list of annotated entities. In the first example sentence, there is only one entity, <strong class="source-inline">Munich</strong>. This entity's label is <strong class="source-inline">GPE</strong> and starts at the 20th character position in the sentence and ends at the 25th character. Similarly, the second sentence includes two entities; one is <strong class="source-inline">PERSON</strong>, <strong class="source-inline">Victoria's</strong>, and the second entity is <strong class="source-inline">GPE</strong>, <strong class="source-inline">house</strong>. The third sentence does not include any entities, hence the list is empty.</p>
+			<p>We cannot feed the raw text and annotations directly to spaCy. Instead, we need to create an <strong class="source-inline">Example</strong> object for each training example. Let's see the code:</p>
+			<p class="source-code">import spacy</p>
+			<p class="source-code">from spacy.training import Example</p>
+			<p class="source-code">nlp = spacy.load("en_core_web_md")</p>
+			<p class="source-code">doc = nlp("I will visit you in Munich.")</p>
+			<p class="source-code">annotations =  {"entities": [(20, 26, "GPE")]}</p>
+			<p class="source-code">example_sent = Example.from_dict(doc, annotations)</p>
+			<p>In this code segment, first, we created a doc object from the example sentence. Then we fed <a id="_idIndexMarker459"/>the doc object and its annotations in a dictionary <a id="_idIndexMarker460"/>form to create an <strong class="source-inline">Example</strong> object. We'll use <strong class="source-inline">Example</strong> objects in the next section's training code.</p>
+			<p>Creating <a id="_idIndexMarker461"/>example sentences for training the dependency parser is a bit different, and we'll cover this in the <em class="italic">Training a pipeline component from scratch</em> section.</p>
+			<p>Now, we're ready to train our own spaCy models. We'll first see how to update an NLP pipeline statistical model. For this purpose, we'll train the NER component further with the help of our own examples.</p>
+			<h1 id="_idParaDest-127"><a id="_idTextAnchor129"/>Updating an existing pipeline component</h1>
+			<p>In this section, we will train spaCy's NER component further with our own examples to recognize the <a id="_idIndexMarker462"/>navigation domain. We already saw some examples of navigation domain utterances and how spaCy's NER model labeled entities of some example utterances:</p>
+			<p class="source-code">navigate/0 to/0 my/0 home/0</p>
+			<p class="source-code">navigate/0 to/0 Oxford/FAC Street/FAC</p>
+			<p>Obviously, we want NER to perform better and recognize location entities, such as street names, district names, and other location names, such as home, work, and office. Now, we'll feed our examples to the NER component and will do more training. We will train NER in three steps:</p>
+			<ol>
+				<li value="1">First, we'll disable all the other statistical pipeline components, including the POS tagger and the dependency parser.</li>
+				<li>We'll feed our domain examples to the training procedure.</li>
+				<li>We'll evaluate the new NER model.</li>
+			</ol>
+			<p>Also, we will learn how to do the following:</p>
+			<ul>
+				<li>Save the updated NER model to disk.</li>
+				<li>Read the updated NER model when we want to use it.</li>
+			</ul>
+			<p>Let's get <a id="_idIndexMarker463"/>started and dive into training the NER model procedure. As we pointed out in the preceding list, we'll train the NER model in several steps. We'll start with the first step, disabling the other statistical models of the spaCy NLP pipeline.</p>
+			<h2 id="_idParaDest-128"><a id="_idTextAnchor130"/>Disabling the other statistical models</h2>
+			<p>Before starting <a id="_idIndexMarker464"/>the training procedure, we disable the other pipeline components, hence we train <strong class="bold">only</strong> the intended component. The following code segment disables all the pipeline components except NER. We call this code block before starting the training procedure:</p>
+			<p class="source-code">other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']</p>
+			<p class="source-code"> nlp.disable_pipes(*other_pipes)</p>
+			<p>Another way of writing this code is as follows:</p>
+			<p class="source-code">other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']</p>
+			<p class="source-code"> with nlp.disable_pipes(*other_pipes):</p>
+			<p class="source-code">   # training code goes here</p>
+			<p>In the preceding code block, we made use of the fact that <strong class="source-inline">nlp.disable_pipes</strong> returns a context manager. Using a <strong class="source-inline">with</strong> statement makes sure that our code releases the allocated sources (such as file handlers, database locks, or multiple threads). If you're not familiar with statements, you can read more at this Python tutorial: <a href="https://book.pythontips.com/en/latest/context_managers.html">https://book.pythontips.com/en/latest/context_managers.html</a>.</p>
+			<p>We have completed the first step of the training code. Now, we are ready to make the model training procedure.</p>
+			<h2 id="_idParaDest-129"><a id="_idTextAnchor131"/>Model training procedure</h2>
+			<p>As we mentioned in <a href="B16570_03_Final_JM_ePub.xhtml#_idTextAnchor055"><em class="italic">Chapter 3</em></a>, <em class="italic">Linguistic Features</em>, in the <em class="italic">Introducing named entity recognition</em> section, spaCy's NER model is a neural network model. To train a neural network, we need to configure some parameters as well as provide training examples. Each prediction <a id="_idIndexMarker465"/>of the neural network is a sum of its <strong class="bold">weight</strong> values; hence, the training procedure adjusts the weights of the neural network with our examples. If you want to learn more about how neural networks function, you can read the excellent guide at <a href="http://neuralnetworksanddeeplearning.com/">http://neuralnetworksanddeeplearning.com/</a>.</p>
+			<p>In the training procedure, we'll go over the training set <em class="italic">several times</em> and show each example several <a id="_idIndexMarker466"/>times (one iteration is called one <strong class="bold">epoch</strong>) because showing an example only once is not enough. At each iteration, we shuffle the training data so that the order of the training data does not matter. This shuffling of training data helps train the neural network thoroughly.   </p>
+			<p>In each epoch, the training code updates the weights of the neural network with a small number. Optimizers are functions that update the neural network weights subject to a loss. At epoch, a loss value is calculated by comparing the actual label with the neural network's current output. Then, the optimizer function can update the neural network's weight with respect to this loss value. </p>
+			<p>In the following <a id="_idIndexMarker467"/>code, we used the <strong class="bold">stochastic gradient descent</strong> (<strong class="bold">SGD</strong>) algorithm as the optimizer. SGD itself is also an iterative algorithm. It aims to minimize a function (for neural networks, we want to minimize the loss function). SGD starts from a random point on the loss function and travels down its slope in steps until it reaches the lowest point of that function. If you want to learn <a id="_idIndexMarker468"/>more about SGD, you can visit Stanford's excellent neural network class at <a href="http://deeplearning.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/">http://deeplearning.stanford.edu/tutorial/supervised/OptimizationStochasticGradientDescent/</a>.</p>
+			<p>Putting it all altogether, here's the code to train spaCy's NER model for the navigation domain. Let's go step by step:</p>
+			<ol>
+				<li value="1">In the first three lines, we make the necessary imports. <strong class="source-inline">random</strong> is a Python library that includes methods for pseudo-random generators for several distributions, including uniform, gamma, and beta distributions. In our code, we'll use <strong class="source-inline">random.shuffle</strong> to shuffle our dataset. <strong class="source-inline">shuffle</strong> shuffles sequences into place:<p class="source-code">import random</p><p class="source-code">import spacy</p><p class="source-code">from spacy.training import Example</p></li>
+				<li>Next, we will create a language pipeline object, <strong class="source-inline">nlp</strong>:<p class="source-code">nlp = spacy.load("en_core_web_md")</p></li>
+				<li>Then, we <a id="_idIndexMarker469"/>will define our navigation domain training set sentences. Each example contains a sentence and its annotation:<p class="source-code">trainset = [</p><p class="source-code">             ("navigate home", {"entities": [(9,13, "GPE")]}),</p><p class="source-code">             ("navigate to office", {"entities": [(12,18, "GPE")]}),</p><p class="source-code">             ("navigate", {"entities": []}),</p><p class="source-code">             ("navigate to Oxford Street", {"entities": [(12, 25, "GPE")]})</p><p class="source-code">             ]</p></li>
+				<li>We want to iterate our data 20 times, hence the number of epochs is <strong class="source-inline">20</strong>:<p class="source-code">epochs = 20</p></li>
+				<li>In the next 2 lines, we disable the other pipeline components and leave NER for training. We use <strong class="source-inline">with statement</strong> to invoke <strong class="source-inline">nlp.disable_pipe</strong> as a context manager:<p class="source-code">other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']</p><p class="source-code">with nlp.disable_pipes(*other_pipes):</p></li>
+				<li>We create an <strong class="source-inline">optimizer</strong> object, as we discussed previously. We'll feed this <strong class="source-inline">optimizer</strong> object to the training method as a parameter:<p class="source-code">     optimizer = nlp.create_optimizer()</p></li>
+				<li>Then, for each epoch, we will shuffle our dataset by <strong class="source-inline">random.shuffle</strong>:<p class="source-code">     for i in range(epochs):</p><p class="source-code">        random.shuffle(trainset)</p></li>
+				<li>For each <a id="_idIndexMarker470"/>example sentence in the dataset, we will create an <strong class="source-inline">Example</strong> object from the sentence and its annotation:<p class="source-code">        example = Example.from_dict(doc, annotation)</p></li>
+				<li>We will feed the <strong class="source-inline">Example</strong> object and <strong class="source-inline">optimizer</strong> object to <strong class="source-inline">nlp.update</strong>. The actual training method is <strong class="source-inline">nlp.update</strong>. This is the place where the NER model gets trained:<p class="source-code">       nlp.update([example], sgd=optimizer)</p></li>
+				<li>Once the epochs are complete, we save the newly trained NER component to disk under a directory called <strong class="source-inline">navi_ner</strong>:<p class="source-code">ner = nlp.get_pipe("ner")</p><p class="source-code">ner.to_disk("navi_ner")'</p></li>
+			</ol>
+			<p><strong class="source-inline">nlp.update</strong> outputs a loss value each time it is called. After invoking this code, you should see an output similar to the following screenshot (the loss values might be different):</p>
+			<div>
+				<div id="_idContainer111" class="IMG---Figure">
+					<img src="Images/B16570_7_4.jpg" alt="Figure 7.4 – NER training's output&#13;&#10;" width="253" height="461"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 7.4 – NER training's output</p>
+			<p>That's it! We <a id="_idIndexMarker471"/>trained the NER component for the navigation domain! Let's try some example sentences and see whether it really worked.</p>
+			<h2 id="_idParaDest-130"><a id="_idTextAnchor132"/>Evaluating the updated NER</h2>
+			<p>Now we can test our brand-new updated NER component. We can try some examples with synonyms <a id="_idIndexMarker472"/>and paraphrases to test whether the neural network really learned the navigation domain, instead of memorizing our examples. Let's see how it goes:</p>
+			<ol>
+				<li value="1">These are the training sentences:<p class="source-code">navigate home</p><p class="source-code">navigate to office</p><p class="source-code">navigate</p><p class="source-code">navigate to Oxford Street</p></li>
+				<li>Let's use the synonym <strong class="source-inline">house</strong> for <strong class="source-inline">home</strong> and also add two more words to <strong class="source-inline">to my</strong>:<p class="source-code">doc= nlp("navigate to my house")</p><p class="source-code">doc.ents</p><p class="source-code">(house,)</p><p class="source-code">doc.ents[0].label_</p><p class="source-code">'GPE'</p></li>
+				<li>It worked! <strong class="source-inline">House</strong> is recognized as a <strong class="source-inline">GPE</strong> type entity. How about we replace <strong class="source-inline">navigate</strong> with a similar verb, <strong class="source-inline">drive me</strong>, and create a paraphrase of the first example sentence:<p class="source-code">doc= nlp("drive me to home")</p><p class="source-code">doc.ents</p><p class="source-code">(home,)</p><p class="source-code">doc.ents[0].label_</p><p class="source-code">'GPE'</p></li>
+				<li>Now, we try a slightly different sentence. In the next sentence, we won't use a synonym or paraphrase. We'll replace <strong class="source-inline">Oxford Street</strong> with a district name, <strong class="source-inline">Soho</strong>. Let's see what happens this time:<p class="source-code">doc= nlp("navigate to Soho")</p><p class="source-code">doc.ents</p><p class="source-code">(Soho,)</p><p class="source-code">doc.ents[0].label_</p><p class="source-code">'GPE'</p></li>
+				<li>As we remarked before, we updated the statistical model, hence, the NER model didn't forget about the entities it already knew. Let's do a test with another <a id="_idIndexMarker473"/>entity type to see whether the NER model really didn't forget the other entity types:<p class="source-code">doc = nlp("I watched a documentary about Lady Diana.")</p><p class="source-code">doc.ents</p><p class="source-code">(Lady Diana,)</p><p class="source-code">doc.ents[0].label_</p><p class="source-code">'PERSON'</p></li>
+			</ol>
+			<p>Great! spaCy's neural networks can recognize not only synonyms but entities of the same type. This is one of the reasons why we use spaCy for NLP. Statistical models are incredibly powerful.</p>
+			<p>In the next section, we'll learn how to save the model we trained and load a model into our Python scripts.</p>
+			<h2 id="_idParaDest-131"><a id="_idTextAnchor133"/>Saving and loading custom models</h2>
+			<p>In the <a id="_idIndexMarker474"/>preceding code segment, we already <a id="_idIndexMarker475"/>saw how to serialize the updated NER component as follows:</p>
+			<p class="source-code">ner = nlp.get_pipe("ner")</p>
+			<p class="source-code">ner.to_disk("navi_ner")</p>
+			<p>We serialize models so that we can upload them in other Python scripts whenever we want. When we want to upload a custom-made spaCy component, we perform the following steps:</p>
+			<p class="source-code">import spacy</p>
+			<p class="source-code">nlp = spacy.load('en', disable=['ner'])</p>
+			<p class="source-code">ner = nlp.create_pipe("ner")</p>
+			<p class="source-code">ner.from_disk("navi_ner")</p>
+			<p class="source-code">nlp.add_pipe(ner, "navi_ner")</p>
+			<p class="source-code">print(nlp.meta['pipeline'])</p>
+			<p class="source-code">['tagger', 'parser', 'navi_ner']</p>
+			<p>Here are <a id="_idIndexMarker476"/>the steps that we follow:</p>
+			<ol>
+				<li value="1">We first <a id="_idIndexMarker477"/>load the pipeline components without the NER, because we want to add our custom NER. This way, we make sure that the default NER doesn't override our custom NER component.</li>
+				<li>Next, we create an NER pipeline component object. Then we load our custom NER component from the directory we serialized to this newly created component object.</li>
+				<li>We then add our custom NER component to the pipeline.</li>
+				<li>We print the metadata of the pipeline to make sure that loading our custom component worked.</li>
+			</ol>
+			<p>Now, we also learned how to serialize and load custom components. Hence, we can move forward to a bigger mission: training a spaCy statistical model from scratch. We'll again train the NER component, but this time we'll start from scratch.</p>
+			<h1 id="_idParaDest-132"><a id="_idTextAnchor134"/>Training a pipeline component from scratch</h1>
+			<p>In the previous section, we saw how to update the existing NER component according to our data. In this section, we will create a brand-new NER component for the medicine domain.</p>
+			<p>Let's start <a id="_idIndexMarker478"/>with a small dataset to understand the training procedure. Then we'll be experimenting with a real medical NLP dataset. The following sentences belong to the medicine domain and include medical entities such as drug and disease names:</p>
+			<p class="source-code">Methylphenidate/DRUG is effectively used in treating children with epilepsy/DISEASE and ADHD/DISEASE.           </p>
+			<p class="source-code">Patients were followed up for 6 months.</p>
+			<p class="source-code">Antichlamydial/DRUG antibiotics/DRUG may be useful for curing coronary-artery/DISEASE disease/DISEASE.</p>
+			<p>The following code block shows how to train an NER component from scratch. As we mentioned before, it's better to create our own NER rather than updating spaCy's default NER model as medical entities are not recognized by spaCy's NER component at all. Let's see the code and also compare it to the code from the previous section. We'll go step by step:</p>
+			<ol>
+				<li value="1">In the first three lines, we made the necessary imports. We imported <strong class="source-inline">spacy</strong> and <strong class="source-inline">spacy.training.Example</strong>. We also imported <strong class="source-inline">random</strong> to shuffle our dataset:<p class="source-code">import random</p><p class="source-code">import spacy</p><p class="source-code">from spacy.training import Example</p></li>
+				<li>We defined our training set of three examples. For each example, we included a sentence and its annotated entities:<p class="source-code">train_set = [</p><p class="source-code">                ("Methylphenidate is effectively used in treating children with epilepsy and ADHD.", {"entities": [(0, 15, "DRUG"), (62, 70, "DISEASE"), (75, 79, "DISEASE")]}),</p><p class="source-code">                ("Patients were followed up for 6 months.", {"entities": []}),</p><p class="source-code">                ("Antichlamydial antibiotics may be useful for curing coronary-artery disease.", {"entities": [(0, 26, "DRUG"), (52, 75, "DIS")]})</p><p class="source-code">]</p></li>
+				<li>We also listed the set of entities we want to recognize – <strong class="source-inline">DIS</strong> for disease names, and <strong class="source-inline">DRUG</strong> for drug names:<p class="source-code">entities = ["DIS", "DRUG"]</p></li>
+				<li>We created a blank model. This is different from what we did in the previous section. In the previous section, we used spaCy's pre-trained English language pipeline:<p class="source-code">nlp = spacy.blank("en")</p></li>
+				<li>We also <a id="_idIndexMarker479"/>created a blank NER component. This is also different from the previous section's code. We used the pre-trained NER component in the previous section:<p class="source-code">ner = nlp.add_pipe("ner")</p><p class="source-code">ner</p><p class="source-code">&lt;spacy.pipeline.ner.EntityRecognizer object at 0x7f54b50044c0&gt;</p></li>
+				<li>Next, we add each medical label to the blank NER component by using <strong class="source-inline">ner.add_label</strong>:<p class="source-code">for ent in entities:</p><p class="source-code">   ner.add_label(ent)</p></li>
+				<li>We define the number of epochs as <strong class="source-inline">25</strong>:<p class="source-code">epochs = 25</p></li>
+				<li>The next two lines disable the other components other than the NER:<p class="source-code">other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']</p><p class="source-code">with nlp.disable_pipes(*other_pipes):</p></li>
+				<li>We created an optimizer object by calling <strong class="source-inline">nlp.begin_training</strong>. This is different from the previous section. In the previous section, we created an optimizer object by calling <strong class="source-inline">nlp.create_optimizer</strong>, so that NER doesn't forget the labels it already knows. Here, <strong class="source-inline">nlp.begin_training</strong> initializes the NER model's weights with <strong class="source-inline">0</strong>, hence, the NER model forgets everything it learned before. This is what we want; we want a blank NER model to train from scratch:<p class="source-code">  optimizer = nlp.begin_training()</p></li>
+				<li>For each <a id="_idIndexMarker480"/>epoch, we shuffle our small training set and train the NER component with our examples:<p class="source-code">  for i in range(25):</p><p class="source-code">    random.shuffle(train_set)</p><p class="source-code">    for text, annotation in train_set:</p><p class="source-code">      doc = nlp.make_doc(text)</p><p class="source-code">      example = Example.from_dict(doc, annotation)</p><p class="source-code">      nlp.update([example], sgd=optimizer)</p></li>
+			</ol>
+			<p>Here's what this code segment outputs (the loss values may be different):</p>
+			<p class="figure-caption"><img src="Images/B16570_7_5.jpg" alt="Figure 7.5 – Loss values during training&#13;&#10;" width="245" height="367"/></p>
+			<p class="figure-caption">Figure 7.5 – Loss values during training</p>
+			<p>Did it <a id="_idIndexMarker481"/>really work? Let's test the newly trained NER component:</p>
+			<p class="source-code">doc = nlp("I had a coronary disease.")</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">(coronary disease,)</p>
+			<p class="source-code">doc.ents[0].label_</p>
+			<p class="source-code">'DIS'</p>
+			<p>Great – it worked! Let's also test some negative examples, entities that are recognized by spaCy's pre-trained NER model but not ours:</p>
+			<p class="source-code">doc = nlp("I met you at Trump Tower.")</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">()</p>
+			<p class="source-code">doc = nlp("I meet you at SF.")</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">()</p>
+			<p>This looks good, too. Our brand new NER recognizes only medical entities. Let's visualize our first <a id="_idIndexMarker482"/>example sentence and see how displaCy exhibits new entities:</p>
+			<p class="source-code">from spacy import displacy</p>
+			<p class="source-code">doc = nlp("I had a coronary disease.")</p>
+			<p class="source-code">displacy.serve(doc, style="ent")</p>
+			<p>This code block generates the following visualization:</p>
+			<div>
+				<div id="_idContainer113" class="IMG---Figure">
+					<img src="Images/B16570_7_6.jpg" alt="Figure 7.6 – Visualization of the example sentence &#13;&#10;" width="262" height="51"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 7.6 – Visualization of the example sentence </p>
+			<p>We successfully trained the NER model on small datasets. Now it's time to work with a real-world dataset. In the next section, we'll dive into processing a very interesting dataset regarding a hot topic; mining Corona medical texts.</p>
+			<h2 id="_idParaDest-133"><a id="_idTextAnchor135"/>Working with a real-world dataset</h2>
+			<p>In this section, we will train on a real-world corpus. We will train an NER model on the CORD-19 corpus provided by the <em class="italic">Allen Institute for AI</em> (<a href="https://allenai.org/">https://allenai.org/</a>). This is an open challenge <a id="_idIndexMarker483"/>for text miners to extract information from this dataset to help medical professionals around the world fight against Corona disease. CORD-19 is an open source dataset that is collected from over 500,000 scholarly articles about Corona disease. The training set consists of 20 annotated medical text samples:</p>
+			<ol>
+				<li value="1">Let's get started by having a look at an example training text:<p class="source-code">The antiviral drugs amantadine and rimantadine inhibit a viral ion channel (M2 protein), thus inhibiting replication of the influenza A virus.[86] These drugs are sometimes effective against influenza A if given early in the infection but are ineffective against influenza B viruses, which lack the M2 drug target.[160] Measured resistance to amantadine and rimantadine in American isolates of H3N2 has increased to 91% in 2005.[161] This high level of resistance may be due to the easy availability of amantadines as part of over-the-counter cold remedies in countries such as China and Russia,[162] and their use to prevent outbreaks of influenza in farmed poultry.[163][164] The CDC recommended against using M2 inhibitors during the 2005–06 influenza season due to high levels of drug resistance.[165]</p><p>As we see from this example, real-world medical text can be quite long, and it can include many medical terms and entities. Nouns, verbs, and entities are all related to the medicine domain. Entities can be numbers (<strong class="source-inline">91%</strong>), number and units (<strong class="source-inline">100 ng/ml</strong>, <strong class="source-inline">25 microg/ml</strong>), number-letter combinations (<strong class="source-inline">H3N2</strong>), abbreviations (<strong class="source-inline">CDC</strong>), and also compound words (<strong class="source-inline">qRT-PCR</strong>, <strong class="source-inline">PE-labeled</strong>).</p><p>The medical entities come in several shapes (numbers, number and letter combinations, and compounds) as well as being very domain-specific. Hence, a medical text is very different from everyday spoken/written language and definitely needs custom training.</p></li>
+				<li>Entity labels can be compound words as well. Here's the list of entity types that this corpus includes:<p class="source-code">Pathogen</p><p class="source-code">MedicalCondition</p><p class="source-code">Medicine</p><p>We transformed the dataset so that it's ready to use with spaCy training. The dataset is available under the book's GitHub repository: <a href="https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07/data">https://github.com/PacktPublishing/Mastering-spaCy/tree/main/Chapter07/data</a>.</p></li>
+				<li>Let's go ahead and download the dataset. Type the following command into your terminal:<p class="source-code"><strong class="bold">$wget</strong></p><p class="source-code"><strong class="bold">https://github.com/PacktPublishing/Mastering-spaCy/blob/main/Chapter07/data/corona.json</strong></p><p>This will download the dataset into your machine. If you wish, you can manually download the dataset from GitHub, too.</p></li>
+				<li>Now, we'll <a id="_idIndexMarker484"/>preprocess the dataset a bit to recover some format changes that happened while dumping the dataset as <strong class="source-inline">json</strong>:<p class="source-code">import json</p><p class="source-code">with open("data/corona.json") as f:</p><p class="source-code">    data = json.loads(f.read())</p><p class="source-code">TRAIN_DATA = []</p><p class="source-code">for (text, annotation) in data:</p><p class="source-code">    new_anno = []</p><p class="source-code">    for anno in annotation["entities"]:</p><p class="source-code">        st, end, label = anno</p><p class="source-code">        new_anno.append((st, end, label))</p><p class="source-code">    TRAIN_DATA.append((text, {"entities": new_anno}))</p><p>This code segment will read the dataset's <strong class="source-inline">JSON</strong> file and format it according to the spaCy training data conventions.</p></li>
+				<li>Next, we'll <a id="_idIndexMarker485"/>do the statistical model training: <p>a) First, we'll do the related imports:</p><p class="source-code">import random</p><p class="source-code">import spacy</p><p class="source-code">from spacy.training import Example</p><p>b) Secondly, we'll initialize a blank spaCy English model and add an NER component to this blank model:</p><p class="source-code">nlp = spacy.blank("en")</p><p class="source-code">ner = nlp.add_pipe("ner")</p><p class="source-code">print(ner)</p><p class="source-code">print(nlp.meta)</p><p>c) Next, we define the labels we'd like the NER component to recognize and introduce these labels to it:</p><p class="source-code">labels = ['Pathogen', 'MedicalCondition', 'Medicine'] </p><p class="source-code">for ent in labels:</p><p class="source-code">   ner.add_label(ent)</p><p class="source-code">print(ner.labels)</p><p>d) Finally, we're ready to define the training loop:</p><p class="source-code">epochs = 100</p><p class="source-code">other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner'] </p><p class="source-code">with nlp.disable_pipes(*other_pipes):</p><p class="source-code">  optimizer = nlp.begin_training()</p><p class="source-code">  for i in range(100):</p><p class="source-code">    random.shuffle(TRAIN_DATA)</p><p class="source-code">    for text, annotation in TRAIN_DATA:</p><p class="source-code">        doc = nlp.make_doc(text)</p><p class="source-code">        example = Example.from_dict(doc, annotation)</p><p class="source-code">        nlp.update([example], sgd=optimizer)</p><p>This code block is identical to the training code from the previous section, except for the value of the <strong class="source-inline">epochs</strong> variable. This time, we iterated for <strong class="source-inline">100</strong> epochs, because the entity types, entity values, and the training sample text are semantically more complicated. We recommend you do at least 500 iterations for this dataset if you have the time. 100 iterations over the data are sufficient to get good results, but 500 iterations will take the performance further.</p></li>
+				<li>Let's visualize <a id="_idIndexMarker486"/>some sample texts to see how our newly trained medical NER model handled the medical entities. We'll visualize our medical entities with <strong class="source-inline">displaCy</strong> code:<p class="source-code">from spacy import displacy</p><p class="source-code">doc = nlp("One of the bacterial diseases with the highest disease burden is tuberculosis, caused by Mycobacterium tuberculosis bacteria, which kills about 2 million people a year.")</p><p class="source-code">displacy.serve(doc, style="ent")</p><p>The following screenshot highlights two entities – <strong class="source-inline">tuberculosis</strong> and the name of the bacteria that causes it as the pathogen entity:</p><div id="_idContainer114" class="IMG---Figure"><img src="Images/B16570_7_7.jpg" alt="Figure 7.7 – Highlighted entities of the sample medical text" width="1650" height="134"/></div><p class="figure-caption">Figure 7.7 – Highlighted entities of the sample medical text</p></li>
+				<li>This time, let's look at entities of a text concerning pathogenic bacteria. This sample text contains many entities, including several diseases and pathogen names. All the <a id="_idIndexMarker487"/>disease names, such as <strong class="source-inline">pneumonia</strong>, <strong class="source-inline">tetanus</strong>, and <strong class="source-inline">leprosy</strong>, are correctly extracted by our medical NER model. The following <strong class="source-inline">displaCy</strong> code highlights the entities:<p class="source-code">doc2 = nlp("Pathogenic bacteria contribute to other globally important diseases, such as pneumonia, which can be caused by bacteria such as Streptococcus and Pseudomonas, and foodborne illnesses, which can be caused by bacteria such as Shigella, Campylobacter, and Salmonella. Pathogenic bacteria also cause infections such as tetanus, typhoid fever, diphtheria, syphilis, and leprosy. Pathogenic bacteria are also the cause of high infant mortality rates in developing countries.")</p><p class="source-code">displacy.serve(doc2, style="ent")</p><p>Here is the visual generated by the preceding code block:</p></li>
+			</ol>
+			<div>
+				<div id="_idContainer115" class="IMG---Figure">
+					<img src="Images/B16570_7_8.jpg" alt="Figure 7.8 – Sample text with disease and pathogen entities highlighted&#13;&#10;" width="1375" height="350"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 7.8 – Sample text with disease and pathogen entities highlighted</p>
+			<p>Looks good! We successfully trained spaCy's NER model for the medicine domain and now the NER can <a id="_idIndexMarker488"/>extract information from medical text. This concludes our section. We learned how to train a statistical pipeline component as well as prepare the training data and test the results. These are great steps in both mastering spaCy and machine learning algorithm design.</p>
+			<h1 id="_idParaDest-134"><a id="_idTextAnchor136"/>Summary</h1>
+			<p>In this chapter, we explored how to customize spaCy statistical models according to our own domain and data. First, we learned the key points of deciding whether we really need custom model training. Then, we went through an essential part of statistical algorithm design – data collection, and labeling.</p>
+			<p>Here we also learned about two annotation tools – Prodigy and Brat. Next, we started model training by updating spaCy's NER component with our navigation domain data samples. We learned the necessary model training steps, including disabling the other pipeline components, creating example objects to hold our examples, and feeding our examples to the training code.</p>
+			<p>Finally, we learned how to train an NER model from scratch on a small toy dataset and on a real medical domain dataset.</p>
+			<p>With this chapter, we took a step into the statistical NLP playground. In the next chapter, we will take more steps in statistical modeling and learn about text classification with spaCy. Let's move forward and see what spaCy brings us!</p>
+		</div>
+	</div></body></html>

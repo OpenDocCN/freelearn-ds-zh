@@ -1,0 +1,489 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using the CUDA Libraries with Scikit-CUDA</h1>
+                </header>
+            
+            <article>
+                
+<p><span>In this chapter, we will be taking a tour of three of the standard CUDA libraries intended for streamlined numerical and scientific computation. The first that we will look at is </span><strong>cuBLAS</strong><span>, which is NVIDIA's implementation of the <strong>Basic Linear Algebra Subprograms</strong> (<strong>BLAS</strong>) specification for CUDA. (cuBLAS is NVIDIA's answer to various optimized, CPU-based implementations of BLAS, such as the free/open source OpenBLAS or Intel's proprietary Math Kernel Library.) The next library that we will look at is <strong>cuFFT</strong>, which can perform virtually every variation of the <strong>fast Fourier transform</strong> (<strong>FFT</strong>) on the GPU. We'll look at how we can use cuFFT for filtering in image processing in particular. We will then look at <strong>cuSolver</strong>, which can perform more involved linear algebra operations than those featured in cuBLAS, such as <strong>singular value decomposition</strong> (<strong>SVD</strong>) or Cholesky factorization.</span></p>
+<p class="mce-root">So far, we have been primarily dealing with one single Python module that acted as our gateway to CUDA—PyCUDA. While PyCUDA is a very powerful and versatile Python library, its main purpose is to provide a gateway to program, compile, and launch CUDA kernels, rather than provide an interface to the CUDA libraries. To this end, fortunately, there is a free Python module available that provides a user-friendly wrapper interface to these libraries. This is called Scikit-CUDA.</p>
+<p>While you don't have to know PyCUDA or even understand GPU programming to appreciate Scikit-CUDA, it is conveniently compatible with PyCUDA; Scikit-CUDA, for instance, can operate easily with PyCUDA's <kbd>gpuarray</kbd> class, and this allows you to easily pass data between our own CUDA kernel routines and Scikit-CUDA. Additionally, most routines will also work with PyCUDA's stream class, which will allow us to properly synchronize our own custom CUDA kernels with Scikit-CUDA's wrappers.</p>
+<div class="packt_infobox">Please note that, besides these three listed libraries, Scikit-CUDA also provides wrappers for the proprietary CULA library, as well as for the open source MAGMA library. Both have a lot of overlap with the functionality provided by the official NVIDIA libraries. Since these libraries are not installed by default with a standard CUDA installation, we will opt to not cover them in this chapter. Interested readers can learn more about CULA and MAGMA at <a href="http://www.culatools.com">http://www.culatools.com</a> and <a href="http://icl.utk.edu/magma/">http://icl.utk.edu/magma/</a>, respectively. </div>
+<div class="packt_tip">It is suggested that readers take a look at the official documentation for Scikit-CUDA, which is available here: <a href="https://media.readthedocs.org/pdf/scikit-cuda/latest/scikit-cuda.pdf">https://media.readthedocs.org/pdf/scikit-cuda/latest/scikit-cuda.pdf</a>.</div>
+<p>The learning outcomes for this chapter are as follows:</p>
+<ul>
+<li>To learn how to install Scikit-CUDA</li>
+<li>To understand the basic purposes and differences between the standard CUDA libraries</li>
+<li>To learn how to use low-level cuBLAS functions for basic linear algebra</li>
+<li>To learn how to use the SGEMM and DGEMM operations to measure the performance of a GPU in FLOPS</li>
+<li>To learn how to use cuFFT to perform 1D or 2D FFT operations on the GPU</li>
+<li>To learn how to create a 2D convolutional filter using the FFT, and apply it to simple image processing</li>
+<li>To understand how to perform a Singular Value Decomposition (SVD) with cuSolver</li>
+<li>To learn how to use cuSolver's SVD algorithm to perform basic principal component analysis</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>A Linux or Windows 10 PC with a modern NVIDIA GPU (2016—onward) is required for this chapter, with all of the necessary GPU drivers and the CUDA Toolkit (9.0–onward) installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) that includes the PyCUDA module is also required.</p>
+<p>This chapter's code is also available on GitHub, and can be found at <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</p>
+<div class="packt_infobox">For more information about the prerequisites, check out the preface of this book. For more information about the software and hardware requirements, check out the README file at <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Installing Scikit-CUDA</h1>
+                </header>
+            
+            <article>
+                
+<p>It is suggested that you install the latest stable version of Scikit-CUDA directly from GitHub: <a href="https://github.com/lebedov/scikit-cuda">https://github.com/lebedov/scikit-cuda</a>. </p>
+<p>Unzip the package into a directory, and then open up the command line here and install the module by typing <kbd>python setup.py install</kbd> into the command line. You may then run the unit tests to ensure that a correct installation has been performed with <kbd>python setup.py test</kbd>. (This method is suggested for both Windows and Linux users.) Alternatively, Scikit-CUDA can be installed directly from the PyPI repository with <kbd><span class="n">pip</span> <span class="n">install</span> <span class="n">scikit-cuda</span></kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Basic linear algebra with cuBLAS</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">We will start this chapter by learning how to use Scikit-CUDA's cuBLAS wrappers. Let's spend a moment discussing BLAS. BLAS (Basic Linear Algebra Subroutines) is a specification for a basic linear algebra library that was first standardized in the 1970s. BLAS functions are broken down into several categories, which are referred to as <em>levels</em>. </p>
+<p class="mce-root">Level 1 BLAS functions consist of operations purely on vectors—vector-vector addition and scaling (also known as <em>ax+y</em> operations, or AXPY), dot products, and norms. Level 2 BLAS functions consist of general matrix-vector operations (GEMV), such as matrix multiplication of a vector, while level 3 BLAS functions consist of "general matrix-matrix" (GEMM) operations, such as matrix-matrix multiplication. <span>Originally, these libraries were written entirely in FORTRAN in the 1970s, so you should take into account that there are some seemingly archaic holdovers in usage and naming that may seem cumbersome to new users today.</span></p>
+<p>cuBLAS is NVIDIA's own implementation of the BLAS specification, which is of course optimized to make full use of the GPU's parallelism. Scikit-CUDA provides wrappers for cuBLAS that are compatible with PyCUDA <kbd>gpuarray</kbd> objects, as well as with PyCUDA streams. This means that we can couple and interface these functions with our own custom CUDA-C kernels by way of PyCUDA, as well as synchronize these operations over multiple streams.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Level-1 AXPY with cuBLAS</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's start with a basic level-1 <em>ax + y</em> (or AXPY) operation with cuBLAS. Let's stop for a moment and review a bit of linear algebra and think about what this means. Here, <em>a</em> is considered to be a scalar; that is, a real number, such as -10, 0, 1.345, or 100. <em>x</em> and <em>y</em> are considered to be vectors in some vector space, <img class="fm-editor-equation" src="assets/47a6873c-3e1b-4b3c-95e8-d1a3a4f796eb.png" style="width:1.25em;height:1.08em;" width="230" height="170"/>. This means that <em>x</em> and <em>y</em> are n-tuples of real numbers, so in the case of <img class="fm-editor-equation" src="assets/d0e81dc7-0fa8-4bce-a264-941fee2e3ad7.png" style="width:1.17em;height:0.92em;" width="220" height="190"/>, these could be values such as <kbd>[1,2,3]</kbd> or <kbd>[-0.345, 8.15, -15.867]</kbd>. <em>ax</em> means the scaling of <em>x</em> by <em>a</em>, so if a is 10 and <em>x</em> is the first prior value, then <em>ax</em> is each individual value of <em>x</em> multiplied by <em>a;</em> that is, <kbd>[10, 20, 30]</kbd>. Finally, the sum <em>ax + y</em> means that we add each individual value in each slot of both vectors to produce a new vector, which would be as follows (assuming that <em>y</em> is the second vector given)—<kbd>[9.655, 28.15, 14.133]</kbd>. </p>
+<p>Let's do this in cuBLAS now. First, let's import the appropriate modules:</p>
+<pre>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import numpy as np</pre>
+<p>Now let's import cuBLAS:</p>
+<pre>from skcuda import cublas</pre>
+<p>We can now set up our vector arrays and copy them to the GPU. Note that we are using 32-bit (single precision) floating point numbers:</p>
+<pre>a = np.float32(10)<br/>x = np.float32([1,2,3])<br/>y = np.float32([-.345,8.15,-15.867])<br/>x_gpu = gpuarray.to_gpu(x)<br/>y_gpu = gpuarray.to_gpu(y)</pre>
+<p>We now have to create a <strong>cuBLAS context</strong>. This is similar in nature to CUDA contexts, which we discussed in <a href="ea648e20-8c72-44a9-880d-11469d0e291f.xhtml">Chapter 5</a>, <em>Streams, Events, Contexts, and Concurrency</em>, only this time it is used explicitly for managing cuBLAS sessions. The <kbd>cublasCreate</kbd> function creates a cuBLAS context and gives a handle to it as its output. We will need to hold onto this handle for as long as we intend to use cuBLAS in this session:</p>
+<pre>cublas_context_h = cublas.cublasCreate()</pre>
+<p>We can now use the <span><kbd>cublasSaxpy</kbd> function. The <kbd>S</kbd> stands for single precision, which is what we will need since we are working with 32-bit floating point arrays:</span></p>
+<pre>cublas.cublasSaxpy(cublas_context_h, x_gpu.size, a, x_gpu.gpudata, 1, y_gpu.gpudata, 1)</pre>
+<p>Let's discuss what we just did. Also, let's keep in mind that this is a direct wrapper to a low-level C function, so the input may seem more like a C function than a true Python function. In short, this performed an "AXPY" operation, ultimately putting the output data into the <kbd>y_gpu</kbd> array. Let's go through each input parameter one by one.</p>
+<p>The first input is always the CUDA context handle. We then have to specify the size of the vectors, since this function will be ultimately operating on C pointers; we can do this by using the <kbd>size</kbd> parameter of a gpuarray. Having typecasted our scalar already to a NumPy <kbd>float32</kbd> variable, we can pass the <kbd>a</kbd> variable right over as the scalar parameter. We then hand the underlying C pointer of the <kbd>x_gpu</kbd> array to this function using the <kbd>gpudata</kbd> parameter. Then we specify the <strong>stride</strong> of the first array as 1: the stride specifies how many steps we should take between each input value. (In contrast, if you were using a vector from a column in a row-wise matrix, you would set the stride to the width of the matrix.) We then put in the pointer to the <kbd>y_gpu</kbd> array, and set its stride to 1 as well.</p>
+<p>We are done with our computation; now we have to explicitly destroy our cuBLAS context:</p>
+<pre>cublas.cublasDestroy(cublas_context)</pre>
+<p>We can now verify whether this is close with NumPy's <kbd>allclose</kbd> function, like so:</p>
+<pre>print 'This is close to the NumPy approximation: %s' % np.allclose(a*x + y , y_gpu.get())</pre>
+<p>Again, notice that the final output was put into the <kbd>y_gpu</kbd> array, which was also an input.</p>
+<div class="packt_tip">Always remember that BLAS and CuBLAS functions act in-place to save time and memory from a new allocation call. <span>This means that an input array will also be used as an output!</span></div>
+<p>We just saw how to perform an <kbd>AXPY</kbd> operation using the <span><kbd>cublasSaxpy</kbd> function.</span></p>
+<p><span>Let's discuss the prominent upper case S. Like we mentioned previously, this stands for single precision that is, 32-bit real floating point values (<kbd>float32</kbd>). If we want to operate on arrays of 64-bit real floating point values, (<kbd>float64</kbd> in NumPy and PyCUDA), then we would use the <kbd>cublasDaxpy</kbd> function; for 64-bit single precision complex values (<kbd>complex64</kbd>), we would use <kbd>cublasCaxpy</kbd>, while for 128-bit double precision complex values (<kbd>complex128</kbd>), we would use <kbd>cublasZaxpy</kbd>.</span></p>
+<div class="packt_tip">We can tell what type of data a BLAS or CuBLAS function operates on by checking the letter preceding the rest of the function name. Functions that use single precision reals are always preceded with S, double precision reals with D, single precision complex with C, and double precision complex with Z.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Other level-1 cuBLAS functions</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's look at a few other level-1 functions. We won't go over their operation in depth, but the steps are similar to the ones we just covered: create a cuBLAS context, call the function with the appropriate array pointers (which is accessed with the <kbd>gpudata</kbd> parameter from a PyCUDA <kbd>gpuarray</kbd>), and set the strides accordingly. Another thing to keep in mind is that if the output of a function is a single value as opposed to an array (for example, a dot product function), the function will directly output this value to the host rather than within an array of memory that has to be pulled off the GPU. (We will only cover the single precision real versions here, but the corresponding versions for other datatypes can be used by replacing the S with the appropriate letter.)</p>
+<p>We can perform a dot product between two single precision real <kbd>gpuarray</kbd>s, <kbd>v_gpu</kbd>, and <kbd>w_gpu</kbd>. Again, the 1s are there to ensure that we are using stride-1 in this calculation! Again, recall that a dot product is the sum of the point-wise multiple of two vectors:</p>
+<pre>dot_output = cublas.cublasSdot(cublas_context_h, v_gpu.size, v_gpu.gpudata, 1, w_gpu.gpudata, 1)</pre>
+<p>We can also perform the L2-norm of a vector like so (recall that for a vector, <em>x</em>, this is its L2-norm, or length, which is calculated with the <img class="fm-editor-equation" src="assets/839337d6-db29-481e-8467-bcd415a2ad7c.png" style="width:14.00em;height:1.50em;" width="2410" height="260"/> formula):</p>
+<pre>l2_output = cublas.cublasSnrm2(cublas_context_h, v_gpu.size, v_gpu.gpudata, 1)</pre>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Level-2 GEMV in cuBLAS</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's look at how to do a <kbd>GEMV</kbd> matrix-vector multiplication. This is defined as the following operation for an <em>m</em> x <em>n</em> matrix <em>A</em>, an n-dimensional vector <em>x</em>, a <em>m</em>-dimensional vector <em>y</em>, and for the scalars <em>alpha</em> and <em>beta</em>:</p>
+<p class="CDPAlignCenter CDPAlign"> <img class="fm-editor-equation" src="assets/0b6277ff-e027-45fe-ad2e-d312ea1a38f5.png" style="width:6.33em;height:1.08em;" width="1170" height="200"/> </p>
+<p>Now let's look at how the function is laid out before we continue: </p>
+<pre>cublasSgemv(handle, trans, m, n, alpha, A, lda, x, incx, beta, y, incy)  </pre>
+<p>Let's go through these inputs one-by-one:</p>
+<ul>
+<li><kbd>handle</kbd> refers to the cuBLAS context handle. </li>
+<li><kbd>trans</kbd> refers to the structure of the matrix—we can specify whether we want to use the original matrix, a direct transpose, or a conjugate transpose (for complex matrices). This is important to keep in mind because this function will expect that the matrix <kbd>A</kbd> is stored in <strong>column-major</strong> format. </li>
+<li><kbd>m</kbd> and <kbd>n</kbd> are the number of rows and columns of the matrix <kbd>A</kbd> that we want to use. </li>
+<li><kbd>alpha</kbd><span> </span>is the floating-point value for <em>α.</em></li>
+<li><kbd>A</kbd> is the <em>m x n</em> matrix <em>A.</em></li>
+<li><kbd>lda</kbd> indicates the leading dimension of the matrix, where the total size of the matrix is actually <kbd>lda</kbd> x <kbd>n</kbd>. This is important in the column-major format because if <kbd>lda</kbd> is larger than <kbd>m</kbd>, this can cause problems for cuBLAS when it tries to access the values of <kbd>A</kbd> since its underlying structure of this matrix is a one-dimensional array. </li>
+<li>We then have <kbd>x</kbd> and its stride, <kbd>incx</kbd>; <kbd>x</kbd> is the underlying C pointer of the vector being multiplied by <kbd>A</kbd>. Remember, <kbd>x</kbd> will have to be of size <kbd>n</kbd>; that is, the number of columns of <kbd>A</kbd>. </li>
+<li><kbd>beta</kbd>, which is the floating-point value for <em>β</em>.</li>
+<li>Finally, we have <kbd>y</kbd> and its stride <kbd>incy</kbd> as the last parameters. We should remember that <kbd>y</kbd> should be of size <kbd>m</kbd>, or the number of rows of <kbd>A</kbd>.</li>
+</ul>
+<p>Let's test this by generating a 10 x 100 matrix of random values <kbd>A</kbd>, and a vector <kbd>x</kbd> of 100 random values. We'll initialize <kbd>y</kbd> as a matrix of 10 zeros. We will set alpha to 1 and beta to 0, just to get a direct matrix multiplication with no scaling:</p>
+<pre>m = 10<br/>n = 100<br/>alpha = 1<br/>beta = 0<br/>A = np.random.rand(m,n).astype('float32')<br/>x = np.random.rand(n).astype('float32')<br/>y = np.zeros(m).astype('float32')</pre>
+<p class="mce-root">We will now have to get <kbd>A</kbd> into <strong>column-major</strong> (or column-wise) format. NumPy stores matrices as <strong>row-major</strong> (or row-wise) by default, meaning that the underlying one-dimensional array that is used to store a matrix iterates through all of the values of the first row, then all of the values of the second row, and so on. You should remember that a transpose operation swaps the columns of a matrix with its rows. However, the result will be that the new one-dimensional array underlying the transposed matrix will represent the original matrix in a column-major format. We can make a copy of the transposed matrix of <kbd>A</kbd> with <kbd>A.T.copy()</kbd> like so, and copy this as well as <kbd>x</kbd> and <kbd>y</kbd> to the GPU:</p>
+<pre>A_columnwise = A.T.copy()<br/>A_gpu = gpuarray.to_gpu(A_columnwise) <br/>x_gpu = gpuarray.to_gpu(x)<br/>y_gpu = gpuarray.to_gpu(y)</pre>
+<p>Since we now have the column-wise matrix stored properly on the GPU, we can set the <kbd>trans</kbd> variable to not take the transpose by using the <kbd>_CUBLAS_OP</kbd> dictionary:</p>
+<pre>trans = cublas._CUBLAS_OP['N']</pre>
+<p>Since the size of the matrix is exactly the same as the number of rows that we want to use, we now set <kbd>lda</kbd> as <kbd>m</kbd>. The strides for the <em>x</em> and <em>y</em> vectors are, again, 1. We now have all of the values we need set up, and can now create our CuBLAS context and store its handle, like so:</p>
+<pre class="mce-root">lda = m <br/>incx = 1<br/>incy = 1<br/>handle = cublas.cublasCreate()</pre>
+<p>We can now launch our function. Remember that <kbd>A</kbd>, <kbd>x</kbd>, and <kbd>y</kbd> are actually PyCUDA <kbd>gpuarray</kbd> objects, so we have to use the <kbd>gpudata</kbd> parameter to input into this function. Other than doing this, this is pretty straightforward:</p>
+<pre>cublas.cublasSgemv(handle, trans, m, n, alpha, A_gpu.gpudata, lda, x_gpu.gpudata, incx, beta, y_gpu.gpudata, incy)</pre>
+<p>We can now destroy our cuBLAS context and check the return value to ensure that it is correct:</p>
+<pre>cublas.cublasDestroy(handle)<br/>print 'cuBLAS returned the correct value: %s' % np.allclose(np.dot(A,x), y_gpu.get())</pre>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Level-3 GEMM in cuBLAS for measuring GPU performance</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at how to perform a <strong>general matrix-matrix multiplication</strong> (<strong>GEMM</strong>) with CuBLAS. We will actually try to make something a little more utilitarian than the last few examples we saw in cuBLAS—we will use this as a performance metric for our GPU to determine the number of <strong><span>Floating Point Operations Per Second</span></strong> (<strong><span>FLOPS</span></strong>) it can perform, which will be two separate values: the case of single precision, and that of double precision. Using GEMM is a standard technique for evaluating the performance of computing hardware in FLOPS, as it gives a much better understanding of sheer computational power than using pure clock speed in MHz or GHz.</p>
+<div class="packt_tip"><span>If you need a brief review, recall that we covered matrix-matrix multiplication in depth in the last chapter. </span>If you<span> </span>forgot how this works, it's strongly suggested that you review this chapter before you move on to this section. </div>
+<p>First, let's see how a GEMM operation is defined: </p>
+<p class="CDPAlignCenter CDPAlign"> <img class="fm-editor-equation" src="assets/6732ed55-6eea-497a-adcb-95731cc211b9.png" style="width:8.08em;height:1.17em;" width="1310" height="190"/> </p>
+<p>This means that we perform a matrix multiplication of <em>A</em> and <em>B</em>, scale the result by <em>alpha</em>, and then add this to the <em>C</em> matrix that we have scaled by <em>beta, </em>placing the final result in <em>C</em>.</p>
+<p>Let's think about how many floating point operations are executed to get the final result of a real-valued GEMM operation, assuming that <em>A</em> is an <em>m</em> x <em>k</em> (where <em>m</em> is rows and<em> k</em> is columns)<em> </em>matrix, <em>B</em> is a <em>k</em> x <em>n</em> matrix, and C is an <em>m</em> x <em>n</em> matrix. First, let's figure out how many operations are required for computing <em>AB</em>. Let's take a single column of <em>A</em> and multiply it by <em>B</em>: this will amount to <em>k</em> multiplies and <em>k - 1</em> adds for each of the <em>m</em> rows in <em>A</em>, which means that this is <em>km + (k-1)m</em> total operations over <em>m</em> rows. There are <em>n</em> columns in <em>B</em>, so computing <em>AB</em> will total to <em>kmn + (k-1)mn = 2kmn - mn</em> operations. Now, we use <em>alpha</em> to scale <em>AB</em>, which will be <em>m</em><em>n</em> operations, since that is the size of the matrix <em>AB</em>; similarly, scaling <em>C</em> by <em>beta</em> is another <em>m</em><em>n</em> operation. Finally, we add these two resulting matrices, which is yet another <em>mn</em> operation. This means that we will have a total of <em>2kmn - mn + 3mn = 2kmn + 2mn = 2mn(k+1)</em> floating point operations in a given GEMM operation.</p>
+<p>Now the only thing we have to do is run a timed GEMM operation, taking note of the different sizes of the matrices, and divide <em>2kmn + 2mn</em> by the total time duration to calculate the FLOPS of our GPU. The resulting number will be very large, so we will represent this in terms of GFLOPS <span>– </span>that is, how many billions (10<sup>9</sup>) of operations that can be computed per second. We can compute this by multiplying the FLOPS value by 10<sup>-9</sup>.</p>
+<p>Now we are ready to start coding this up. Let's start with our import statements, as well as the <kbd>time</kbd> function:</p>
+<pre>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import numpy as np<br/>from skcuda import cublas<br/>from time import time</pre>
+<p>Now we will set the <kbd>m</kbd>, <kbd>n</kbd>, and <kbd>k</kbd> variables for our matrix sizes. We want our matrices to be relatively big so that the time duration is sufficiently large so as to avoid divide by 0 errors. The following values should be sufficient for any GPU released up to mid-2018 or earlier; users with newer cards may consider increasing these values:</p>
+<pre>m = 5000<br/>n = 10000<br/>k = 10000</pre>
+<p>We will now write a function that computes the GFLOPS for both single and double precision. We will set the input value to <kbd>'D'</kbd> if we wish to use double precision, or <kbd>'S'</kbd> otherwise:</p>
+<pre>def compute_gflops(precision='S'):<br/><br/>if precision=='S':<br/>    float_type = 'float32'<br/>elif precision=='D':<br/>    float_type = 'float64'<br/>else:<br/>    return -1</pre>
+<p>Now let's generate some random matrices that are of the appropriate precision that we will use for timing. The GEMM operations act similarly to the GEMV operation we saw before, so we will have to transpose these before we copy them to the GPU. (Since we are just doing timing, this step isn't necessary, but it's good practice to remember this.)</p>
+<p>We will set up some other necessary variables for GEMM, whose purpose should be self-explanatory at this point (<kbd>transa</kbd>, <kbd>lda</kbd>, <kbd>ldb</kbd>, and so on):</p>
+<pre>A = np.random.randn(m, k).astype(float_type)<br/>B = np.random.randn(k, n).astype(float_type)<br/>C = np.random.randn(m, n).astype(float_type)<br/>A_cm = A.T.copy()<br/>B_cm = B.T.copy()<br/>C_cm = C.T.copy()<br/>A_gpu = gpuarray.to_gpu(A_cm)<br/>B_gpu = gpuarray.to_gpu(B_cm)<br/>C_gpu = gpuarray.to_gpu(C_cm)<br/>alpha = np.random.randn()<br/>beta = np.random.randn()<br/>transa = cublas._CUBLAS_OP['N']<br/>transb = cublas._CUBLAS_OP['N']<br/>lda = m<br/>ldb = k<br/>ldc = m</pre>
+<p>We can now start the timer! First, we will create a cuBLAS context:</p>
+<pre>t = time()<br/>handle = cublas.cublasCreate()</pre>
+<p>We will now launch GEMM. Keep in mind that there are two versions for the real case: <kbd>cublasSgemm</kbd> for single precision and <kbd>cublasDgemm</kbd> for double precision. We can execute the appropriate function using a little Python trick: we will write a string with <kbd>cublas%sgemm</kbd> with the appropriate parameters, and then replace the <kbd>%s</kbd> with D or S by appending <kbd>% precision</kbd> to the string. We will then execute this string as Python code with the <kbd>exec</kbd> function, like so:</p>
+<pre>exec('cublas.cublas%sgemm(handle, transa, transb, m, n, k, alpha, A_gpu.gpudata, lda, B_gpu.gpudata, ldb, beta, C_gpu.gpudata, ldc)' % precision)</pre>
+<p>We can now destroy the cuBLAS context and get the final time for our computation:</p>
+<pre>cublas.cublasDestroy(handle)<br/>t = time() - t</pre>
+<p>Then we need to compute the GFLOPS using the equation we derived and return it as the output of this function:</p>
+<pre>gflops = 2*m*n*(k+1)*(10**-9) / t <br/>return gflops</pre>
+<p>Now we can set up our main function. We will output the GFLOPS in both the single and double precision cases:</p>
+<pre>if __name__ == '__main__':<br/>    print 'Single-precision performance: %s GFLOPS' % compute_gflops('S')<br/>    print 'Double-precision performance: %s GFLOPS' % compute_gflops('D')</pre>
+<p>Now let's do a little homework before we run this program—go to <a href="https://www.techpowerup.com">https://www.techpowerup.com</a> and search for your GPU, and then take note of two things—the single precision floating point performance and the double precision floating point performance. I am using a GTX 1050 right now, and it's listing claims that it has <span>1,862 GFLOPS performance in single precision, and 58.20 GFLOPS performance in double precision. Let's run this program right now and see if this aligns with the truth:</span></p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/0d014970-b902-4cd8-804a-433bf0b83d77.png" style="" width="819" height="115"/></div>
+<p>Lo and behold, it does!</p>
+<div class="packt_infobox">This program is also available as the <kbd>cublas_gemm_flops.py</kbd> file under the directory in this book's repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Fast Fourier transforms with cuFFT</h1>
+                </header>
+            
+            <article>
+                
+<p>Now let's look at how we can do some basic <strong>fast Fourier transforms</strong> (<strong>FFT</strong>) with cuFFT.  First, let's briefly review what exactly a Fourier transform is. If you have taken an advanced Calculus or Analysis class, you might have seen the Fourier transform defined as an integral formula, like so:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/d1c79c32-6eab-4a52-a2ef-4af0bc192f5c.png" style="width:14.75em;height:3.33em;" width="2080" height="470"/></div>
+<p>What this does is take <em>f</em> as a time domain function over <em>x</em>. This gives us a corresponding frequency domain function over "ξ".  This turns out to be an incredibly useful tool that touches virtually all branches of science and engineering.</p>
+<p>Let's remember that the integral can be thought of as a sum; likewise, there is a corresponding discrete, finite version of the Fourier Transform called the <strong>discrete Fourier transform</strong> (<strong>DFT</strong>). This operates on vectors of a finite length and allows them to be analyzed or modified in the frequency domain. The DFT of an <em>n</em>-dimensional vector <em>x</em> is defined as follows:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/8b60bac2-8488-4c5f-9d90-3ac7eb73bd62.png" style="width:17.25em;height:5.33em;" width="1880" height="580"/></div>
+<p>In other words, we can multiply a vector, <em>x</em>, by the complex <em>N</em> x <em>N</em> matrix <img class="fm-editor-equation" src="assets/96b3a1fb-9202-44fa-8b1d-381398412504.png" style="width:8.83em;height:2.75em;" width="1030" height="320"/> <br/>
+(here, <em>k</em> corresponds to row number, while <em>n</em> corresponds to column number) to find its DFT. We should also note the inverse formula that lets us retrieve <em>x</em> from its DFT (replace <em>y</em> with the DFT of <em>x</em> here, and the output will be the original <em>x</em>):</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/25229fe6-66c3-4ca5-b8d7-96ba5e639917.png" style="width:17.33em;height:5.00em;" width="2020" height="580"/></div>
+<p>Normally, computing a matrix-vector operation is of computational complexity O(<em>N<sup>2</sup></em>) for a vector of length <em>N</em>. However, due to symmetries in the DFT matrix, this can always be reduced to O(<em>N log N</em>) by using an FFT. Let's look at how we can use an FFT with CuBLAS, and then we will move on to a more interesting example.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">A simple 1D FFT</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's start by looking at how we can use cuBLAS to compute a simple 1D FFT. First, we will briefly discuss the cuFFT interface in Scikit-CUDA.</p>
+<p>There are two submodules here that we can access the cuFFT library with, <kbd>cufft</kbd> and <kbd>fft</kbd>. <kbd>cufft</kbd> consists of a collection of low-level wrappers for the cuFFT library, while <kbd>fft</kbd> provides a more user-friendly interface; we will be working solely with <kbd>fft</kbd> in this chapter.</p>
+<p>Let's start with the appropriate imports, remembering to include the Scikit-CUDA <kbd>fft</kbd> submodule:</p>
+<pre>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import numpy as np<br/>from skcuda import fft</pre>
+<p>We now will set up some random array and copy it to the GPU. We will also set up an empty GPU array that will be used to store the FFT <span>(notice that we are using a real float32 array as an input, but the output will be a complex64 array, since the Fourier transform is always complex-valued)</span>:</p>
+<pre>x = np.asarray(np.random.rand(1000), dtype=np.float32 )<br/>x_gpu = gpuarray.to_gpu(x)<br/>x_hat = gpuarray.empty_like(x_gpu, dtype=np.complex64)</pre>
+<p>We will now set up a cuFFT plan for the forward FFT transform. This is an object that cuFFT uses to determine the shape, as well as the input and output data types of the transform:</p>
+<pre>plan = fft.Plan(x_gpu.shape,np.float32,np.complex64)</pre>
+<p>We will also set up a plan for the inverse FFT plan object. Notice that this time we go from <kbd>complex64</kbd> to real <kbd>float32</kbd>:</p>
+<pre>inverse_plan = fft.Plan(x.shape, in_dtype=np.complex64, out_dtype=np.float32)</pre>
+<p>Now, we must take the forward FFT from <kbd>x_gpu</kbd> into <kbd>x_hat</kbd>, and the inverse FFT from <kbd>x_hat</kbd> back into <kbd>x_gpu</kbd>. Notice that we set <kbd>scale=True</kbd> in the inverse FFT; we do this to indicate to cuFFT to scale the inverse FFT by 1/N:</p>
+<pre>fft.fft(x_gpu, x_hat, plan)<br/>fft.ifft(x_hat, x_gpu, inverse_plan, scale=True)</pre>
+<p>We now will check <kbd>x_hat</kbd> against a NumPy FFT of <kbd>x</kbd>, and <kbd>x_gpu</kbd> against <kbd>x</kbd> itself:</p>
+<pre>y = np.fft.fft(x)<br/>print 'cuFFT matches NumPy FFT: %s' % np.allclose(x_hat.get(), y, atol=1e-6)<br/>print 'cuFFT inverse matches original: %s' % np.allclose(x_gpu.get(), x, atol=1e-6)</pre>
+<p>If you run this, you will see that <kbd>x_hat</kbd> does not match <kbd>y</kbd>, yet, inexplicably, <kbd>x_gpu</kbd> matches <kbd>x</kbd>. How is this possible? Well, let's remember that <kbd>x</kbd> is real; if you look at how the Discrete Fourier Transform is computed, you can prove mathematically that the outputs of a real vector will repeat as their complex conjugates after N/2. While the NumPy FFT fully computes these values anyway, cuFFT saves time by only computing the first half of the outputs when it sees that the input is real, and it sets the remaining outputs to <kbd>0</kbd>. You should verify that this is the case by checking the preceding variables.</p>
+<p>Thus, if we change the first print statement in the preceding code to only compare the first N/2 outputs between CuFFT and NumPy, then this will return true:</p>
+<pre>print 'cuFFT matches NumPy FFT: %s' % np.allclose(x_hat.get()[0:N//2], y[0:N//2], atol=1e-6)</pre>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using an FFT for convolution</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at how we can use an FFT to perform <strong>convolution</strong>. Let's review what exactly convolution is, first: given two one-dimensional vectors, <em>x</em> and <em>y</em>, their convolution is defined as follows:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/34574397-830b-446f-8e5f-34b468e76b3e.png" style="width:15.25em;height:3.25em;" width="2540" height="540"/></div>
+<p>This is of interest to us because if <em>x</em> is some long, continuous signal, and <em>y</em> only has a small amount of localized non-zero values, then <em>y</em> will act as a filter on <em>x</em>; this has many applications in itself. First, we can use a filter to smooth the signal <em>x</em> (as is common in digital signal processing and image processing). We can also use it to collect samples of the signal <em>x</em> so as to represent the signal or compress it (as is common in the field of data compression or compressive sensing), or use filters to collect features for signal or image recognition in machine learning. This idea forms the basis for convolutional neural networks).</p>
+<p>Of course, computers cannot handle infinitely long vectors (at least, not yet), so we will be considering <strong>circular convolution</strong>. In circular convolution, we are dealing with two length <em>n</em>-vectors whose indices below 0 or above n-1 will wrap around to the other end; that is to say, <em>x</em>[-1] = <em>x</em>[n-1], <em>x</em>[-2] = <em>x</em>[n-2], <em>x</em>[n] = <em>x</em>[0], <em>x</em>[n+1] = <em>x</em>[1], and so on. We define circular convolution of <em>x</em> and <em>y</em> like so:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/69ee6cc9-5c17-40f2-a4f5-675f5a0a9ee2.png" style="width:13.58em;height:3.33em;" width="2370" height="580"/></div>
+<p>It turns out that we can perform a circular convolution using an FFT quite easily; we can do this by performing an FFT on <em>x</em> and <em>y</em>, point-wise-multiplying the outputs, and then performing an inverse FFT on the final results. This result is known as the <strong>convolution theorem</strong>, which can also be expressed as follows:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/d4a9eaac-c5fb-4ec2-8544-35b8e7388209.png" style="width:8.08em;height:1.42em;" width="1410" height="250"/></div>
+<p>We will be doing this over two dimensions, since we wish to apply the result to signal processing. While we have only seen the math for FFTs and convolution along one dimension, two-dimensional convolution and FFTs work very similarly to their one-dimensional counterparts, only with some more complex indexing. We will opt to skip over this, however, so that we can get directly into the application.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using cuFFT for 2D convolution </h1>
+                </header>
+            
+            <article>
+                
+<p>Now we are going to make a small program that performs <strong>Gaussian filtering</strong> on an image using cuFFT-based two-dimensional convolution. Gaussian filtering is an operation that smooths a rough image using what is known as a Gaussian filter. This is named as such because it is based on the Gaussian (normal) distribution in statistics. This is how the Gaussian filter is defined over two dimensions with a standard deviation of σ:</p>
+<div class="CenterAlign"><img class="fm-editor-equation" src="assets/06f381b9-2e9d-48aa-95e7-265b988f144d.png" style="width:14.17em;height:3.58em;" width="1990" height="500"/></div>
+<p>When we convolve a discrete image with a filter, we sometimes refer to the filter as a <strong>convolution kernel</strong>. Oftentimes, image processing engineers will just call this a plain kernel, but since we don't want to confuse these with CUDA kernels, we will always use the full term, convolution kernel. We will be using a discrete version of the Gaussian filter as our convolution kernel here.</p>
+<p>Let's start with the appropriate imports; notice that we will use the Scikit-CUDA submodule <kbd>linalg</kbd> here. This will provide a higher-level interface for us than cuBLAS. Since we're working with images here, we will also import Matplotlib's <kbd>pyplot</kbd> submodule. Also note that we will use Python 3-style division here, from the first line; this means that if we divide two integers with the <kbd>/</kbd> operator, then the return value will be a float without typecasting (we perform integer division with the <kbd>//</kbd> operator):</p>
+<pre>from __future__ import division<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import numpy as np<br/>from skcuda import fft<br/>from skcuda import linalg<br/>from matplotlib import pyplot as plt</pre>
+<p>Let's jump right in and start writing the convolution function. This will take in two NumPy arrays of the same size, <kbd>x</kbd> and <kbd>y</kbd>. We will typecast these to complex64 arrays, and then return <kbd>-1</kbd> if they are not of the same size:</p>
+<pre>def cufft_conv(x , y):<br/>    x = x.astype(np.complex64)<br/>    y = y.astype(np.complex64)<br/><br/>    if (x.shape != y.shape):<br/>        return -1</pre>
+<p>We will now set up our FFT plan and inverse FFT plan objects:</p>
+<pre>plan = fft.Plan(x.shape, np.complex64, np.complex64)<br/>inverse_plan = fft.Plan(x.shape, np.complex64, np.complex64)</pre>
+<p>Now we can copy our arrays to the GPU. We will also set up some empty arrays of the appropriate sizes to hold the FFTs of these arrays, plus one additional array that will hold the output of the final convolution, <kbd>out_gpu</kbd>:</p>
+<pre> x_gpu = gpuarray.to_gpu(x)<br/> y_gpu = gpuarray.to_gpu(y)<br/> <br/> x_fft = gpuarray.empty_like(x_gpu, dtype=np.complex64)<br/> y_fft = gpuarray.empty_like(y_gpu, dtype=np.complex64)<br/> out_gpu = gpuarray.empty_like(x_gpu, dtype=np.complex64)</pre>
+<p>We now can perform our FFTs:</p>
+<pre>fft.fft(x_gpu, x_fft, plan)<br/>fft.fft(y_gpu, y_fft, plan)</pre>
+<p>We will now perform pointwise (Hadamard) multiplication between <kbd>x_fft</kbd> and <kbd>y_fft</kbd> with the <kbd>linalg.multiply</kbd> function. We will set <kbd>overwrite=True</kbd> so as to write the final value into <kbd>y_fft</kbd>:</p>
+<pre>linalg.multiply(x_fft, y_fft, overwrite=True)</pre>
+<p>Now we will call the inverse FFT, outputting the final result into <kbd>out_gpu</kbd>. We transfer this value to the host and return it:</p>
+<pre>fft.ifft(y_fft, out_gpu, inverse_plan, scale=True)<br/>conv_out = out_gpu.get()<br/>return conv_out</pre>
+<p>We are not done yet. Our convolution kernel will be much smaller than our input image, so we will have to adjust the sizes of our two 2D arrays (both the convolution kernel and the image) so that they are equal and perform the pointwise multiplication between them. Not only should we ensure that they are equal, but we also need to ensure that we perform <strong>zero padding</strong> on the arrays and that we appropriately center the convolution kernel. Zero padding means that we add a buffer of zeros on the sides of the images so as to prevent a wrap-around error. If we are using an FFT to perform our convolution, remember that it is a circular convolution, so the edges will literally always wrap-around. When we are done with our convolution, we can remove the buffer from the outside of the image to get the final output image.</p>
+<p>Let's create a new function called <kbd>conv_2d</kbd> that takes in a convolution kernel, <kbd>ker</kbd>, and an image, <kbd>img</kbd>. The padded image size will be (<kbd>2*ker.shape[0] + img.shape[0]</kbd>, <kbd>2*ker.shape[1] + img.shape[1]</kbd>). Let's set up the padded convolution kernel first. We will create a 2D array of zeros of this size, and then set the upper-left submatrix as our convolution kernel, like so:</p>
+<pre>def conv_2d(ker, img):<br/><br/>    padded_ker = np.zeros( (img.shape[0] + 2*ker.shape[0], img.shape[1] + 2*ker.shape[1] )).astype(np.float32)<br/>    padded_ker[:ker.shape[0], :ker.shape[1]] = ker</pre>
+<p>We will now have to shift our convolution kernel so that its center is precisely at the coordinate (0,0). We can do this with the NumPy <kbd>roll</kbd> command:</p>
+<pre>padded_ker = np.roll(padded_ker, shift=-ker.shape[0]//2, axis=0)<br/>padded_ker = np.roll(padded_ker, shift=-ker.shape[1]//2, axis=1)</pre>
+<p>Now we need to pad the input image:</p>
+<pre>padded_img = np.zeros_like(padded_ker).astype(np.float32)<br/>padded_img[ker.shape[0]:-ker.shape[0], ker.shape[1]:-ker.shape[1]] = img</pre>
+<p>Now we have two arrays of the same size that are appropriately formatted. We can now use our <kbd>cufft_conv</kbd> function that we just wrote here:</p>
+<pre>out_ = cufft_conv(padded_ker, padded_img)</pre>
+<p>We now can remove the zero buffer outside of our image. We then return the result:</p>
+<pre>output = out_[ker.shape[0]:-ker.shape[0], ker.shape[1]:-ker.shape[1]]<br/><br/>return output</pre>
+<p>We are not yet done. Let's write some small functions to set up our Gaussian filter, and then we can move on to applying this to an image. We can write the basic filter itself with a single line using a lambda function:</p>
+<pre>gaussian_filter = lambda x, y, sigma : (1 / np.sqrt(2*np.pi*(sigma**2)) )*np.exp( -(x**2 + y**2) / (2 * (sigma**2) ))</pre>
+<p>We can now write a function that uses this filter to output a discrete convolution kernel. The convolution kernel will be of height and length <kbd>2*sigma + 1</kbd>, which is fairly standard:</p>
+<div class="packt_tip">Notice that we normalize the values of our Gaussian kernel by summing its values into <kbd>total_</kbd> and dividing it.</div>
+<pre>def gaussian_ker(sigma):<br/>    ker_ = np.zeros((2*sigma+1, 2*sigma+1))<br/>    for i in range(2*sigma + 1):<br/>        for j in range(2*sigma + 1):<br/>            ker_[i,j] = gaussian_filter(i - sigma, j - sigma, sigma)<br/>    total_ = np.sum(ker_.ravel())<br/>    ker_ = ker_<em> / </em>total<em>_<br/>    </em>return ker_</pre>
+<p class="mce-root"/>
+<p>We are now ready to test this on an image! As our test case, we will use Gaussian filtering to blur a color JPEG image of this book's editor, <em>Akshada Iyer</em>. (This image is available under the <kbd>Chapter07</kbd> directory in the GitHub repository with the file name <kbd>akshada.jpg</kbd>.) We will use Matplotlib's <kbd>imread</kbd> function to read the image; this is stored as an array of unsigned 8-bit integers ranging from 0 to 255 by default. We will typecast this to an array of floats and normalize it so that all of the values will range from 0 to 1. </p>
+<div class="packt_infobox">Note to the readers of the print edition of this text: although the print edition of this text is in greyscale, this a color image.</div>
+<div><span>We will then set up an empty array of zeros that will store the blurred image:</span></div>
+<pre>if __name__ == '__main__':<br/>    akshada = np.float32(plt.imread('akshada.jpg')) / 255<br/>    akshada_blurred = np.zeros_like(akshada)</pre>
+<p>Let's set up our convolution kernel. Here, a standard deviation of 15 should be enough:</p>
+<pre>ker = gaussian_ker(15)</pre>
+<p>We can now blur the image. Since this is a color image, we will have to apply Gaussian filtering to each color layer (red, green, and blue) individually; this is indexed by the third dimension in the image arrays:</p>
+<pre>for k in range(3):<br/>    akshada_blurred[:,:,k] = conv_2d(ker, akshada[:,:,k])</pre>
+<p class="mce-root">Now let's look at the <span class="packt_screen">Before</span> and <span class="packt_screen">After</span> images side-by-side by using some Matplotlib tricks:</p>
+<pre>fig, (ax0, ax1) = plt.subplots(1,2)<br/>fig.suptitle('Gaussian Filtering', fontsize=20)<br/>ax0.set_title('Before')<br/>ax0.axis('off')<br/>ax0.imshow(akshada)<br/>ax1.set_title('After')<br/>ax1.axis('off')<br/>ax1.imshow(akshada_blurred)<br/>plt.tight_layout()<br/>plt.subplots_adjust(top=.85)<br/>plt.show()</pre>
+<p>We can now run the program and observe the effects of Gaussian filtering:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/ae723dc0-ccbd-4163-9c08-bb7caad3aa74.png" style="" width="1182" height="1119"/></div>
+<div class="packt_infobox">This program is available in the <kbd>Chapter07</kbd> directory in a file called <span><span><kbd>conv_2d.py</kbd> in the repository for this book.</span></span></div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using cuSolver from Scikit-CUDA</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at how we can use cuSolver from Scikit-CUDA's <kbd>linalg</kbd> submodule. Again, this provides a high-level interface for both cuBLAS and cuSolver, so we don't have to get caught up in the small details.</p>
+<p>As we noted in the introduction, cuSolver is a library that's used for performing more advanced linear algebra operations than cuBLAS, such as the <span>Singular Value Decomposition,</span> LU/QR/Cholesky factorization, and eigenvalue computations. Since <span>cuSolver, </span>like cuBLAS and cuFFT, is another vast library, we will only take the time to look at one of the most fundamental operations in data science and machine learning—SVD.</p>
+<div class="packt_infobox">Please refer to NVIDIA's official documentation on cuSOLVER if you would like further information on this library: <a href="https://docs.nvidia.com/cuda/cusolver/index.html">https://docs.NVIDIA.com/cuda/cusolver/index.html</a>. </div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Singular value decomposition (SVD)</h1>
+                </header>
+            
+            <article>
+                
+<p>SVD takes any <em>m</em> x <em>n</em> matrix <em>A</em>, and then returns three matrices in return—<em>U</em>, <em>Σ</em>, and <em>V</em>. Here, <em>U</em> is an <em>m</em> x <em>m</em> unitary matrix, <em>Σ</em> is an <em>m</em> x <em>n</em> diagonal matrix, and <em>V</em> is an <em>n</em> x <em>n</em> unitary matrix. By <em>unitary</em>, we mean that a matrix's columns form an orthonormal basis; by <em>diagonal</em>, we mean that all values in the matrix are zero, except for possibly the values along its diagonal.</p>
+<p>The significance of the SVD is that this decomposes <em>A</em> into these matrices so that we have <em>A = UΣV<sup>T</sup></em> ; moreover, the values along the diagonal of <em>Σ</em> will all be positive or zero, and are known as the singular values. We will see some applications of this soon, but you should keep in mind that the computational complexity of SVD is of the order O(<em>mn<sup>2</sup></em>)—for large matrices, it is definitely a good idea to use a GPU, since this algorithm is parallelizable.</p>
+<p>We'll now look at how we can compute the SVD of a matrix. Let's make the appropriate import statements:</p>
+<pre>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import numpy as np<br/>from skcuda import linalg</pre>
+<p>We will now generate a relatively large random matrix and transfer it to the GPU:</p>
+<pre>a = np.random.rand(1000,5000).astype(np.float32)<br/>a_gpu = gpuarray.to_gpu(a)</pre>
+<p>We can now execute the SVD. This will have three outputs corresponding to the matrices that we just described. The first parameter will be the matrix array we just copied to the GPU. Then we need to specify that we want to use cuSolver as our backend for this operation:</p>
+<pre>U_d, s_d, V_d = linalg.svd(a_gpu,  lib='cusolver')</pre>
+<p>Now let's copy these arrays from the GPU to the host:</p>
+<pre>U = U_d.get()<br/>s = s_d.get()<br/>V = V_d.get()</pre>
+<p><kbd>s</kbd> is actually stored as a one-dimensional array; we will have to create a zero matrix of size 1000 x 5000 and copy these values along the diagonal. We can do this with the NumPy <kbd>diag</kbd> function, coupled with some array slicing:</p>
+<pre>S = np.zeros((1000,5000))<br/>S[:1000,:1000] = np.diag(s)</pre>
+<p>We can now matrix-multiply these values on the host with the NumPy <kbd>dot</kbd> function to verify that they match up to our original array:</p>
+<pre>print 'Can we reconstruct a from its SVD decomposition? : %s' % np.allclose(a, np.dot(U, np.dot(S, V)), atol=1e-5)</pre>
+<p>Since we are using only float32s and our matrix is relatively large, a bit of numerical error was introduced; we had to set the "tolerance" level (<kbd>atol</kbd>) a little higher than usual here, but it's still small enough to verify that the two arrays are sufficiently close.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using SVD for Principal Component Analysis (PCA)</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Principal Component Analysis</strong> (<strong>PCA</strong>) is a tool that's used primarily for dimensionality reduction. We can use this to look at a dataset and find which dimensions and linear subspaces are the most salient. While there are several ways to implement this, we will show you how to perform PCA using SVD.</p>
+<p>We'll do this as follows—we will work with a dataset that exists in 10 dimensions. We will start by creating two vectors that are heavily weighted in the front, and 0 otherwise:</p>
+<pre>vals = [ np.float32([10,0,0,0,0,0,0,0,0,0]) , np.float32([0,10,0,0,0,0,0,0,0,0]) ]</pre>
+<p>We will then add 9,000 additional vectors: 6,000 of these will be the same as the first two vectors, only with a little added random white noise, and the remaining 3,000 will just be random white noise:</p>
+<pre>for i in range(3000):<br/>    vals.append(vals[0] + 0.001*np.random.randn(10))<br/>    vals.append(vals[1] + 0.001*np.random.randn(10))<br/>    vals.append(0.001*np.random.randn(10))</pre>
+<p>We will now typecast the <kbd>vals</kbd> list to a <kbd>float32</kbd> NumPy array. We take the mean over the rows and subtract this value from each row. (This is a necessary step for PCA.) We then transpose this matrix, since <span>cuSolver </span>requires that input matrices have fewer or equal rows compared to the columns:</p>
+<pre>vals = np.float32(vals)<br/>vals = vals - np.mean(vals, axis=0)<br/>v_gpu = gpuarray.to_gpu(vals.T.copy())</pre>
+<p>We will now run <span>cuSolver,</span> just like we did previously, and copy the output values off of the GPU:</p>
+<pre>U_d, s_d, V_d = linalg.svd(v_gpu, lib='cusolver')<br/><br/>u = U_d.get()<br/>s = s_d.get()<br/>v = V_d.get()</pre>
+<p>Now we are ready to begin our investigative work. Let's open up IPython and take a closer look at <kbd>u</kbd> and <kbd>s</kbd>. First, let's look at s; its values are actually the square roots of the <strong>principal values</strong>, so we will square them and then take a look:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/28321a31-a6fb-49e8-974f-1b2caecfe01b.png" style="" width="1104" height="151"/></div>
+<p>You will notice that the first two principal values are of the order 10<sup>5</sup>, while the remaining components are of the order 10<sup>-3</sup>. This tells us there is only really a two-dimensional subspace that is even relevant to this data at all, which shouldn't be surprising. These are the first and second values, which will correspond to the first and second principal components that is, the corresponding vectors. Let's take a look at these vectors, which will be stored in <kbd>U</kbd>:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/9d685877-5a4c-4449-8da4-68b1b21d1e66.png" style="" width="1107" height="338"/></div>
+<p>You will notice that these two vectors are very heavily weighted in the first two entries, which are of the order 10<sup>-1</sup>; the remaining entries are all of the order 10<sup>-6</sup> or lower, and are comparably irrelevant. This is what we should have expected, considering how biased we made our data in the first two entries. That, in a nutshell, is the idea behind PCA.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We started this chapter by looking at how to use the wrappers for the cuBLAS library from Scikit-CUDA; we have to keep many details in mind here, such as when to use column-major storage, or if an input array will be overwritten in-place. We then look at how to perform one- and two-dimensional FFTs with cuFFT from Scikit-CUDA, and how to create a simple convolutional filter. We then showed you how to apply this for a simple Gaussian blurring effect on an image. Finally, we looked at how to perform a singular value decomposition (SVD) on the GPU with cuSolver, which is normally a very computationally onerous operation, but which parallelizes fairly well onto the GPU. We ended this chapter by looking at how to use the SVD for basic PCA.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li> Suppose you get a job translating some old legacy FORTRAN BLAS code to CUDA. You open a file and see a function called SBLAH, and another called ZBLEH. Can you tell what datatypes these two functions use without looking them up?</li>
+<li>Can you alter the cuBLAS level-2 GEMV example to work by directly copying the matrix <kbd>A</kbd> to the GPU, without taking the transpose on the host to set it column-wise?</li>
+<li>Use cuBLAS 32-bit real dot-product (<kbd>cublasSdot</kbd>) to implement matrix-vector multiplication using one row-wise matrix and one stride-1 vector.</li>
+<li>Implement matrix-matrix multiplication using <kbd>cublasSdot</kbd>.</li>
+<li>Can you implement a method to precisely measure the GEMM operations in the performance measurement example? </li>
+<li>In the example of the 1D FFT, try typecasting <kbd>x</kbd> as a <kbd>complex64</kbd> array, and then switching the FFT and inverse FFT plans to be <kbd>complex64</kbd> valued in both directions. Then confirm whether <kbd>np.allclose(x, x_gpu.get())</kbd> is true without checking the first half of the array. Why do you think this works now?</li>
+<li>Notice that there is a dark edge around the blurred image in the convolution example. Why is this in the blurred image but not in the original? Can you think of a method that you can use to mitigate this?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div></div></body></html>

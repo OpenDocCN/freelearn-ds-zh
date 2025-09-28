@@ -1,0 +1,294 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Performance Optimization in CUDA</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In this penultimate chapter, we will cover some fairly advanced CUDA features that we can use for low-level performance optimizations. We will start by learning about dynamic parallelism, which allows kernels to launch and manage other kernels on the GPU, and see how we can use this to implement quicksort directly on the GPU. We will learn about vectorized memory access, which can be used to increase memory access speedups when reading from the GPU's global memory. We will then look at how we can use CUDA atomic operations, which are thread-safe functions that can operate on shared data without thread synchronization or <em>mutex</em> locks. We will learn about Warps, which are fundamental blocks of 32 or fewer threads, in which threads can read or write to each other's variables directly, and then make a brief foray into the world of PTX Assembly. We'll do this by directly writing some basic PTX Assembly inline within our CUDA-C code, which itself will be inline in our Python code! Finally, we will bring all of these little low-level tweaks together into one final example, where we will apply them to make a blazingly fast summation kernel, and compare this to PyCUDA's sum.</p>
+<p>The learning outcomes for this chapter are as follows:</p>
+<ul>
+<li>Dynamic parallelism in CUDA</li>
+<li>Implementing quicksort on the GPU with dynamic parallelism</li>
+<li>Using vectorized types to speed up device memory accesses</li>
+<li>Using thread-safe CUDA <span>atomic operations</span></li>
+<li>Basic PTX Assembly</li>
+<li>Applying all of these concepts to write a performance-optimized summation kernel</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Dynamic parallelism</h1>
+                </header>
+            
+            <article>
+                
+<p>First, we will take a look at <strong>dynamic parallelism</strong>, a feature in CUDA that allows a kernel to launch and manage other kernels without any interaction or input on behalf of the host. This also makes many of the host-side CUDA-C features that are normally available also available on the GPU, such as device memory allocation/deallocation, device-to-device memory copies, context-wide synchronizations, and streams.</p>
+<p>Let's start with a very simple example. We will create a small kernel over <em>N</em> threads that will print a short message to the terminal from each thread, which will then recursively launch another kernel over <em>N - 1</em> threads. This process will continue until <em>N</em> reaches 1. (Of course, beyond illustrating how dynamic parallelism works, this example would be pretty pointless.)</p>
+<p>Let's start with the <kbd>import</kbd> statements in Python:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import DynamicSourceModule<br/>import pycuda.autoinit</pre>
+<p>Notice that we have to import <kbd>DynamicSourceModule</kbd> rather than the usual <kbd>SourceModule</kbd>! This is due to the fact that the d<span>ynamic parallelism</span> feature requires particular configuration details to be set by the compiler. Otherwise, this will look and act like a usual <kbd>SourceModule</kbd> operation. Now we can continue writing the kernel:</p>
+<pre>DynamicParallelismCode='''<br/>__global__ void dynamic_hello_ker(int depth)<br/>{<br/> printf("Hello from thread %d, recursion depth %d!\\n", threadIdx.x, depth);<br/> if (threadIdx.x == 0 &amp;&amp; blockIdx.x == 0 &amp;&amp; blockDim.x &gt; 1)<br/> {<br/>  printf("Launching a new kernel from depth %d .\\n", depth);<br/>  printf("-----------------------------------------\\n");<br/>  dynamic_hello_ker&lt;&lt;&lt; 1, blockDim.x - 1 &gt;&gt;&gt;(depth + 1);<br/> }<br/>}'''</pre>
+<p><span>The most important thing here to note is this: we must be careful that we have only a single thread launch the next iteration of kernels with a single thread with a well-placed <kbd>if</kbd> statement that checks the <kbd>threadIdx</kbd> and <kbd>blockIdx</kbd> values. If we don't do this, then each thread will launch far more kernel instances than necessary at every depth iteration. </span><span>Also, notice how we could just launch the kernel in a normal way with the usual CUDA-C triple-bracket notation—we don't have to use any obscure or low-level commands to make use of dynamic parallelism.</span></p>
+<div class="packt_tip">When using the CUDA dynamic parallelism feature, always be careful to avoid unnecessary kernel launches. This can be done by having a designated thread launch the next iteration of kernels.</div>
+<p><span>Now let's finish this up:</span></p>
+<pre>dp_mod = DynamicSourceModule(DynamicParallelismCode)<br/>hello_ker = dp_mod.get_function('dynamic_hello_ker')<br/>hello_ker(np.int32(0), grid=(1,1,1), block=(4,1,1))</pre>
+<p>Now we can run the preceding code, which will give us the following output:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/5147fd83-75b9-4dd4-8e5f-07a8cf013436.png" style="" width="741" height="508"/></div>
+<div class="mce-root packt_infobox">This example can also be found in the <kbd>dynamic_hello.py</kbd> file under the directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Quicksort with dynamic parallelism</h1>
+                </header>
+            
+            <article>
+                
+<p>Now let's look at a slightly more interesting and utilitarian application of dynamic parallelism—the <strong>Quicksort Algorithm</strong>. This is actually a well-suited algorithm for parallelization, as we will see.</p>
+<p>Let's start with a brief review. Quicksort is a recursive and in-place sorting algorithm that has an average and best case performance of <em>O(N log N)</em>, and worst-case performance of <em>O(N<sup>2</sup>)</em>. Quicksort is performed by choosing an arbitrary point called a <em>pivot</em> in an unsorted array, and then partitioning the array into a left array (which contains all points less than the pivot), a right array (which contains all points equal to or greater than the pivot), with the pivot in-between the two arrays. If one or both of the arrays now has a length greater than 1, then we recursively call quicksort again on one or both of the sub-arrays, with the pivot point now in its final position.</p>
+<div class="packt_infobox">Quicksort can be implemented in a single line in pure Python using functional programming:<br/>
+<span><kbd>qsort = lambda xs : [] if xs == [] else qsort(filter(lambda x: x &lt; xs[-1] , xs[0:-1])) + [xs[-1]] + qsort(filter(lambda x: x &gt;= xs[-1] , xs[0:-1]))</kbd></span></div>
+<p>We can see where parallelism will come into play by the fact that quicksort is recursively called on both the right and left arrays—we can see how this will start with one thread operating on an initial large array, but by the time the arrays get very small, there should be many threads working on them. Here, we will actually accomplish this by launching all of the kernels over one <em>single thread each</em>!</p>
+<p>Let's get going, and start with the import statements. (We will ensure that we import the <kbd>shuffle</kbd> function from the standard random module for the example that we will go over later.):</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import DynamicSourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>from random import shuffle</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>Now we'll write our quicksort kernel. We'll write a <kbd>device</kbd> function for the partitioning step, which will take an integer pointer, the lowest point of the subarray to partition, and the highest point of the subarray. This function will also use the highest point of this subarray as the pivot. Ultimately, after this function is done, it will return the final resting place of the pivot:</p>
+<pre>DynamicQuicksortCode='''<br/>__device__ int partition(int * a, int lo, int hi)<br/>{<br/> int i = lo;<br/> int pivot = a[hi];<br/> int temp;<br/><br/> for (int k=lo; k&lt;hi; k++)<br/> {<br/>  if (a[k] &lt; pivot)<br/>  {<br/>   temp = a[k];<br/>   a[k] = a[i];<br/>   a[i] = temp;<br/>   i++;<br/>  }<br/> }<br/> <br/> a[hi] = a[i];<br/> a[i] = pivot;<br/>  <br/> return i;<br/>}</pre>
+<p>Now we can write the kernel that implements this partition function into a parallel quicksort. We'll have to use the CUDA-C conventions for streams, which we haven't seen so far: to launch a kernel <em>k</em> in a stream <em>s</em> in CUDA-C, we use <kbd>k&lt;&lt;&lt;grid, block, sharedMemBytesPerBlock, s&gt;&gt;&gt;(...)</kbd>. By using two streams here, we can be sure that they are launched in parallel. (Considering that we won't be using shared memory, we'll set the third launch parameter to "0".) The creation and destruction of the stream objects should be self-explanatory:</p>
+<pre>__global__ void quicksort_ker(int *a, int lo, int hi)<br/>{<br/><br/> cudaStream_t s_left, s_right; <br/> cudaStreamCreateWithFlags(&amp;s_left, cudaStreamNonBlocking);<br/> cudaStreamCreateWithFlags(&amp;s_right, cudaStreamNonBlocking);<br/> <br/> int mid = partition(a, lo, hi);<br/>  <br/> if(mid - 1 - lo &gt; 0)<br/>   quicksort_ker&lt;&lt;&lt; 1, 1, 0, s_left &gt;&gt;&gt;(a, lo, mid - 1);<br/> if(hi - (mid + 1) &gt; 0)<br/>   quicksort_ker&lt;&lt;&lt; 1, 1, 0, s_right &gt;&gt;&gt;(a, mid + 1, hi);<br/>    <br/> cudaStreamDestroy(s_left);<br/> cudaStreamDestroy(s_right);<br/><br/>}<br/>'''</pre>
+<p>Now let's randomly shuffle a list of 100 integers and have our kernel sort this for us. Notice how we launch the kernel over a single thread:</p>
+<pre>qsort_mod = DynamicSourceModule(DynamicQuicksortCode)<br/><br/>qsort_ker = qsort_mod.get_function('quicksort_ker')<br/><br/>if __name__ == '__main__':<br/>    a = range(100)<br/>    shuffle(a)<br/>    <br/>    a = np.int32(a)<br/>    <br/>    d_a = gpuarray.to_gpu(a)<br/>    <br/>    print 'Unsorted array: %s' % a<br/>    <br/>    qsort_ker(d_a, np.int32(0), np.int32(a.size - 1), grid=(1,1,1), block=(1,1,1))<br/>    <br/>    a_sorted = list(d_a.get())<br/>    <br/>    print 'Sorted array: %s' % a_sorted</pre>
+<div class="packt_infobox">This program is also available in the <kbd>dynamic_quicksort.py</kbd> file in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Vectorized data types and memory access</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at CUDA's Vectorized Data Types. These are <em>vectorized</em> versions of the standard datatypes, such as int or double, in that they can store multiple values. There are <em>vectorized</em> versions of the 32-bit types of up to size 4 (for example, <kbd>int2</kbd>, <kbd>int3</kbd>, <kbd>int4</kbd>, and <kbd>float4</kbd>), while 64-bit variables can only be vectorized to be twice their original size (for example, <kbd>double2</kbd> and <kbd>long2</kbd>). For a size 4 vectorized variable, we access each individual element using the C "struct" notation for the members <kbd>x</kbd>, <kbd>y</kbd>, <kbd>z</kbd>, and <kbd>w</kbd>, while we use <kbd>x</kbd>,<kbd>y</kbd>, and <kbd>z</kbd> for a 3-member variable and just <kbd>x</kbd> and <kbd>y</kbd> for a 2-member variable.</p>
+<p class="mce-root"/>
+<p>These may seem pointless right now, but these datatypes can be used to improve the performance of loading arrays from the global memory. Now, let's do a small test to see how we can load some int4 variables from an array of integers, and double2s from an array of doubles—we will have to use the CUDA <kbd>reinterpret_cast</kbd> operator to do this:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/><br/>VecCode='''<br/>__global__ void vec_ker(int *ints, double *doubles) { <br/><br/> int4 f1, f2;<br/><br/> f1 = *reinterpret_cast&lt;int4*&gt;(ints);<br/> f2 = *reinterpret_cast&lt;int4*&gt;(&amp;ints[4]);<br/><br/> printf("First int4: %d, %d, %d, %d\\n", f1.x, f1.y, f1.z, f1.w);<br/> printf("Second int4: %d, %d, %d, %d\\n", f2.x, f2.y, f2.z, f2.w);<br/> <br/> double2 d1, d2;<br/> <br/> d1 = *reinterpret_cast&lt;double2*&gt;(doubles);<br/> d2 = *reinterpret_cast&lt;double2*&gt;(&amp;doubles[2]);<br/> <br/> printf("First double2: %f, %f\\n", d1.x, d1.y);<br/> printf("Second double2: %f, %f\\n", d2.x, d2.y);<br/> <br/>}'''</pre>
+<p>Notice how we have to use the <kbd>dereference</kbd> operator <kbd>*</kbd> to set the vectorized variables, and how we have to jump to the next address by reference (<kbd>&amp;ints[4]</kbd>, <kbd>&amp;doubles[2]</kbd>) to load the second <kbd>int4</kbd> and <kbd>double2</kbd> by using the reference operator <kbd>&amp;</kbd> on the array:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/9b0e1417-e3c7-4896-9672-279ced733a2f.png" style="" width="796" height="178"/></div>
+<div class="packt_infobox">This example is also available in the <kbd>vectorized_memory.py</kbd> file in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Thread-safe atomic operations</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now learn about <strong>atomic operations</strong> in CUDA. Atomic operations are very simple, thread-safe operations that output to a single global array element or shared memory variable, which would normally lead to race conditions otherwise.</p>
+<p>Let's think of one example. Suppose that we have a kernel, and we set a local variable called <kbd>x</kbd> across all threads at some point. We then want to find the maximum value over all <em>x</em>s, and then set this value to the shared variable we declare with <kbd>__shared__ int x_largest</kbd>. We can do this by just calling <kbd>atomicMax(&amp;x_largest, x)</kbd> over every thread.</p>
+<p>Let's look at a brief example of atomic operations. We will write a small program for two experiments:</p>
+<ul>
+<li>Setting a variable to 0 and then adding 1 to this for each thread</li>
+<li>Finding the maximum thread ID value across all threads</li>
+</ul>
+<p>Let's start out by setting the <kbd>tid</kbd> integer to the global thread ID as usual, and then set the global <kbd>add_out</kbd> variable to 0. In the past, we would do this by having a single thread alter the variable using an <kbd>if</kbd> statement, but now we can use <kbd>atomicExch(add_out, 0)</kbd> across all threads. Let's do the imports and write our kernel up to this point:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import pycuda.driver as drv<br/><br/>AtomicCode='''<br/>__global__ void atomic_ker(int *add_out, int *max_out) <br/>{<br/><br/> int tid = blockIdx.x*blockDim.x + threadIdx.x;<br/> <br/> atomicExch(add_out, 0);</pre>
+<p>It should be noted that while Atomics are indeed thread-safe, they by no means guarantee that all threads will access them at the same time, and they may be executed at different times by different threads. This can be problematic here, since we will be modifying <kbd>add_out</kbd> in the next step. This might lead to <kbd>add_out</kbd> being reset after it's already been partially modified by some of the threads. Let's do a block-synchronization to guard against this:</p>
+<pre> __syncthreads();</pre>
+<p>We can now use <kbd>atomicAdd</kbd> to add <kbd>1</kbd> to <kbd>add_out</kbd> for each thread, which will give us the total number of threads:</p>
+<pre> atomicAdd(add_out, 1);</pre>
+<p>Now let's check what the maximum value of <kbd>tid</kbd> is for all threads by using <kbd>atomicMax</kbd>. We can then close off our CUDA kernel:</p>
+<pre> atomicMax(max_out, tid);<br/><br/>}<br/>'''</pre>
+<p>We will now add the test code; let's try launching this over 1 block of 100 threads. We only need two variables here, so we will have to allocate some <kbd>gpuarray</kbd> objects of only size 1. We will then print the output:</p>
+<pre>atomic_mod = SourceModule(AtomicCode)<br/>atomic_ker = atomic_mod.get_function('atomic_ker')<br/><br/>add_out = gpuarray.empty((1,), dtype=np.int32)<br/>max_out = gpuarray.empty((1,), dtype=np.int32)<br/><br/>atomic_ker(add_out, max_out, grid=(1,1,1), block=(100,1,1))<br/><br/>print 'Atomic operations test:'<br/>print 'add_out: %s' % add_out.get()[0]<br/>print 'max_out: %s' % max_out.get()[0]</pre>
+<p>Now we are prepared to run this:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/d0799721-50a9-45e2-a9d2-6c3f8d097bcb.png" style="" width="658" height="130"/></div>
+<div class="packt_infobox">This example is also available as the <kbd>atomic.py</kbd> file in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Warp shuffling</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now look at what is known as <strong>warp shuffling</strong>. This is a feature in CUDA that allows threads that exist within the same CUDA Warp concurrently to communicate by directly reading and writing to each other's registers (that is, their local stack-space variables), without the use of <em>shared</em> variables or global device memory. Warp shuffling is actually much faster and easier to use than the other two options. This almost sounds too good to be true, so there must be a <em>catch—</em>indeed, the <em>catch</em> is that this only works between threads that exist on the same CUDA Warp, which limits shuffling operations to groups of threads of size 32 or less. Another catch is that we can only use datatypes that are 32 bits or less. This means that we can't shuffle 64-bit <em>long long</em> integers or <em>double </em>floating point values across a Warp.</p>
+<div class="packt_infobox">Only 32-bit (or smaller) datatypes can be used with CUDA Warp shuffling! This means that while we can use integers, floats, and chars, we cannot use doubles or <em>long long</em> integers!</div>
+<p>Let's briefly review CUDA Warps before we move on to any coding. (You might wish to review the section entitled <em>The warp lockstep property</em> in <a href="6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml">Chapter 6</a>, <em>Debugging and Profiling Your CUDA Code</em>, before we continue.) A CUDA <strong>Warp</strong> is the minimal execution unit in CUDA that consists of 32 threads or less, that runs on exactly 32 GPU cores. Just as a Grid consists of blocks, blocks similarly consist of one or more Warps, depending on the number of threads the Block uses <span>– </span>if a Block consists of 32 threads, then it will use one Warp, and if it uses 96 threads, it will consist of three Warps. Even if a Warp is of a size less than 32, it is also considered a full Warp: this means that a Block with only one single thread will use 32 cores. This also implies that a block of 33 threads will consist of two Warps and 31 cores.</p>
+<p>To remember what we looked at in <a href="6d1c808f-1dc2-4454-b0b8-d0a36bc3c908.xhtml">Chapter 6</a><span>, </span><em>Debugging and Profiling Your CUDA Code</em>, a Warp has what is known as the <strong>Lockstep Property</strong>. This means that every thread in a warp will iterate through every instruction, perfectly in parallel with every other thread in the Warp. That is to say, every thread in a single Warp will step through the same exact instructions simultaneously, <em>ignoring</em> any instructions that are not applicable to a particular thread <span>– </span>this is why any divergence among threads within a single Warp is to be avoided as much as possible. NVIDIA calls this execution model <strong>Single Instruction Multiple Thread</strong>, or <strong>SIMT</strong>. By now,<span> you should understand why we have tried to always use Blocks of 32 threads consistently throughout the text!</span></p>
+<p>We need to learn one more term before we get going—a<span> </span><strong>lane</strong><span> in a Warp is a unique identifier for a particular thread within the warp, which will be between 0 and 31. Sometimes, this is also called the <strong>Lane ID</strong>.</span></p>
+<p>Let's start with a simple example: we will use the <kbd>__shfl_xor</kbd> command to swap the values of a particular variable between all even and odd numbered Lanes (threads) within our warp. This is actually very quick and easy to do, so let's write our kernel and take a look:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/><br/><br/>ShflCode='''<br/>__global__ void shfl_xor_ker(int *input, int * output) {<br/><br/>int temp = input[threadIdx.x];<br/><br/>temp = __shfl_xor (temp, 1, blockDim.x);<br/><br/>output[threadIdx.x] = temp;<br/><br/>}'''</pre>
+<p>Everything here is familiar to us except <kbd>__shfl_xor</kbd> . This is how an individual CUDA thread sees this: this function takes the value of <kbd>temp</kbd> as an input from the current thread. It performs an <kbd>XOR</kbd> operation on the binary Lane ID of the current thread with <kbd>1</kbd>, which will be either its left neighbor (if the least significant digit of this thread's Lane is "1" in binary), or its right neighbor (if the least significant digit is "0" in binary). It then sends the current thread's <kbd>temp</kbd> value to its neighbor, while retrieving the neighbor's temp value, which is <kbd>__shfl_xor</kbd>. This will be returned as output right back into <kbd>temp</kbd>. We then set the value in the output array, which will swap our input array values.</p>
+<p>Now let's write the rest of the test code and then check the output:</p>
+<pre>shfl_mod = SourceModule(ShflCode)<br/>shfl_ker = shfl_mod.get_function('shfl_xor_ker')<br/><br/>dinput = gpuarray.to_gpu(np.int32(range(32)))<br/>doutout = gpuarray.empty_like(dinput)<br/><br/>shfl_ker(dinput, doutout, grid=(1,1,1), block=(32,1,1))<br/><br/>print 'input array: %s' % dinput.get()<br/>print 'array after __shfl_xor: %s' % doutout.get()</pre>
+<p>The output for the preceding code is as follows:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/c0f8d38e-aae3-4dee-8d83-ac869ba587bc.png" style="" width="1302" height="161"/></div>
+<p>Let's do one more warp-shuffling example before we move on—we will implement an operation to sum a single local variable over all of the threads in a Warp. Let's recall the Naive Parallel Sum algorithm from <a href="5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml">Chapter 4</a>, <em>Kernels, Threads, Blocks, and Grids</em>, which is very fast but makes the <em>naive</em> assumption that we have as many processors as we do pieces of data—this is one of the few cases in life where we actually will, assuming that we're working with an array of size 32 or less. We will use the <kbd>__shfl_down</kbd> function to implement this in a single warp. <kbd>__shfl_down</kbd> takes the thread variable in the first parameter and works by <em>shifting</em> a variable between threads by the certain number of steps indicated in the second parameter, while the third parameter will indicate the total size of the Warp.</p>
+<p>Let's implement this right now. Again, if you aren't familiar with the Naive Parallel Sum or don't remember why this should work, please review <a href="5a5f4317-50c7-4ce6-9d04-ac3be4c6d28b.xhtml">Chapter 4</a>, <em>Kernels, Threads, Blocks, and Grids</em>. We will implement a straight-up sum with <kbd>__shfl_down</kbd>, and then run this on an array that includes the integers 0 through 31. We will then compare this against NumPy's own <kbd>sum</kbd> function to ensure correctness:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/><br/><br/>ShflSumCode='''<br/>__global__ void shfl_sum_ker(int *input, int *out) {<br/><br/> int temp = input[threadIdx.x];<br/><br/> for (int i=1; i &lt; 32; i *= 2)<br/>     temp += __shfl_down (temp, i, 32);<br/><br/> if (threadIdx.x == 0)<br/>     *out = temp;<br/><br/>}'''<br/><br/>shfl_mod = SourceModule(ShflSumCode)<br/>shfl_sum_ker = shfl_mod.get_function('shfl_sum_ker')<br/><br/>array_in = gpuarray.to_gpu(np.int32(range(32)))<br/>out = gpuarray.empty((1,), dtype=np.int32)<br/><br/>shfl_sum_ker(array_in, out, grid=(1,1,1), block=(32,1,1))<br/><br/>print 'Input array: %s' % array_in.get()<br/>print 'Summed value: %s' % out.get()[0]<br/>print 'Does this match with Python''s sum? : %s' % (out.get()[0] == sum(array_in.get()) )</pre>
+<p>This will give us the following output:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/9ed86d23-a9fb-4770-add7-d80587b7aa01.png" style="" width="1165" height="161"/></div>
+<div class="packt_infobox">The examples in this section are also available as the <kbd>shfl_sum.py</kbd> and <kbd>shfl_xor.py</kbd> files under the <kbd><span>Chapter11</span></kbd> directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Inline PTX assembly</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now scratch the surface of writing PTX (Parallel Thread eXecution) Assembly language, which is a kind of a pseudo-assembly language that works across all Nvidia GPUs, which is, in turn, compiled by a Just-In-Time (JIT) compiler to the specific GPU's actual machine code. While this obviously isn't intended for day-to-day usage, it will let us work at an even a lower level than C if necessary. One particular use case is that you can easily disassemble a CUDA binary file (a host-side executable/library or a CUDA .cubin binary) and inspect its PTX code if no source code is otherwise available. This can be done with the <kbd>cuobjdump.exe -ptx  cuda_binary</kbd> command in both Windows and Linux.</p>
+<p>As stated previously, we will only cover some of the basic usages of PTX from within CUDA-C, which has a particular syntax and usage which is similar to that of using the inline host-side assembly language in GCC. Let's get going with our code—we will do the imports and start writing our GPU code: </p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/><br/>PtxCode='''</pre>
+<p>We will do several mini-experiments here by writing the code into separate device functions. Let's start with a simple function that sets an input variable to zero. (We can use the C++ pass-by-reference operator <kbd>&amp;</kbd> in CUDA, which we will use in the <kbd>device</kbd> function.):</p>
+<pre>__device__ void set_to_zero(int &amp;x)<br/>{<br/> asm("mov.s32 %0, 0;" : "=r"(x));<br/>}</pre>
+<p>Let's break this down before we move on. <kbd>asm</kbd>, of course, will indicate to the <kbd>nvcc</kbd> compiler that we are going to be using assembly, so we will have to put that code into quotes so that it can be handled properly. The <kbd>mov</kbd> instruction just copies a constant or other value, and inputs this into a <strong>register</strong>. (A register is the most fundamental type of on-chip storage unit that a GPU or CPU uses to store or manipulate values; this is how most <em>local</em> variables are used in CUDA.) The <kbd>.s32</kbd> part of <kbd>mov.s32</kbd> indicates that we are working with a signed, 32-bit integer variable—PTX Assembly doesn't have <em>types</em> for data in the sense of C, so we have to be careful to use the correct particular operations. <kbd>%0</kbd> tells <kbd>nvcc</kbd> to use the register corresponding to the <kbd>0th</kbd> argument of the string here, and we separate this from the next <em>input</em> to <kbd>mov</kbd> with a comma, which is the constant <kbd>0</kbd>. We then end the line of assembly with a semicolon, like we would in C, and close off this string of assembly code with a quote. We'll have to then use a colon (not a comma!) to indicate the variables we want to use in our code. The <kbd>"=r"</kbd> means two things: the <kbd>=</kbd> will indicate to <kbd>nvcc</kbd> that the register will be written to as an output, while the <kbd>r</kbd> indicates that this should be handled as a 32-bit integer datatype. We then put the variable we want to be handled by the assembler in parentheses, and then close off the <kbd>asm</kbd>, just like we would with any C function.</p>
+<p>All of that exposition to set the value of a single variable to 0! Now, let's make a small device function that will add two floating-point numbers for us:</p>
+<pre>__device__ void add_floats(float &amp;out, float in1, float in2)<br/>{<br/> asm("add.f32 %0, %1, %2 ;" : "=f"(out) : "f"(in1) , "f"(in2));<br/>}</pre>
+<p>Let's stop and notice a few things. First, of course, we are using <kbd>add.f32</kbd> to indicate that we want to add two 32-bit floating point values together. We also use <kbd>"=f"</kbd> to indicate that we will be writing to a register, and <kbd>f</kbd> to indicate that we will be only reading from it. Also, notice how we use a colon to separate the <kbd>write</kbd> registers from the <kbd>only read</kbd> registers for <kbd>nvcc</kbd>.</p>
+<p>Let's look at one more simple example before we continue, that is, a function akin to the <kbd>++</kbd> operator in C that increments an integer by <kbd>1</kbd>:</p>
+<pre>__device__ void plusplus(int &amp;x)<br/>{<br/> asm("add.s32 %0, %0, 1;" : "+r"(x));<br/>}</pre>
+<p>First, notice that we use the "0th" parameter as both the output and the first input. Next, notice that we are using <kbd>+r</kbd> rather than <kbd>=r</kbd>—the <kbd>+</kbd> tells <kbd>nvcc</kbd> that this register will be read from <em>and</em> written to in this instruction.</p>
+<p>Now, we won't be getting any fancier than this, as even writing a simple <kbd>if</kbd> statement in assembly language is fairly involved. However, let's look at some more examples that will come in useful when using CUDA Warps. Let's start with a small function that will give us the lane ID of the current thread; this is particularly useful, and actually far more straightforward than doing this with CUDA-C, since the lane ID is actually stored in a special register called <kbd>%laneid</kbd> that we can't access in pure C. (Notice how we use two <kbd>%</kbd> symbols in the code, which will indicate to <kbd>nvcc</kbd> to directly use the <kbd>%</kbd> in the assembly code for the <kbd>%laneid</kbd> reference rather than interpret this as an argument to the <kbd>asm</kbd> command.):</p>
+<pre>__device__ int laneid()<br/>{<br/> int id; <br/> asm("mov.u32 %0, %%laneid; " : "=r"(id)); <br/> return id;<br/>}</pre>
+<p>Now let's write two more functions that will be useful for dealing with CUDA Warps. Remember, you can only pass a 32-bit variable across a Warp using a shuffle command. This means that to pass a 64-bit variable over a warp, we have to split this into two 32-bit variables, shuffle both of those to another thread individually, and then re-combine these 32-bit values back into the original 64-bit variable. We can use the <kbd>mov.b64</kbd> command for the case of splitting a 64-bit double into two 32-bit integers—notice how we have to use <kbd>d</kbd> to indicate a 64-bit floating-point double:</p>
+<div class="packt_infobox">Notice our use of <kbd>volatile</kbd> in the following code, which will ensure that these commands are executed exactly as written after they are compiled. We do this because sometimes a compiler will make its own optimizations to or around inline assembly code, but for particularly delicate operations such as this, we want this done exactly as written.</div>
+<pre>__device__ void split64(double val, int &amp; lo, int &amp; hi)<br/>{<br/> asm volatile("mov.b64 {%0, %1}, %2; ":"=r"(lo),"=r"(hi):"d"(val));<br/>}<br/><br/>__device__ void combine64(double &amp;val, int lo, int hi)<br/>{<br/> asm volatile("mov.b64 %0, {%1, %2}; ":"=d"(val):"r"(lo),"r"(hi));<br/>}</pre>
+<p>Now let's write a simple kernel that will test all of the PTX assembly device functions we wrote. We will then launch it over one single thread so that we can check everything:</p>
+<pre>__global__ void ptx_test_ker() { <br/><br/> int x=123;<br/> <br/> printf("x is %d \\n", x);<br/> <br/> set_to_zero(x);<br/> <br/> printf("x is now %d \\n", x);<br/> <br/> plusplus(x);<br/> <br/> printf("x is now %d \\n", x);<br/> <br/> float f;<br/> <br/> add_floats(f, 1.11, 2.22 );<br/> <br/> printf("f is now %f \\n", f);<br/> <br/> printf("lane ID: %d \\n", laneid() );<br/> <br/> double orig = 3.1415;<br/><br/> int t1, t2;<br/> <br/> split64(orig, t1, t2);<br/> <br/> double recon;<br/> <br/> combine64(recon, t1, t2);<br/> <br/> printf("Do split64 / combine64 work? : %s \\n", (orig == recon) ? "true" : "false"); <br/> <br/>}'''<br/><br/>ptx_mod = SourceModule(PtxCode)<br/>ptx_test_ker = ptx_mod.get_function('ptx_test_ker')<br/>ptx_test_ker(grid=(1,1,1), block=(1,1,1))</pre>
+<p>We will now run the preceding code:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/bebb9f8f-a21c-4b06-b3e9-3686b8c96b41.png" style="" width="729" height="208"/></div>
+<div class="packt_infobox">This example is also available as the <kbd>ptx_assembly.py</kbd> file under the <kbd><span>Chapter11</span></kbd> directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Performance-optimized array sum </h1>
+                </header>
+            
+            <article>
+                
+<p>For the final example of this book, we will now make a standard array summation kernel for a given array of doubles, except this time we will use every trick that we've learned in this chapter to make it as fast as possible. We will check the output of our summing kernel against NumPy's <kbd>sum</kbd> function, and then we will run some tests with the standard Python <kbd>timeit</kbd> function to compare how our function compares to PyCUDA's own <kbd>sum</kbd> function for <kbd>gpuarray</kbd> objects.</p>
+<p>Let's get started by importing all of the necessary libraries, and then start with a <kbd>laneid</kbd> function, similar to the one we used in the previous section:</p>
+<pre>from __future__ import division<br/>import numpy as np<br/>from pycuda.compiler import SourceModule<br/>import pycuda.autoinit<br/>from pycuda import gpuarray<br/>import pycuda.driver as drv<br/>from timeit import timeit<br/><br/>SumCode='''<br/>__device__ void __inline__ laneid(int &amp; id)<br/>{<br/> asm("mov.u32 %0, %%laneid; " : "=r"(id)); <br/>}</pre>
+<p>Let's note a few things—notice that we put a new inline statement in the declaration of our device function. This will effectively make our function into a macro, which will shave off a little time from calling and branching to a device function when we call this from the kernel. Also, notice that we set the <kbd>id</kbd> variable by reference instead of returning a value—in this case, there may actually be two integer registers that should be used, and there should be an additional copy command. This guarantees that this won't happen.</p>
+<p>Let's write the other device functions in a similar fashion. We will need to have two more device functions so that we can split and combine a 64-bit double into two 32-bit variables:</p>
+<pre>__device__ void __inline__ split64(double val, int &amp; lo, int &amp; hi)<br/>{<br/> asm volatile("mov.b64 {%0, %1}, %2; ":"=r"(lo),"=r"(hi):"d"(val));<br/>}<br/><br/>__device__ void __inline__ combine64(double &amp;val, int lo, int hi)<br/>{<br/> asm volatile("mov.b64 %0, {%1, %2}; ":"=d"(val):"r"(lo),"r"(hi));<br/>}</pre>
+<p>Let's start writing the kernel. We will take in an array of doubles called input, and then output the entire sum to <kbd>out</kbd>, which should be initialized to <kbd>0</kbd>. We will start by getting the lane ID for the current thread and loading two values from global memory into the current thread with vectorized memory loading:</p>
+<pre>__global__ void sum_ker(double *input, double *out) <br/>{<br/><br/> int id;<br/> laneid(id);<br/><br/> double2 vals = *reinterpret_cast&lt;double2*&gt; ( &amp;input[(blockDim.x*blockIdx.x + threadIdx.x) * 2] );</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>Now let's sum these values from the double2 <kbd>vals</kbd> variable into a new double variable, <kbd>sum_val</kbd>, which will keep track of all the summations across this thread. We will create two 32-bit integers, <kbd>s1</kbd> and <kbd>s2</kbd>, that we will use for splitting this value and sharing it with Warp Shuffling, and then create a <kbd>temp</kbd> variable for reconstructed values we receive from other threads in this Warp:</p>
+<pre> double sum_val = vals.x + vals.y;<br/><br/> double temp;<br/> <br/> int s1, s2;</pre>
+<p>Now let's use a Naive Parallel sum again across the warp, which will be the same as summing 32-bit integers across a Warp, except we will be using our <kbd>split64</kbd> and <kbd>combine64</kbd> PTX functions on <kbd>sum_val</kbd> and <kbd>temp</kbd> for each iteration:</p>
+<pre> for (int i=1; i &lt; 32; i *= 2)<br/> {<br/><br/>     <br/>     // use PTX assembly to split<br/>     split64(sum_val, s1, s2);<br/> <br/>     // shuffle to transfer data<br/>     s1 = __shfl_down (s1, i, 32);<br/>     s2 = __shfl_down (s2, i, 32);<br/>     <br/>     <br/>     // PTX assembly to combine<br/>     combine64(temp, s1, s2);<br/>     sum_val += temp;<br/> }</pre>
+<p>Now that we are done, let's have the <kbd>0th</kbd> thread of every single warp add their end value to <kbd>out</kbd> using the thread-safe <kbd>atomicAdd</kbd>:</p>
+<pre> if (id == 0)<br/>     atomicAdd(out, sum_val);<br/>     <br/>}'''</pre>
+<p>We will now write our test code with <kbd>timeit</kbd> operations to measure the average time of our kernel and PyCUDA's sum over 20 iterations of both on an array of 10000*2*32 doubles:</p>
+<pre>sum_mod = SourceModule(SumCode)<br/>sum_ker = sum_mod.get_function('sum_ker')<br/><br/>a = np.float64(np.random.randn(10000*2*32))<br/>a_gpu = gpuarray.to_gpu(a)<br/>out = gpuarray.zeros((1,), dtype=np.float64)<br/><br/>sum_ker(a_gpu, out, grid=(int(np.ceil(a.size/64)),1,1), block=(32,1,1))<br/>drv.Context.synchronize()<br/><br/>print 'Does sum_ker produces the same value as NumPy\'s sum (according allclose)? : %s' % np.allclose(np.sum(a) , out.get()[0])<br/><br/>print 'Performing sum_ker / PyCUDA sum timing tests (20 each)...'<br/><br/>sum_ker_time = timeit('''from __main__ import sum_ker, a_gpu, out, np, drv \nsum_ker(a_gpu, out, grid=(int(np.ceil(a_gpu.size/64)),1,1), block=(32,1,1)) \ndrv.Context.synchronize()''', number=20)<br/>pycuda_sum_time = timeit('''from __main__ import gpuarray, a_gpu, drv \ngpuarray.sum(a_gpu) \ndrv.Context.synchronize()''', number=20)<br/><br/>print 'sum_ker average time duration: %s, PyCUDA\'s gpuarray.sum average time duration: %s' % (sum_ker_time, pycuda_sum_time)<br/>print '(Performance improvement of sum_ker over gpuarray.sum: %s )' % (pycuda_sum_time / sum_ker_time)</pre>
+<p>Let's run this from IPython. Make sure that you have run both <kbd>gpuarray.sum</kbd> and <kbd>sum_ker</kbd> beforehand to ensure that we aren't timing any compilation by <kbd>nvcc</kbd> as well:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/b1e04079-149b-4da4-9524-6bc4ef455108.png" style="" width="1437" height="156"/></div>
+<p>So, while summing is normally pretty boring, we can be excited by the fact that our clever use of hardware tricks can speed up such a bland and trivial algorithm quite a bit.</p>
+<div class="packt_infobox">This example is available as the <kbd>performance_sum_ker.py</kbd> file under the <kbd>Chapter11</kbd> directory in this book's GitHub repository.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We started this chapter by learning about dynamic parallelism, which is a paradigm that allows us to launch and manage kernels directly on the GPU from other kernels. We saw how we can use this to implement a quicksort algorithm on the GPU directly. We then learned about vectorized datatypes in CUDA, and saw how we can use these to speed up memory reads from global device memory. We then learned about CUDA Warps, which are small units of 32 threads or less on the GPU, and we saw how threads within a single Warp can directly read and write to each other's registers using Warp Shuffling. We then looked at how we can write a few basic operations in PTX assembly, including import operations such as determining the lane ID and splitting a 64-bit variable into two 32-bit variables. Finally, we ended this chapter by writing a new performance-optimized summation kernel that is used for arrays of doubles, applying almost most of the tricks we've learned in this chapter. We saw that this is actually faster than the standard PyCUDA sum on double arrays with a length of an order of 500,000.</p>
+<p>We have gotten through all of the technical chapters of this book! You should be proud of yourself, since you are now surely a skilled GPU programmer with many tricks up your sleeve. We will now embark upon the final chapter, where we will take a brief tour of a few of the different paths you can take to apply and extend your GPU programming knowledge from here.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>In the atomic operations example, try changing the grid size from 1 to 2 before the kernel is launched while leaving the total block size at 100. If this gives you the wrong output for<span> </span><kbd>add_out</kbd> (anything other than 200), then why is it wrong, considering that <kbd>atomicExch</kbd> is thread-safe?</li>
+<li>In the atomic operations example, try removing <kbd>__syncthreads</kbd>, and then run the kernel over the original parameters of grid size 1 and block size 100. If this gives you the wrong output for <kbd>add_out</kbd> (anything other than 100), then why is it wrong, considering that <kbd>atomicExch</kbd> is thread-safe?</li>
+<li>Why do we not have to use <kbd>__syncthreads</kbd> to synchronize over a block of size 32 or less?</li>
+</ol>
+<p> </p>
+<ol start="4">
+<li>We saw that <kbd>sum_ker</kbd> is around five times faster than PyCUDA's sum operation for random-valued arrays of length 640,000 (<kbd>10000*2*32</kbd>). If you try adding a zero to the end of this number (that is, multiply it by 10), you'll notice that the performance drops to the point where <kbd>sum_ker</kbd> is only about 1.5 times as fast as PyCUDA's sum. If you add another zero to the end of that number, you'll notice that <kbd>sum_ker</kbd> is only 75% as fast as PyCUDA's sum. Why do you think this is the case? How can we improve <kbd>sum_ker</kbd> to be faster on larger arrays?</li>
+<li>Which algorithm performs more addition operations (counting both calls to the C + operator and atomicSum as a single operation): <kbd>sum_ker</kbd> or PyCUDA's <kbd>sum</kbd>?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div></div></body></html>

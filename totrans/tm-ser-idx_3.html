@@ -1,0 +1,578 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer029">
+<h1 class="chapter-number" id="_idParaDest-70"><a id="_idTextAnchor081"/>3</h1>
+<h1 id="_idParaDest-71"><a id="_idTextAnchor082"/>iSAX – The Required Theory</h1>
+<p>Now that we know all about SAX, including normalization and computing the SAX representation of a subsequence, it is time to learn the theory behind the iSAX index, which, at the time of writing, is considered one of the best time-series indexes. Improved versions of iSAX that make iSAX faster and more compact exist, but the core ideas remain <span class="No-Break">the same.</span></p>
+<p>As you might have guessed from its name, iSAX depends on SAX in some way. Put simply, <strong class="bold">the keys to every iSAX index are SAX representations</strong>. Therefore, searching in an iSAX index depends on <span class="No-Break">SAX representations.</span></p>
+<p>At this point, I believe it would be good to provide more information about iSAX to help you while reading this chapter. An <strong class="bold">iSAX index</strong> is a tree-like structure where the root, and only the root, can have multiple children, and all the children of the root are binary trees underneath. Additionally, to create an<a id="_idIndexMarker148"/> iSAX index, we need a time series and a threshold value, which is the maximum number of subsequences that a leaf node (a terminal node in iSAX terminology) can store, as well as a segment value and a cardinality value. The last two parameters are related to the SAX representation. All of this is explained in more detail in this chapter, but it’s good to have the big picture in mind as early on <span class="No-Break">as possible.</span></p>
+<p>Additionally, in this chapter, we are going to manually construct a small iSAX index step by step to better understand the process, using lots of visualizations. Please make sure that you carry out this process on your own after you finish reading <span class="No-Break">this chapter.</span></p>
+<p>In this chapter, we are going to cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li><span class="No-Break">Background information</span></li>
+<li>Understanding how <span class="No-Break">iSAX works</span></li>
+<li>How iSAX <span class="No-Break">is constructed</span></li>
+<li>Manually constructing an <span class="No-Break">iSAX index</span></li>
+<li>Updating the <span class="No-Break"><strong class="source-inline">counting.py</strong></span><span class="No-Break"> utility</span></li>
+</ul>
+<h1 id="_idParaDest-72"><a id="_idTextAnchor083"/>Technical requirements</h1>
+<p>The GitHub repository for this book can be found at <a href="https://github.com/PacktPublishing/Time-Series-Indexing">https://github.com/PacktPublishing/Time-Series-Indexing</a>. The code for each chapter is in its own directory. Therefore, the code for <a href="B14769_03.xhtml#_idTextAnchor081"><span class="No-Break"><em class="italic">Chapter 3</em></span></a> can be found in the <span class="No-Break"><strong class="source-inline">ch03</strong></span><span class="No-Break"> folder.</span></p>
+<h1 id="_idParaDest-73"><a id="_idTextAnchor084"/>Background information</h1>
+<p>In this first section, we are going to learn about the basic definitions and concepts related to iSAX. But first, we are going to mention the research paper that describes the operation of iSAX. iSAX and its operation are described<a id="_idIndexMarker149"/> in <em class="italic">iSAX: disk-aware mining and indexing of massive time series datasets</em>, which was written by Jin Shieh and Eamonn Keogh. You do not have to read this paper from start to finish but, as we mentioned for the SAX research paper, it would benefit you to read its abstract and <span class="No-Break">introduction section.</span></p>
+<p>Additionally, there have <a id="_idIndexMarker150"/>been various improvements to iSAX, mainly to make it faster, which are presented in the following <span class="No-Break">research papers:</span></p>
+<ul>
+<li><em class="italic">iSAX 2.0: Indexing and Mining One Billion Time Series</em>, written by Alessandro Camerra, Themis Palpanas, Jin Shieh, and <span class="No-Break">Eamonn Keogh</span></li>
+<li><em class="italic">Beyond one billion time series: Indexing and mining very large time series collections with iSAX2+</em>, written by Alessandro Camerra, Jin Shieh, Themis Palpanas, Thanawin Rakthanmanon, and <span class="No-Break">Eamonn Keogh</span></li>
+<li><em class="italic">DPiSAX: Massively Distributed Partitioned iSAX</em>, written by Djamel-Edine Yagoubi, Reza Akbarinia, Florent Masseglia, and <span class="No-Break">Themis Palpanas</span></li>
+<li><em class="italic">Evolution of a Data Series Index: The iSAX Family of Data Series Indexes: iSAX, iSAX2.0, iSAX2+, ADS, ADS+, ADS-Full, ParIS, ParIS+, MESSI, DPiSAX, ULISSE, Coconut-Trie/Tree, Coconut-LSM</em>, written by <span class="No-Break">Themis Palpanas</span></li>
+</ul>
+<p>We are not going to deal with the aforementioned research papers in this book as we are working with the initial version of the iSAX index. You do not have to read all these papers for the purposes of this book, but it would be a great exercise to have a look through them when you feel comfortable <span class="No-Break">with iSAX.</span></p>
+<p>As iSAX is <a id="_idIndexMarker151"/>a tree, the next subsection presents basic information about trees and <span class="No-Break">binary trees.</span></p>
+<h2 id="_idParaDest-74"><a id="_idTextAnchor085"/>Trees and binary trees</h2>
+<p>Let us begin by explaining what a directed graph is. A <strong class="bold">directed graph</strong> is <a id="_idIndexMarker152"/>a graph where the edges have a direction associated with them. A <strong class="bold">directed acyclic graph </strong>(<strong class="bold">DAG</strong>) is a<a id="_idIndexMarker153"/> directed graph with no cycles <span class="No-Break">in it.</span></p>
+<p>In computer science, a <strong class="bold">tree</strong> is a DAG data structure that<a id="_idIndexMarker154"/> satisfies the following <span class="No-Break">three principles:</span></p>
+<ul>
+<li>It has a root node that is the entry point to <span class="No-Break">the tree</span></li>
+<li>Every vertex, except the root, has one and only one <span class="No-Break">entry point</span></li>
+<li>There is a path that connects the root to <span class="No-Break">each vertex</span></li>
+</ul>
+<p>As already stated, the <strong class="bold">root of a tree</strong> is the first node of the tree. Each node can be connected to one or more nodes depending on the tree type. If each node leads to one and only one node, then the tree becomes a linked list! A leaf node<a id="_idIndexMarker155"/> is a node without any children. Leaves are also called external nodes, whereas a <a id="_idIndexMarker156"/>node with at least one child is called <a id="_idIndexMarker157"/>an <span class="No-Break">internal node.</span></p>
+<p>A <strong class="bold">binary tree</strong> is a <a id="_idIndexMarker158"/>tree where underneath each node, there are at most two more nodes. <em class="italic">At most</em> means that it can be connected to one, two, or no other nodes. The <strong class="bold">depth</strong>, which is also <a id="_idIndexMarker159"/>called the <strong class="bold">height</strong>, of a<a id="_idIndexMarker160"/> tree is defined as the longest path from the root node to a leaf, whereas the depth of a node is the number of edges from the node to the root node of <span class="No-Break">the tree.</span></p>
+<p>Keep in mind that if you create two binary trees using the same set of elements added in a different order, you are going to get two completely different trees. The simplest way to do that is by starting from a different root node. So, we do not know in advance the final shape of <span class="No-Break">a tree.</span></p>
+<p>A tree <a id="_idIndexMarker161"/>has internal nodes and<a id="_idIndexMarker162"/> leaf nodes. In iSAX terminology, these are called <strong class="bold">inner nodes</strong> and <strong class="bold">terminal nodes</strong>, respectively. <em class="italic">Inner nodes</em> have a parent and at least one child and <em class="italic">terminal nodes</em> have a parent node but no children of <span class="No-Break">their own.</span></p>
+<p>A binary tree<a id="_idIndexMarker163"/> is<a id="_idIndexMarker164"/> considered a <strong class="bold">balanced tree</strong> when the difference between the longest length from the root node to a leaf node and the shortest such length is 0 or 1. An <strong class="bold">unbalanced tree</strong> is a <a id="_idIndexMarker165"/>tree that is not balanced. Although the iSAX index can be characterized by its length, there is no point in finding out whether an iSAX index is balanced or not because this is not how indexes work and this mainly has to do with the data. However, having balanced trees is a <span class="No-Break">good thing.</span></p>
+<p>Therefore, although iSAX indexes are trees, we cannot apply all the binary tree rules to an iSAX index. However, it is good to know all these details to have a better understanding of why a particular iSAX index might be faster or slower <span class="No-Break">than others.</span></p>
+<p class="callout-heading">Balanced binary trees</p>
+<p class="callout">If a binary tree is<a id="_idIndexMarker166"/> balanced, its search, insert, and delete operations take about <strong class="source-inline">log(n)</strong> steps, where <strong class="source-inline">n</strong> is the total number of elements in the tree. Additionally, the height of a balanced binary tree is approximately <strong class="source-inline">log</strong><span class="subscript">2</span><strong class="source-inline">n</strong>,  which means that a balanced tree with 10,000 elements has a height of 14, which is remarkably small. The height of a balanced tree with 100,000 elements will be 17 and the height of a balanced tree with 1,000,000 elements will be 20! In other words, putting a significantly large number of elements into a balanced binary tree does not change the search speed of the tree extremely. Put differently, you can reach any node in a balanced tree with 1,000,000 nodes in at most <span class="No-Break">20 steps!</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.1</em> shows a small iSAX index, which allows us to learn more about iSAX indexes without getting lost in the details. We are going to learn more about the details of an iSAX index starting in the <span class="No-Break">next section.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer016">
+<img alt="Figure 3.1 – A small iSAX index" height="406" src="image/Figure_3.1_B14769.jpg" width="1098"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.1 – A small iSAX index</p>
+<p>So, what do we have here and what does it <span class="No-Break">tell us?</span></p>
+<p>As each node of the<a id="_idIndexMarker167"/> iSAX index has four SAX words, we know that the segment value is 4. However, we cannot be sure about the cardinality as cardinalities begin from the smallest value and are increased when needed, that is, when there is a split. However, even on splits, only a single SAX word is promoted to a higher cardinality value. The root of this particular iSAX index has three children – we assume that the remaining children of the root node are empty. The terminal nodes are <strong class="source-inline">[0 0 1 1]</strong>, <strong class="source-inline">[0 1 0 1]</strong>, <strong class="source-inline">[11 1 0 0]</strong>, <strong class="source-inline">[10 11 0 0]</strong>, <strong class="source-inline">[10 10 00 0]</strong>, and <strong class="source-inline">[10 10 01 0]</strong>, and the inner nodes are <strong class="source-inline">[1 1 0 0]</strong>, <strong class="source-inline">[10 1 0 0]</strong>, and <strong class="source-inline">[10 10 0 0]</strong>. We cannot make any assumptions about the <span class="No-Break">threshold value.</span></p>
+<p><a href="B14769_06.xhtml#_idTextAnchor145"><span class="No-Break"><em class="italic">Chapter 6</em></span></a> is going to present techniques for visualizing iSAX indexes, which can be very handy when we are working with big iSAX indexes and want to have an overview of <span class="No-Break">the indexes.</span></p>
+<p>The next section will provide more details <span class="No-Break">about iSAX.</span></p>
+<h1 id="_idParaDest-75"><a id="_idTextAnchor086"/>Understanding how iSAX works</h1>
+<p>In this section, we will discuss <a id="_idIndexMarker168"/>the way iSAX works, which includes the construction phase as well as its usage and parameters. Apart from the required theory, we will also present a handy command-line utility that helps you understand how many subsequences an iSAX index can have, given <span class="No-Break">its parameters.</span></p>
+<p class="callout-heading">How iSAX and SAX are related</p>
+<p class="callout">The way iSAX<a id="_idIndexMarker169"/> and the SAX<a id="_idIndexMarker170"/> representation are related is simple. The keys on all the nodes of an iSAX index, apart from the root node, which has no key, are all SAX representations. So, a big part of building and searching an iSAX index is based <span class="No-Break">on SAX.</span></p>
+<p>We do not<a id="_idIndexMarker171"/> delete or update elements in an iSAX index not because it is not possible but because this is not how an iSAX <span class="No-Break">index works.</span></p>
+<p>It is now time to discuss the parameters of an iSAX index because the construction of an iSAX depends <span class="No-Break">on them.</span></p>
+<h2 id="_idParaDest-76"><a id="_idTextAnchor087"/>The cardinality parameter</h2>
+<p>The <strong class="bold">cardinality</strong> parameter is <a id="_idIndexMarker172"/>the same as in SAX, but it has some small differences for the sake of efficiency. The first difference is that iSAX nodes can have multiple cardinalities. So, we might have a node with the <strong class="source-inline">[1 000 0 11]</strong> SAX representation and another one with the <strong class="source-inline">[10001 00 0 1]</strong> SAX representation. The second difference is that we begin with a cardinality value of 2. This means that all the children of the root node have a cardinality value of 2 in all their <span class="No-Break">SAX words.</span></p>
+<h2 id="_idParaDest-77"><a id="_idTextAnchor088"/>The segments parameter</h2>
+<p>The <strong class="bold">segments</strong> parameter of an iSAX<a id="_idIndexMarker173"/> index works in completely the same way as in every SAX representation and defines <em class="italic">the number of SAX words</em> in each <span class="No-Break">SAX representation.</span></p>
+<h2 id="_idParaDest-78"><a id="_idTextAnchor089"/>The threshold parameter</h2>
+<p>The <strong class="bold">threshold</strong> parameter is new and <a id="_idIndexMarker174"/>defines <em class="italic">the maximum number of subsequences</em> a terminal node can store. We cannot exceed that value. The threshold parameter defines when the split of a node is going to <span class="No-Break">take place.</span></p>
+<p>The next subsection presents a command line utility that computes the mean values of a normalized subsequence based on the number of segments because the mean values define the <span class="No-Break">SAX words.</span></p>
+<h2 id="_idParaDest-79"><a id="_idTextAnchor090"/>Computing the normalized mean values</h2>
+<p>This<a id="_idIndexMarker175"/> subsection presents a utility that outputs the mean values of all normalized subsequences of a time series based on the segment value. It would make no sense to count the mean values of all normalized subsequences without splitting them based on the segment value because after normalization, the mean value of a subsequence is very close to 0, which is one of the points <span class="No-Break">of normalization.</span></p>
+<p>We will use the <strong class="source-inline">meanValues.py</strong> script in this example. Its code is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+# Date: Monday 19 December 2022
+#
+# This utility outputs the mean values of all
+# (<strong class="bold">NORMALIZED</strong>) subsequences of a time series
+import sys
+import numpy as np
+import pandas as pd
+sys.path.insert(0,'..')
+def normalize(x):
+    eps = 1e-6
+    mu = np.mean(x)
+    std = np.std(x)
+    if std &lt; eps:
+        return np.zeros(shape=x.shape)
+    else:
+        return (x-mu)/std
+def main():
+    if len(sys.argv) != 4:
+        print("Usage: TS1 sliding_window segments")
+        sys.exit()
+    file = sys.argv[1]
+    # We prefer values which are powers of 2
+    sliding = int(sys.argv[2])
+    segments = int(sys.argv[3])
+    if sliding &lt;= 0:
+        print("Sliding value is not allowed:", sliding)
+        sys.exit()
+    ts = pd.read_csv(file, names=['values'],
+        compression='gzip')
+    ts_numpy = ts.to_numpy()
+    length = len(ts_numpy)
+    splits = sliding // segments
+    # Split time series into subsequences
+    for i in range(length - sliding + 1):
+        t1_temp = ts_numpy[i:i+sliding]
+        normalized = normalize(t1_temp)
+        for s in range(segments):
+            temp = normalized[splits*s:splits*(s+1)]
+            mValue = np.mean(temp)
+            print(round(mValue,5))</pre>
+<p>Based<a id="_idIndexMarker176"/> on the number of segments, the utility splits each subsequence into parts and calculates the mean value of each part. The last part of the code is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+if __name__ == '__main__':
+    main()</pre>
+<p>The output of <strong class="source-inline">meanValues.py</strong> is the following (a big part of the output is omitted <span class="No-Break">for brevity):</span></p>
+<pre class="source-code">
+$ ./meanValues.py ts1.gz 16 4
+-0.33294
+-0.00404
+0.10926
+0.22772
+-0.51625
+0.05592
+-0.20672
+. . .</pre>
+<p>You can save the output and process it with a utility such as <strong class="source-inline">histogram.py</strong>, which was presented in the <span class="No-Break">previous chapter.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.2</em> shows the output of <strong class="source-inline">histogram.py</strong> from two different time series with about 500,000 elements each when processed with <strong class="source-inline">meanValues.py</strong> using a sliding window size of <strong class="source-inline">1024</strong> and 4 segments. Four segments means that for each subsequence, we have to compute four mean values because we split each subsequence into four parts. Therefore, a 500,000-element time series produces 2,000,000 mean values that go into <span class="No-Break">the histogram.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer017">
+<img alt="Figure 3.2 – The output of histogram.py from two time series" height="1140" src="image/Figure_3.2_B14769.jpg" width="789"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.2 – The output of histogram.py from two time series</p>
+<p>What does <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.2</em> tell us? The<a id="_idIndexMarker177"/> upper plot is of a time series named ECG and the lower histogram is of a time series named EEG. The vast majority (around 2 million values) of the mean values of the ECG time series, <em class="italic">and therefore the cardinality values</em>, falls into the <strong class="source-inline">-0.5</strong> to <strong class="source-inline">0.5</strong> value range. This means that, based on the breakpoint values, many SAX words are going to be very similar to each other and therefore are going to fall into a small amount of iSAX branches, making <em class="italic">the iSAX index of the ECG dataset really unbalanced</em>. On the other hand, for the EEG dataset, the mean values are better distributed in the histogram, which means that the SAX words they are going to produce are going to be better distributed and the generated iSAX index is going to be <span class="No-Break">more balanced.</span></p>
+<p>If you want<a id="_idIndexMarker178"/> to find out more about the distribution of values in a histogram, you can increase the number of bins and get a more <span class="No-Break">detailed output.</span></p>
+<p>The next subsection presents a command line utility that computes the maximum number of subsequences an iSAX index with the given parameters can store. Keep in mind that this is an <strong class="bold">ideal case</strong> where the iSAX index is completely balanced and all terminal nodes have the maximum number of subsequences, which is not usually <span class="No-Break">the case.</span></p>
+<h2 id="_idParaDest-80"><a id="_idTextAnchor091"/>How big can an iSAX index get?</h2>
+<p>In this<a id="_idIndexMarker179"/> subsection, we are going to calculate the maximum number of subsequences an iSAX index can store in the ideal condition. As you already know, the root of an iSAX index can have more than two children, whereas all other inner nodes have one or two children, which can either be other inner nodes or terminal nodes. An inner node can have any combination of inner nodes and terminal nodes <span class="No-Break">as children.</span></p>
+<p>Now, let us do an exercise together: imagine that we want to find out the maximum number of nodes an iSAX with a cardinality of <strong class="source-inline">4</strong> and <strong class="source-inline">2</strong> segments can have. As we are interested in nodes, the threshold parameter does not play a key role in our discussion, so it is ignored for now. We are going to come back to the threshold parameter at the end of <span class="No-Break">our discussion.</span></p>
+<p>First, we are going to calculate the number of children of the root node. This only depends on the number of segments because all the children of the root have a cardinality of <strong class="source-inline">2</strong>. Therefore, if we have 2 segments, the maximum number of children of the root node is 4, which is <span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span>. These have the following SAX representations: <strong class="source-inline">[0, 0]</strong>, <strong class="source-inline">[0, 1]</strong>, <strong class="source-inline">[1, 0]</strong>, and <strong class="source-inline">[1, 1]</strong>. If you are familiar with the binary system, these are all values that can be represented with <span class="No-Break">2 bits.</span></p>
+<p>If we have 3 segments, the maximum number of children of the root node is 8, which is <span class="_-----MathTools-_Math_Number">2</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">3</span>. These have the following SAX representations: <strong class="source-inline">[0, 0, 0]</strong>, <strong class="source-inline">[0, 0, 1]</strong>, <strong class="source-inline">[0, 1, 0]</strong>, <strong class="source-inline">[0, 1, 1]</strong>, <strong class="source-inline">[1, 0, 0]</strong>, <strong class="source-inline">[1, 0, 1]</strong>, <strong class="source-inline">[1, 1, 0]</strong>, and <strong class="source-inline">[1, 1, 1]</strong>. If you are familiar with the binary system, these are all values that can be represented with 3 bits. For each of these children of the root, each SAX word can be as big as the <span class="No-Break">cardinality value.</span></p>
+<p>Now, back to our original problem, which is computing the maximum number of nodes an iSAX with a cardinality of 4 and 2 segments can have. As proved, when there are 2 segments, the number of children of the root node is 4. Each segment can have as many values as the cardinality, which in this case is 4. So, with 2 segments, we can have 4 times 4 possible combinations, which is 16. This is the maximum value of terminal nodes that this iSAX index can store. So, <em class="italic">when we have a cardinality of 4 and 2 segments, the maximum number of terminal nodes </em><span class="No-Break"><em class="italic">is 16</em></span><span class="No-Break">.</span></p>
+<p>Now that we<a id="_idIndexMarker180"/> know the total number of terminal nodes, it is time to stop ignoring the threshold parameter and see what kind of information it can provide us. The threshold parameter can help us compute the maximum number of subsequences this iSAX index can hold in an <strong class="bold">ideal situation</strong>. The reason we are talking about an ideal situation is that most of the time, iSAX indexes are not balanced and there is no way of making sure that an iSAX index is going to be balanced. This is because this depends on the subsequences and the sliding <span class="No-Break">window size.</span></p>
+<p>Therefore, <em class="italic">when we have 64 terminal nodes and a threshold value of 100, the maximum number of subsequences that can be stored in an iSAX index in an ideal case </em><span class="No-Break"><em class="italic">is 6,400</em></span><span class="No-Break">.</span></p>
+<p>With all that information in mind, we are going to develop a small Python script to do the calculations for us. The code for <strong class="source-inline">maximumISAX.py</strong> is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+def main():
+    if len(sys.argv) != 4:
+        print("cardinality segments threshold")
+        print("Suggestion: The window be a power of 2.")
+        print("The cardinality SHOULD be a power of 2.")
+        sys.exit()
+    cardinality = int(sys.argv[1])
+    segments = int(sys.argv[2])
+    threshold = int(sys.argv[3])
+    terminalNodes = pow(cardinality, segments)
+    print("Nodes:", terminalNodes)
+    subsequences = terminalNodes * threshold
+    print("Maximum number of subsequences:", subsequences)
+if __name__ == '__main__':
+    main()</pre>
+<p>The <a id="_idIndexMarker181"/>output of <strong class="source-inline">maximumISAX.py</strong> is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+$ ./maximumISAX.py 4 4 100
+Nodes: 256
+Maximum number of subsequences: 25600</pre>
+<p>So, the previous output tells us that an iSAX index with 4 segments, a cardinality value of 4, and a threshold value of 100 can hold up to <span class="No-Break"><strong class="source-inline">25600</strong></span><span class="No-Break"> subsequences.</span></p>
+<p>If we run <strong class="source-inline">maximumISAX.py</strong> with the same number of segments and a different cardinality, we are going to get the <span class="No-Break">following output:</span></p>
+<pre class="source-code">
+$ ./maximumISAX.py 16 4 100
+Nodes: 65536
+Maximum number of subsequences: 6553600</pre>
+<p>So, the previous output tells us that an iSAX index with 4 segments, a cardinality value of 16, and a threshold value of 100 can hold up to <strong class="source-inline">6553600</strong> subsequences despite the fact that the<a id="_idIndexMarker182"/> root node still has <span class="No-Break">16 children.</span></p>
+<p>The next subsection will discuss what happens when there is no space to add a given subsequence to an <span class="No-Break">iSAX index.</span></p>
+<h2 id="_idParaDest-81"><a id="_idTextAnchor092"/>What happens when there is no space left for adding more subsequences to an iSAX index?</h2>
+<p>An iSAX index can <em class="italic">overflow</em>. In practice, this <a id="_idIndexMarker183"/>means that an iSAX index might not have enough space to add more subsequences. This happens when one or more branches of an iSAX index have used the full cardinality for all segments and the threshold value has been reached in these terminal nodes. <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.3</em> <span class="No-Break">visualizes this:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer018">
+<img alt="Figure 3.3 – iSAX overflow" height="631" src="image/Figure_3.3_B14769.jpg" width="1085"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.3 – iSAX overflow</p>
+<p>Suppose that the <a id="_idIndexMarker184"/>nodes with SAX representations of <strong class="source-inline">[10 10 00 00]</strong> and <strong class="source-inline">[10 10 00 01]</strong> are full and are using their full cardinality. This means that we cannot promote the nodes with the <strong class="source-inline">[10 10 00 00]</strong> and <strong class="source-inline">[10 10 00 01]</strong> SAX representations anymore unless we increase one or more relevant parameters of the iSAX index. So, if we have a subsequence with a SAX representation of either <strong class="source-inline">[10 10 00 00]</strong> or <strong class="source-inline">[10 10 00 01]</strong>, we do not know what to do with it, hence the overflow of the <span class="No-Break">iSAX index.</span></p>
+<p>In this section, we learned basic information about iSAX. The next section discusses the iSAX construction in <span class="No-Break">more detail.</span></p>
+<h1 id="_idParaDest-82"><a id="_idTextAnchor093"/>How iSAX is constructed</h1>
+<p>This section is going to describe the way an iSAX index is constructed. All the presented information is based on the research paper that describes iSAX. The logical steps are <span class="No-Break">as follows:</span></p>
+<ul>
+<li>We begin with a<a id="_idIndexMarker185"/> node that is the root of the iSAX index. The root contains no actual data (subsequences) but it contains pointers to all nodes with the specified segments value and a cardinality value of <strong class="source-inline">2</strong>, which is a single bit that can only have two values, <strong class="source-inline">0</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">1</strong></span><span class="No-Break">.</span></li>
+<li>After that, we construct the children of the root node, which at this initial point are all terminal nodes without any subsequences <span class="No-Break">in them.</span></li>
+<li>We now begin adding subsequences to the children of the root based on their <span class="No-Break">SAX representation.</span></li>
+<li>When the threshold value of a terminal node is reached, we perform the splits, based on the specified <strong class="bold">promotion strategy</strong>, and we <a id="_idIndexMarker186"/>distribute the subsequences to the two newly created <span class="No-Break">terminal nodes.</span></li>
+<li>The process goes on until all subsequences have been inserted into the iSAX index or there is<a id="_idIndexMarker187"/> no place left to add <span class="No-Break">a subsequence.</span></li>
+</ul>
+<p>The next section will explain how iSAX is searched in order to get a better idea of how the construction process is related to the <span class="No-Break">search operation.</span></p>
+<h2 id="_idParaDest-83"><a id="_idTextAnchor094"/>How iSAX is searched</h2>
+<p>The search process<a id="_idIndexMarker188"/> of an iSAX index can be described <span class="No-Break">as follows:</span></p>
+<ul>
+<li>First, we have a subsequence that we want to look for in an <span class="No-Break">iSAX index.</span></li>
+<li>Then, we must compute the SAX representation of that subsequence, using the same parameters as the <span class="No-Break">iSAX index.</span></li>
+<li>After that, we use the SAX representation of the subsequence to find out the child of the root that it <span class="No-Break">belongs to.</span></li>
+<li>Then, we keep searching that binary tree until we find a node with the same SAX representation. Keep in mind that we might need to reduce some of the SAX words of the subsequence based on the iSAX nodes. If such a node does not exist, then the iSAX index does not contain <span class="No-Break">that subsequence.</span></li>
+<li>Last, we examine the subsequences of that node – provided that such a terminal node exists – and look for that <span class="No-Break">specific subsequence.</span></li>
+</ul>
+<p>Generally speaking, the process is the same as if we added that subsequence to the iSAX index up to the point where we found the node that it belongs to. After that, we search the <a id="_idIndexMarker189"/>subsequences of <span class="No-Break">that node.</span></p>
+<p>The next subsection will discuss the promotion strategy, which has to do with which SAX word is going to get promoted when a split needs <span class="No-Break">to happen.</span></p>
+<h2 id="_idParaDest-84"><a id="_idTextAnchor095"/>Promotion strategy</h2>
+<p>The term <strong class="bold">promotion strategy</strong> refers to the<a id="_idIndexMarker190"/> selection of the segment that is going to be updated to a <a id="_idIndexMarker191"/>higher cardinality when a split is about to happen. Splits happen when we are about to add a new subsequence to a terminal node that already holds a number of subsequences that is equal to the threshold value. <em class="italic">Only that terminal node is going to </em><span class="No-Break"><em class="italic">be split</em></span><span class="No-Break">.</span></p>
+<p class="callout-heading">The threshold value</p>
+<p class="callout">The only parameter that is responsible for the splitting of a terminal node is the threshold parameter. If the threshold parameter were limitless, then all iSAX indexes would have terminal nodes with a cardinality value of 2, which are the <span class="No-Break">root children.</span></p>
+<p>There are two promotion strategies when splitting <span class="No-Break">a node:</span></p>
+<ul>
+<li><strong class="bold">Round Robin</strong>: The Round Robin strategy<a id="_idIndexMarker192"/> is well known in the <a id="_idIndexMarker193"/>Computer Science field. Its logic is simple: every time we need to promote, we promote the SAX word that is on the right to the SAX word that was previously promoted. When we reach the rightmost SAX word, we continue the process from the first SAX word. So, imagine we have the <strong class="source-inline">[0 1 0 0]</strong> SAX representation. For the first promotion that needs to take place, we promote the first SAX word and get <strong class="source-inline">[00 1 0 0]</strong> and <strong class="source-inline">[01 1 0 0]</strong>. In the next promotion, we are going to promote the second SAX word, even if this promotion takes place on a different SAX representation. So, if we need to promote <strong class="source-inline">[1 1 0 1]</strong>, then this is going to give us <strong class="source-inline">[1 10 0 1]</strong> and <strong class="source-inline">[1 11 </strong><span class="No-Break"><strong class="source-inline">0 1]</strong></span><span class="No-Break">.</span></li>
+<li><strong class="bold">From Left to Right</strong>: In this strategy, we <em class="italic">always promote the leftmost SAX word</em>, if it has not reached its maximum cardinality. So, promoting <strong class="source-inline">[00 1 0 0]</strong> is going to give us <strong class="source-inline">[000 1 0 0]</strong> and <strong class="source-inline">[001 1 0 0]</strong>, given that we have a cardinality<a id="_idIndexMarker194"/> value of at least 8. When the leftmost SAX word has reached its full cardinality, we continue with the next one to <span class="No-Break">its right.</span></li>
+</ul>
+<p>There is no right or <a id="_idIndexMarker195"/>wrong promotion strategy – use what you <span class="No-Break">like best.</span></p>
+<p>The next subsection presents an essential operation of iSAX, which is <span class="No-Break">node splitting.</span></p>
+<h2 id="_idParaDest-85"><a id="_idTextAnchor096"/>Splitting nodes</h2>
+<p>This subsection discusses <a id="_idIndexMarker196"/>the node-splitting process in more detail. Splitting happens in one case only: when a terminal node is about to have more subsequences than the ones permitted by the threshold value. In that case, <strong class="bold">that terminal node becomes an inner node</strong>. Then, two terminal nodes are created based on the promotion strategy, which are the children of the newly created inner node. Imagine having the iSAX index presented in <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.4</em>, which currently stores 10 subsequences: <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">0</span> to <span class="No-Break"><span class="_-----MathTools-_Math_Variable">S</span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"> </span></span><span class="No-Break"><span class="_-----MathTools-_Math_Number">9</span></span><span class="No-Break">.</span></p>
+<p>We now want to add the <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">10</span> subsequence to that index, but <strong class="source-inline">[10 10 00 0]</strong> <span class="No-Break">is full:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer019">
+<img alt="Figure 3.4 – Before node splitting" height="510" src="image/Figure_3.4_B14769.jpg" width="1112"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.4 – Before node splitting</p>
+<p>So, in order to <a id="_idIndexMarker197"/>add a subsequence with a SAX representation of <strong class="source-inline">[10 10 00 01]</strong>, we need to split the <strong class="source-inline">[10 10 00 0]</strong> terminal node, which now becomes an inner node with the same SAX representation, and <strong class="bold">create two terminal nodes</strong> as its children. Using the <em class="italic">Round Robin promotion strategy</em>, the two new terminal nodes will have the <strong class="source-inline">[10 10 00 00]</strong> and <strong class="source-inline">[10 10 00 01]</strong> SAX representations, respectively. So, in that case, we promoted the last <span class="No-Break">SAX word.</span></p>
+<p>After that, we iterate all the subsequences that were previously stored in <strong class="source-inline">[10 10 00 0]</strong> in order to put them in either <strong class="source-inline">[10 10 00 00]</strong> or <strong class="source-inline">[10 10 00 01]</strong> based on their promoted SAX representations. We are not going to go into more detail about how the subsequences are distributed after the splitting because this is explained in detail in the <em class="italic">Manually constructing an iSAX index</em> section <span class="No-Break">that follows.</span></p>
+<p class="callout-heading">What if splitting does not solve the issue?</p>
+<p class="callout">In the previous example, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">10</span> is going to go to the <strong class="source-inline">[10 10 00 01]</strong> terminal node, <em class="italic">provided that there is enough space</em> there. In the rare case where the new subsequences as well as all previously stored ones go to the same terminal node, the splitting process keeps going until the situation is resolved on its own or there is an <span class="No-Break">iSAX overflow.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.5</em> shows the new <a id="_idIndexMarker198"/>version of the iSAX index, after the <span class="No-Break">node splitting:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer020">
+<img alt="Figure 3.5 – After node splitting" height="404" src="image/Figure_3.5_B14769.jpg" width="1131"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.5 – After node splitting</p>
+<p>In this section, we learned about the stages of the iSAX construction process. The following section will show the manual construction of an iSAX index using a real example <span class="No-Break">and diagrams.</span></p>
+<h1 id="_idParaDest-86"><a id="_idTextAnchor097"/>Manually constructing an iSAX index</h1>
+<p>In this section, we are going <a id="_idIndexMarker199"/>to manually create a small iSAX index. For a better understanding of the process, we are going to present all the steps and describe all the <span class="No-Break">required computations.</span></p>
+<p>If you recall from earlier on in this chapter, the steps for creating an iSAX index can be described <span class="No-Break">as follows:</span></p>
+<ol>
+<li>Separate a time series into subsequences based on the given sliding <span class="No-Break">window size.</span></li>
+<li>For each subsequence, calculate its SAX representation, based on the <span class="No-Break">given parameters.</span></li>
+<li>Begin inserting the subsequences of the time series into the iSAX index. In the beginning, all iSAX nodes are terminal nodes, apart from <span class="No-Break">the root.</span></li>
+<li>Once a terminal node is full – the threshold value has been reached – split that node by increasing the cardinality of one of its segments and create two new <span class="No-Break">terminal nodes.</span></li>
+<li>The original terminal node becomes an inner node, which is now the father of the new newly created <span class="No-Break">terminal nodes.</span></li>
+<li>Split the subsequences of the original terminal node into the two new terminal nodes based on their <span class="No-Break">SAX representation.</span></li>
+</ol>
+<p class="callout-heading">Where does a subsequence go?</p>
+<p class="callout">It is important to realize that a subsequence with the <strong class="source-inline">[00 10 10 11]</strong> SAX representation <em class="italic">must go</em> under the <strong class="source-inline">[0 1 1 1]</strong> child of the root. After that, the exact place (terminal node) depends on the promotion that is going to take place in the process, which can be <strong class="source-inline">[00 10 10 1]</strong>, <strong class="source-inline">[00 1 1 11]</strong>, <strong class="source-inline">[0 1 10 11]</strong>, and so on. However, if we use its full SAX representation, it can only go in the <strong class="source-inline">[00 10 10 11]</strong> <span class="No-Break">terminal node.</span></p>
+<p>We are going to use a small time series for the iSAX construction process to not take too long to finish. However, the principles remain the same. We are also going to need the help of the <strong class="source-inline">ts2PAA.py</strong> utility from the previous chapter to get the SAX representation of each subsequence – we do not want to calculate <span class="No-Break">everything manually.</span></p>
+<p>As we are dealing with a small time series, we are going to use a segment value of <strong class="source-inline">2</strong>, a cardinality value of <strong class="source-inline">8</strong>, which means that we are going to be using 3 bits for the cardinality, and a threshold value of <strong class="source-inline">15</strong>. The sliding window size <span class="No-Break">is </span><span class="No-Break"><strong class="source-inline">8</strong></span><span class="No-Break">.</span></p>
+<p>So, the output of <strong class="source-inline">ts2PAA.py</strong> when processing <strong class="source-inline">ts1.gz</strong> is as follows (we are ignoring the normalized part of the<a id="_idIndexMarker200"/> output at this point, which is omitted <span class="No-Break">for brevity):</span></p>
+<pre class="source-code">
+$ ../ch02/ts2PAA.py ts1.gz 8 8 2
+[011, 100] [5.22 23.44 14.14 6.75 4.31 27.94 6.61 21.73]
+[011, 100] [23.44 14.14 6.75 4.31 27.94 6.61 21.73 11.43]
+[100, 011] [14.14 6.75 4.31 27.94 6.61 21.73 11.43 7.15]
+[011, 100] [6.75 4.31 27.94 6.61 21.73 11.43 7.15 15.85]
+[011, 100] [4.31 27.94 6.61 21.73 11.43 7.15 15.85 29.96]
+[100, 011] [27.94 6.61 21.73 11.43 7.15 15.85 29.96 6.00]
+[010, 101] [6.61 21.73 11.43 7.15 15.85 29.96 6.00 20.74]
+[011, 100] [21.73 11.43 7.15 15.85 29.96 6.00 20.74 18.39]
+[011, 100] [11.43 7.15 15.85 29.96 6.00 20.74 18.39 23.23]
+[010, 101] [7.15 15.85 29.96 6.00 20.74 18.39 23.23 25.71]
+[011, 100] [15.85 29.96 6.00 20.74 18.39 23.23 25.71 18.74]
+[011, 100] [29.96 6.00 20.74 18.39 23.23 25.71 18.74 15.09]
+[100, 011] [6.00 20.74 18.39 23.23 25.71 18.74 15.09 1.22]
+[101, 010] [20.74 18.39 23.23 25.71 18.74 15.09 1.22 26.61]
+[100, 011] [18.39 23.23 25.71 18.74 15.09 1.22 26.61 28.89]
+[011, 100] [23.23 25.71 18.74 15.09 1.22 26.61 28.89 27.62]
+[010, 101] [25.71 18.74 15.09 1.22 26.61 28.89 27.62 12.12]
+[010, 101] [18.74 15.09 1.22 26.61 28.89 27.62 12.12 16.77]
+[011, 100] [15.09 1.22 26.61 28.89 27.62 12.12 16.77 24.43]
+[100, 011] [1.22 26.61 28.89 27.62 12.12 16.77 24.43 21.37]
+[101, 010] [26.61 28.89 27.62 12.12 16.77 24.43 21.37 7.03]
+[100, 011] [28.89 27.62 12.12 16.77 24.43 21.37 7.03 19.24]
+[101, 010] [27.62 12.12 16.77 24.43 21.37 7.03 19.24 13.14]
+[100, 011] [12.12 16.77 24.43 21.37 7.03 19.24 13.14 24.91]
+[011, 100] [16.77 24.43 21.37 7.03 19.24 13.14 24.91 21.79]
+[100, 011] [24.43 21.37 7.03 19.24 13.14 24.91 21.79 4.53]
+[011, 100] [21.37 7.03 19.24 13.14 24.91 21.79 4.53 10.12]
+[100, 011] [7.03 19.24 13.14 24.91 21.79 4.53 10.12 12.83]
+[110, 001] [19.24 13.14 24.91 21.79 4.53 10.12 12.83 12.42]
+[101, 010] [13.14 24.91 21.79 4.53 10.12 12.83 12.42 1.97]
+[101, 010] [24.91 21.79 4.53 10.12 12.83 12.42 1.97 5.13]
+[100, 011] [21.79 4.53 10.12 12.83 12.42 1.97 5.13 20.26]
+[011, 100] [4.53 10.12 12.83 12.42 1.97 5.13 20.26 25.83]
+[010, 101] [10.12 12.83 12.42 1.97 5.13 20.26 25.83 15.19]
+[001, 110] [12.83 12.42 1.97 5.13 20.26 25.83 15.19 26.59]
+[010, 101] [12.42 1.97 5.13 20.26 25.83 15.19 26.59 7.77]
+[011, 100] [1.97 5.13 20.26 25.83 15.19 26.59 7.77 17.96]
+[100, 011] [5.13 20.26 25.83 15.19 26.59 7.77 17.96 11.07]
+[110, 001] [20.26 25.83 15.19 26.59 7.77 17.96 11.07 12.83]
+[100, 011] [25.83 15.19 26.59 7.77 17.96 11.07 12.83 27.30]
+[100, 011] [15.19 26.59 7.77 17.96 11.07 12.83 27.30 4.29]
+[100, 011] [26.59 7.77 17.96 11.07 12.83 27.30 4.29 5.84]
+[100, 011] [7.77 17.96 11.07 12.83 27.30 4.29 5.84 5.34]</pre>
+<p>As <strong class="source-inline">ts1.gz</strong> contains a<a id="_idIndexMarker201"/> time series with 50 elements, we are going to get 43 subsequences from it. Given the previous output, we are going to assign a name to each one of the subsequences – the name is based on the starting index of the subsequence in the original time series – and associate that name with the SAX representation. So, the first subsequence is going to be named <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">0</span>, the second <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">1</span>, and so on. The last one is going to be called <span class="No-Break"><span class="_-----MathTools-_Math_Variable">S</span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"> </span></span><span class="No-Break"><span class="_-----MathTools-_Math_Number">42</span></span><span class="No-Break">.</span></p>
+<p>We begin by creating the structure presented in <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.6</em>. In this structure, we have the root node and its children, which are currently empty. Those children are constructed by creating all SAX representations using the specified number of segments and a cardinality value of 2, which means that each SAX word has a single digit, which can be either <strong class="source-inline">0</strong> or <strong class="source-inline">1</strong>. At this point, all these children are terminal nodes. This is just the initial version of the iSAX index, which means that at the end of the day, <em class="italic">there might be children without any subsequences</em> (empty). However, this representation helps us programmatically. Also, bear in mind that <em class="italic">each child of the root node is the root node of its own </em><span class="No-Break"><em class="italic">binary tree</em></span><span class="No-Break">.</span></p>
+<p>At this point, all subsequences are associated with the <em class="italic">maximum cardinality</em>, based on the iSAX parameters. However, initially, this <em class="italic">maximum cardinality</em> is reduced to a cardinality value of 2 according to the rule presented in the <em class="italic">Reducing the cardinality of a SAX representation</em> subsection of <a href="B14769_02_MA.xhtml#_idTextAnchor053"><span class="No-Break"><em class="italic">Chapter 2</em></span></a>. Only after a split do we need to use a cardinality other than 2 – and this only happens for the subsequences that are part of the split. Of course, on big iSAX indexes, there are not many terminal nodes that use a <em class="italic">cardinality value of 2 on all their segments</em> – it should be clear by now that such terminal nodes are directly connected to the root node. Refer to the <span class="No-Break">following figure:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer021">
+<img alt="Figure 3.6 – The initial version of iSAX with the root and its children" height="399" src="image/Figure_3.6_B14769.jpg" width="1076"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.6 – The initial version of iSAX with the root and its children</p>
+<p>So, first, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">0</span> into the index. Before doing that, we need to reduce its cardinality, which goes from <strong class="source-inline">[011, 100]</strong> to <strong class="source-inline">[0, 1]</strong>. At this point, we find its matching cardinality in the children of the root based on the reduced cardinality, and we put it there. Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">1</span>into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which <a id="_idIndexMarker202"/>becomes <strong class="source-inline">[0, 1]</strong>. Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[1, 0]</strong>. Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">3</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>After that, we have an iSAX index that looks like the one presented in <span class="No-Break"><em class="italic">Figure 3</em></span><span class="No-Break"><em class="italic">.7</em></span><span class="No-Break">:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer022">
+<img alt="Figure 3.7 – Adding four subsequences to the iSAX index" height="428" src="image/Figure_3.7_B14769.jpg" width="831"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.7 – Adding four subsequences to the iSAX index</p>
+<p>Now, we put <a id="_idIndexMarker203"/>subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">4</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">5</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>After that, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">6</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which when reduced becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">7</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which when reduced is <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">8</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">9</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Next, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">10</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Currently, the node with the SAX representation of <strong class="source-inline">[0, 1]</strong> has 9 subsequences (<span class="No-Break"><em class="italic">Figure 3</em></span><span class="No-Break"><em class="italic">.8</em></span><span class="No-Break">).</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer023">
+<img alt="Figure 3.8 – The iSAX index with 11 subsequences" height="562" src="image/Figure_3.8_B14769.jpg" width="1097"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.8 – The iSAX index with 11 subsequences</p>
+<p>Now, we put<a id="_idIndexMarker204"/> subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">11</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[0, 1]</strong>. Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">12</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">13</span> into the index, which has the <strong class="source-inline">[101, 010]</strong> SAX representation, which when reduced becomes <strong class="source-inline">[1, 0]</strong>. After that, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">14</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which when reduced is <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">15</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[0, 1]</strong>. Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">16</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">17</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which becomes <strong class="source-inline">[0, 1]</strong>. After that, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">18</span><span class="_-----MathTools-_Math_Space"> </span>into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">0, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">19</span> into the iSAX index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which when reduced is <strong class="source-inline">[1, 0]</strong>. Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">20</span> into the iSAX index, which has the <strong class="source-inline">[101, 010]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">21</span> into the iSAX index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Then, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">22</span> into the iSAX index, which has the <strong class="source-inline">[101, 010]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">23</span> into the iSAX index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>After that, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">24</span> into the iSAX index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[0, 1]</strong>. At this point, the iSAX node with the SAX representation of <strong class="source-inline">[0, 1]</strong> <span class="No-Break">is full.</span></p>
+<p>Next, we put<a id="_idIndexMarker205"/> subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">25</span> into the iSAX index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.9</em> shows the current version of the iSAX index (the root node is omitted <span class="No-Break">for brevity):</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer024">
+<img alt="Figure 3.9 – Adding subsequences to the iSAX index" height="456" src="image/Figure_3.9_B14769.jpg" width="1166"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.9 – Adding subsequences to the iSAX index</p>
+<p>Now, we try to insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">26</span> into the iSAX index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[0, 1]</strong>. At this point, we must perform a split of the <strong class="source-inline">[0, 1]</strong> terminal node. Therefore, <strong class="source-inline">[0, 1]</strong> becomes an inner node and two new terminal nodes are created, which become the children of <strong class="source-inline">[0, 1]</strong>: <strong class="source-inline">[00, 1]</strong> and <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">01, 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we must <a id="_idIndexMarker206"/>calculate the SAX representations of all the existing subsequences of <strong class="source-inline">[0, 1]</strong> according to the new cardinality in order to put them into one of the two newly created <span class="No-Break">terminal nodes.</span></p>
+<p>The new SAX representations of the subsequences of the previous <strong class="source-inline">[0, 1]</strong> terminal node are as follows: <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">0</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">1</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">3</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">4</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">6</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">7</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">8</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">9</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">10</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">11</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">15</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">16</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">17</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">18</span> --&gt; <strong class="source-inline">[01, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">24</span> --&gt; <strong class="source-inline">[01, 1]</strong>, and <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">26</span> --&gt; <strong class="source-inline">[01, 1]</strong>. If you look closely, you are going to discover that the first SAX word in all previous subsequences is the same: <strong class="source-inline">01</strong>. This means that the split is not going to work and we are going to need to perform an additional split. For no particular reason, we are going to keep promoting the first SAX word. Therefore, <strong class="source-inline">[01, 1]</strong> is going to become an inner node and create two new terminal nodes: <strong class="source-inline">[010, 1]</strong> and <strong class="source-inline">[011, 1]</strong>. There is no need to promote the other terminal node (<strong class="source-inline">[00, 1]</strong>) as there is no <span class="No-Break">issue there.</span></p>
+<p>So, here are the new SAX representations of the previous subsequences: <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">0</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">1</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">3</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">4</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">6</span> --&gt; <strong class="source-inline">[010, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">7</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">8</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">9</span> --&gt; <strong class="source-inline">[010, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">10</span><span class="_-----MathTools-_Math_Space"> </span>--&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">11</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">15</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">16</span> --&gt; <strong class="source-inline">[010, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">17</span> --&gt; <strong class="source-inline">[010, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">18</span> --&gt; <strong class="source-inline">[011, 1]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">24</span> --&gt; <strong class="source-inline">[011, 1]</strong>, and <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">26</span> --&gt; <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">011, 1]</strong></span><span class="No-Break">.</span></p>
+<p>This split resolves the issue, so the subsequences are put into the appropriate terminal node. <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.10</em> shows the latest version of the iSAX index (the root node is omitted <span class="No-Break">for brevity).</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer025">
+<img alt="Figure 3.10 – Node splitting of an iSAX index" height="897" src="image/Figure_3.10_B14769.jpg" width="1016"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.10 – Node splitting of an iSAX index</p>
+<p>As stated before, the<a id="_idIndexMarker207"/> reason for having to perform a split is that we do not want the number of subsequences stored in a terminal node to be greater than the <span class="No-Break">threshold value.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">27</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[1, 0]</strong>. Next, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">28</span> into the index, which has the <strong class="source-inline">[110, 001]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">29</span> into the index, which has the <strong class="source-inline">[101, 010]</strong> SAX representation, which becomes <strong class="source-inline">[1, 0]</strong>. Next, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">30</span> into the index, which has the <strong class="source-inline">[101, 010]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">1, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">31</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[1, 0]</strong>. At this point, we must split the <strong class="source-inline">[1, 0]</strong> terminal node, which becomes an inner node with two new terminal nodes as its children: <strong class="source-inline">[10, 0]</strong> and <strong class="source-inline">[11, 0]</strong>. Therefore, the new SAX representations of the subsequences that were stored in <strong class="source-inline">[1, 0]</strong> are as follows: <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">5</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">12</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">13</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">14</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">19</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">20</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">21</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">22</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">23</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">25</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">27</span> --&gt; <strong class="source-inline">[10, 0</strong><strong class="source-inline">]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">28</span> --&gt; <strong class="source-inline">[11, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">29</span> --&gt; <strong class="source-inline">[10, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">30</span> --&gt; <strong class="source-inline">[10, 0]</strong>, and <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">31</span> --&gt; <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">10, 0]</strong></span><span class="No-Break">.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.11</em> shows the<a id="_idIndexMarker208"/> latest version of the iSAX index (the root node is omitted for brevity). Notice that <strong class="source-inline">[10, 0]</strong> terminal node is full and cannot store any <span class="No-Break">more subsequences.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer026">
+<img alt="Figure 3.11 – More node splitting in the iSAX index" height="1014" src="image/Figure_3.11_B14769.jpg" width="1186"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.11 – More node splitting in the iSAX index</p>
+<p>Now, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">32</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[011, 1]</strong> (we reduce the cardinality according to our needs). Next, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">33</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which when reduced becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">010, 1]</strong></span><span class="No-Break">.</span></p>
+<p>After that, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">34</span> into the index, which has the <strong class="source-inline">[001, 110]</strong> SAX representation, which becomes <strong class="source-inline">[00, 1]</strong>. Next, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">35</span> into the index, which has the <strong class="source-inline">[010, 101]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">010, 1]</strong></span><span class="No-Break">.</span></p>
+<p>After that, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">36</span> into the index, which has the <strong class="source-inline">[011, 100]</strong> SAX representation, which becomes <strong class="source-inline">[011, 1]</strong>. Next, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">37</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which when reduced becomes <strong class="source-inline">[10, 0]</strong>. The last subsequence causes a split to the <strong class="source-inline">[10, 0]</strong> node, which becomes an inner node with <a id="_idIndexMarker209"/>two children: <strong class="source-inline">[100, 0]</strong> and <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">101, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Therefore, the new SAX representations of the subsequences that were stored in <strong class="source-inline">[10, 0]</strong> are as follows: <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">2</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">5</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">12</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">13</span> --&gt; <strong class="source-inline">[101, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">14</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">19</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">20</span> --&gt; <strong class="source-inline">[101, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">21</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">22</span> --&gt; <strong class="source-inline">[101, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">23</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">25</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">27</span> --&gt; <strong class="source-inline">[100, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">29</span> --&gt; <strong class="source-inline">[101, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">30</span> --&gt; <strong class="source-inline">[101, 0]</strong>, <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">31</span> --&gt; <strong class="source-inline">[100, 0]</strong>, and <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">37</span> --&gt; <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">100, 0]</strong></span><span class="No-Break">.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.12</em> shows the updated iSAX index (the root node is omitted <span class="No-Break">for brevity).</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer027">
+<img alt="Figure 3.12 – Updated version of the iSAX index with 38 subsequences" height="854" src="image/Figure_3.12_B14769.jpg" width="1000"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.12 – Updated version of the iSAX index with 38 subsequences</p>
+<p>Next, we put <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">38</span> into the<a id="_idIndexMarker210"/> index, which has the <strong class="source-inline">[110, 001]</strong> SAX representation, which becomes <strong class="source-inline">[11, 0]</strong>. Then, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">39</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">100, 0]</strong></span><span class="No-Break">.</span></p>
+<p>Next, we put subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">40</span> into the index, which has the <strong class="source-inline">[100, 011]</strong> SAX representation, which becomes <strong class="source-inline">[100, 0]</strong>. After that, we insert subsequence <span class="_-----MathTools-_Math_Variable">S</span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Number">41</span><span class="_-----MathTools-_Math_Operator">,</span><span class="_-----MathTools-_Math_Space"> </span>which becomes <strong class="source-inline">[</strong><span class="No-Break"><strong class="source-inline">100, 0]</strong></span><span class="No-Break">.</span></p>
+<p><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.13</em> shows the final version of the iSAX index. If you count the subsequences in the terminal nodes, you are going to find that they are 43, which is the correct number based on the sliding window size and the time <span class="No-Break">series length.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer028">
+<img alt="Figure 3.13 – The final version of the iSAX index" height="1000" src="image/Figure_3.13_B14769.jpg" width="1239"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.13 – The final version of the iSAX index</p>
+<p>You should agree by now that creating an iSAX index manually is a tedious process and nobody should have <a id="_idIndexMarker211"/>to do that. This makes it a perfect candidate to be carried out using <span class="No-Break">a computer.</span></p>
+<p>Now that we know how to manually populate an iSAX index, it is time to update the <strong class="source-inline">counting.py</strong> utility from <a href="B14769_02_MA.xhtml#_idTextAnchor053"><span class="No-Break"><em class="italic">Chapter 2</em></span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-87"><a id="_idTextAnchor098"/>Updating the counting.py utility</h1>
+<p>Remember<a id="_idIndexMarker212"/> the <strong class="source-inline">counting.py</strong> utility from <a href="B14769_02_MA.xhtml#_idTextAnchor053"><span class="No-Break"><em class="italic">Chapter 2</em></span></a>? In this section, we are going to update it and use it for some important tasks. We are not going to completely change the existing functionality or throw away all the existing code. We are going to build on the existing code of the <strong class="source-inline">counting.py</strong> utility, which is a great and productive way to develop <span class="No-Break">new software.</span></p>
+<p>The updated version of the utility can be used for the <span class="No-Break">following tasks:</span></p>
+<ul>
+<li>Seeing whether a time series can fit into an iSAX index. This computation is based on the existing functionality of <strong class="source-inline">counting.py</strong> combined with a test of whether the values of all dictionary entries are smaller than the <span class="No-Break">threshold value.</span></li>
+<li>Seeing whether a time series can fit into an iSAX index using more segments or by increasing the threshold. Again, this computation is based on the existing functionality of <strong class="source-inline">counting.py</strong>, which is enhanced with some extra computations <span class="No-Break">and testing.</span></li>
+<li>Seeing whether an iSAX index is relatively balanced or not. This can have a great impact on the performance of the index. However, as you already know, indexes are not balanced in general. The idea behind this functionality is based on counting the number of subsequences that go under each child of the root. Put simply, we count the subsequences on nodes that have a cardinality value of 2 on all their SAX words because these are the children of the root, and we print the results on screen. Although this test is not conclusive, it gives us a good idea of how the subsequences are going to be distributed in the iSAX index. Keep in mind that if you use a segments value larger than 4, you are going to get a large amount of output from <span class="No-Break">the utility.</span></li>
+</ul>
+<p>The new version <a id="_idIndexMarker213"/>of the <strong class="source-inline">counting.py</strong> utility, which is called <strong class="source-inline">countingv2.py</strong> and has been refactored to include a function, contains the following code, which is presented in four parts. The first part is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+from sax import sax
+def calculate(ts_numpy, sliding, segments, cardinality):
+    KEYS = {}
+    length = len(ts_numpy)
+    for i in range(length - sliding + 1):
+        t1_temp = ts_numpy[i:i+sliding]
+        tempSAXword = sax.createPAA(t1_temp, cardinality, segments)
+        tempSAXword = tempSAXword[:-1]
+        if KEYS.get(tempSAXword) == None:
+            KEYS[tempSAXword] = 1
+        else:
+            KEYS[tempSAXword] = KEYS[tempSAXword] + 1
+    return KEYS</pre>
+<p>The <strong class="source-inline">calculate()</strong> function, which <a id="_idIndexMarker214"/>computes the number of subsequences per SAX representation, is called multiple times and is what might slow down the script. Therefore, before seeing <strong class="source-inline">countingv2.py</strong> in action, let me warn you that the utility might become slow when processing time series with millions <span class="No-Break">of elements.</span></p>
+<p>The second part is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+def main():
+    if len(sys.argv) != 6:
+        print("TS1 sliding_window cardinality segments threshold")
+        sys.exit()
+    file = sys.argv[1]
+    sliding = int(sys.argv[2])
+    cardinality = int(sys.argv[3])
+    segments = int(sys.argv[4])
+    threshold = int(sys.argv[5])
+    if sliding % segments != 0:
+        print("sliding MODULO segments != 0...")
+        sys.exit()
+    if sliding &lt;= 0:
+        print("Sliding value is not allowed:", sliding)
+        sys.exit()
+    if cardinality &lt;= 0:
+        print("Cardinality Value is not allowed:",
+            cardinality)
+        sys.exit()
+    ts = pd.read_csv(file, names=['values'],
+        compression='gzip')
+    ts_numpy = ts.to_numpy()
+    # See if it fits
+    overflow = False
+    KEYS = calculate(ts_numpy, sliding, segments,
+        cardinality)
+    <strong class="bold">maxVal = max(KEYS.values())</strong>
+    if maxVal &gt; threshold:
+        overflow = True</pre>
+<p>The condition for an overflow<a id="_idIndexMarker215"/> is as follows: <em class="italic">if any node, which is identified by its SAX representation, has more subsequences than the threshold value, then we have an overflow</em>. Instead of checking all nodes, we get the maximum value of subsequences found in a node (<strong class="source-inline">max(KEYS.values())</strong>) and we compare that to the given <span class="No-Break">threshold value.</span></p>
+<p>The third part contains the following <span class="No-Break">Python code:</span></p>
+<pre class="source-code">
+    # See if we can make it fit or reduce the parameters
+    if overflow:
+        i = 2
+        while overflow:
+            # We cannot have more segments than the window
+            if segments * i &gt; sliding:
+                break
+            print("Increasing segments to", i * segments)
+            overflow = False
+            KEYS = calculate(ts_numpy, sliding,
+                segments * i, cardinality)
+            maxVal = max(KEYS.values())
+            if maxVal &gt; threshold:
+                overflow = True
+                print("Overflow")
+                i = 2 * i
+            if overflow == False:
+                print("New segments:", i * segments)
+    else:
+        print("Threshold can be", max(KEYS.values()))
+        print("Reducing cardinality to", cardinality//2)
+        overflow = False
+        KEYS = calculate(ts_numpy, sliding, segments,
+            cardinality//2)
+        maxVal = max(KEYS.values())
+        if maxVal &gt; threshold:
+            print("Cannot reduce cardinality")
+        elif overflow == False:
+            print("New cardinality:", cardinality//2)</pre>
+<p>The previous code works <span class="No-Break">as follows.</span></p>
+<p>If we have an overflow, then the code doubles the value of the parameter that holds the number of segments while having in mind that the <strong class="source-inline">segments</strong> parameter cannot be greater than the sliding window size. This is going to keep happening as long as there is an overflow and the segments are not bigger than the sliding window size. If we do not have an <a id="_idIndexMarker216"/>overflow in the first place, the code tries to reduce the value of the <strong class="source-inline">cardinality</strong> parameter by half and see <span class="No-Break">what happens.</span></p>
+<p>The last part is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+   # Now let us see whether the iSAX index is going to be
+    # balanced or not using a cardinality value of 2
+    KEYS = calculate(<strong class="bold">ts_numpy, sliding, segments, 2</strong>)
+    minVal = min(KEYS.values())
+    maxVal = max(KEYS.values())
+    print("Min:", minVal, "Max:", maxVal)
+    for k in KEYS.keys():
+        print(k, ":", KEYS[k])</pre>
+<p>This last part of the code uses <strong class="bold">a cardinality value of 2</strong> to find out under which child of the root each subsequence is going to be placed. In this case, we do not care <span class="No-Break">about overflows.</span></p>
+<p>Let me now <a id="_idIndexMarker217"/>present you with some actual uses of <strong class="source-inline">countingv2.py</strong>. Imagine having a time series with 450,000 elements and you want to know whether it can fit into an iSAX index with 4 segments, a cardinality of <strong class="source-inline">32</strong>, and a threshold value of <strong class="source-inline">1500</strong> when using a sliding window of <strong class="source-inline">1024</strong>. If you want to perform this test, please create a time series with synthetic data using the <strong class="source-inline">synthetic_data.py</strong> script from <a href="B14769_01.xhtml#_idTextAnchor015"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>. The output of <strong class="source-inline">countingv2.py</strong> is going to be as follows (your output is going to vary as we are not using the same <span class="No-Break">time series):</span></p>
+<pre class="source-code">
+$ ./countingv2.py 450k.txt.gz 1024 32 4 1500
+Threshold can be 317
+Reducing cardinality to 16
+Cannot reduce cardinality
+Min: 11942 Max: 76534
+0_1_1_1 : 26080
+0_0_1_1 : 57549
+0_0_1_0 : 11942
+0_1_1_0 : 53496
+0_1_0_0 : 13154
+1_1_0_0 : 76534
+1_0_0_0 : 19933
+1_0_1_0 : 25430
+1_0_1_1 : 20768
+1_0_0_1 : 56345
+0_1_0_1 : 22142
+1_1_1_0 : 31547
+1_1_0_1 : 20707
+0_0_0_1 : 13850</pre>
+<p>What does the previous output tell us? The first line tells us that we could have used a threshold value of <strong class="source-inline">317</strong> with the original SAX parameters and the entire time series would have fit into the iSAX index – this means that <em class="italic">the time series can fit into the iSAX index</em>. However, when reducing the cardinality to <strong class="source-inline">16</strong>, the iSAX index cannot fit the entire time series using 4 segments and a threshold value of <strong class="source-inline">1500</strong>. Finally, the last lines tell us that <strong class="source-inline">76534</strong> subsequences belong to the <strong class="source-inline">[1 1 0 0]</strong> SAX representation and <strong class="source-inline">11942</strong> subsequences belong to the <strong class="source-inline">[0 0 1 0]</strong> SAX representation. The number of subsequences under the rest of the children of the root is between <strong class="source-inline">76534</strong> and <strong class="source-inline">11942</strong>. Generally speaking, this is not a bad subsequence distribution for an iSAX index, despite the fact that two of the potential children of the root do not appear in the output: <strong class="source-inline">[0 0 0 0]</strong> and <strong class="source-inline">[1 1 </strong><span class="No-Break"><strong class="source-inline">1 1]</strong></span><span class="No-Break">.</span></p>
+<p>Now, let us do the<a id="_idIndexMarker218"/> same test using the same sliding window length but this time using an iSAX index with 2 segments, a cardinality of <strong class="source-inline">128</strong>, and a threshold value of <strong class="source-inline">1500</strong>. This time, the output is <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+$ ./countingv2.py 450k.txt.gz 1024 128 2 1500
+Increasing segments to 4
+New segments: 4
+Min: 207226 Max: 242251
+0_1 : 207226
+1_0 : 242251</pre>
+<p>What does the previous output tell us? It tells us that the given iSAX parameters are not enough for hosting the provided time series in an iSAX index. However, increasing the number of segments to 4 would do the trick. The last two lines show a part of the problem: all subsequences go to either <strong class="source-inline">[0 1]</strong> or <strong class="source-inline">[1 0]</strong>, which means that both the <strong class="source-inline">[1 1]</strong> and <strong class="source-inline">[0 0]</strong> children of the root node are not being used at all, which might be a bad situation. Apart<a id="_idIndexMarker219"/> from the data itself, this also depends on the sliding <span class="No-Break">window size.</span></p>
+<p class="callout-heading">Normalization and SAX representation</p>
+<p class="callout">After running <strong class="source-inline">countingv2.py</strong> many times, it came to my attention that it is very rare to get SAX representations with all zeros or all ones, especially when dealing with a cardinality of 2. The main reason for this<a id="_idIndexMarker220"/> phenomenon is <strong class="bold">normalization</strong>. Due to normalization, the normalized values of a subsequence cannot fall entirely on the left side or right side of 0 unless we are working with a subsequence that is all zeros. In that case, the normalized version is the same as the original and the mean value is exactly 0. According to our way of treating zero, which means that we must decide whether it going to be included in the left area or right area of the 0 breakpoint, we can easily have a<a id="_idIndexMarker221"/> SAX representation with all zeros or all ones. However, having both in the same iSAX index is extremely rare or not possible at all. Keep that in mind when interpreting the results of the <span class="No-Break">presented utility.</span></p>
+<p>Last, let us do the same check using an iSAX index with 4 segments, a cardinality of <strong class="source-inline">64</strong>, and a threshold value <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">250</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+$ ./countingv2.py 450k.txt.gz 1024 64 4 250
+Threshold can be 105
+Reducing cardinality to 32
+Cannot reduce cardinality
+Min: 11942 Max: 76534
+0_1_1_1 : 26080
+0_0_1_1 : 57549
+0_0_1_0 : 11942
+0_1_1_0 : 53496
+0_1_0_0 : 13154
+1_1_0_0 : 76534
+1_0_0_0 : 19933
+1_0_1_0 : 25430
+1_0_1_1 : 20768
+1_0_0_1 : 56345
+0_1_0_1 : 22142
+1_1_1_0 : 31547
+1_1_0_1 : 20707
+0_0_0_1 : 13850</pre>
+<p>The previous output informs us that the selected parameters create an iSAX index that can host all the subsequences of the time series, but we cannot reduce the cardinality to <strong class="source-inline">32</strong>. Additionally, as we are using the same number of segments, the results regarding the subsequence distribution are exactly the same as in the first example execution <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">countingv2.py</strong></span><span class="No-Break">.</span></p>
+<p>When you have such command-line utilities, it is good to experiment with them as much as you can in order to get a <a id="_idIndexMarker222"/>better insight into iSAX and how the parameters affect <span class="No-Break">its shape.</span></p>
+<p>So, in this last section of the chapter, we have improved the <strong class="source-inline">counting.py</strong> utility to make it even <span class="No-Break">more useful.</span></p>
+<h1 id="_idParaDest-88"><a id="_idTextAnchor099"/>Summary</h1>
+<p>In this chapter, we discussed the theory behind the iSAX index and how the SAX representation is related to the iSAX index. We also learned how to manually create an iSAX index given a time series and the required parameters. Additionally, we developed some handy command-line utilities that support iSAX indexes. We now understand the necessary theory behind iSAX and are ready to <span class="No-Break">apply it.</span></p>
+<p>The next chapter uses this chapter as its foundation in order to develop a Python package for computing <span class="No-Break">iSAX indexes.</span></p>
+<h1 id="_idParaDest-89"><a id="_idTextAnchor100"/>Useful links</h1>
+<ul>
+<li>The web page of Eamonn <span class="No-Break">Keogh: </span><a href="https://www.cs.ucr.edu/~eamonn/"><span class="No-Break">https://www.cs.ucr.edu/~eamonn/</span></a></li>
+<li>For research issues regarding time series, read the research paper titled <em class="italic">Big Sequence Management: A glimpse of the Past, the Present, and the Future</em> by <span class="No-Break">Themis Palpanas</span></li>
+<li>Themis Palpanas's home <span class="No-Break">page: </span><a href="https://helios2.mi.parisdescartes.fr/~themisp/"><span class="No-Break">https://helios2.mi.parisdescartes.fr/~themisp/</span></a></li>
+<li><em class="italic">OK! So</em> was used for some of the diagrams in this <span class="No-Break">chapter: </span><a href="https://okso.app/"><span class="No-Break">https://okso.app/</span></a></li>
+</ul>
+<h1 id="_idParaDest-90"><a id="_idTextAnchor101"/>Exercises</h1>
+<p>Try to work through the <span class="No-Break">following exercises:</span></p>
+<ul>
+<li>Manually create an iSAX index for the <strong class="source-inline">{1, 2, -2, 2, 0, 1, 3, 4}</strong> time series with a sliding window of 4 and a SAX representation with 2 segments, a cardinality of 4, and a threshold value <span class="No-Break">of 2.</span></li>
+<li>Manually create an iSAX index for the <strong class="source-inline">{1, 0, 0, 2, 0, 1, -3, 0}</strong> time series with a sliding window of 4 and a SAX representation with 2 segments, a cardinality of 4, and a threshold value <span class="No-Break">of 4.</span></li>
+<li>Manually create an iSAX index for the <strong class="source-inline">{1, -1, -1, 2, 0, 1, -3, 0, 4, 6, 8, 10}</strong> time series with a sliding window of 6, a SAX representation with 2 segments, a cardinality value of 8, and a threshold value <span class="No-Break">of 4.</span></li>
+<li>Manually create an iSAX index for the <strong class="source-inline">{1, -1, -1, 2, 0, 1, -3, 0, 4, 6, 8, 10}</strong> time series with a sliding window of 4 and a SAX representation with 2 segments, a cardinality of 4, and a threshold value <span class="No-Break">of 4.</span></li>
+<li>Manually create an iSAX index for the <strong class="source-inline">{0, 0, 0, 0, 1, -1, -1, 2, 0, 1, -3, 0, 4, 6, 8, 10, 0, 0}</strong> time series with a sliding window of 4 and a SAX representation with 2 segments, a cardinality of 4, and a threshold value <span class="No-Break">of 2.</span></li>
+<li>Create a sample time series with 2,000,000 elements and check whether it can theoretically fit into an iSAX index with 6 segments, a cardinality of 32, and a threshold value <span class="No-Break">of 500.</span></li>
+</ul>
+</div>
+</div></body></html>

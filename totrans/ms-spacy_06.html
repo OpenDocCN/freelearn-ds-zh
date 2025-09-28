@@ -1,0 +1,635 @@
+<html><head></head><body><div id="sbo-rt-content"><div id="_idContainer087">
+			<h1 id="_idParaDest-69"><a id="_idTextAnchor069"/>Chapter <a id="_idTextAnchor070"/>4: Rule-Based Matching</h1>
+			<p><strong class="bold">Rule-based information extraction</strong> is indispensable for any NLP pipeline. Certain types of entities, such as times, dates, and telephone numbers have distinct formats that can be recognized by a set of rules, without having to train statistical models. </p>
+			<p>In this chapter, you will learn how to quickly extract information from the text by matching patterns and phrases. You will use <strong class="bold">morphological features</strong>, <strong class="bold">POS tags</strong>, <strong class="bold">regex</strong>, and other spaCy features to form pattern objects to feed to the <strong class="source-inline">Matcher</strong> objects. You will continue with fine-graining statistical models with rule-based matching to lift statistical models to better accuracies.</p>
+			<p>By the end of this chapter, you will know a vital part of information extraction. You will be able to extract entities of specific formats, as well as entities specific to your domain.</p>
+			<p>In this chapter, we're going to cover the following main topics:</p>
+			<ul>
+				<li>Token-based matching</li>
+				<li>PhraseMatcher</li>
+				<li>EntityRuler</li>
+				<li>Combining spaCy models and matchers</li>
+			</ul>
+			<h1 id="_idParaDest-70"><a id="_idTextAnchor071"/>Token-based matching</h1>
+			<p>So far, we've explored the sophisticated linguistic concepts that require statistical models and <a id="_idIndexMarker230"/>their usages with spaCy. Some NLU tasks can be solved in tricky ways without the help <a id="_idIndexMarker231"/>of any statistical model. One of those ways is <strong class="bold">regex</strong>, which we use to match a predefined set of patterns to our text.</p>
+			<p>A regex (a regular expression) is a sequence of characters that specifies a search pattern. A regex describes a set of strings that follows the specified pattern. A regex can include letters, digits, and characters with special meanings, such as <em class="italic">?</em>, <em class="italic">.</em>, and <em class="italic">*</em>. Python's built-in library provides great support to define and match regular expressions. There's another Python 3 library called regex that aims wants to replace <strong class="bold">re</strong> in the future.</p>
+			<p>Readers who are actively developing NLP applications with Python have definitely come across regex code and, even better, have written regex themselves.</p>
+			<p>What does a regex look like, then? The following regex matches the following strings:</p>
+			<ul>
+				<li>Barack Obama</li>
+				<li>Barack Obama</li>
+				<li>Barack Hussein Obama</li>
+			</ul>
+			<p class="source-code">reg = r"Barack\s(Hussein\s)?Obama"  </p>
+			<p>This pattern can be read as: the string <strong class="source-inline">Barack</strong> can be followed optionally by the string <strong class="source-inline">Hussein</strong> (the <strong class="source-inline">? </strong>character in regex means optional, that is, <strong class="source-inline">0</strong> or <strong class="source-inline">1</strong> occurrence) and should be followed by the string <strong class="source-inline">Obama</strong>. The inter-word spaces can be a single space character, a tab, or any other whitespace character (<strong class="source-inline">\s</strong> matches all sorts of whitespace characters, including the newline character).</p>
+			<p>It's not very <a id="_idIndexMarker232"/>readable, even for such a short and uncomplicated pattern, is it? That is the downside of regex, it is the following:</p>
+			<ul>
+				<li>Difficult to read</li>
+				<li>Difficult to debug</li>
+				<li>Error prone with space, punctuation, and number characters</li>
+			</ul>
+			<p>For these reasons, many software engineers don't like to work with regex in their production code. spaCy provides a very clean, readable, production-level, and maintainable alternative: the <strong class="source-inline">Matcher</strong> class. The <strong class="source-inline">Matcher</strong> class can match our predefined rules to the sequence of tokens in <strong class="source-inline">Doc</strong> and <strong class="source-inline">Span</strong> objects; moreover, the rules can refer to the token or its linguistic attributes (more on this subject later in this section).</p>
+			<p>Let's start with a basic example of how to call the <strong class="source-inline">Matcher</strong> class:</p>
+			<p class="source-code"> import spacy</p>
+			<p class="source-code"> from spacy.matcher import Matcher</p>
+			<p class="source-code"> nlp = spacy.load("en")</p>
+			<p class="source-code"> doc = nlp("Good morning, I want to reserve a ticket.")</p>
+			<p class="source-code"> matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code"> pattern = [{"LOWER": "good"}, {"LOWER": "morning"}, </p>
+			<p class="source-code">            {"IS_PUNCT": True}]</p>
+			<p class="source-code"> matcher.add("morningGreeting", None, pattern)</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for match_id, start, end in matches:</p>
+			<p class="source-code">     m_span = doc[start:end]  </p>
+			<p class="source-code">     print(start, end, m_span.text)</p>
+			<p class="source-code">...</p>
+			<p class="source-code">0 3 Good morning,</p>
+			<p>It looks <a id="_idIndexMarker233"/>complicated, but don't be intimidated, we'll go over the lines one by one:</p>
+			<ul>
+				<li>We imported <strong class="source-inline">spacy</strong> in the first line; this should be familiar.</li>
+				<li>On the second line, we imported the <strong class="source-inline">Matcher</strong> class in order to use it in the rest of the code.</li>
+				<li>On the next lines, we created the <strong class="source-inline">nlp</strong> object as usual and created the <strong class="source-inline">doc</strong> object with our example sentence.</li>
+				<li>Now, pay attention: a <strong class="source-inline">matcher</strong> object needs to be initialized with a <strong class="source-inline">Vocabulary</strong> object, so on line 5 we initialize our <strong class="source-inline">matcher</strong> object with the language model's vocabulary (this is the usual way to do it). </li>
+				<li>What comes next is to define the pattern we want to match. Here, we define <em class="italic">pattern</em> as a list where every list item enclosed in a bracelet represents one token object. </li>
+			</ul>
+			<p>You can read the pattern list in the preceding code snippet as follows:</p>
+			<ol>
+				<li>A token whose lowered text is <strong class="source-inline">good</strong></li>
+				<li>A token whose lowered text is <strong class="source-inline">morning</strong></li>
+				<li>A token that is punctuation (that is, the <strong class="source-inline">IS_PUNCT</strong> feature is <strong class="source-inline">True</strong>)</li>
+			</ol>
+			<p>Then, we need to introduce this pattern to the <strong class="source-inline">matcher</strong>; this is what the <strong class="source-inline">matcher.add()</strong> line does. On line 7, we introduced our pattern to the <strong class="source-inline">matcher</strong> object and named this rule <strong class="source-inline">morningGreeting</strong>. Finally, we can do the matching operation on line 8 by calling <strong class="source-inline">matcher</strong> on the <strong class="source-inline">doc</strong>. After that, we examine the result we get. A match result is a list of triplets in the form <strong class="source-inline">(match id, start position, end position)</strong>. On the final line, we iterate over the result list and print the result match's start position, end position, and text.</p>
+			<p>As you might <a id="_idIndexMarker234"/>have noticed, the whitespace between <strong class="source-inline">Good</strong> and <strong class="source-inline">morning</strong> didn't matter at all. Indeed, we could have put two whitespaces in between, written down <strong class="source-inline">Good morning</strong>, and the result would be identical. Why? Because <strong class="source-inline">Matcher</strong> matches the tokens and the token attributes. </p>
+			<p>A pattern always refers to a continuous sequence of token objects, and every item in bracelets corresponds to one token object. Let's go back to the pattern in the preceding code snippet:</p>
+			<p class="source-code">pattern = [{"LOWER": "good"}, {"LOWER": "morning"}, </p>
+			<p class="source-code">           {"IS_PUNCT": True}]</p>
+			<p>We see that the result is always a three-token match. </p>
+			<p>Can we add more than one pattern? The answer is yes. Let's see it with an example and also see an example of <strong class="source-inline">match_id</strong> as follows:</p>
+			<p class="source-code"> import spacy</p>
+			<p class="source-code"> from spacy.matcher import Matcher</p>
+			<p class="source-code"> nlp = spacy.load("en")</p>
+			<p class="source-code"> doc = nlp("Good morning, I want to reserve a ticket. I will then say good evening!")</p>
+			<p class="source-code"> matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code"> pattern1 = [{"LOWER": "good"}, {"LOWER": "morning"}, </p>
+			<p class="source-code">             {"IS_PUNCT": True}]</p>
+			<p class="source-code"> matcher.add("morningGreeting",  [pattern1])</p>
+			<p class="source-code"> pattern2 = [{"LOWER": "good"}, {"LOWER": "evening"}, </p>
+			<p class="source-code">             {"IS_PUNCT": True}]</p>
+			<p class="source-code"> matcher.add("eveningGreeting",  [pattern2])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for match_id, start, end in matches:</p>
+			<p class="source-code">     pattern_name = nlp.vocab_strings[match_id]</p>
+			<p class="source-code">     m_span = doc[start:end]  </p>
+			<p class="source-code">     print(pattern_name, start, end, m_span.text)</p>
+			<p class="source-code">...</p>
+			<p class="source-code">morningGreeting 0 3 Good morning,</p>
+			<p class="source-code">eveningGreeting 15 18 good evening!</p>
+			<p>This time <a id="_idIndexMarker235"/>we did things a bit differently:</p>
+			<ul>
+				<li>On line 8, we defined a second pattern, again matching three tokens, but this time <strong class="source-inline">evening</strong> instead of <strong class="source-inline">morning</strong>.</li>
+				<li>On the next line, we added it to the <strong class="source-inline">matcher</strong>. At this point, <strong class="source-inline">matcher</strong> contains 2 patterns: <strong class="source-inline">morningGreeting</strong> and <strong class="source-inline">eveningGreeting</strong>. </li>
+				<li>Again, we called the <strong class="source-inline">matcher</strong> on our sentence and examined the result. This time the results list has two items, <strong class="source-inline">Good morning</strong>, and <strong class="source-inline">good evening!</strong>, corresponding to two different patterns, <strong class="source-inline">morningGreeting</strong> and <strong class="source-inline">eveningGreeting</strong>.</li>
+			</ul>
+			<p>In the preceding code example, <strong class="source-inline">pattern1</strong> and <strong class="source-inline">pattern2</strong> differ only by one token: <strong class="source-inline">evening/morning</strong>. Instead of writing two patterns, can we say <strong class="source-inline">evening</strong> or <strong class="source-inline">morning</strong>? We can do that as well. Here are the attributes that Matcher recognizes: </p>
+			<div>
+				<div id="_idContainer065" class="IMG---Figure">
+					<img src="Images/B16570_4_01.jpg" alt="Figure 4.1 – Token attributes for Matcher&#13;&#10;" width="1161" height="697"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.1 – Token attributes for Matcher</p>
+			<p>Let's go over the attributes one by one with some examples. We used <strong class="source-inline">LOWER</strong> in the preceding examples; it means the <em class="italic">lowercase form of the token text</em>. <strong class="source-inline">ORTH</strong> and <strong class="source-inline">TEXT</strong> are similar <a id="_idIndexMarker236"/>to <strong class="source-inline">LOWER</strong>: they mean an exact match of the token text, including the case. Here's an example:</p>
+			<p class="source-code"> pattern = [{"TEXT": "Bill"}]</p>
+			<p>The preceding code will match <strong class="source-inline">BIll</strong>, but not <strong class="source-inline">bill</strong>. <strong class="source-inline">LENGTH</strong> is used for specifying the token length. The following code finds all tokens of length <strong class="source-inline">1</strong>:</p>
+			<p class="source-code"> doc = nlp("I bought a pineapple.")</p>
+			<p class="source-code"> matcher = Matcher(nlp.vocabulary)</p>
+			<p class="source-code"> pattern = [{"LENGTH": 1}]</p>
+			<p class="source-code"> matcher.add("onlyShort",  [pattern])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for mid, start, end in matches:</p>
+			<p class="source-code">     print(start, end, doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">0 1 I</p>
+			<p class="source-code">2 3 a</p>
+			<p>The next block of token attributes is <strong class="source-inline">IS_ALPHA</strong>, <strong class="source-inline">IS_ASCII</strong>, and <strong class="source-inline">IS_DIGIT</strong>. These features <a id="_idIndexMarker237"/>are handy for finding number tokens and <em class="italic">ordinary</em> words (which do not include any interesting characters). The following pattern matches a sequence of two tokens, a number followed by an ordinary word:</p>
+			<p class="source-code"> doc1 = nlp("I met him at 2 o'clock.")</p>
+			<p class="source-code"> doc2 = nlp("He brought me 2 apples.")</p>
+			<p class="source-code"> pattern = [{"IS_DIGIT": True},{"IS_ALPHA": True}] </p>
+			<p class="source-code"> matcher.add("numberAndPlainWord",  [pattern])</p>
+			<p class="source-code"> matcher(doc1)</p>
+			<p class="source-code">[]</p>
+			<p class="source-code"> matches = matcher(doc2)</p>
+			<p class="source-code"> len(matches)</p>
+			<p class="source-code">1</p>
+			<p class="source-code"> mid, start, end = matches[0]</p>
+			<p class="source-code"> print(start, end, doc2[start:end])</p>
+			<p class="source-code">3, 5, 2 apples</p>
+			<p>In the preceding code segment, <strong class="source-inline">2 o'clock</strong> didn't match the pattern because <strong class="source-inline">o'clock</strong> contains an apostrophe, which is not an alphabetic character (alphabetic characters are digits, letters, and the underscore character). <strong class="source-inline">2 apples</strong> matched because the token <strong class="source-inline">apples</strong> consists of letters.</p>
+			<p><strong class="source-inline">IS_LOWER</strong>, <strong class="source-inline">IS_UPPER</strong>, and <strong class="source-inline">IS_TITLE</strong> are useful attributes for recognizing the token's casing. <strong class="source-inline">IS_UPPER</strong> is <strong class="source-inline">True</strong> if the token is all uppercase letters and <strong class="source-inline">IS_TITLE</strong> is <strong class="source-inline">True</strong> if the token starts with a capital letter. <strong class="source-inline">IS_LOWER</strong> is <strong class="source-inline">True</strong> if the token is all lowercase letters. Imagine we want to find emphasized words in a text; one way is to look for the tokens with all uppercase letters. The uppercase tokens usually have significant weights in sentiment analysis models.</p>
+			<p class="source-code"> doc = nlp("Take me out of your SPAM list. We never asked you to contact me. If you write again we'll SUE!!!!")</p>
+			<p class="source-code"> pattern = [{"IS_UPPER": True}]</p>
+			<p class="source-code"> matcher.add("capitals",  [pattern])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for mid, start, end in matches:</p>
+			<p class="source-code">     print(start, end, doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">5, 6, SPAM</p>
+			<p class="source-code">22, 23, SUE</p>
+			<p><strong class="source-inline">IS_PUNCT</strong>, <strong class="source-inline">IS_SPACE</strong>, and <strong class="source-inline">IS_STOP</strong> are usually used in patterns that include some helper tokens <a id="_idIndexMarker238"/>and correspond to punctuation, space, and <strong class="bold">stopword</strong> tokens (stopwords are common words of a language that do not carry much information, such as <em class="italic">a</em>, <em class="italic">an</em>, and <em class="italic">the</em> in English). <strong class="source-inline">IS_SENT_START</strong> is another useful attribute; it matches sentence start tokens. Here's a pattern for sentences that start with <em class="italic">can</em> and the second word has a capitalized first letter:</p>
+			<p class="source-code"> doc1 = nlp("Can you swim?")</p>
+			<p class="source-code"> doc2 = nlp("Can Sally swim?")</p>
+			<p class="source-code"> pattern = [{"IS_SENT_START": True, "LOWER": "can"},</p>
+			<p class="source-code">            {"IS_TITLE": True}]</p>
+			<p class="source-code"> matcher.add("canThenCapitalized",  [pattern])</p>
+			<p class="source-code"> matcher(doc)</p>
+			<p class="source-code">[]</p>
+			<p class="source-code"> matches = matcher(doc2)</p>
+			<p class="source-code"> len(matches)</p>
+			<p class="source-code">1</p>
+			<p class="source-code"> mid, start, end = matches[0]</p>
+			<p class="source-code"> print(start, end, doc2[start:end])</p>
+			<p class="source-code">0, 2, Can Sally</p>
+			<p>Here, we did a different thing: we put two attributes into one brace. In this example, the first item in <strong class="source-inline">pattern</strong> means that a token that is the first token of the sentence and whose lowered text is <em class="italic">can</em>. We can add as many attributes as we like. For instance, <strong class="source-inline">{"IS_SENT_START": False, "IS_TITLE": True, "LOWER": "bill"}</strong> is a completely valid attribute dictionary, and it describes a token that is capitalized, not the first token of sentence, and has the text <strong class="source-inline">bill</strong>. So, it is the set of <strong class="source-inline">Bill</strong> instances that does not appear as the first word of a sentence.</p>
+			<p><strong class="source-inline">LIKE_NUM</strong>, <strong class="source-inline">LIKE_URL</strong>, and <strong class="source-inline">LIKE_EMAIL</strong> are attributes that are related to token shape again; remember, we saw them in <a href="B16570_03_Final_JM_ePub.xhtml#_idTextAnchor055"><em class="italic">Chapter 3</em></a><em class="italic">, Linguistic Features</em>. These attributes match tokens that look like numbers, URLs, and emails. </p>
+			<p>Though the <a id="_idIndexMarker239"/>preceding code looks short and simple, the shape attributes can be lifesavers in NLU applications. Most of the time you need nothing other than clever combinations of shape and linguistic attributes.</p>
+			<p>After seeing the shape attributes, let's see the <strong class="source-inline">POS</strong>, <strong class="source-inline">TAG</strong>, <strong class="source-inline">DEP</strong>, <strong class="source-inline">LEMMA</strong>, and <strong class="source-inline">SHAPE</strong> linguistic attributes. You saw these token attributes in the previous chapter; now we'll use them in token matching. The following code snippet spots sentences that start with an auxiliary verb:</p>
+			<p class="source-code"> doc = nlp("Will you go there?')</p>
+			<p class="source-code"> pattern = [{"IS_SENT_START": True, "TAG": "MD"}]</p>
+			<p class="source-code"> matcher.add([pattern])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> len(matches)</p>
+			<p class="source-code">1</p>
+			<p class="source-code"> mid, start, end = matches[0]</p>
+			<p class="source-code"> print(start, end, doc[start:end])</p>
+			<p class="source-code">0, 1, Will</p>
+			<p class="source-code"> doc2 = nlp("I might go there.")</p>
+			<p class="source-code"> matcher(doc2)</p>
+			<p class="source-code">[]</p>
+			<p>You may recall from <a href="B16570_03_Final_JM_ePub.xhtml#_idTextAnchor055"><em class="italic">Chapter 3</em></a><em class="italic">, Linguistic Features</em>, that <strong class="source-inline">MD</strong> is the tag for modal and auxiliary verbs. The <a id="_idIndexMarker240"/>preceding code snippet is a standard way of finding yes/no question sentences. In such cases, we usually look for sentences that start with a modal or an auxiliary verb.</p>
+			<p class="callout-heading">Pro tip</p>
+			<p class="callout">Don't be afraid to work with <strong class="bold">parts-of-speech</strong> (<strong class="bold">POS</strong>) tags, they're your friends and can be lifesavers in some situations. When we want to extract the meaning of a word, we usually combine <strong class="source-inline">TEXT</strong>/<strong class="source-inline">LEMMA</strong> with <strong class="source-inline">POS</strong>/<strong class="source-inline">TAG</strong>. For instance, the word <em class="italic">match</em> is <em class="italic">to go together</em> when it's a verb or it can be a <em class="italic">fire starter tool</em> when it's a noun. In this case, we make the distinction as follows:</p>
+			<p class="callout"><strong class="source-inline">{"LEMMA": "match", "POS": "VERB"}</strong> and</p>
+			<p class="callout"><strong class="source-inline">{"LEMMA": "match", "POS": "NOUN".</strong></p>
+			<p class="callout">Similarly, you can combine other linguistic features with token shape attributes to make sure that you extract only the pattern you mean to.</p>
+			<p>We'll see more examples of combining linguistic features with the <strong class="source-inline">Matcher</strong> class in the upcoming sections. Now, we'll explore more Matcher features.</p>
+			<h2 id="_idParaDest-71"><a id="_idTextAnchor072"/>Extended syntax support</h2>
+			<p>Matcher allows <a id="_idIndexMarker241"/>patterns to be more expressive by allowing some operators inside the curly brackets. These operators are for extended comparison and look similar to Python's <strong class="source-inline">in</strong>, <strong class="source-inline">not in</strong>, and comparison operators. Here's the list of the operators:</p>
+			<div>
+				<div id="_idContainer066" class="IMG---Figure">
+					<img src="Images/B16570_4_02.jpg" alt="Fig 4.2 – List of rich comparison operators&#13;&#10;" width="1184" height="255"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.2 – List of rich comparison operators</p>
+			<p>In our very first example, we matched <strong class="source-inline">good evening</strong> and <strong class="source-inline">good morning</strong> with two different <a id="_idIndexMarker242"/>patterns. Now, we can match <strong class="source-inline">good morning</strong>/<strong class="source-inline">evening</strong> with one pattern with the help of <strong class="source-inline">IN</strong> as follows:</p>
+			<p class="source-code"> doc = nlp("Good morning, I'm here. I'll say good evening!!")</p>
+			<p class="source-code"> pattern = [{"LOWER": "good"},</p>
+			<p class="source-code">            {"LOWER": {"IN": ["morning", "evening"]}},</p>
+			<p class="source-code">            {"IS_PUNCT": True}]</p>
+			<p class="source-code"> matcher.add("greetings",  [pattern])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for mid, start, end in matches:</p>
+			<p class="source-code">     print(start, end, doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">0, 3, Good morning,</p>
+			<p class="source-code">10, 13, good evening!</p>
+			<p>Comparison operators usually go together with the <strong class="source-inline">LENGTH</strong> attribute. Here's an example of finding long tokens:</p>
+			<p class="source-code"> doc = nlp("I suffered from Trichotillomania when I was in college. The doctor prescribed me Psychosomatic medicine.")</p>
+			<p class="source-code"> pattern = [{"LENGTH": {"&gt;=" : 10}}]</p>
+			<p class="source-code"> matcher.add("longWords",  [pattern])</p>
+			<p class="source-code"> matches = matcher(doc)</p>
+			<p class="source-code"> for mid, start, end in matches:</p>
+			<p class="source-code">     print(start, end, doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">3, 4, Trichotillomania</p>
+			<p class="source-code">14, 15, Psychosomatic</p>
+			<p>They were <a id="_idIndexMarker243"/>fun words to process! Now, we'll move onto another very practical feature of Matcher patterns, regex-like operators. </p>
+			<h2 id="_idParaDest-72"><a id="_idTextAnchor073"/>Regex-like operators</h2>
+			<p>At the beginning of the chapter, we pointed out that spaCy's <strong class="source-inline">Matcher</strong> class offers a cleaner <a id="_idIndexMarker244"/>and more readable equivalent to regex operations, indeed much cleaner and much more readable. The most common regex operations are optional match (<strong class="source-inline">?</strong>), match at least once (<strong class="source-inline">+</strong>), and match 0 or more times (<strong class="source-inline">*</strong>). spaCy's Matcher also offers these operators by using the following syntax:</p>
+			<div>
+				<div id="_idContainer067" class="IMG---Figure">
+					<img src="Images/B16570_4_03.jpg" alt="Fig 4.3 – OP key description&#13;&#10;" width="679" height="303"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.3 – OP key description</p>
+			<p>The very first example regex of this chapter was matching Barack Obama's first name, with the middle name being optional. The regex was as follows:</p>
+			<p class="source-code">R"Barack\s(Hussein\s)?Obama</p>
+			<p>The <strong class="source-inline">?</strong> operator after <strong class="source-inline">Hussein</strong> means the pattern in the brackets is optional, hence this regex matches both <strong class="source-inline">Barack Obama</strong> and <strong class="source-inline">Barack Hussein Obama</strong>. We use the <strong class="source-inline">?</strong> operator in a Matcher pattern as follows:</p>
+			<p class="source-code"> doc1 = nlp("Barack Obama visited France.")</p>
+			<p class="source-code"> doc2 = nlp("Barack Hussein Obama visited France.")</p>
+			<p class="source-code"> pattern = [{"LOWER": "barack"},</p>
+			<p class="source-code">            {"LOWER": "hussein", "OP": "?"},</p>
+			<p class="source-code">            {"LOWER": "obama"}]</p>
+			<p class="source-code"> matcher.add("obamaNames",  [pattern])</p>
+			<p class="source-code"> matcher(doc1)</p>
+			<p class="source-code">[(1881848298847208418, 0, 2)]</p>
+			<p class="source-code"> matcher(doc2)</p>
+			<p class="source-code">[(1881848298847208418, 0, 3)]</p>
+			<p>Here, by using the <strong class="source-inline">"OP": "?"</strong> in the second list item, we made this token optional. The <strong class="source-inline">matcher</strong> picked <strong class="source-inline">Barack Obama</strong> in the first doc object and <strong class="source-inline">Barack Hussein Obama</strong> in the second one as a result.</p>
+			<p>We previously <a id="_idIndexMarker245"/>pointed that the <strong class="source-inline">+</strong> and <strong class="source-inline">*</strong> operators have the same meaning as their regex counterparts. <strong class="source-inline">+</strong> means the token should occur at least once and <strong class="source-inline">*</strong> means the token can occur 0 or more times. Let's see some examples:</p>
+			<p class="source-code"> doc1 = nlp("Hello hello hello, how are you?")</p>
+			<p class="source-code"> doc2 = nlp("Hello, how are you?")</p>
+			<p class="source-code"> doc3 = nlp("How are you?")</p>
+			<p class="source-code"> pattern = [{"LOWER": {"IN": ["hello", "hi", "hallo"]},</p>
+			<p class="source-code">             “OP”:”*”, {"IS_PUNCT": True}]</p>
+			<p class="source-code"> matcher.add("greetings",  [pattern])</p>
+			<p class="source-code"> for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">     print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">2, 4, hello,</p>
+			<p class="source-code">1, 4, hello hello,</p>
+			<p class="source-code">0, 4, Hello hello hello,</p>
+			<p class="source-code"> for mid, start, end in matcher(doc2):</p>
+			<p class="source-code">     print(start, end, doc2[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">0 2 Hello, </p>
+			<p class="source-code">matcher(doc3)</p>
+			<p class="source-code">...</p>
+			<p class="source-code">[]</p>
+			<p>Here's <a id="_idIndexMarker246"/>what happened: </p>
+			<ul>
+				<li>In the pattern, the first token reads as <em class="italic">any one of hello, hi, hallo should occur 1 or more times</em> and the second token is punctuation. </li>
+				<li>The third <strong class="source-inline">doc</strong> object does not match at all; there's no greeting word.</li>
+				<li> The second <strong class="source-inline">doc</strong> object matches <strong class="source-inline">hello,</strong>.</li>
+			</ul>
+			<p>When we come to the results of the first <strong class="source-inline">doc</strong> objects' matches, we see that there are not one, but three distinct matches. This is completely normal because there are indeed three sequences matching the pattern. If you have a closer look at the match results, all of them match the pattern we created, because <strong class="source-inline">hello</strong>, <strong class="source-inline">hello hello</strong>, and <strong class="source-inline">hello hello hello</strong> all match the <strong class="source-inline">(hello)+</strong> pattern.</p>
+			<p>Let's do the same pattern with <strong class="source-inline">*</strong> and see what happens this time:</p>
+			<p class="source-code">doc1 = nlp("Hello hello hello, how are you?")</p>
+			<p class="source-code">doc2 = nlp("Hello, how are you?")doc3 = nlp("How are you?")</p>
+			<p class="source-code">pattern = [{"LOWER": {"IN": ["hello", "hi", "hallo"]},</p>
+			<p class="source-code">            "OP": "+"}, {"IS_PUNCT": True}]</p>
+			<p class="source-code">matcher.add("greetings",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">     print(start, end, doc1[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">(0, 4, Hello hello hello,)</p>
+			<p class="source-code">(1, 4, hello hello,)</p>
+			<p class="source-code">(2, 4, hello,)</p>
+			<p class="source-code">(3, 4, ,)</p>
+			<p class="source-code">(7, 8, ?)</p>
+			<p class="source-code">for mid, start, end in matcher(doc2):</p>
+			<p class="source-code">     start, end, doc2[start:end]</p>
+			<p class="source-code">... </p>
+			<p class="source-code">(0, 2, hello,)</p>
+			<p class="source-code">(1, 2, ,)</p>
+			<p class="source-code">(5, 6, ?)</p>
+			<p class="source-code">for mid, start, end in matcher(doc3):</p>
+			<p class="source-code">     start, end, doc3[start:end]</p>
+			<p class="source-code">... </p>
+			<p class="source-code">(3, 4, ?)</p>
+			<p>In the <a id="_idIndexMarker247"/>first <strong class="source-inline">doc</strong> object's matches, there are two extra items: <strong class="source-inline">""</strong> and <strong class="source-inline">?</strong>. The <strong class="source-inline">"*"</strong> operator matches <strong class="source-inline">0</strong> or more, so our <strong class="source-inline">(hello)*punct_character</strong> pattern grabs <strong class="source-inline">""</strong> and <strong class="source-inline">?</strong>. The same applies to the second and third documents: punctuation marks alone without any greeting word are picked. This is not what you want in your NLP applications, probably.</p>
+			<p>The preceding example is a good example that we should be careful of while creating our patterns; sometimes, we get unwanted matches. For this reason, we usually consider using <strong class="source-inline">IS_SENT_START</strong> and take care with <strong class="source-inline">"*"</strong> operator.</p>
+			<p>The spaCy Matcher class also accepts a very special pattern, a <strong class="bold">wildcard</strong> token pattern. A wildcard token will match any token. We usually use it for the words we want to pick independent from their text or attributes or for the words we ignore. Let's see an example:</p>
+			<p class="source-code">doc = nlp("My name is Alice and his name was Elliot.")</p>
+			<p class="source-code">pattern = [{"LOWER": "name"},{"LEMMA": "be"},{}]</p>
+			<p class="source-code">matcher.add("pickName", [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">     print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 4 name is Alice</p>
+			<p class="source-code">6 9 name was Elliot</p>
+			<p>Here, we wanted <a id="_idIndexMarker248"/>to capture the first names in the sentence. We achieved it by parsing out token sequences in the form <em class="italic">name is/was/be firstname</em>. The first token pattern, <strong class="source-inline">LOWER:</strong> <strong class="source-inline">"name"</strong>, matches the tokens whose lowered text is <strong class="source-inline">name</strong>. The second token pattern, <strong class="source-inline">LEMMA: "be"</strong>, matches the <strong class="source-inline">is</strong>, <strong class="source-inline">was</strong>, and <strong class="source-inline">be</strong> tokens. The third token is the wildcard token, <strong class="source-inline">{}</strong>, which means <em class="italic">any</em> token. We pick up any token that comes after <em class="italic">name is/was/be</em> with this pattern.</p>
+			<p>We also use a wildcard token when we want to ignore a token. Let's make an example together:</p>
+			<p class="source-code">doc1 = nlp("I forwarded his email to you.")</p>
+			<p class="source-code">doc2 = nlp("I forwarded an email to you.")</p>
+			<p class="source-code">doc3 = nlp("I forwarded the email to you.")</p>
+			<p class="source-code">pattern = [{"LEMMA": "forward"}, {}, {"LOWER": "email"}]</p>
+			<p class="source-code">matcher.add("forwardMail",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">     print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 4 forwarded his email</p>
+			<p class="source-code">for mid, start, end in matcher(doc2):</p>
+			<p class="source-code">     print(start, end, doc2[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 4 forwarded an email</p>
+			<p class="source-code">for mid, start, end in matcher(doc3):</p>
+			<p class="source-code">.    print(start, end, doc3[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 4 forwarded the email</p>
+			<p>It's just the <a id="_idIndexMarker249"/>opposite of the previous example. Here, we wanted to pick up <em class="italic">forward email</em> sequences, and we allowed that one token to come between <strong class="source-inline">forward</strong> and <strong class="source-inline">email</strong>. Here, the semantically important part is the forwarding an email action; whose email is it doesn't matter much.</p>
+			<p>We have mentioned regex quite a lot in this chapter so far, so now it's time to see how spaCy's Matcher class makes use of regex syntax.</p>
+			<h2 id="_idParaDest-73"><a id="_idTextAnchor074"/>Regex support</h2>
+			<p>When we <a id="_idIndexMarker250"/>match individual tokens, usually we want to allow some variations, such as common typos, UK/US English character differences, and so on. Regex is very handy for this task and spaCy Matcher offers full support for token-level regex matching. Let's explore how we can use regex for our applications:</p>
+			<p class="source-code">doc1 = nlp("I travelled by bus.")</p>
+			<p class="source-code">doc2 = nlp("She traveled by bike.")</p>
+			<p class="source-code">pattern = [{"POS": "PRON"}, </p>
+			<p class="source-code">           {"TEXT": {"REGEX": "[Tt]ravell?ed"}}]</p>
+			<p class="source-code">for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">     print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">0 2 I traveled</p>
+			<p class="source-code">for mid, start, end in matcher(doc2):</p>
+			<p class="source-code">     print(start, end, doc2[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">0 2 I travelled</p>
+			<p>Here, our second token pattern is <strong class="source-inline">[Tt]ravell?ed</strong>, which means the token can be capitalized or not. Also, there's an optional <strong class="source-inline">l</strong> after the first <strong class="source-inline">l</strong>. Allowing twin vowels and <em class="italic">ise/ize</em> alteration is a standard way of dealing with British and American English variations.</p>
+			<p>Another way <a id="_idIndexMarker251"/>of using regex is using it not only with text, but also with <strong class="source-inline">POS</strong> tags. What does the following code segment do?</p>
+			<p class="source-code">doc = nlp("I went to Italy; he has been there too. His mother also has told me she wants to visit Rome.")</p>
+			<p class="source-code">pattern = [{"TAG": {"REGEX": "^V"}}] </p>
+			<p class="source-code">matcher.add("verbs",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">    print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 2 went</p>
+			<p class="source-code">6 7 has</p>
+			<p class="source-code">7 8 been</p>
+			<p class="source-code">14 15 has</p>
+			<p class="source-code">15 16 told</p>
+			<p class="source-code">18 19 wants</p>
+			<p class="source-code">20 21 visit</p>
+			<p>We have extracted all the finite verbs (you can think of a finite verb as a non-modal verb). How did we do it? Our token pattern includes the regex <strong class="source-inline">^V</strong>, which means all fine-grained POS tags that start with <strong class="source-inline">V</strong>: <strong class="source-inline">VB</strong>, <strong class="source-inline">VGD</strong>, <strong class="source-inline">VBG</strong>, <strong class="source-inline">VBN</strong>, <strong class="source-inline">VBP</strong>, and <strong class="source-inline">VBZ</strong>. Then we extracted <a id="_idIndexMarker252"/>tokens with verbal POS tags.</p>
+			<p>Looks tricky! Occasionally we use some tricks in NLU applications; while going through the examples of this book, you'll pick them up too. We encourage you to go over our examples and then try some example sentences of yours.</p>
+			<h2 id="_idParaDest-74"><a id="_idTextAnchor075"/>Matcher online demo</h2>
+			<p>In the whole matching business, we occasionally see the match results visually. Regex offers <em class="italic">regex101</em> (<a href="https://regex101.com/">https://regex101.com/</a>), an online tool for checking if your regex pattern is <a id="_idIndexMarker253"/>working correctly (surprises with regex always happen). The following figure shows an example pattern and checking it against a text:</p>
+			<div>
+				<div id="_idContainer068" class="IMG---Figure">
+					<img src="Images/B16570_4_04.jpg" alt="Fig 4.4 – An example regex match and pattern explanations&#13;&#10;" width="1145" height="488"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.4 – An example regex match and pattern explanations</p>
+			<p>The explanations on the right side are quite detailed and illuminating. This is a tool used not only by NLP learners/beginners, but also professionals (regex can be quite difficult to read sometimes).</p>
+			<p>spaCy Matcher offers <a id="_idIndexMarker254"/>a similar tool on its online demo page (<a href="https://explosion.ai/demos/matcher">https://explosion.ai/demos/matcher</a>). We can create patterns and test them against the text we want, interactively.</p>
+			<p>In the following screenshot, we can see a match example. On the right side we can select the attributes, values, and operators (such as +, *, !, and ?). After making this selection, the demo <a id="_idIndexMarker255"/>outputs the corresponding pattern string on the right side, below the checkboxes. On the left side, we first choose the spaCy language model we want (in this example, English core small), then see the results:</p>
+			<div>
+				<div id="_idContainer069" class="IMG---Figure">
+					<img src="Images/B16570_4_05.jpg" alt="Fig 4.5 – spaCy Matcher online demo&#13;&#10;" width="1009" height="760"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.5 – spaCy Matcher online demo</p>
+			<p>Just like regex101, spaCy's Matcher demo helps you to see why your pattern matched or didn't match.</p>
+			<h1 id="_idParaDest-75"><a id="_idTextAnchor076"/>PhraseMatcher</h1>
+			<p>While processing financial, medical, or legal text, often we have long lists and dictionaries <a id="_idIndexMarker256"/>and we want to scan the text against our lists. As we saw in the previous section, Matcher patterns are quite handcrafted; we coded each token individually. If you have a long list of phrases, Matcher is not very handy. It's not possible to code all the terms one by one.</p>
+			<p>spaCy offers a solution for comparing text against long dictionaries – the <strong class="source-inline">PhraseMatcher</strong> class. The <strong class="source-inline">PhraseMatcher</strong> class helps us match long dictionaries. Let's get started with an example:</p>
+			<p class="source-code">import spacy</p>
+			<p class="source-code">from spacy.matcher import PhraseMatcher</p>
+			<p class="source-code">nlp = spacy.load("en_core_web_md")</p>
+			<p class="source-code">matcher = PhraseMatcher(nlp.vocab)</p>
+			<p class="source-code">terms = ["Angela Merkel", "Donald Trump", "Alexis Tsipras"]</p>
+			<p class="source-code">patterns = [nlp.make_doc(term) for term in terms]</p>
+			<p class="source-code">matcher.add("politiciansList", None, *patterns)</p>
+			<p class="source-code">doc = nlp("3 EU leaders met in Berlin. German chancellor Angela Merkel first welcomed the US president Donald Trump. The following day Alexis Tsipras joined them in Brandenburg.")</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">…</p>
+			<p class="source-code">9 11 Angela Merkel</p>
+			<p class="source-code">16 18 Donald Trump</p>
+			<p class="source-code">22 24 Alexis Tsipras</p>
+			<p>Here's what we did:</p>
+			<ul>
+				<li>First, we imported <strong class="source-inline">spacy</strong>, then we imported the <strong class="source-inline">PhraseMatcher</strong> class.</li>
+				<li>After the imports, we created a <strong class="source-inline">Language</strong> object, <strong class="source-inline">nlp</strong>, and initialized a <strong class="source-inline">PhraseMatcher</strong> object, <strong class="source-inline">matcher</strong>, with its vocabulary. </li>
+				<li>The next two lines are where we created the pattern list.</li>
+				<li>On line 6, we called <strong class="source-inline">nlp.make_doc()</strong> on the terms one by one to create the patterns.</li>
+				<li><strong class="source-inline">make_doc()</strong> creates a Doc from every term, and it's quite efficient in terms of processing because instead of the whole pipeline, it only calls the <strong class="source-inline">Tokenizer</strong>. </li>
+				<li>The rest of the code is similar to what we did with Matcher: we iterated over the resulting spans.</li>
+			</ul>
+			<p>This way, we match <a id="_idIndexMarker257"/>the pattern by their exact text values. What if we want to match them with other attributes? Here's an example of matching by the <strong class="source-inline">LOWER</strong> attribute:</p>
+			<p class="source-code">matcher = PhraseMatcher(nlp.vocab, attr="LOWER")</p>
+			<p class="source-code">terms = ["Asset", "Investment", "Derivatives", </p>
+			<p class="source-code">         "Demand",  "Market"]</p>
+			<p class="source-code">patterns = [nlp.make_doc(term) for term in terms]</p>
+			<p class="source-code">matcher.add("financeTerms", None, *patterns)</p>
+			<p class="source-code">doc = nlp("During the last decade, derivatives market became an asset class of their own and influenced the financial landscape strongly.")</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">…</p>
+			<p class="source-code">5 6 derivatives</p>
+			<p class="source-code">6 7 market</p>
+			<p>On line 1, while creating a <strong class="source-inline">PhraseMatcher</strong> instance, we passed an additional argument, <strong class="source-inline">attr=LOWER</strong>. This way, the <strong class="source-inline">PhraseMatcher</strong> used the <strong class="source-inline">token.lower</strong> attribute during the match. Notice that the terms are uppercase and the matches are lowercase.</p>
+			<p>Another possible usage of PhraseMatcher is matching the <strong class="source-inline">SHAPE</strong> attribute. This matching strategy can be used on system logs, where IP numbers, dates, and other numerical values occur a lot. The good thing here is that you do not need to worry how the numbers <a id="_idIndexMarker258"/>are tokenized, you just leave it to <strong class="source-inline">PhraseMatcher</strong>. Let's see an example:</p>
+			<p class="source-code">matcher = PhraseMatcher(nlp.vocab, attr="SHAPE")</p>
+			<p class="source-code">ip_nums = ["127.0.0.0", "127.256.0.0"]</p>
+			<p class="source-code">patterns = [nlp.make_doc(ip) for ip in ip_nums]</p>
+			<p class="source-code">matcher.add("IPNums", None, *pattern)</p>
+			<p class="source-code">doc = nlp("This log contains the following IP addresses: 192.1.1.1 and 192.12.1.1 and 192.160.1.1 .")</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">8 9 192.1.1.1</p>
+			<p class="source-code">12 13 192.160.1.1</p>
+			<p>That's it! We matched the tokens and phrases successfully; what's left is named entities. Named entity <a id="_idIndexMarker259"/>extraction is an essential component of any NLP system and most of the pipelines you'll design will include an <strong class="bold">named entity recognition</strong> (<strong class="bold">NER</strong>) component. The next section is devoted to rule-based named entity extraction.</p>
+			<h1 id="_idParaDest-76"><a id="_idTextAnchor077"/>EntityRuler</h1>
+			<p>While covering <a id="_idIndexMarker260"/>Matcher, we saw that we can extract named entities with Matcher by using the <strong class="source-inline">ENT_TYPE</strong> attribute. We recall from the previous chapter that <strong class="source-inline">ENT_TYPE</strong> is a linguistic attribute that refers to the entity type of the token, such as person, place, or organization. Let's see an example:</p>
+			<p class="source-code">pattern = [{"ENT_TYPE": "PERSON"}]</p>
+			<p class="source-code">matcher.add("personEnt",  [pattern])</p>
+			<p class="source-code">doc = nlp("Bill Gates visited Berlin.")</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">0 1 Bill</p>
+			<p class="source-code">1 2 Gates</p>
+			<p>Again, we created a <strong class="source-inline">Matcher</strong> object called <strong class="source-inline">matcher</strong> and called it on the <strong class="source-inline">Doc</strong> object, <strong class="source-inline">doc</strong>. The result is two tokens, <strong class="source-inline">Bill</strong> and <strong class="source-inline">Gates</strong>; Matcher always matches at the token level. We got <strong class="source-inline">Bill</strong> and <strong class="source-inline">Gates</strong>, instead of the full entity, <strong class="source-inline">Bill Gates</strong>. If you want to get the full entity <a id="_idIndexMarker261"/>rather than the individual tokens, you can do this:</p>
+			<p class="source-code">pattern = [{"ENT_TYPE": "PERSON", "OP": "+"}]</p>
+			<p class="source-code">matcher.add("personEnt",  [pattern])</p>
+			<p class="source-code">doc = nlp("Bill Gates visited Berlin.")</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">0 1 Bill</p>
+			<p class="source-code">1 2 Gates</p>
+			<p class="source-code">0 2 Bill Gates</p>
+			<p>Usually, we match two or more entities together, or with other linguistic attributes to extract information. Here's an example of how we can understand the action in the sentence and which person in the sentence committed this action:</p>
+			<p class="source-code">pattern = [{"ENT_TYPE": "PERSON", "OP": "+"}, {</p>
+			<p class="source-code">            "POS" : "VERB"}]</p>
+			<p class="source-code">matcher.add("personEntAction",  [pattern])</p>
+			<p class="source-code">doc = nlp("Today German chancellor Angela Merkel met with the US president.")</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">4 6 Merkel met</p>
+			<p class="source-code">3 6 Angela Merkel met</p>
+			<p>We noticed that <a id="_idIndexMarker262"/>the Matcher returns two matches here; usually, we loop through the results and pick the longest match.</p>
+			<p>In the preceding examples, we matched the entities that the spaCy statistical model already extracted. What if we have domain-specific entities that we want to match? For instance, our dataset consists of wiki pages about ancient Greek philosophers. The philosopher names are naturally in Greek and don't follow English statistical patterns; it's expected that a tagger trained on English text would fail to extract the entity name occasionally. In these situations, we'd like spaCy to tell our entities and combine them with the statistical rules.</p>
+			<p>spaCy's <strong class="source-inline">EntityRuler</strong> is the component that allows us to add rules on top of the statistical model and <a id="_idIndexMarker263"/>creates an even more powerful <strong class="bold">NER</strong> model.</p>
+			<p><strong class="source-inline">EntityRuler</strong> is not a matcher, it's a pipeline component that we can add to our pipeline via <strong class="source-inline">nlp.add_pipe</strong>. When it finds a match, the match is appended to <strong class="source-inline">doc.ents</strong> and <strong class="source-inline">ent_type</strong> will be the label we pass in the pattern. Let's see it in action:</p>
+			<p class="source-code">doc = nlp("I have an acccount with chime since 2017")</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">(2017,)</p>
+			<p class="source-code">patterns = [{"label": "ORG", </p>
+			<p class="source-code">             "pattern": [{"LOWER": "chime"}]}]</p>
+			<p class="source-code">ruler = nlp.add_pipe("entity_ruler")</p>
+			<p class="source-code">ruler.add_patterns(patterns)</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">(chime, 2017)</p>
+			<p class="source-code">doc[5].ent_type_</p>
+			<p class="source-code">'ORG'</p>
+			<p>That's it, really easy, yet powerful! We added our own entity with just a couple of lines. </p>
+			<p>The <strong class="source-inline">Matcher</strong> class and <strong class="source-inline">EntityRuler</strong> are exciting and powerful features of the spaCy library, as we <a id="_idIndexMarker264"/>saw from the examples. Now, we move onto an exclusive section of quick and very handy recipes.</p>
+			<h1 id="_idParaDest-77"><a id="_idTextAnchor078"/>Combining spaCy models and matchers</h1>
+			<p>In this section, we'll go through some recipes that will guide you through the entity extraction <a id="_idIndexMarker265"/>types you'll encounter in your NLP career. All the examples are ready-to-use and real-world recipes. Let's start with number-formatted entities.</p>
+			<h2 id="_idParaDest-78"><a id="_idTextAnchor079"/>Extracting IBAN and account numbers</h2>
+			<p>IBAN <a id="_idIndexMarker266"/>and account numbers are two important entity types that occur in finance and banking frequently. We'll learn how to parse them out. </p>
+			<p>An IBAN is an international number format for bank account numbers. It has the format of a two-digit country code followed by numbers. Here are some IBANs from different countries:</p>
+			<div>
+				<div id="_idContainer070" class="IMG---Figure">
+					<img src="Images/B16570_4_06.jpg" alt="" width="514" height="472"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.6 – IBAN formats from different countries (source: Wikipedia)</p>
+			<p>How can <a id="_idIndexMarker267"/>we create a pattern for an IBAN? Obviously, in all cases, we start with two capital letters, followed by two digits. Then any number of digits can follow. We can express the country code and the next two digits as follows:</p>
+			<p class="source-code">{"SHAPE": "XXdd"}</p>
+			<p>Here, <strong class="source-inline">XX</strong> corresponds to two capital letters and <strong class="source-inline">dd</strong> is two digits. Then <strong class="source-inline">XXdd</strong> pattern matches the first block of the IBAN perfectly. How about the rest of the digit blocks? For the rest of the blocks, we need to match a block of 1-4 digits. The regex <strong class="source-inline">\d{1,4}</strong> means a token consisting of 1 to 4 digits. This pattern will match a digit block:</p>
+			<p class="source-code">{"TEXT": {"REGEX": "\d{1,4}"}}</p>
+			<p>We have a number of these blocks, so the pattern to match the digit blocks of an IBAN is as follows:</p>
+			<p class="source-code">{"TEXT": {"REGEX": "\d{1,4}"}, "OP": "+"}</p>
+			<p>Then, we <a id="_idIndexMarker268"/>combine the first block with the rest of the blocks. Let's see the code and the matches:</p>
+			<p class="source-code">doc = nlp("My IBAN number is BE71 0961 2345 6769, please send the money there.")</p>
+			<p class="source-code">doc1 = nlp("My IBAN number is FR76 3000 6000 0112 3456 7890 189, please send the money there.")</p>
+			<p class="source-code">pattern = [{"SHAPE": "XXdd"}, </p>
+			<p class="source-code">           {"TEXT": {"REGEX": "\d{1,4}"}, "OP":"+"}]</p>
+			<p class="source-code">matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code">matcher.add("ibanNum",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">4 6 BE71 0961</p>
+			<p class="source-code">4 7 BE71 0961 2345</p>
+			<p class="source-code">4 8 BE71 0961 2345 6769</p>
+			<p class="source-code">for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">    print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">4 6 FR76 3000</p>
+			<p class="source-code">4 7 FR76 3000 6000</p>
+			<p class="source-code">4 8 FR76 3000 6000 0112</p>
+			<p class="source-code">4 9 FR76 3000 6000 0112 3456</p>
+			<p class="source-code">4 10 FR76 3000 6000 0112 3456 7890</p>
+			<p class="source-code">4 11 FR76 3000 6000 0112 3456 7890 189</p>
+			<p>You can always follow a similar strategy when parsing numeric entities: first, divide the entity into some meaningful parts/blocks, then try to determine the shape or the length of the individual blocks.</p>
+			<p>We successfully parsed IBANs, now we can parse the account numbers. Parsing the account numbers is a bit trickier; account numbers are just plain numbers and don't have a <a id="_idIndexMarker269"/>special shape to help us differentiate them from usual numbers. What do we do, then? We can make a context lookup in this case; we can look around the number token and see if we can find <em class="italic">account number</em> or <em class="italic">account num</em> around the number token. This pattern should do the trick:</p>
+			<p class="source-code">{"LOWER": "account"}, {"LOWER": {"IN": ["num", "number"]}},{}, {"IS_DIGIT": True}</p>
+			<p>We used a wildcard here: <strong class="source-inline">{}</strong> means any token. We allowed one token to go in between <em class="italic">number</em> and <em class="italic">account number</em>; this can be <em class="italic">is</em>, <em class="italic">was</em>, and so on. Let's see the code:</p>
+			<p class="source-code"> doc = nlp("My account number is 8921273.")</p>
+			<p class="source-code">pattern = [{"LOWER": "account"}, </p>
+			<p class="source-code">           {"LOWER": {"IN": ["num", "number"]}},{}, </p>
+			<p class="source-code">           {"IS_DIGIT": True}]</p>
+			<p class="source-code">matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code">matcher.add("accountNum",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code">1 5 account number is 8921273</p>
+			<p>If you <a id="_idIndexMarker270"/>want, you can include a possessive pronoun such as <em class="italic">my</em>, <em class="italic">your</em>, or <em class="italic">his</em> in the match, depending on the application's needs.</p>
+			<p>That's it for banking numbers. Now we'll extract another type of common numeric entity, phone numbers.</p>
+			<h2 id="_idParaDest-79"><a id="_idTextAnchor080"/>Extracting phone numbers</h2>
+			<p>Phone numbers can have very different formats depending on the country, and matching <a id="_idIndexMarker271"/>phone numbers is often a tricky business. The best strategy here is to be specific about the country phone number format you want to parse. If there are several countries, you can add corresponding individual patterns to the matcher. If you have too many countries, then you can relax some conditions and go for a more general pattern (we'll see how to do that).</p>
+			<p>Let's start with the US phone number format. A US number is written as <em class="italic">(541) 754-3010</em> domestically or <em class="italic">+1 (541) 754-3010</em> internationally. We can form our pattern with an optional <em class="italic">+1</em>, then a three-digit area code, then two blocks of numbers separated with an optional <em class="italic">-</em>.  Here is the pattern:</p>
+			<p class="source-code">{"TEXT": "+1", "OP": "?"}, {"TEXT": "("}, {"SHAPE": "ddd"}, {"TEXT": ")"}, {"SHAPE": "ddd"}, {"TEXT": "-", "OP": "?"}, {"SHAPE": "dddd"}</p>
+			<p>Let's see an example:</p>
+			<p class="source-code">doc1 = nlp("You can call my office on +1 (221) 102-2423 or email me directly.")</p>
+			<p class="source-code">doc2 = nlp("You can call me on (221) 102 2423 or text me.")</p>
+			<p class="source-code">pattern = [{"TEXT": "+1", "OP": "?"}, {"TEXT": "("}, </p>
+			<p class="source-code">           {"SHAPE": "ddd"}, {"TEXT": ")"}, </p>
+			<p class="source-code">           {"SHAPE": "ddd"}, {"TEXT": "-", "OP": "?"}, </p>
+			<p class="source-code">           {"SHAPE": "dddd"}]</p>
+			<p class="source-code">matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code">matcher.add("usPhonNum",  [pattern])</p>
+			<p class="source-code">for mid, start, end in matcher(doc1):</p>
+			<p class="source-code">    print(start, end, doc1[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code"> 6 13 +1 (221) 102-2423</p>
+			<p class="source-code">for mid, start, end in matcher(doc2):</p>
+			<p class="source-code">    print(start, end, doc2[start:end])</p>
+			<p class="source-code">... </p>
+			<p class="source-code"> 5 11 (221) 102-2423</p>
+			<p>How about <a id="_idIndexMarker272"/>we make the pattern more general to apply to other countries as well? In this case, we can start with a 1 to 3-digit country code, followed by some digit blocks. It will match a broader set of numbers, so it's better to be careful not to match other numeric entities in your text.</p>
+			<p>We'll move onto textual entities from numeric entities. Now we'll process social media text and extract different types of entities that can occur in social media text.</p>
+			<h2 id="_idParaDest-80"><a id="_idTextAnchor081"/>Extracting mentions</h2>
+			<p>Imagine analyzing a dataset of social media posts about companies and products and your task <a id="_idIndexMarker273"/>is to find out which companies are mentioned in which ways. The dataset will contain this sort of sentence:</p>
+			<p class="source-code">CafeA is very generous with the portions.</p>
+			<p class="source-code">CafeB is horrible, we waited for mins for a table.</p>
+			<p class="source-code">RestaurantA is terribly expensive, stay away!</p>
+			<p class="source-code">RestaurantB is pretty amazing, we recommend.</p>
+			<p>What we're looking for is most probably patterns of the <em class="italic">BusinessName is/was/be adverb* adjective</em> form. The following pattern would work:</p>
+			<p class="source-code">[{"ENT_TYPE": "ORG"}, {"LEMMA": "be"}, {"POS": "ADV", "OP": "*"}, {"POS": "ADJ"}]</p>
+			<p>Here, we look for an organization type entity, followed by a <em class="italic">is/was/be</em>, then optional adverbs, and finally an adjective.</p>
+			<p>What if <a id="_idIndexMarker274"/>you want to extract a specific business, let's say the company <em class="italic">ACME</em>? All you have to do is replace the first token with the specific company name:</p>
+			<p class="source-code">[{"LOWER": "acme"}, {"LEMMA": "be"}, {"POS": "ADV", "OP": "*"}, {"POS": "ADJ"}]</p>
+			<p>That's it, easy peasy! After extracting the social media mentions, the next thing to do is to extract the hashtags and the emojis.</p>
+			<h2 id="_idParaDest-81"><a id="_idTextAnchor082"/>Hashtag and emoji extraction</h2>
+			<p>Processing social media text is a hot topic and has some challenges. Social media text includes <a id="_idIndexMarker275"/>two sorts of unusual token types: hashtags and emojis. Both token types have a huge impact on the text meaning. The hashtag refers to the subject/object of the sentence, usually, and emojis can assign the sentiment of the sentence by themselves.</p>
+			<p>A hashtag consists of a <strong class="source-inline">#</strong> character at the beginning, then followed by a word of <strong class="source-inline">ASCII</strong> characters, with no inter-word spaces. Some examples are <em class="italic">#MySpace</em>, <em class="italic">#MondayMotivation</em> and so on. The spaCy tokenizer tokenizes these words into two tokens:</p>
+			<p class="source-code">doc = nlp("#MySpace")</p>
+			<p class="source-code">[token.text for token in doc]</p>
+			<p class="source-code">['#', 'MySpace']</p>
+			<p>As a result, our pattern needs to match two tokens, the <strong class="source-inline">#</strong> character and the rest. The following pattern will match a hashtag easily:</p>
+			<p class="source-code">{"TEXT": "#"}, {"IS_ASCII": True}</p>
+			<p>The following code extracts a hashtag:</p>
+			<p class="source-code">doc = nlp("Start working out now #WeekendShred")</p>
+			<p class="source-code">pattern = [{"TEXT": "#"}, {"IS_ASCII": True}]</p>
+			<p class="source-code">matcher = Matcher(nlp.vocab)</p>
+			<p class="source-code">matcher.add("hashTag",  [pattern])</p>
+			<p class="source-code">matches = matcher(doc)</p>
+			<p class="source-code">for mid, start, end in matches:</p>
+			<p class="source-code">    print(start, end doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">4 6 #WeekendShred</p>
+			<p>How about an emoji? An emoji is usually coded with lists according to their sentiment value, such <a id="_idIndexMarker276"/>as positive, negative, happy, sad, and so on. Here, we'll separate emojis into two classes, positive and negative. The following code spots the selected emoji in the text:</p>
+			<p class="source-code">pos_emoji = ["<img src="Images/B16570_4_emoj1.png" alt="" width="33" height="31"/>", "<img src="Images/B16570_4_emoj2.png" alt="" width="33" height="31"/>", "<img src="Images/B16570_4_emoj3.png" alt="" width="35" height="32"/>", "<img src="Images/B16570_4_emoj5.png" alt="" width="35" height="32"/>", "<img src="Images/B16570_4_emoj51.png" alt="" width="34" height="32"/>", "<img src="Images/B16570_4_emoj6.png" alt="" width="32" height="33"/>"]  </p>
+			<p class="source-code">neg_emoji = ["<img src="Images/B16570_4_emoj7.png" alt="" width="36" height="31"/>", "<img src="Images/B16570_4_emoj8.png" alt="" width="32" height="32"/>", "<img src="Images/B16570_4_emoj9.png" alt="" width="32" height="33"/>", "<img src="Images/B16570_4_emoj10.png" alt="" width="35" height="31"/>", "<img src="Images/B16570_4_emoj11.png" alt="" width="33" height="32"/>", "<img src="Images/B16570_4_emoj12.png" alt="" width="33" height="32"/>"]</p>
+			<p class="source-code">pos_patterns = [[{"ORTH": emoji}] for emoji in pos_emoji]</p>
+			<p class="source-code">neg_patterns = [[{"ORTH": emoji}] for emoji in neg_emoji]</p>
+			<p class="source-code">matcher = matcher(nlp.vocab)</p>
+			<p class="source-code">matcher.add("posEmoji", pos_patterns)</p>
+			<p class="source-code">matcher.add("negEmoji", neg_patterns)</p>
+			<p class="source-code">doc = nlp(" I love Zara <img src="Images/B16570_4_emoj13.png" alt="" width="40" height="32"/> ")</p>
+			<p class="source-code">for mid, start, end in matcher(doc):</p>
+			<p class="source-code">    print(start, end, doc[start:end])</p>
+			<p class="source-code">...</p>
+			<p class="source-code">3 4 <img src="Images/B16570_4_emoj14.png" alt="" width="44" height="33"/></p>
+			<p>Et voilà, the emoji <img src="Images/B16570_4_emoj15.png" alt="" width="36" height="34"/> is extracted happily! We'll make use of emojis in sentiment analysis chapter as well.</p>
+			<p>Now, let's extract some entities. We'll start with the common procedure of expanding named entities.</p>
+			<h2 id="_idParaDest-82"><a id="_idTextAnchor083"/>Expanding named entities</h2>
+			<p>Often, we would like to expand a named entity's span to the left or to the right. Imagine you want <a id="_idIndexMarker277"/>to extract <strong class="source-inline">PERSON</strong> type named entities with titles so that you can deduce the gender or profession easily. spaCy's <strong class="source-inline">NER</strong> class already extracts person names, so how about the titles?</p>
+			<p class="source-code">doc = nlp("Ms. Smith left her house 2 hours ago.")</p>
+			<p class="source-code">doc.ents</p>
+			<p class="source-code">(Smith, 2 hours ago)</p>
+			<p>As you see, the word <strong class="source-inline">Ms.</strong> is not included in the named entity because it's not a part of the person's name. A quick solution is to make a new entity type called <strong class="source-inline">TITLE</strong>:</p>
+			<p class="source-code">patterns = [{"label": "TITLE", "pattern": [{"LOWER": {"IN": ["ms.", "mr.", "mrs.", "prof.", "dr."]}}]}]</p>
+			<p class="source-code">ruler = nlp.add_pipe("entity_ruler")</p>
+			<p class="source-code">ruler.add_patterns(patterns)</p>
+			<p class="source-code">nlp.add_pipe(ruler)</p>
+			<p class="source-code">doc = nlp("Ms. Smith left her house")</p>
+			<p class="source-code">print([(ent.text, ent.label_) for ent in doc.ents])</p>
+			<p class="source-code">[('Ms.', 'TITLE'), ('SMITH', 'PERSON')]</p>
+			<p>This is a quick and very handy recipe. You'll come across parsing titles a lot if you process wiki text or financial text.</p>
+			<p>In our next and final example, we'll combine POS attributes, dependency labels, and named entities.</p>
+			<h2 id="_idParaDest-83"><a id="_idTextAnchor084"/>Combining linguistic features and named entities</h2>
+			<p>While charging meaning to a sentence, we evaluate word semantics by considering the contexts <a id="_idIndexMarker278"/>they occur in. Matching the words individually usually does not help us understand the full meaning. In most NLU tasks we have to combine linguistic features.</p>
+			<p>Imagine you're parsing professional biographies and make a work history of the subjects. You want to extract person names, the cities they have lived in, and the city they're currently working in.</p>
+			<p>Obviously we'll look for the word <em class="italic">live</em>; however, the POS tags hold the key here: whether it's the present tense or the past tense. In order to determine which city/place, we'll use syntactic information that is given by the dependency labels.</p>
+			<p>Let's examine the following example:</p>
+			<p class="source-code">doc = nlp("Einstein lived in Zurich.")</p>
+			<p class="source-code">[(ent.text, ent.label_) for ent in doc.ents]</p>
+			<p class="source-code">[('Einstein', 'PERSON'), ('Zurich', 'GPE')]</p>
+			<p>Here is a visual representation of the preceding example:</p>
+			<div>
+				<div id="_idContainer086" class="IMG---Figure">
+					<img src="Images/B16570_4_07.jpg" alt="Fig 4.7 – Example parse, the entity ”Einstein” being subject of the sentence&#13;&#10;" width="614" height="156"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 4.7 – Example parse, the entity "Einstein" being subject of the sentence</p>
+			<p>Here, <strong class="source-inline">lived</strong> is the main verb of the sentence, hence the root of the sentence. <strong class="source-inline">Einstein</strong> is the subject of the sentence, at the same time the person entity who <strong class="source-inline">lived</strong>. As we can see, the <strong class="source-inline">Einstein</strong> token's head is <strong class="source-inline">lived</strong>. There's also a place entity in the sentence, <strong class="source-inline">Zurich</strong>. If we follow the arcs from <strong class="source-inline">lived</strong>, we reach <strong class="source-inline">Zurich</strong> via a prepositional attachment. Finally, to determine the verb's tense, we can examine the POS tag. Let's see it in the following code:</p>
+			<p class="source-code">person_ents = [ent for ent in doc.ents if ent.label_ == "PERSON"]</p>
+			<p class="source-code">for person_ent in person_entities:</p>
+			<p class="source-code">    #We use head of the entity's last token</p>
+			<p class="source-code">    head = person_ent[-1].head  </p>
+			<p class="source-code">    If head.lemma_ == "live":</p>
+			<p class="source-code">    #Check if the children of live contains prepositional </p>
+			<p class="source-code">    attachment </p>
+			<p class="source-code">    preps = [token for token in head.children if token.dep_ == "prep"]</p>
+			<p class="source-code">    for prep in preps:         </p>
+			<p class="source-code">        places = [token for token in prep.children if token.ent_type_ == "GPE"]   </p>
+			<p class="source-code">        # Verb is in past or present tense</p>
+			<p class="source-code">        print({'person': person_ent, 'city': places, </p>
+			<p class="source-code">               'past': head.tag_ == "VBD"})</p>
+			<p>Here, we <a id="_idIndexMarker279"/>combined POS tag information, dependency labels (hence syntactic information of the sentence), and named entities. It may not be easy for you to grasp it at first sight, but you'll get there by practicing. </p>
+			<h1 id="_idParaDest-84"><a id="_idTextAnchor085"/>Summary</h1>
+			<p>This chapter introduced you to a very handy and powerful feature of spaCy, spaCy's matcher classes. You learned how to do rule-based matching with linguistic and token-level features. You learned about the <strong class="source-inline">Matcher</strong> class, spaCy's rule-based matcher. We explored the <strong class="source-inline">Matcher</strong> class by using it with different token features, such as shape, lemma, text, and entity type.</p>
+			<p>Then, you learned about <strong class="source-inline">EntityRuler</strong>, another lifesaving class that you can achieve a lot with. You learned how to extract named entities with the <strong class="source-inline">EntityRuler</strong> class.</p>
+			<p>Finally, we put together what you've learned in this chapter and your previous knowledge and combined linguistic features with rule-based matching with several examples. You learned how to extract patterns, entities of specific formats, and entities specific to your domain.</p>
+			<p>With this chapter, you completed the linguistic features. In the next chapter, we'll dive into the world of statistical semantics via a very important concept – <strong class="bold">word vectors</strong>. You'll discover the power of statistics in representing words, phrases, and sentences. Let's discover the world of semantics together!</p>
+		</div>
+	</div></body></html>

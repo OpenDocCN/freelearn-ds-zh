@@ -1,0 +1,713 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en-US">
+<head>
+<meta charset="utf-8"/>
+<meta name="generator" content="packt"/>
+<title>7 Logging Data from Power BI to External Sources</title>
+<link rel="stylesheet" type="text/css" href="../styles/stylesheet1.css"/>
+<link rel="stylesheet" type="text/css" href="../styles/stylesheet2.css"/>
+
+</head>
+<body>
+
+<section id="logging-data-from-power-bi-to-external-sources" class="level1 pkt" data-number="8">
+<h1 data-number="8">7 Logging Data from Power BI to External Sources</h1>
+<p>As you've learned from previous chapters, <strong>Power BI</strong> uses <strong>Power Query</strong> as a tool for <strong>extract transform load</strong> (<strong>ETL</strong>) operations. The tool in question is really very powerful – it allows you to extract data from a wide variety of data sources and then easily transform it with very user-friendly options in order to persist it into the Power BI data model. It is a tool that is only able to read information from the outside. In fact, the most stringent limitation of Power Query is its inability to write information outside of Power BI. However, thanks to the integration of analytical languages such as <strong>Python</strong> and <strong>R</strong>, you'll be able to persist information about Power Query loading and transformation processes to external files or systems. In this chapter, you will learn the following topics:</p>
+<ul>
+<li>Logging to <strong>CSV</strong> files</li>
+<li>Logging to <strong>Excel</strong> files</li>
+<li>Logging to <strong>Azure</strong> <strong>SQL Server</strong></li>
+</ul>
+<section id="technical-requirements-6" class="level2" data-number="8.1">
+<h2 data-number="8.1">Technical requirements</h2>
+<p>This chapter requires you to have a working Internet connection and <strong>Power BI Desktop</strong> already installed on your machine. You must have properly configured the R and Python engines and IDEs as outlined in <em>Chapter 2</em>, <em>Configuring R with Power BI</em>, and <em>Chapter 3</em>, <em>Configuring Python with Power BI</em>.</p>
+</section>
+<section id="logging-to-csv-files" class="level2" data-number="8.2">
+<h2 data-number="8.2">Logging to CSV files</h2>
+<p>One of the most widely used formats for logging tabular structured information to files is <strong>comma-separated value</strong> (<strong>CSV</strong>). Since a CSV file is still a flat text file, CSV is the most popular format for exchanging information between heterogeneous applications.</p>
+<p>A CSV file is a representation of a rectangular dataset (<strong>matrix</strong>), containing numeric or string columns. Each row of the matrix is represented by a list of values (one for each column), separated by a comma, and should have the same number of values. Sometimes, other value delimiters could be used, like tab (<code>\t</code>), colon (<code>:</code>), and semi-colon (<code>;</code>) characters. The first row could contain the column header names. Usually, a <strong>line break</strong>, made by <strong>CRLF</strong> (<strong>Carriage Return Line Feed</strong>)characters (usually entered as <code>\r\n</code>), or simply by <strong>LF</strong> (<code>\n</code>) in Unix systems, is used as a <strong>row delimiter</strong>. So, an example of CSV file content could be the following:</p>
+<figure>
+<img src="../media/file174.png" alt="Figure 7.1 – Example of CSV file content" /><figcaption aria-hidden="true">Figure 7.1 – Example of CSV file content</figcaption>
+</figure>
+<p>Note the spaces as they become part of a string value! For example, the second value of the <code>V1, V2</code> row will be <code>[space]V2</code>.</p>
+<p>It may happen that a string value contains line breaks (<code>CRLF</code>), double-quotes, or commas (as usually happens with free text fields like “Notes”). In this case, the value should be enclosed in double-quotes and any literal double quote has to be escaped using another double quote. For example, the values <code>"</code> <code>C,D"</code>, “<code>E""F</code>” and <code>"G[CRLF]H"</code> for the column <code>Col1</code> are formatted in the following way in a CSV file:</p>
+<figure>
+<img src="../media/file175.png" alt="Figure 7.2 – Example of CSV values containing commas, double quotes, or CRLF" /><figcaption aria-hidden="true">Figure 7.2 – Example of CSV values containing commas, double quotes, or CRLF</figcaption>
+</figure>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>It is important to keep in mind that a CSV file doesn’t have any size limits per se.</p>
+</blockquote>
+<p>Since it is a flat text file, the maximum size is determined by the limits imposed by the filesystem. For example, the default filesystem for Windows is the <strong>New Technology File System</strong> (<strong>NTFS</strong>) and it allows a maximum file size of <em>16 TB</em> as its current implementation. However, its designed theoretical limit is <em>16 EB</em> (16 × 2<sup>64</sup> bytes) minus <em>1 KB</em>.</p>
+<p>However, the old <strong>File Allocation Table</strong> filesystem, in its variant of 32 bits (<strong>FAT32</strong>), can only handle a maximum size of <em>4 GB</em>.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>Keep in mind that handling large CSV files leads to memory and/or CPU bottlenecks. You are very likely to get an <code>OutOfMemory</code> error if the CSV file to be loaded is larger than the RAM you have available and if your libraries don’t use parallelism/distribution/lazy loading mechanisms. You'll learn how to handle such large CSV files in <em>Chapter 8</em>, <em>Loading Large Datasets Beyond the Available RAM in Power BI</em>.</p>
+</blockquote>
+<p>Let's see how to read and write CSV files with Python.</p>
+<section id="logging-to-csv-files-with-python" class="level3" data-number="8.2.1">
+<h3 data-number="8.2.1">Logging to CSV files with Python</h3>
+<p>Python has a built-in CSV module that provides some functions to read and write CSV files. Very often, however, you will have to import a CSV file whose content will then be transformed through Pandas functions, or you must export in a CSV format a DataFrame previously processed through Pandas. That's why, in these cases, it is much more convenient to directly use the built-in pandas functions with DataFrame objects. You will find the <code>01-read-csv-file-in-python.py</code> and <code>02-write-csv-file-in-python.py</code> files in the <code>Chapter07/Python</code> folder that will show you how to use the CSV module. In the following section, we will focus exclusively on the functionality provided by pandas.</p>
+<p>Let's look in detail at the pandas functions available to work with CSV files.</p>
+<section id="using-the-pandas-module" class="level4" data-number="8.2.1.1">
+<h4 data-number="8.2.1.1">Using the pandas module</h4>
+<p>The functions that the <code>pandas</code> module provides to read and write a CSV file are very simple and straightforward. You can use the <code>read_csv()</code> function to read data from a CSV file. The following is the code that allows you to load the content of the <code>example.csv</code> file in a DataFrame:</p>
+</section>
+<section id="chapter07python03-read-csv-file-with-pandas.py" class="level4" data-number="8.2.1.2">
+<h4 data-number="8.2.1.2"><code>Chapter07\Python\03-read-csv-file-with-pandas.py</code></h4>
+<pre><code>import pandas as pd
+data = pd.read_csv(r&#39;D:\&lt;your-path&gt;\Chapter07\example.csv&#39;)
+data.head(10)</code></pre>
+<p>Here is the output using the <strong>VS Code</strong> <strong>Interactive Window</strong>:</p>
+<figure>
+<img src="../media/file176.png" alt="Figure 7.3 – Output of the pandas DataFrame loaded with the example CSV file’s content" /><figcaption aria-hidden="true">Figure 7.3 – Output of the pandas DataFrame loaded with the example CSV file’s content</figcaption>
+</figure>
+<p>The <code>read_csv</code> function also allows you to pass the <code>sep</code> parameter to define the value separator to be used when reading the file.</p>
+<p>If, on the other hand, you need to write a CSV file from the contents of a DataFrame, you can use the <code>to_csv()</code> function. The following is an example of the code you could use:</p>
+</section>
+<section id="chapter07python04-write-csv-file-with-pandas.py" class="level4" data-number="8.2.1.3">
+<h4 data-number="8.2.1.3"><code>Chapter07\Python\04-write-csv-file-with-pandas.py</code></h4>
+<pre><code>import pandas as pd
+data = {
+    &#39;Col1&#39; : [&#39;A&#39;, &#39;B&#39;, &#39;C,D&#39;, &#39;E&quot;F&#39;, &#39;G\r\nH&#39;],
+    &#39;Col2&#39; : [23, 27, 18, 19, 21],
+    &#39;Col3&#39; : [3.5, 4.8, 2.1, 2.5, 3.1]
+}
+data_df = pd.DataFrame(data)
+data_df.to_csv(r&#39;D:\&lt;your-path&gt;\Chapter07\example-write.csv&#39;, index=False)</code></pre>
+<p>The <code>to_csv()</code> function also allows you to pass the <code>sep</code> parameter in order to define the value separator you intend to use in the file.</p>
+<p>As you can see, working with CSV files in Python is very easy. In the next section, you'll put this into practice in Power BI.</p>
+</section>
+<section id="logging-emails-to-csv-files-in-power-bi-with-python" class="level4" data-number="8.2.1.4">
+<h4 data-number="8.2.1.4">Logging emails to CSV files in Power BI with Python</h4>
+<p>As an example of generating a CSV file, we will use the same scenario provided in <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, in which you needed to validate email addresses and ban dates. The goal is to export the rows of the dataset containing an incorrect email to a CSV file and to filter them out of the dataset so that only valid emails remain in Power BI. We will use the <code>to_csv()</code> function that pandas provides. The necessary steps are as follows:</p>
+<ol>
+<li>Follow all the steps in the <em>Using regex in Power BI to validate emails with Python</em> section of <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em> to the end, but do not click on <strong>Close &amp; Apply</strong>.</li>
+<li><p>Then, click on <strong>Run Python Script</strong>, enter the following script, and click <strong>OK</strong>:</p>
+<pre><code>import pandas as pd
+filter = (dataset[&#39;isEmailValidFromRegex&#39;] == 0)
+dataset[filter].to_csv(r&#39;D:\&lt;your-path&gt;\Chapter07\Python\wrong-emails.csv&#39;, index=False)
+df = dataset[~filter]</code></pre>
+<p>You can find this Python script also in the <code>Python\05-log-wrong-emails-csv-in-power-bi.py</code> file. Note the <code>~</code> character that in this case is a negation of the Boolean condition defined by the <code>filter</code> variable.</p></li>
+<li><p>Click on the <code>df</code> dataset’s <strong>Table</strong> value:</p>
+<figure>
+<img src="../media/file177.png" alt="Figure 7.4 – Selecting the df dataset as a result of the Python script transformation" /><figcaption aria-hidden="true">Figure 7.4 – Selecting the df dataset as a result of the Python script transformation</figcaption>
+</figure></li>
+<li><p>Only rows containing valid emails will be kept:</p>
+<figure>
+<img src="../media/file178.png" alt="Figure 7.5 – A table containing only valid emails" /><figcaption aria-hidden="true">Figure 7.5 – A table containing only valid emails</figcaption>
+</figure>
+<p>Moreover, the <code>wrong-emails.csv</code> file has been created in your <code>Chapter07\Python</code> folder.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>If you go and check the contents of the created CSV file, it matches the following:</p>
+<pre><code>UserId,Email,BannedDate,IsEmailValidByDefinition,IsDateValidByDefinition,isEmailValidFromRegex
+2,example1@example.com/example2@example.com,06/07/2019,0,1,0
+3,example33@example.com.,02/05/2018,0,1,0
+5,example@example.com --&gt; check,02/29/18,0,0,0
+9,example,10/22/2018,0,1,0
+13,.@example.com,04/24/018,0,0,0
+16,example@example.c,6/7/2019,0,1,0</code></pre>
+<p>As you can see, the emails in the CSV file are all the invalid ones. At this point, you can share the previous file with your colleagues so that they can correct invalid emails.</p>
+<p>Well done! You just learned how to log information to a CSV file from Power BI using Python. Now, let's see how you can do the same thing using R.</p>
+</section>
+</section>
+<section id="logging-to-csv-files-with-r" class="level3" data-number="8.2.2">
+<h3 data-number="8.2.2">Logging to CSV files with R</h3>
+<p>The basic R language provides some out-of-the-box functions for working with CSV files. However, there is also the <code>readr</code> package, included in the <strong>Tidyverse</strong> ecosystem, which provides similar functions, but is faster in loading larger CSV files.</p>
+<p>Let's see how to use them in detail.</p>
+<section id="using-the-tidyverse-functions" class="level4" data-number="8.2.2.1">
+<h4 data-number="8.2.2.1">Using the Tidyverse functions</h4>
+<p>The <code>readr</code> package provides some functions mirroring those seen for reading and writing CSV files with R base. The advantage of these functions is that, in addition to respecting the common interface provided by the functions of the Tidyverse world, they are up to five times faster than standard functions and also progress meters. Make sure you have at least version 1.4.0 of the package installed, otherwise, update it.</p>
+<p>Always using the usual <code>example.csv</code> file, similarly to what we did in the previous section, you can load the data through the <code>read_csv()</code> function of the <code>readr</code> package in this way:</p>
+<pre><code>library(readr)
+data_df &lt;- read_csv(r&#39;{D:\&lt;your-path&gt;\Chapter07\example.csv}&#39;)</code></pre>
+<p>As output, you can see the following specification:</p>
+<pre><code>-- Column specification -----------------------------------
+cols(
+  Col1 = col_character(),
+  Col2 = col_double(),
+  Col3 = col_double()
+)</code></pre>
+<p>Besides the fact that the <code>read_csv()</code> function outputs a <strong>tibble</strong> instead of a DataFrame, there is one point that is important to note:</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>The interesting thing is that the <code>read_csv()</code> function correctly imports the carriage return character by default.</p>
+</blockquote>
+<p>If you check the newly imported tibble, you have the following:</p>
+<figure>
+<img src="../media/file179.png" alt="Figure 7.6– Characters \r\n correctly imported by read_csv" /><figcaption aria-hidden="true">Figure 7.6– Characters \r\n correctly imported by read_csv</figcaption>
+</figure>
+<p>Just as with R base, the <code>readr</code> package also provides the same functions, <code>read_csv2()</code>, <code>read_tsv()</code>, and <code>read_delim()</code>, to ensure a similar interface and thus easy usability.</p>
+<p>To persist data toa CSV file, the <code>readr</code> package provides the <code>write_csv()</code> function with its whole family of functions, similarly to R base (<code>write_csv2</code>, <code>write_tsv</code>, and <code>write_delim</code>). Unlike <code>write.csv()</code>, these functions do not include row names as a column in the written file. Moreover, the default end-of-line separator is just a new line (<code>\n</code>). So, if you want to export your data using the <code>\r\n</code> characters as a line separator, you have to pass them through the <code>eol</code> parameter:</p>
+<pre><code>library(readr)
+data_df &lt;- data.frame(
+  Col1 = c(&#39;A&#39;, &#39;B&#39;, &#39;C,D&#39;, &#39;E&quot;F&#39;, &#39;G\r\nH&#39;),
+  Col2 = c(23, 27, 18, 19, 21),
+  Col3 = c(3.5, 4.8, 2.1, 2.5, 3.1)
+)
+write_csv(data_df, file = r&#39;{D:\&lt;your-path&gt;\Chapter07\R\example-write.csv}&#39;, eol = &#39;\r\n&#39;)</code></pre>
+<p>Observe that, in this case, you have to use both characters (<code>\r\n</code>) in your data if you want to extract them in exactly the same way.</p>
+<p>As you can see, working with CSV files in R is as simple as it was in Python. In the next section, you will log emails and dates with R in Power BI.</p>
+</section>
+<section id="logging-dates-to-csv-files-in-power-bi-with-r" class="level4" data-number="8.2.2.2">
+<h4 data-number="8.2.2.2">Logging dates to CSV files in Power BI with R</h4>
+<p>We will always use the scenario presented in <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, where it was necessary to validate both email addresses and ban dates. This time, we will use R to export invalid ban dates to a CSV file. The necessary steps are as follows:</p>
+<ol>
+<li>Follow all the steps in the <em>Using regex in Power BI to validate dates with R</em> section of <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em> to the end, but do not click on <strong>Close &amp; Apply</strong>.</li>
+<li><p>Then click on <strong>Run R Script</strong>, enter the following script, and click <strong>OK</strong>:</p>
+<pre><code>library(readr)
+library(dplyr)
+dataset %&gt;%
+  filter( isDateValidFromRegex == 0 ) %&gt;%
+  write_csv( r&#39;{D:\&lt;your-path&gt;\Chapter07\R\wrong-dates.csv}&#39;, eol = &#39;\r\n&#39; )
+df &lt;- dataset %&gt;%
+  filter( isDateValidFromRegex == 1 )</code></pre>
+<p>You can find this R script also in the <code>R\01-log-wrong-emails-in-r.R </code>file.</p></li>
+<li><p>Click on the <code>df</code> dataset’s <strong>Table</strong> value:</p>
+<figure>
+<img src="../media/file180.png" alt="Figure 7.7 – Selecting the df dataset as a result of the R script transformation" /><figcaption aria-hidden="true">Figure 7.7 – Selecting the df dataset as a result of the R script transformation</figcaption>
+</figure></li>
+<li><p>Only rows containing valid emails will be kept:</p>
+<figure>
+<img src="../media/file181.png" alt="Figure 7.8 – A table containing only valid emails" /><figcaption aria-hidden="true">Figure 7.8 – A table containing only valid emails</figcaption>
+</figure>
+<p>Moreover, the <code>wrong-dates.csv</code> file has been created in your <code>Chapter07\R</code> folder.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>At this point, you can share the just created <code>wrong-emails.csv</code> file with your colleagues so that they can correct invalid emails.</p>
+<p>Awesome! You just learned how to log information to a CSV file from Power BI using R. Let's now see how to use Excel files to log your information.</p>
+</section>
+</section>
+</section>
+<section id="logging-to-excel-files" class="level2" data-number="8.3">
+<h2 data-number="8.3">Logging to Excel files</h2>
+<p>As you probably already know, Microsoft Excel is <strong>spreadsheet</strong> software available in the <strong>Microsoft</strong> <strong>Office</strong> suite. It’s one of the most widely used tools in the world for storing and organizing data in a table format. It is very popular in companies because it allows business data to be shared between departments and enables individual users to do their own data analysis directly and quickly without the help of the IT department.</p>
+<p>Early versions of Excel stored information in files of the <strong>Excel Sheet</strong> (<strong>XLS</strong>) format. This is a proprietary Microsoft format, based on the <strong>Binary Interchange File Format</strong> (<strong>BIFF</strong>). It has been the default format for versions from v7.0 (Excel 95) to v11.0 (Excel 2003). From version 8.0 to 11.0 the XLS format can handle <em>64K (2<sup>16</sup> = 65,536) rows</em> and <em>256 columns (2<sup>8</sup>)</em>. Starting with version v12.0 (Excel 2007), the default format has changed to <strong>Excel Open XML Spreadsheet</strong> (<strong>XLSX</strong>). This is based on the <strong>Office Open XML</strong> format, and it is based on text files that use XML to define all its parameters.</p>
+<blockquote>
+<p><strong>Note</strong></p>
+<p>Did you know that an XLSX file contains data in multiple XML files compressed in the <strong>ZIP</strong> format? If you want to verify this, simply rename one of your XLSX files, for example, <code>example.xlsx</code>, adding the <code>.zip</code> extension to it (for example, <code>example.xlsx.zip</code>). Then, extract its content using the <strong>File Explorer</strong> or any other Zip client (like <strong>7-Zip</strong>).</p>
+</blockquote>
+<p>The XLSX format can handle <em>1024K (2<sup>20</sup> = 1,048,576) rows and 16,384 (2<sup>14</sup>) columns</em>.</p>
+<p>Since <strong>Power Pivot</strong> (starting with Excel 2013) and <strong>Power Query</strong> (starting with Excel 2016) were introduced, most of the data ingestion and data analysis activities for the purpose of generating a prototype data model are often performed by power-users thanks to Microsoft Excel. Power Query gives you a set of rich tools for transforming data all in one place. Power Pivot gives you the ability to work with large volumes of data by overcoming Excel's limitation of 1,048,576 rows. Once imported, you can use pivot tables and the <strong>DAX</strong> formula language on them, since the engine behind the scenes is the same as <strong>Analysis Service Tabular</strong> and Power BI. That's why Excel and Power BI are the premier tools for self-service BI on the <strong>Microsoft</strong> <strong>Data Platform</strong>.</p>
+<p>Now, let's see how to interact with Excel files in Python. We will use the latest XLSX format from now on.</p>
+<section id="logging-to-excel-files-with-python" class="level3" data-number="8.3.1">
+<h3 data-number="8.3.1">Logging to Excel files with Python</h3>
+<p>The fastest way to interact with Excel files in Python is to use the functions that pandas provides. However, you need to install the <code>openpyxl</code> package in your <code>pbi_powerquery_env</code> environment. If you remember correctly, you already installed this package in the environment dedicated to <strong>Presidio</strong> (<code>presidio_env</code>) in <em>Chapter 6</em>, <em>Anonymizing and Pseudonymizing your Data in Power BI</em>. In order to install this package, also in the <code>pbi_powerquery_env</code> environment, simply follow these steps:</p>
+<ol>
+<li>Open your <strong>Anaconda</strong> <strong>Prompt</strong></li>
+<li><p>Set your current environment to <code>pbi_powerquery_env</code>, entering the following command and pressing <strong>Enter</strong>:</p>
+<pre><code>conda activate pbi_powerquery_env</code></pre></li>
+<li><p>Enter the following command and press <strong>Enter</strong>:</p>
+<pre><code>pip install openpyxl</code></pre></li>
+</ol>
+<p>As an example, you will find the <code>example.xlsx</code> file in the <code>Chapter07</code> folder. Let’s see how to import its content with Python.</p>
+<section id="using-the-pandas-module-1" class="level4" data-number="8.3.1.1">
+<h4 data-number="8.3.1.1">Using the pandas module</h4>
+<p>You can easily import your data into a pandas DataFrame using this code:</p>
+</section>
+<section id="chapter07python06-read-excel-file-with-pandas.py" class="level4" data-number="8.3.1.2">
+<h4 data-number="8.3.1.2"><code>Chapter07\Python\06-read-excel-file-with-pandas.py</code></h4>
+<pre><code>import pandas as pd
+data = pd.read_excel(r&#39;D:\&lt;your-path&gt;\Chapter07\example.xlsx&#39;)</code></pre>
+<p>If you visualize the DataFrame in VS Code, you’ll see something like the following:</p>
+<figure>
+<img src="../media/file182.png" alt="Figure 7.9 – Output of the pandas DataFrame loaded with the example.xlsx file’s content" /><figcaption aria-hidden="true">Figure 7.9 – Output of the pandas DataFrame loaded with the example.xlsx file’s content</figcaption>
+</figure>
+<p>In this case, if an Excel cell contains a string with the <code>\r\n</code> characters, the carriage return (<code>\r</code>) is lost after import, as you can see in <em>Figure 7.11</em>.</p>
+<p>As you probably already know, an Excel file (<strong>workbook</strong>) can contain one or more sheets (<strong>worksheets</strong>) in which there is data. If you need to import data from a specific worksheet, you can use this code:</p>
+<pre><code>data = pd.read_excel(r&#39;D:\&lt;your-path&gt;\Chapter07\example.xlsx&#39;, sheet_name=&#39;&lt;your-worksheet-name&gt;&#39;)</code></pre>
+<p>Similarly, you can write the contents of a DataFrame to Excel files using this code:</p>
+</section>
+<section id="chapter07python07-write-excel-file-with-pandas.py" class="level4" data-number="8.3.1.3">
+<h4 data-number="8.3.1.3"><code>Chapter07\Python\07-write-excel-file-with-pandas.py</code></h4>
+<pre><code>import pandas as pd
+data = {
+    &#39;Col1&#39; : [&#39;A&#39;, &#39;B&#39;, &#39;C,D&#39;, &#39;E&quot;F&#39;, &#39;G\r\nH&#39;],
+    &#39;Col2&#39; : [23, 27, 18, 19, 21],
+    &#39;Col3&#39; : [3.5, 4.8, 2.1, 2.5, 3.1]
+}
+data_df = pd.DataFrame(data)
+data_df.to_excel(r&#39;D:\&lt;your-path&gt;\Chapter07\Python\example-write.xlsx&#39;, index = False)</code></pre>
+<p>The resulting Excel file will have a default <code>Sheet1</code> worksheet, and its content will look like the following:</p>
+<figure>
+<img src="../media/file183.png" alt="Figure 7.10 – The content of the Excel file created using pandas functions" /><figcaption aria-hidden="true">Figure 7.10 – The content of the Excel file created using pandas functions</figcaption>
+</figure>
+<p>If you copy the contents of cell <code>A6</code> into an advanced editor, you can verify that the <code>\r\n</code> characters are kept.</p>
+<p>If you want to write the content of your dataset to a specific named worksheet in <em>a new Excel file</em>, then you can use the following code:</p>
+<pre><code>data_df.to_excel(r&#39;D:\&lt;your-path&gt;\Chapter07\Python\example-write-named-sheet.xlsx&#39;, sheet_name=&#39;My data&#39;, index = False)</code></pre>
+<p>The result will be the following:</p>
+<figure>
+<img src="../media/file184.png" alt="Figure 7.11 – The content is now written into a named worksheet" /><figcaption aria-hidden="true">Figure 7.11 – The content is now written into a named worksheet</figcaption>
+</figure>
+<p>If instead you want to write the content of your dataset to a specific named worksheet in <em>an existing Excel file</em>, then you have to use the pandas <code>ExcelWriter</code> class in the following way:</p>
+</section>
+<section id="chapter07python08-write-excel-file-named-sheet-with-pandas.py" class="level4" data-number="8.3.1.4">
+<h4 data-number="8.3.1.4"><code>Chapter07\Python\08-write-excel-file-named-sheet-with-pandas.py</code></h4>
+<pre><code>with pd.ExcelWriter(r&#39;D:\&lt;your-path&gt;\Chapter07\Python\ example-write-named-sheet.xlsx&#39;, mode=&#39;a&#39;) as writer: 
+     data_df.to_excel(writer, sheet_name=&#39;My data&#39;, index = False)</code></pre>
+<p>Note, that the <code>mode='a'</code> is for <em>“append”</em>. Let's now look at an example of logging in Power BI using the previous pandas functions.</p>
+</section>
+<section id="logging-emails-and-dates-to-excel-files-in-power-bi-with-python" class="level4" data-number="8.3.1.5">
+<h4 data-number="8.3.1.5">Logging emails and dates to Excel files in Power BI with Python</h4>
+<p>Let's go back to the same scenario used in the previous sections, namely, the one we already analyzed in <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, in which you needed to validate email addresses and ban dates. This time, however, the goal is to export invalid emails and invalid dates to two separate worksheets in an Excel file and then share it with the team.</p>
+<p>Now, open your Power BI Desktop, make sure the Python environment to use is <code>pbi_powerquery_env</code>, and let's get started:</p>
+<ol>
+<li>From the ribbon, click on the <strong>Excel</strong> icon to import data from Excel.</li>
+<li>From the <strong>Open</strong> dialog box, select the <code>Users.xlsx</code> file you can find in the <code>Chapter05</code> folder.</li>
+<li>From the <strong>Navigator</strong> window, select the <strong>Users</strong> sheet and then click on <strong>Transform Data</strong>.</li>
+<li>Click on the <strong>Transform</strong> menu, and then click on <strong>Run Python Script</strong>.</li>
+<li>Copy the code you can find in the <code>09-validate-emails-dates-with-regex-in-power-bi.py</code> file in the <code>Chapter07/Python</code> folder, and paste it into the Python script editor. This code is just a merging of the scripts you already used to validate emails and dates separately. Then, click <strong>OK</strong>.</li>
+<li><p>Select just the <strong>Table</strong> value related to the <code>df</code> table name and you will see something like this:</p>
+<figure>
+<img src="../media/file185.png" alt="Figure 7.11 – The transformed data contains both the flags for valid emails and dates" /><figcaption aria-hidden="true">Figure 7.11 – The transformed data contains both the flags for valid emails and dates</figcaption>
+</figure>
+<p>Now, you have both the <code>isEmailValidFromRegex</code> and <code>isValidDateFromRegex</code> flags that allow you to select emails and correct dates.</p></li>
+<li>Click again on <strong>Run Python Script</strong>, enter the script you can find in the <code>10-log-wrong-emails-dates-excel-in-power-bi.py</code> file, and click <strong>OK</strong>.</li>
+<li><p>Select just the <strong>Table</strong> value related to the <code>df</code> table name and you will see a table where only rows containing valid emails and dates will be kept:</p>
+<figure>
+<img src="../media/file186.png" alt="Figure 7.12 – The output data contains rows containing valid emails and dates" /><figcaption aria-hidden="true">Figure 7.12 – The output data contains rows containing valid emails and dates</figcaption>
+</figure>
+<p>Moreover, the <code>wrong-data.xlsx</code> file has been created in your <code>Chapter07/Python</code> folder and it contains two worksheets: <code>Wrong emails</code> and <code>Wrong dates</code>.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>Amazing! You just learned how to log information to an Excel file in multiple sheets from Power BI using Python. Now, let's see how you can do the same thing using R.</p>
+</section>
+</section>
+<section id="logging-to-excel-files-with-r" class="level3" data-number="8.3.2">
+<h3 data-number="8.3.2">Logging to Excel files with R</h3>
+<p>To be able to read and write Excel files in R, we recommend the use of two separate packages:</p>
+<ul>
+<li><strong>readxl</strong>: This is a package that is part of the Tidyverse world and allows you to read the information contained in an Excel file in the simplest and most flexible way.</li>
+<li><strong>openxlsx</strong>: This is a package that provides a high-level interface for creating and editing Excel files. Compared to other packages that do the same thing, <code>openxlsx</code> removes the dependency on <strong>Java</strong> behind the scenes.</li>
+</ul>
+<p>First, you need to install the <code>openxlsx</code> package:</p>
+<ol>
+<li>Open <strong>RStudio</strong>, and make sure your latest <strong>MRO</strong> engine is selected in the <strong>Global Options</strong> (in our case, MRO 4.0.2).</li>
+<li>Enter the <code>install.packages("openxlsx")</code> command in the console. Remember that it installs the package at the version corresponding to the <strong>CRAN</strong> snapshot defined by your MRO installation.</li>
+</ol>
+<p>Now you are ready to learn how to read and write data to Excel files.</p>
+<section id="using-the-readxl-and-openxlsx-packages" class="level4" data-number="8.3.2.1">
+<h4 data-number="8.3.2.1">Using the readxl and openxlsx packages</h4>
+<p>The <code>readxl</code> package provides two separate functions – <code>read_xls()</code>, to read Excel files in an XLS format, and <code>read_xlsx()</code>, to read those in an XLSX format. If you want to read the contents of the <code>example.xlsx</code> file located in the <code>Chapter07</code> folder, you can use the following code:</p>
+<pre><code>library(readxl)
+data_tbl &lt;- read_xlsx(r&#39;{D:\&lt;your-path&gt;\Chapter07\example.xlsx}&#39;)</code></pre>
+<p>The result will be a tibble:</p>
+<figure>
+<img src="../media/file187.png" alt="Figure 7.13 – Excel data read using the read_xlsx function" /><figcaption aria-hidden="true">Figure 7.13 – Excel data read using the read_xlsx function</figcaption>
+</figure>
+<p>As you can see, the carriage returns and the line feed characters (<code>\r\n</code>) are kept. If you want to read data from a specific worksheet instead, you can use this code:</p>
+<pre><code>data_tbl &lt;- read_xlsx(r&#39;{D:\&lt;your-path&gt;\Chapter07\example.xlsx}&#39;, sheet = &#39;My sheet&#39;)</code></pre>
+<p>To write your data into Excel files, you can use the <code>write.xlsx()</code> function of the <code>openxlsx</code> package, as follows:</p>
+<pre><code>library(dplyr)
+library(openxlsx)
+data_df &lt;- data.frame(
+    Col1 = c(&#39;A&#39;, &#39;B&#39;, &#39;C,D&#39;, &#39;E&quot;F&#39;, &#39;G\nH&#39;),
+    Col2 = c(23, 27, 18, 19, 21),
+    Col3 = c(3.5, 4.8, 2.1, 2.5, 3.1)
+)
+data_df %&gt;% 
+    write.xlsx(file = r&#39;{D:\&lt;your-path&gt;\Chapter07\R\example-write.xlsx}&#39;, colNames = TRUE)</code></pre>
+<p>Observe how, in this case, you have to use the “Unix convention” regarding the new lines, and that is to use only the <code>\n</code> character in the strings of your data to have the standard Windows characters <code>\r\n</code> in Excel.</p>
+<p>If you want to write the content of your dataset to a specific named worksheet in <em>a new Excel file</em>, then you can use the following code:</p>
+<pre><code>data_df %&gt;% 
+    write.xlsx(file = r&#39;{D:\&lt;your-path&gt;\Chapter07\R\example-write.xlsx}&#39;, colNames = TRUE, sheetName = &#39;My data&#39;, append = FALSE)</code></pre>
+<p>If, on the other hand, you need to add a worksheet to <em>an existing Excel file</em>, you have to use a named list of DataFrames/tibbles as the input of the <code>write.xlsx</code> function. This is the code to use if you can manually assign a string name to each sheet:</p>
+<pre><code>df_named_lst &lt;- list(&quot;My data 1&quot; = data_df, &quot;My data 2&quot; = data_df)
+write.xlsx(df_named_lst, file = r&#39;{D:\&lt;your-path&gt;\Chapter07\R\example-write.xlsx}&#39;)</code></pre>
+<p>Keep in mind that if you need to use a list of DataFrames/tibbles (<code>df_lst</code>) and a list of worksheet names (<code>names_lst</code>) separately, you can use the following code to write all your data in one Excel workbook:</p>
+<pre><code>df_named_lst &lt;- setNames(df_lst, names_lst)
+write.xlsx(df_named_lst, file = r&#39;{D:\&lt;your-path&gt;\&lt;your-file&gt;.xlsx}&#39;)</code></pre>
+<p>Let's now look at an example of logging in Power BI using the previous R functions.</p>
+</section>
+<section id="logging-emails-and-dates-to-excel-in-power-bi-with-r" class="level4" data-number="8.3.2.2">
+<h4 data-number="8.3.2.2">Logging emails and dates to Excel in Power BI with R</h4>
+<p>The example we will use is still the one from <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, in which you needed to validate email addresses and ban dates. The ultimate goal will always be to export invalid emails and invalid dates to two separate worksheets in an Excel file and then share it with the team.</p>
+<p>Now open your Power BI Desktop, make sure your latest MRO is referenced in the options, and let's get started:</p>
+<ol>
+<li>From the ribbon, click on the <strong>Excel</strong> icon to import data from Excel.</li>
+<li>From the <strong>Open</strong> dialog box, select the <code>Users.xlsx</code> file you can find in the <code>Chapter05</code> folder.</li>
+<li>From the <strong>Navigator</strong> window, select the <strong>Users</strong> sheet and then click on <strong>Transform Data</strong>.</li>
+<li>Click on the <strong>Transform</strong> menu, and then click on <strong>Run R Script</strong>.</li>
+<li>Copy the code you can find in the <code>02-validate-emails-dates-with-regex-in-power-bi.R</code> file in the <code>Chapter07/R</code> folder, and paste it into the R script editor. This code is just a merging of the scripts you already used to validate emails and dates separately. Then click <strong>OK</strong>.</li>
+<li><p>Select just the <strong>Table</strong> value related to the <code>df</code> table name and you will see something like this:</p>
+<figure>
+<img src="../media/file188.png" alt="Figure 7.14 – The transformed data contains both the flags for valid emails and dates" /><figcaption aria-hidden="true">Figure 7.14 – The transformed data contains both the flags for valid emails and dates</figcaption>
+</figure>
+<p>Now you have both the <code>isEmailValidFromRegex</code> and <code>isDateValidFromRegex</code> flags that allow you to select correct emails and dates.</p></li>
+<li>Click again on <strong>Run R Script</strong>, enter the script you can find in the <code>03-log-wrong-emails-dates-excel-in-power-bi.R</code> file, and click <strong>OK</strong>. Remember to change the paths in the code.</li>
+<li><p>Select just the <strong>Table</strong> value related to the <code>df</code> table name and you will see a table where only rows containing valid emails and dates will be kept:</p>
+<figure>
+<img src="../media/file189.png" alt="Figure 7.15 – The output data contains rows containing valid emails and dates" /><figcaption aria-hidden="true">Figure 7.15 – The output data contains rows containing valid emails and dates</figcaption>
+</figure>
+<p>Moreover, the <code>wrong-data.xlsx</code> file has been created in your <code>Chapter07/R</code> folder and it contains two worksheets: <code>Wrong emails</code> and <code>Wrong dates</code>.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>Awesome! You just learned how to log information to an Excel file in multiple sheets from Power BI using R.</p>
+<p>In the next section, you will learn how to log information from Power BI to either an <strong>on-premises</strong> <strong>SQL Server</strong>, or to an <strong>Azure</strong> <strong>SQL Server</strong>.</p>
+</section>
+</section>
+</section>
+<section id="logging-to-an-azure-sql-server" class="level2" data-number="8.4">
+<h2 data-number="8.4">Logging to an Azure SQL Server</h2>
+<p>In the vast majority of companies, business information is persisted in a <strong>Relational Database Management System</strong> (<strong>RDBMS</strong>). Microsoft's quintessential relational database is <strong>SQL Server</strong> in its on-premises version if the company adopts the Microsoft Data Platform. Otherwise it is <strong>Azure SQL Server</strong> which is a <strong>Platform as a Service</strong> (<strong>PaaS</strong>), cloud-hosted database.</p>
+<p>Generally, it is a good idea to centralize all of a company's key information in a single repository. That's why it might be useful to know how to log information from within a Power BI process into a SQL Server database or an Azure SQL database.</p>
+<p>If you have the option to already access an instance of SQL Server on-premises or an Azure SQL Server, you just need to make sure that the <strong>ODBC Driver for SQL Server</strong> is installed on your machine. In fact, both Python and R will connect to (Azure) SQL Server via an ODBC connection. You have the option to install the driver on your machine directly (via the link <a href="http://bit.ly/ODBC-SQLServer">http://bit.ly/ODBC-SQLServer</a>), but more often this driver is installed indirectly when installing the ultimate client for managing any SQL infrastructure, which is <strong>SQL Server Management Studio</strong> (<strong>SSMS</strong>).</p>
+<p>On the other hand, if you don't have access to either an on-premises SQL Server instance or an Azure SQL database, then you have two options for testing the examples in this section:</p>
+<ul>
+<li>Install a free instance of <strong>SQL Server Express Edition</strong> (or <strong>Developer</strong>).</li>
+<li>Create an Azure SQL database from the Azure portal using your account.</li>
+</ul>
+<p>Let's see in detail how to proceed for each of these options.</p>
+<section id="installing-sql-server-express" class="level3" data-number="8.4.1">
+<h3 data-number="8.4.1">Installing SQL Server Express</h3>
+<p>In this section, we will show how to install the Express Edition of SQL Server. This is the free version of Microsoft's database engine that can also be used in production for desktop and small server data-driven applications. Obviously, the Express Edition has limitations that distinguish it from the top-of-the-line <strong>Enterprise Edition</strong>. Here are a few examples:</p>
+<ul>
+<li>A maximum memory of 1,410 MB is used by an instance of the database engine.</li>
+<li>A maximum size of 10 GB for a single database.</li>
+<li>Compute capacity used by a single instance limited to the lesser of one socket or four cores.</li>
+</ul>
+<p>Despite these limitations, SQL Server Express remains an excellent solution to use in production for small applications. If, on the other hand, you need to be able to test the more advanced features of the engine because you know that your application will use a more complete edition in production (Standard or Enterprise), you can install the <strong>Developer Edition</strong> on your machine. This edition allows you to test all the features of the Enterprise Edition while not paying for an Enterprise license. The most stringent limitation is, of course, that the Developer Edition cannot be used in production.</p>
+<p>That said, there are tons of tutorials about how to install the latest version of SQL Server Express available to date (2019). One of the many that we suggest you follow for installation is this one:</p>
+<p><a href="https://www.sqlshack.com/how-to-install-sql-server-express-edition">https://www.sqlshack.com/how-to-install-sql-server-express-edition</a></p>
+<p>Just keep these observations in mind:</p>
+<ol>
+<li><p>The <strong>Feature Selection</strong> screen suggests also installing the <strong>SQL Server Replication</strong>. If you would also like to test Machine Learning Services separately with R, Python and Full-Text available in SQL Server, we suggest selecting the following, leaving out the Replication and Java options:</p>
+<figure>
+<img src="../media/file190.png" alt="Figure 7.16 – Suggested instance features" /><figcaption aria-hidden="true">Figure 7.16 – Suggested instance features</figcaption>
+</figure>
+<p>The important thing is to keep the <strong>Shared Features</strong> selected by default so that the ODBC drivers needed to connect to the instance are also installed.</p></li>
+<li>Remember to save the password for the <code>sa</code> (system administrator) user in a safe place, because it provides access to the instance you are installing as an administrator.</li>
+<li>The tutorial will ask you to install SSMS in <em>Step 5</em>. If you haven't already installed it, do it now.</li>
+<li>In order to connect to your SQL Server Express instance with SSMS, instead of the computer name and then the instance name, you can also use <code>.\SQLExpress</code> as the <strong>Server name</strong>. That said, the tutorial suggests testing your connection using the <strong>SQL Server Authentication</strong> with the <strong>sa</strong> account credentials. Remember that you can also connect to your instance directly using the <strong>Windows authentication</strong>, as your user is automatically added to the <strong>SQL Server Administrators</strong> group. As the tutorial says, if the login window closes without any issues after clicking <strong>Connect</strong>, this means the connection works properly.</li>
+</ol>
+<p>Just stop at the <em>For the Windows authentication</em> section. The following applies:</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>It is important that the connection to the new <code>SQLExpress</code> instance works properly from SSMS. This confirms the correct installation of the instance.</p>
+</blockquote>
+<p>After the installation is complete, you can verify that the ODBC drivers have been installed by following these steps:</p>
+<ol>
+<li><p>Click the Windows <strong>Start</strong> button, and start entering the string <code>ODBC</code>. You will see something like this:</p>
+<figure>
+<img src="../media/file191.png" alt="Figure 7.17 – The Windows ODBC Data Sources configuration tools" /><figcaption aria-hidden="true">Figure 7.17 – The Windows ODBC Data Sources configuration tools</figcaption>
+</figure></li>
+<li>Click on the 32-bit app or the 64-bit app, and then click on the <strong>Drivers</strong> tab. You’ll see the <strong>ODBC Driver 17 for SQL Server</strong> installed:</li>
+</ol>
+<figure>
+<img src="../media/file192.png" alt="Figure 7.18 – The ODBC Driver 17 for SQL Server correctly installed" /><figcaption aria-hidden="true">Figure 7.18 – The ODBC Driver 17 for SQL Server correctly installed</figcaption>
+</figure>
+<p>Fantastic! Now your <code>SQLExpress</code> instance is working properly.</p>
+<p>Let's also see how to configure an Azure SQL database through the Azure portal.</p>
+</section>
+<section id="creating-an-azure-sql-database" class="level3" data-number="8.4.2">
+<h3 data-number="8.4.2">Creating an Azure SQL database</h3>
+<p>In order to create an Azure SQL database, you must be subscribed to Azure services. This gives you the ability to access the <strong>Azure portal</strong> (<a href="https://portal.azure.com/">https://portal.azure.com/</a>) to manage all of your tenant's Azure resources. Once you have accessed the portal, follow these steps:</p>
+<ol>
+<li><p>Search for <code>SQL databases</code> in the main search box and click on it:</p>
+<figure>
+<img src="../media/file193.png" alt="Figure 7.19 – Selecting SQL databases in the Azure portal" /><figcaption aria-hidden="true">Figure 7.19 – Selecting SQL databases in the Azure portal</figcaption>
+</figure></li>
+<li><p>Click on <strong>Create SQL database</strong> in the middle of the page:</p>
+<figure>
+<img src="../media/file194.png" alt="Figure 7.20 – Clicking on Create SQL database" /><figcaption aria-hidden="true">Figure 7.20 – Clicking on Create SQL database</figcaption>
+</figure></li>
+<li>You need to select a <strong>Subscription</strong> associated with your account (usually, the selected default one is ok if you have just one subscription associated) and then a <strong>Resource group</strong> to collect all the resources you want to create under a name (like a virtual folder). Select one if you have already created it, or create a new one if needed.</li>
+<li><p>You must also provide the <strong>Database name</strong> and <strong>Server</strong>. As the database name, use <code>SystemsLogging</code>. If this is your first time creating an Azure SQL database, you need to create a new server too. So, click on <strong>Create new</strong> and provide a server name, a login, the related password, and the location you prefer. After clicking <strong>OK</strong>, you’ll see something like this:</p>
+<figure>
+<img src="../media/file195.png" alt="Figure 7.21 – Entering the database name and the new server" /><figcaption aria-hidden="true">Figure 7.21 – Entering the database name and the new server</figcaption>
+</figure></li>
+<li><p>As we’re creating an Azure SQL database for testing purposes, we can choose a <strong>Standard</strong> <strong>Database Transaction Unit</strong> (<strong>DTU</strong>) workload. So, click on <strong>Configure database</strong> under <strong>Compute + storage</strong>:</p>
+<figure>
+<img src="../media/file196.png" alt="Figure 7.22 – Configuring the compute" /><figcaption aria-hidden="true">Figure 7.22 – Configuring the compute</figcaption>
+</figure>
+<p>The <strong>General Purpose</strong> option is selected by default. So, click on the <strong>Looking for basic, standard, premium?</strong> link on the top-left and then click on the <strong>Standard</strong> workload option. Then, click on the <strong>Apply</strong> button.</p></li>
+<li><p>Select also to install sample data (from the demo <strong>AdventureWorkLT</strong> database) in the <strong>Additional settings</strong> tab by clicking on <strong>Sample</strong>:</p>
+<figure>
+<img src="../media/file197.png" alt="Figure 7.2 – Choosing to install a sample database" /><figcaption aria-hidden="true">Figure 7.2 – Choosing to install a sample database</figcaption>
+</figure></li>
+<li>Click on <strong>Review + create</strong>, and then on <strong>Create</strong> to deploy your brand-new Azure SQL database.</li>
+<li><p>After the deployment is complete, click on <strong>Go to resource</strong> to access the general dashboard of the newly created resource. In the top-right corner, you will notice that the server’s name takes the following form:</p>
+<pre><code>&lt;your-server-name&gt;.database.windows.net</code></pre></li>
+<li><p>In order to access your Azure SQL database from any client, you must declare the client's IP address in the server firewall rules. To do this, click on <strong>Set server firewall</strong> at the top of the dashboard:</p>
+<figure>
+<img src="../media/file198.png" alt="Figure 7.24 – Setting rules on the Azure SQL server firewall" /><figcaption aria-hidden="true">Figure 7.24 – Setting rules on the Azure SQL server firewall</figcaption>
+</figure>
+<p>In addition to other options, you'll see textboxes to enter the <strong>Rule name</strong>, the <strong>Start IP</strong>, and the <strong>End IP</strong>. Additionally, the portal also shows you the IP address from which you are currently connected:</p>
+<figure>
+<img src="../media/file199.png" alt="Figure 7.25 – Copying your current IP address and using it in your rule" /><figcaption aria-hidden="true">Figure 7.25 – Copying your current IP address and using it in your rule</figcaption>
+</figure>
+<p>You can then enter your Client IP address as the Start and End IP if you will be connecting to the Azure SQL database from that same machine. Keep in mind that if your machine's public IP address is not static, it will assume a new IP address on its next reboot that is different from the previous one. Therefore, if you need to connect to your Azure SQL database from your machine often, make sure to create a <strong>static public IP address</strong>. If you have just created a new Azure Virtual Machine, Azure will ask you if you want to make its current public IP address static when you stop it for the first time. If you decide yes, Azure will do everything automatically. Otherwise, you can easily configure it later by following this tutorial:<a href="http://bit.ly/AzureVM-assign-static-ip">http://bit.ly/AzureVM-assign-static-ip</a>Click <strong>Save</strong> to keep your changes in the firewall settings.</p></li>
+<li><p>At this point, you can test the connection to your new Azure SQL database using SSMS. If you haven't installed it yet, do so now by downloading the installer from the link <a href="http://aka.ms/ssms">http://aka.ms/ssms</a>. Once installed, open the <strong>Microsoft SQL Server Management Studio</strong> app from the <strong>Start</strong> menu (you can find it under the <strong>Microsoft SQL Server Tools XX</strong> folder). Use the server name in the <code>&lt;your-server-name&gt;.database.windows.net</code> format, choose <strong>SQL Server Authentication</strong> as the authentication method, and then enter the login and password you used during the creation of your Azure SQL database. Then click <strong>Connect</strong>:</p>
+<figure>
+<img src="../media/file200.png" alt="Figure 7.26 – Connecting to your Azure SQL database with SSMS" /><figcaption aria-hidden="true">Figure 7.26 – Connecting to your Azure SQL database with SSMS</figcaption>
+</figure></li>
+<li>If the <strong>Connect to Server</strong> window disappears, then you are connected to your server. In fact, if you open the <strong>Databases</strong> node in the <strong>Object Explorer</strong> on the left, you can see your <code>SystemsLogging</code> database containing the <code>AdventureWorkLT</code> tables:</li>
+</ol>
+<figure>
+<img src="../media/file201.png" alt="Figure 7.27 – You are connected to your Azure SQL database" /><figcaption aria-hidden="true">Figure 7.27 – You are connected to your Azure SQL database</figcaption>
+</figure>
+<p>Awesome! Your Azure SQL database is running and ready to be used.</p>
+<p>Let’s try now to read and write data into a SQL Server or an Azure SQL database using Python.</p>
+</section>
+<section id="logging-to-an-azure-sql-server-with-python" class="level3" data-number="8.4.3">
+<h3 data-number="8.4.3">Logging to an Azure SQL server with Python</h3>
+<p>The most widely used Python module for connecting to databases to which you can connect via ODBC drivers is <strong>pyodbc</strong>. So, first you need to install this package in the <code>pbi_powerquery_env</code> environment:</p>
+<ol>
+<li>Open your Anaconda Prompt.</li>
+<li><p>Switch to the <code>pbi_powerquery_env</code> environment by entering this command:</p>
+<pre><code>conda activate pbi_powerquery_env</code></pre></li>
+<li><p>Install the new package by entering this command:</p>
+<pre><code>pip install pyodbc</code></pre></li>
+</ol>
+<p>At this point, you can start interacting with your database instances using Python.</p>
+<section id="using-the-pyodbc-module" class="level4" data-number="8.4.3.1">
+<h4 data-number="8.4.3.1">Using the pyodbc module</h4>
+<p>First, you need to <em>create a connection</em> to your database instance. You can do this with the <code>connect()</code> function, which accepts a <em>connection string</em> as an argument. Depending on whether you need to connect to an instance of a SQL server on-premises or an Azure SQL database, the connection string varies only in its server parameter.</p>
+<p>You can establish a connection to your on-premises instance using the Windows authentication with this code:</p>
+<pre><code>import pyodbc
+conn = pyodbc.connect(
+    &#39;Driver={ODBC Driver 17 for SQL Server};&#39;
+    r&#39;Server=.\SQLExpress;&#39;
+    &#39;Database=master;&#39;
+    &#39;Trusted_Connection=yes;&#39;)</code></pre>
+<p>You can also find the code snippets used here in the <code>11-read-write-on-azure-sql-server-with-python.py</code> file in the <code>Chapter07\Python</code> folder. In contrast to the other Python script you found in the repository, in this one you can find comments like <code># %%</code>. They are placeholders that VS Code recognizes as <strong>Jupyter-like code cells</strong>. When VS Code identifies a cell, it automatically adds commands to execute its contents in the Interactive Window, making it easier for the user to interact with the code.</p>
+<p>If you want to connect to the same instance using the SQL authentication instead, you can use this code:</p>
+<pre><code>import pyodbc
+conn = pyodbc.connect(
+    &#39;Driver={ODBC Driver 17 for SQL Server};&#39;
+    r&#39;Server=.\SQLExpress;&#39;
+    &#39;Database=master;&#39;
+    &#39;Uid=sa;&#39;
+    &#39;Pwd=&lt;your-password&gt;)</code></pre>
+<p>The format of the previous connection strings remains the same even when you want to connect to an Azure SQL database. You must use the format <code>&lt;your-server-name&gt;.database.windows.net</code> as the server name. The authentication mode must necessarily be the SQL authentication mode. Therefore, the code to connect to your Azure SQL database is as follows:</p>
+<pre><code>import pyodbc
+conn = pyodbc.connect(
+    &#39;Driver={ODBC Driver 17 for SQL Server};&#39;
+    &#39;Server=&lt;your-server-name&gt;.database.windows.net;&#39;
+    &#39;Database=SystemsLogging;&#39;
+    &#39;Uid=&lt;your-username&gt;;&#39;
+    &#39;Pwd=&lt;your-password&gt;&#39;)</code></pre>
+<p>Once you have established a connection to an instance of your choice, you can read data from tables or views via the pandas <code>read_sql()</code> function, which accepts a query in SQL (in our case, in <strong>T-SQL</strong> for SQL Server) as a parameter. For example, regardless of whether you are connected to your on-premises instance or on Azure, you can run the following code to read the database information available in the instance:</p>
+<pre><code>import pandas as pd
+data = pd.read_sql(&quot;SELECT database_id, name FROM sys.databases&quot;, conn)
+data.head()</code></pre>
+<p>In the case of Azure SQL, you will see this result:</p>
+<figure>
+<img src="../media/file202.png" alt="Figure 7.28 – Result of a query in Azure SQL database" /><figcaption aria-hidden="true">Figure 7.28 – Result of a query in Azure SQL database</figcaption>
+</figure>
+<p>Let's try writing something to a database instead. First, in the case of your on-premises instance, you need to create a new database to write your data to. You can do that in SSMS following these steps:</p>
+<ol>
+<li><p>Click on <strong>Connect</strong>, and then on <strong>Database Engine…</strong>:</p>
+<figure>
+<img src="../media/file203.png" alt="Figure 7.29 – Connecting to a database engine in SSMS" /><figcaption aria-hidden="true">Figure 7.29 – Connecting to a database engine in SSMS</figcaption>
+</figure></li>
+<li><p>Connect to your <code>SQLExpress</code> instance using the Windows authentication with the string <code>.\SQLExpress</code> as the server name. Then, click on <strong>Connect</strong>:</p>
+<figure>
+<img src="../media/file204.png" alt="Figure 7.30 – Connecting to your SQLExpress instance" /><figcaption aria-hidden="true">Figure 7.30 – Connecting to your SQLExpress instance</figcaption>
+</figure></li>
+<li><p>Click on <strong>New Query</strong> on the toolbar at the top:</p>
+<figure>
+<img src="../media/file205.png" alt="Figure 7.31– Opening a new query editor" /><figcaption aria-hidden="true">Figure 7.31– Opening a new query editor</figcaption>
+</figure></li>
+<li>Enter the <code>CREATE DATABASE SystemsLogging</code> script and then click on the <strong>Execute</strong> button with the green arrow (or just press <strong>F5</strong>).</li>
+<li>Open the <strong>Databases</strong> node in the <strong>Object Explorer</strong> and you can now see the brand-new <code>SystemsLogging</code> database:</li>
+</ol>
+<figure>
+<img src="../media/file206.png" alt="Figure 7.32 – The new SystemsLogging database in your SQLExpress instance" /><figcaption aria-hidden="true">Figure 7.32 – The new SystemsLogging database in your SQLExpress instance</figcaption>
+</figure>
+<p>Now you can create the new <code>WrongEmails</code> table in the <code>SystemsLogging</code> database. It is usually preferable to run <strong>Data Definition Language</strong> (<strong>DDL</strong>) commands (like <code>CREATE</code>) directly in SSMS. In this case, we'll do it through Python to show you some special commands. You will first create a <code>cursor</code> object from the <code>conn</code> connection and then call its <code>execute()</code> method, passing it a <code>CREATE TABLE</code> query:</p>
+<pre><code>conn = pyodbc.connect(
+    &#39;Driver={ODBC Driver 17 for SQL Server};&#39;
+    r&#39;Server=.\SQLExpress;&#39;
+    &#39;Database=SystemsLogging;&#39;
+    &#39;Trusted_Connection=yes;&#39;)
+cursor = conn.cursor()
+cursor.execute(&#39;&#39;&#39;
+               CREATE TABLE WrongEmails
+               (
+               UserId int,
+               Email nvarchar(200)
+               )
+               &#39;&#39;&#39;)
+conn.commit()</code></pre>
+<p>Keep in mind that an Azure SQL Server database collects its objects (tables, views, and so on) in <strong>SQL schemas</strong>. Usually, when you create a database object, you also specify the schema in the <code>CREATE</code> statement. For a table, you generally use the <code>CREATE TABLE &lt;your-schema&gt;.&lt;table-name&gt;</code> script. The <code>WrongEmails</code> table was created without specifying any schema. Therefore, it assumes the default schema, which is <code>dbo</code>.</p>
+<p>Make sure to create the same table in your Azure SQL database:</p>
+<pre><code>conn = pyodbc.connect(
+    &#39;Driver={ODBC Driver 17 for SQL Server};&#39;
+    &#39;Server=&lt;your-server-name&gt;.database.windows.net;&#39;
+    &#39;Database=SystemsLogging;&#39;
+    &#39;Uid=&lt;your-username&gt;;&#39;
+    &#39;Pwd=&lt;your-password&gt;&#39;)
+cursor = conn.cursor()
+cursor.execute(&#39;&#39;&#39;
+               CREATE TABLE WrongEmails
+               (
+               UserId int,
+               Email nvarchar(200)
+               )
+               &#39;&#39;&#39;)
+conn.commit()</code></pre>
+<p>At this point, you can <em>write pandas DataFrame content</em> in the <code>WrongEmails</code> table row by row, using the <code>cursor.execute()</code> method, passing to it an <code>INSERT INTO</code> query. We will use the Azure SQL database in the example since there is also the <code>SalesLT.Customer</code> table there (note the <code>SalesLT</code> schema) from which to read some customer data to write to the <code>WrongEmails</code> table:</p>
+<pre><code># Get data from sample Customers
+data = pd.read_sql(&#39;SELECT TOP 10 CustomerID, EmailAddress FROM SalesLT.Customer&#39;, conn)
+# Write Customers data into the WrongEmails table
+cursor = conn.cursor()
+# Write a dataframe into a SQL Server table row by row:
+for index, row in data.iterrows():
+    cursor.execute(&quot;INSERT INTO WrongEmails (UserId, Email) values(?,?)&quot;, row.CustomerID, row.EmailAddress)
+conn.commit()
+cursor.close()</code></pre>
+<p>The <code>iterrows()</code> function iterates over the DataFrame columns, and it will return a tuple with the column name and content in the form of series. Keep in mind that if you want to write to a SQL server on-premises, you only need to change the connection string, and the syntax you just saw remains valid. You can't run the code exactly as it is written in your <code>SQLExpress</code> instance simply because there is no <code>AdventureWorksLT</code> example data there, so it will give you an error.</p>
+<p>To display the first rows of the <code>WrongEmails</code> table, you can use this code:</p>
+<pre><code>df = pd.read_sql(&#39;SELECT TOP 10 UserId, Email FROM WrongEmails&#39;, conn)
+df.head()</code></pre>
+<p>You will see something like this in VS Code:</p>
+<figure>
+<img src="../media/file207.png" alt="Figure 7.33 – The content of the WrongEmails table" /><figcaption aria-hidden="true">Figure 7.33 – The content of the WrongEmails table</figcaption>
+</figure>
+<p>Now, make sure to empty the <code>WrongEmails</code> table with the following command so that it can be ready to be used later:</p>
+<pre><code>cursor = conn.cursor()
+cursor.execute(&#39;TRUNCATE TABLE WrongEmails&#39;)
+conn.commit()</code></pre>
+<p>When you have finished all read and write operations on the database instance, remember to close the connection as follows:</p>
+<pre><code>conn.close()</code></pre>
+<p>Hey! You just learned how to read and write data from a SQL Server or Azure SQL database via Python. Simple, isn't it? Let's apply what you've learned in Power BI.</p>
+</section>
+<section id="logging-emails-and-dates-to-an-azure-sql-database-in-power-bi-with-python" class="level4" data-number="8.4.3.2">
+<h4 data-number="8.4.3.2">Logging emails and dates to an Azure SQL database in Power BI with Python</h4>
+<p>In this section, we will use the same scenario provided in <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, in which you validated email addresses and ban dates. The goal is to log the rows of the dataset containing incorrect emails to an Azure SQL database and to filter them out of the dataset so that only valid emails remain in Power BI. In order to properly execute the following Python code, you need to make sure you have created both the Azure SQL <code>SystemsLogging</code> database and the <code>WrongEmails</code> table as discussed in the previous section. If you prefer, you can also use your on-premises SQL Server instance by appropriately changing the server name in the connection string. In this case, make sure that the <code>SystemsLogging</code> database and the <code>WrongEmails</code> table are there.</p>
+<p>The necessary steps are as follows:</p>
+<ol>
+<li>Follow all the steps in the <em>Using regex in Power BI to validate emails with Python</em> section of <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, to the end, but do not click on <strong>Close &amp; Apply</strong>.</li>
+<li>Then click on <strong>Run Python Script</strong>, enter the script you can find in the <code>Python\12-log-wrong-emails-azure-sql-in-power-bi.py</code> file, and click <strong>OK</strong>.</li>
+<li>Click on the <code>df</code> dataset’s <strong>Table</strong> value.</li>
+<li><p>Only rows containing valid emails will be kept:</p>
+<figure>
+<img src="../media/file208.png" alt="Figure 7.34 – A table containing only valid emails" /><figcaption aria-hidden="true">Figure 7.34 – A table containing only valid emails</figcaption>
+</figure>
+<p>Moreover, the invalid emails have been written into the <code>WrongEmails</code> table of your <code>SystemsLogging</code> Azure SQL database.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>To verify that invalid emails were indeed written to the previous table, you can do this with SSMS:</p>
+<ol>
+<li>Connect with SSMS to your Azure SQL database using the <code>&lt;your-server-name&gt;.database.windows.net</code> string as <strong>Server name</strong> and the SQL authentication.</li>
+<li><p>Open the <strong>Databases</strong> node, then open the <strong>Tables</strong> node, right-click on the <strong>dbo.WrongEmails</strong> table, and click on <strong>Select Top 1000 Rows</strong>:</p>
+<figure>
+<img src="../media/file209.png" alt="Figure 7.35 – Querying the WrongEmails table in SSMS" /><figcaption aria-hidden="true">Figure 7.35 – Querying the WrongEmails table in SSMS</figcaption>
+</figure>
+<p>You’ll see the following output:</p></li>
+</ol>
+<figure>
+<img src="../media/file210.png" alt="Figure 7.36 – The content of the WrongEmails table in SSMS" /><figcaption aria-hidden="true">Figure 7.36 – The content of the WrongEmails table in SSMS</figcaption>
+</figure>
+<p>Now, third-party systems can simply access your Azure SQL database (even simply with Excel, see the <em>References</em> section) to read invalid emails and mobilize the appropriate team to correct them.</p>
+<p>Well done! You just learned how to log information to an Azure SQL database from Power BI using Python (you can do the same writing into an on-premises SQL Server database just by changing the connection string). Now, let's see how you can do the same using R.</p>
+</section>
+</section>
+<section id="logging-to-an-azure-sql-server-with-r" class="level3" data-number="8.4.4">
+<h3 data-number="8.4.4">Logging to an Azure SQL server with R</h3>
+<p>To connect to a database via ODBC drivers in R, we will use two packages: <code>DBI</code> and <code>odbc</code>. The <code>DBI</code> package has the task of separating the connectivity to the database into a <em>frontend</em> and a <em>backend</em>. The R code you’ll write will use only the exposed frontend API. The backend will take care of communicating with the specific DBMS through special drivers provided by the installation of other packages. In our case, the <code>odbc</code> package will allow us to interface with SQL Server instances, both on-premises and on Azure. So, first you need to install these packages in your most recent MRO engine:</p>
+<ol>
+<li>Open RStudio, and make sure it is referencing your latest MRO in the <strong>Global Options</strong>.</li>
+<li><p>Enter this command into the console:</p>
+<pre><code>install.packages(c(&#39;odbc&#39;, &#39;DBI&#39;))</code></pre></li>
+</ol>
+<p>At this point, you can start interacting with your database instances using R.</p>
+<section id="using-the-dbi-and-odbc-packages" class="level4" data-number="8.4.4.1">
+<h4 data-number="8.4.4.1">Using the DBI and odbc packages</h4>
+<p>Also, in this case, you need to <em>create a connection</em> to your database instance. You can do this with the <code>dbConnect()</code> function of the DBI package, which accepts a <em>driver object</em> (in our case the <code>odbc()</code> one from the <code>odbc</code> package) and a <em>connection string</em> as arguments.</p>
+<p>You can establish a connection to your <code>SQLExpress</code> on-premises instance using the Windows authentication with this code:</p>
+</section>
+<section id="r04-read-write-on-azure-sql-server-with-r.r" class="level4" data-number="8.4.4.2">
+<h4 data-number="8.4.4.2"><code>R\04-read-write-on-azure-sql-server-with-r.R</code></h4>
+<pre><code>library(odbc)
+library(DBI)
+conn &lt;- dbConnect(
+  odbc::odbc(), server = r&#39;{.\SQLExpress}&#39;, 
+  database = &#39;SystemsLogging&#39;, trusted_connection = &#39;yes&#39;,
+  driver = &#39;{ODBC Driver 17 for SQL Server}&#39;
+)</code></pre>
+<p>If you want to connect to the same instance using the SQL authentication instead, you can use this code:</p>
+<pre><code>conn &lt;- dbConnect(
+  odbc::odbc(), server = r&#39;{.\SQLExpress}&#39;, 
+  database = &#39;SystemsLogging&#39;, uid = &#39;sa&#39;,
+  pwd = &#39;&lt;your-password&gt;&#39;,
+  driver = &#39;{ODBC Driver 17 for SQL Server}&#39;
+)</code></pre>
+<p>The format of the previous connection strings remains the same even when you want to connect to an Azure SQL database. You just need to use the <code>&lt;your-server-name&gt;.database.windows.net</code> format as the server name. In this case, the authentication mode must necessarily be the SQL authentication one. Therefore, the code to connect to your Azure SQL database is as follows:</p>
+<pre><code>conn &lt;- dbConnect(
+  odbc::odbc(), server = &#39;&lt;your-server&gt;.database.windows.net&#39;,
+  database = &#39;SystemsLogging&#39;, uid = &#39;&lt;your-username&gt;&#39;,
+  pwd = &#39;&lt;your-password&gt;&#39;,
+  driver = &#39;{ODBC Driver 17 for SQL Server}&#39;
+)</code></pre>
+<p>An interesting thing is that, as soon as the connection is established, RStudio allows you to browse the databases inside your server through the <strong>Connections</strong> tab at the top right. For example, <em>Figure 7.37</em> displays the contents of the <code>SystemLogging</code> database of the <code>SQLExpress</code> instance, going down to the detail of individual columns in a table:</p>
+<figure>
+<img src="../media/file211.png" alt="Figure 7.37 – RStudio’s object explorer of the connection established" /><figcaption aria-hidden="true">Figure 7.37 – RStudio’s object explorer of the connection established</figcaption>
+</figure>
+<p>Remember that the <code>WrongEmails</code> table was created in the previous section.</p>
+<p>Once you have established a connection to an instance of your choice, you can easily read data from tables or views via the <code>DBI</code>’s <code>dbGetQuery()</code> function, which accepts a SQL query (in our case, T-SQL for SQL Server) as a parameter. For example, in the same way as with Python, you can run the following code to read the database information available on both on-premises instances and Azure SQL servers:</p>
+<pre><code>data &lt;- DBI::dbGetQuery(conn, &quot;SELECT database_id, name FROM sys.databases&quot;)
+head(data)</code></pre>
+<p>In the case of Azure SQL, you will see this result:</p>
+<figure>
+<img src="../media/file212.png" alt="Figure 7.38 – Result of a query on Azure SQL database" /><figcaption aria-hidden="true">Figure 7.38 – Result of a query on Azure SQL database</figcaption>
+</figure>
+<p>Let's try writing something to a database instead. For example, you can <em>write a R DataFrame content</em> into the <code>WrongEmails</code> table using the <code>dbAppendTable()</code> method. It simply accepts the connection object, the name of the target table, and the DataFrame containing the source data. You just need to be careful to properly rename the source data columns using aliases in the SQL query (using the <code>AS</code> keyword) when reading from the database, so that the names match those of the target table columns. We will use an Azure SQL database in the example since there is also the <code>SalesLT.Customer</code> table from which to take the source data:</p>
+<pre><code>customers_df &lt;- dbGetQuery(conn, &quot;SELECT TOP 10 CustomerID AS UserId, EmailAddress AS Email FROM SalesLT.Customer&quot;)
+dbAppendTable(conn, name = &#39;WrongEmails&#39;, value = customers_df)</code></pre>
+<p>Keep in mind that if you need to create the target table and fill it, you can use the one-shot <code>dbCreateTable()</code> method that get the same parameters of the <code>dbAppendTable()</code> method. To display the first rows of the <code>WrongEmails</code> table, you can use this code:</p>
+<pre><code>df &lt;- dbGetQuery(conn, &quot;SELECT TOP 10 UserId, Email FROM WrongEmails&quot;)
+head(df)</code></pre>
+<p>You will see something like this in VS Code:</p>
+<figure>
+<img src="../media/file213.png" alt="Figure 7.39 – The content of the WrongEmails table" /><figcaption aria-hidden="true">Figure 7.39 – The content of the WrongEmails table</figcaption>
+</figure>
+<p>Now make sure to empty the <code>WrongEmails</code> table with the <code>TRUNCATE TABLE</code> SQL command inside the <code>dbSendQuery()</code> method (which just executes a query without retrieving any data), so that it is ready to be used:</p>
+<pre><code>dbSendQuery(conn, &quot;TRUNCATE TABLE WrongEmails&quot;) </code></pre>
+<p>When you have finished all read and write operations on the database instance, remember to close the connection, as follows:</p>
+<pre><code>dbDisconnect(conn)</code></pre>
+<p>Wow! You just learned how to read and write data from a SQL server or Azure SQL database with R! Let's apply what you've learned in Power BI.</p>
+</section>
+<section id="logging-emails-and-dates-to-an-azure-sql-database-in-power-bi-with-r" class="level4" data-number="8.4.4.3">
+<h4 data-number="8.4.4.3">Logging emails and dates to an Azure SQL database in Power BI with R</h4>
+<p>In this section, we will use the same scenario already used to show how to log data to Azure SQL from Power BI. In order to properly execute the following R code, you need to make sure you have created the Azure SQL <code>SystemsLogging</code> database and the <code>WrongEmails</code> table as discussed in the <em>Logging to an Azure SQL server with Python</em> section. If you prefer, you can also use your on-premises SQL Server instance by appropriately changing the server name in the connection string. In this case, make sure that the <code>SystemsLogging</code> database and the <code>WrongEmails</code> table are there. The necessary steps are as follows:</p>
+<ol>
+<li>Follow all the steps in the <em>Using regex in Power BI to validate emails with R</em> section of <em>Chapter 5</em>, <em>Using Regular Expressions in Power BI</em>, to the end, but do not click on <strong>Close &amp; Apply</strong>.</li>
+<li>Then, click on <strong>Run R Script</strong>, enter the script you can find in the <code>R\05-log-wrong-emails-azure-sql-in-power-bi.R</code> file, and click <strong>OK</strong>. Remember to edit the server’s name and your credentials in the code.</li>
+<li>Click on the <code>df</code> dataset’s <strong>Table</strong> value.</li>
+<li><p>Only rows containing valid emails will be kept:</p>
+<figure>
+<img src="../media/file214.png" alt="Figure 7.40 – A table containing only valid emails" /><figcaption aria-hidden="true">Figure 7.40 – A table containing only valid emails</figcaption>
+</figure>
+<p>Moreover, the invalid emails have been written into the <code>WrongEmails</code> table in your Azure SQL database.</p></li>
+<li>Go back to the <strong>Home</strong> menu, and then click <strong>Close &amp; Apply</strong>.</li>
+</ol>
+<p>As done before, you can verify that invalid emails were written to the previous table with SSMS. You’ll see the following output:</p>
+<figure>
+<img src="../media/file215.png" alt="Figure 7.41 – The content of the WrongEmails table in SSMS" /><figcaption aria-hidden="true">Figure 7.41 – The content of the WrongEmails table in SSMS</figcaption>
+</figure>
+<p>Awesome! You’ve just logged your wrong emails to your (Azure) SQL Server database using R from Power BI.</p>
+</section>
+</section>
+</section>
+<section id="summary-6" class="level2" data-number="8.5">
+<h2 data-number="8.5">Summary</h2>
+<p>In this chapter, you learned how to log some information processed in Power Query to CSV files, Excel, on-premises SQL Servers, and Azure SQL, in both Python and R, using very simple and straightforward commands.</p>
+<p>In the next chapter, you will see how to handle very large CSV files that cannot be loaded from Power BI Desktop due to the RAM size of your machine not being sufficient.</p>
+</section>
+<section id="references-3" class="level2" data-number="8.6">
+<h2 data-number="8.6">References</h2>
+<p>For additional reading, check out the following books and articles:</p>
+<ol>
+<li><em>Common Format and MIME Type for Comma-Separated Values (CSV) Files</em> (<a href="https://tools.ietf.org/html/rfc4180">https://tools.ietf.org/html/rfc4180</a>)</li>
+<li><em>Excel (.xlsx) Extensions to the Office Open XML SpreadsheetML File Format</em> (<a href="https://docs.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/">https://docs.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/</a>)</li>
+<li><em>Connect Excel to a database in Azure SQL Database</em> (<a href="https://docs.microsoft.com/en-us/azure/azure-sql/database/connect-excel">https://docs.microsoft.com/en-us/azure/azure-sql/database/connect-excel</a>)</li>
+</ol>
+</section>
+</section>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Kernels, Threads, Blocks, and Grids</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root"><span>In this chapter, we'll see how to write effective</span> <strong>CUDA kernels</strong><em>.</em> <span>In GPU programming, a</span><em> </em><strong>kernel </strong><span>(which we interchangeably use with terms such as</span> <em>CUDA kernel</em><span> or </span><em>kernel function</em><span>) is a parallel function that can be launched directly from the</span> <strong>host </strong><span>(the CPU) onto the</span> <strong>device</strong> <span>(the GPU), while a</span><strong> device function</strong> <span>is a function that can only be called from a kernel function or another device function. (Generally speaking, device functions look and act like normal serial C/C++ functions, only they are running on the GPU and are called in parallel from kernels.)</span></p>
+<p class="mce-root"><span>We'll then get an understanding of how CUDA uses the notion of</span> <strong>threads</strong><span>, </span><strong>blocks</strong><span>, and </span><strong>grids</strong><span> to abstract away some of the underlying technical details of the GPU (such as cores, warps, and streaming multiprocessors, which we'll cover later in this book), and how we can use these notions to ease the cognitive overhead in parallel programming. We'll learn about thread synchronization (both block-level and grid-level), and intra-thread communication in CUDA using both</span> <strong>global</strong> <span>and</span> <strong>shared</strong> <strong>memory</strong><span>. Finally, we'll delve into the technical details of how to implement our own parallel prefix type algorithms on the GPU (that is, the scan/reduce type functions we covered in the last chapter), which allow us to put all of the principles we'll learn in this chapter into practice.</span></p>
+<p>The learning outcomes for this chapter are as follows:</p>
+<ul>
+<li>Understanding the difference between a kernel and a device function</li>
+<li>How to compile and launch a kernel in PyCUDA and use a device function within a kernel</li>
+<li>Effectively using threads, blocks, and grids in the context of launching a kernel and how to use <kbd>threadIdx</kbd> and <kbd>blockIdx</kbd> within a kernel</li>
+<li>How and why to synchronize threads within a kernel, using both <kbd>__syncthreads()</kbd> for synchronizing all threads among a single block and the host to synchronize all threads among an entire grid of blocks</li>
+</ul>
+<ul>
+<li>How to use device global and shared memory for intra-thread communication</li>
+<li>How to use all of our newly acquired knowledge about kernels to properly implement a GPU version of the parallel prefix sum</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>A Linux or Windows 10 PC with a modern NVIDIA GPU (2016 onward) is required for this chapter, with all necessary GPU drivers and the CUDA Toolkit (9.0 onward) installed. A suitable Python 2.7 installation (such as Anaconda Python 2.7) with the PyCUDA module is also required.</p>
+<p>This chapter's code is also available on GitHub at:</p>
+<p><a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a></p>
+<div class="packt_infobox">For more information about the prerequisites, check the <em>Preface</em> of this book; for the software and hardware requirements, check the <kbd>README</kbd> section in <a href="https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA">https://github.com/PacktPublishing/Hands-On-GPU-Programming-with-Python-and-CUDA</a>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Kernels</h1>
+                </header>
+            
+            <article>
+                
+<p><span>As in the last chapter, we'll be learning how to write CUDA kernel functions as inline CUDA C in our Python code and launch them onto our GPU using PyCUDA. In the last chapter, we used templates provided by PyCUDA to write kernels that fall into particular design patterns; in contrast, we'll now see how to write our own kernels from the ground up, so that we can write a versatile variety of kernels that may not fall into any particular design pattern covered by PyCUDA, and so that we may get a more fine-tuned control over our kernels. Of course, these gains will come at the expense of greater complexity in programming; we'll especially have to get an understanding of <strong>threads</strong>, <strong>blocks</strong>, and <strong>grids</strong> and their role in kernels, as well as how to <strong>synchronize</strong> the threads in which our kernel is executing, as well as understand how to exchange data among threads.</span></p>
+<p>Let's start simple and try to re-create some of the element-wise operations we saw in the last chapter, but this time without using the <kbd>ElementwiseKernel</kbd> function; we'll now be using the <kbd>SourceModule</kbd> function. This is a very powerful function in PyCUDA that allows us to build a kernel from scratch, so as usual it's best to start simple.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The PyCUDA SourceModule function</h1>
+                </header>
+            
+            <article>
+                
+<p>We'll use the <kbd>SourceModule</kbd> function from PyCUDA to compile raw inline CUDA C code into usable kernels that we can launch from Python. We should note that <kbd>SourceModule</kbd> actually compiles code into a <strong>CUDA module</strong>, this is like a Python module or Windows DLL, only it contains a collection of compiled CUDA code. This means we'll have to "pull out" a reference to the kernel we want to use with PyCUDA's <kbd>get_function</kbd>, before we can actually launch it. Let's start with a basic example of how to use a CUDA kernel with <kbd>SourceModule</kbd>.</p>
+<p>As before, we'll start with making one of the most simple kernel functions possible—one that multiplies a vector by a scalar. We'll start with the imports:</p>
+<pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>import numpy as np<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule</pre>
+<p>Now we can immediately dive into writing our kernel:</p>
+<pre>ker = SourceModule("""<br/>__global__ void scalar_multiply_kernel(float *outvec, float scalar, float *vec)<br/>{<br/> int i = threadIdx.x;<br/> outvec[i] = scalar*vec[i];<br/>}<br/>""")</pre>
+<p>So, let's stop and contrast this with how it was done in <kbd>ElementwiseKernel</kbd>. First, when we declare a kernel function in CUDA C proper, we precede it with the <kbd>__global__</kbd> keyword. This will distinguish the function as a kernel to the compiler. We'll always just declare this as a <kbd>void</kbd> function, because we'll always get our output values by passing a pointer to some empty chunk of memory that we pass in as a parameter. We can declare the parameters as we would with any standard C function: first we have <kbd>outvec</kbd>, which will be our output scaled vector, which is of course a floating-point array pointer. Next, we have <kbd>scalar</kbd>, which is represented with a mere <kbd>float</kbd>; notice that this is not a pointer! If we wish to pass simple singleton input values to our kernel, we can always do so without using pointers. Finally, we have our input vector, <kbd>vec</kbd>, which is of course another floating-point array pointer.</p>
+<div class="packt_infobox">Singleton input parameters to a kernel function can be passed in directly from the host without using pointers or allocated device memory. </div>
+<p>Let's peer into the kernel before we continue with testing it. We recall that <kbd>ElementwiseKernel</kbd> automatically parallelized over multiple GPU threads by a value, <kbd>i</kbd>, which was set for us by PyCUDA; the identification of each individual thread is given by the <kbd>threadIdx</kbd> value, which we retrieve as follows: <kbd>int i = threadIdx.x;</kbd>.</p>
+<div class="packt_infobox"><kbd>threadIdx</kbd> is used to tell each individual thread its identity. This is usually used to determine an index for what values should be processed on the input and output data arrays. (This can also be used for assigning particular threads different tasks than others with standard C control flow statements such as <kbd>if</kbd> or <kbd>switch</kbd>.)</div>
+<p>Now, we are ready to perform our scalar multiplication in parallel as before: <kbd>outvec[i] = scalar*vec[i];</kbd>.</p>
+<p>Now, let's test this code: we first must <em>pull out</em> a reference to our compiled kernel function from the CUDA module we just compiled with <kbd>SourceModule</kbd>. We can get this kernel reference with Python's <kbd>get_function</kbd> as follows:</p>
+<pre>scalar_multiply_gpu = ker.get_function("scalar_multiply_kernel")</pre>
+<p>Now, we have to put some data on the GPU to actually test our kernel. Let's set up a floating-point array of 512 random values, and then copy these into an array in the GPU's global memory using the <kbd>gpuarray.to_gpu</kbd> function. (We're going to multiply this random vector by a scalar both on the GPU and CPU, and see if the output matches.) We'll also allocate a chunk of empty memory to the GPU's global memory using the <kbd>gpuarray.empty_like</kbd> function:</p>
+<pre>testvec = np.random.randn(512).astype(np.float32)<br/>testvec_gpu = gpuarray.to_gpu(testvec)<br/>outvec_gpu = gpuarray.empty_like(testvec_gpu)</pre>
+<p>We are now prepared to launch our kernel. We'll set the scalar value as <kbd>2</kbd>. (Again, since the scalar is a singleton, we don't have to copy this value to the GPU—we should be careful that we typecast it properly, however.) Here we'll have to specifically set the number of threads to <kbd>512</kbd> with the <kbd>block</kbd> and <kbd>grid</kbd> parameters. We are now ready to launch:</p>
+<pre>scalar_multiply_gpu( outvec_gpu, np.float32(2), testvec_gpu, block=(512,1,1), grid=(1,1,1))</pre>
+<p>We can now check whether the output matches with the expected output by using the <kbd>get</kbd> function in our <kbd>gpuarray</kbd> output object and comparing this to the correct output with NumPy's <kbd>allclose</kbd> function:</p>
+<pre>print "Does our kernel work correctly? : {}".format(np.allclose(outvec_gpu.get() , 2*testvec) )</pre>
+<p>(The code to this example is available as the <kbd>simple_scalar_multiply_kernel.py</kbd> file, under <kbd>4</kbd> in the repository.)</p>
+<p>Now we are starting to remove the training wheels of the PyCUDA kernel templates we learned in the previous chapter—we can now directly write a kernel in pure CUDA C and launch it to use a specific number of threads on our GPU. However, we'll have to learn a bit more about how CUDA structures threads into collections of abstract units known as <strong>blocks</strong> and <strong>grids</strong> before we can continue with kernels.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Threads, blocks, and grids</h1>
+                </header>
+            
+            <article>
+                
+<p>So far in this book, we have been taking the term <strong>thread</strong> for granted. Let's step back for a moment and see exactly what this means—a thread is a sequence of instructions that is executed on a single core of the GPU<span>—</span><em>cores </em>and <em>threads</em> should not be thought of as synonymous! In fact, it is possible to launch kernels that use many more threads than there are cores on the GPU. This is because, similar to how an Intel chip may only have four cores and yet be running hundreds of processes and thousands of threads within Linux or Windows, the operating system's scheduler can switch between these tasks rapidly, giving the appearance that they are running simultaneously. The GPU handles threads in a similar way, allowing for seamless computation over tens of thousands of threads.</p>
+<p>Multiple threads are executed on the GPU in abstract units known as <strong>blocks</strong>. You should recall how we got the thread ID from <kbd>threadIdx.x</kbd> in our scalar multiplication kernel; there is an <kbd>x</kbd> at the end because there is also <kbd>threadIdx.y</kbd> and <kbd>threadIdx.z</kbd>. This is because you can index blocks over three dimensions, rather than just one dimension. Why do we do this? Let's recall the example regarding the computation of the Mandelbrot set from <a href="f9c54d0e-6a18-49fc-b04c-d44a95e011a2.xhtml">Chapter 1</a>, <em>Why GPU Programming?</em> and <a href="6ab0cd69-e439-4cfb-bf1a-4247ec58c94e.xhtml">Chapter 3</a>, <em>Getting Started with PyCUDA</em>. This is calculated point-by-point over a two-dimensional plane. It may therefore make more sense for us to index the threads over two dimensions for algorithms like this. Similarly, it may make sense to use three dimensions in some cases—in a physics simulation, we may have to calculate the positions of moving particles within a 3D grid.</p>
+<p>Blocks are further executed in abstract batches known as <strong>grids</strong>, which are best thought of as <em>blocks of blocks.</em> As with threads in a block, we can index each block in the grid in up to three dimensions with the constant values that are given by <kbd>blockIdx.x</kbd> , <kbd>blockIdx.y</kbd>, and <kbd>blockIdx.z</kbd>. Let's look at an example to help us make sense of these concepts; we'll only use two dimensions here for simplicity.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Conway's game of life</h1>
+                </header>
+            
+            <article>
+                
+<p><em>The Game of Life</em> (often called <em>LIFE</em> for short) is a cellular automata simulation that was invented by the British mathematician John Conway back in 1970. This sounds complex, but it's really quite simple—LIFE is a zero-player <em>game</em> that consists of a two-dimensional binary lattice of <em>cells</em> that are either considered <em>live</em> or <em>dead</em>. The lattice is iteratively updated by the following set of rules:</p>
+<ul>
+<li>Any live cell with fewer than two live neighbors dies</li>
+<li>Any live cell with two or three neighbors lives</li>
+<li>Any live cell with more than three neighbors dies</li>
+<li>Any dead cell with exactly three neighbors comes to life</li>
+</ul>
+<p>These four simple rules give rise to a complex simulation with interesting mathematical properties that is also aesthetically quite pleasing to watch when animated. However, with a large number of cells in the lattice, it can run quite slowly, and usually results in <em>choppy</em> animation when programmed in pure serial Python. However, this is parallelizable, as it is clear that each cell in the lattice can be managed by a single CUDA thread.</p>
+<p>We'll now implement LIFE as a CUDA kernel and animate it as using the <kbd>matplotlib.animation</kbd> module. <span>This will be interesting to us right now because namely we'll be able to apply our new knowledge of blocks and grids here.</span></p>
+<p>We'll start by including the appropriate modules as follows:</p>
+<pre>import pycuda.autoinit
+import pycuda.driver as drv
+from pycuda import gpuarray
+from pycuda.compiler import SourceModule
+import numpy as np
+import matplotlib.pyplot as plt 
+import matplotlib.animation as animation</pre>
+<p>Now, let's dive into writing our kernel via <kbd>SourceModule</kbd> . We're going to start by using the C language's <kbd>#define</kbd> directive to set up some constants and macros that we'll use throughout our kernel. Let's look at the first two we'll set up, <kbd>_X</kbd> and <kbd>_Y</kbd>:</p>
+<pre>ker = SourceModule("""
+#define _X  ( threadIdx.x + blockIdx.x * blockDim.x )
+#define _Y  ( threadIdx.y + blockIdx.y * blockDim.y )</pre>
+<p>Let's first remember how <kbd>#define</kbd> works here—it will literally replace any text of <kbd>_X</kbd> or <kbd>_Y</kbd> with the defined values (in the parentheses here) at compilation time—that is, it creates macros for us. (As a matter of personal style, I usually precede all of my C macros with an underscore.)</p>
+<div class="packt_infobox"><span>In C and C++, <kbd>#define</kbd> is used for creating <strong>macros</strong>. This means that</span> <kbd>#define</kbd> <span>doesn't create any function or set up a proper constant variables—it just allows us to write things shorthand in our code by swapping text out right before compilation time.</span></div>
+<p>Now, let's talk about what <kbd>_X</kbd> and <kbd>_Y</kbd> mean specifically—these will be the Cartesian <em>x</em> and <em>y</em> values of a single CUDA thread's cell on the two-dimensional lattice we are using for LIFE. We'll launch the kernel over a two-dimensional grid consisting of two-dimensional blocks that will correspond to the entire cell lattice. We'll have to use both thread and block constants to find the Cartesian point on the lattice. Let's look at some diagrams to make the point. A thread residing in a two-dimensional CUDA block can be visualized as follows:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/b18aaa4b-b830-44f1-9371-80c57b0ab285.png" style="" width="825" height="618"/></div>
+<p>At this point, you may be wondering why we don't launch our kernel over a single block, so we can just set <kbd>_X</kbd> as <kbd>threadIdx.x</kbd> and <kbd>_Y</kbd> as <kbd>threadIdx.y</kbd> and be done with it. This is due to a limitation on block size imposed on us by CUDA—currently, only blocks consisting of at most 1,024 threads are supported. This means that we can only make our cell lattice of dimensions 32 x 32 at most, which would make for a rather boring simulation that might be better done on a CPU, so we'll have to launch multiple blocks over a grid. (The dimensions of our current block will be given by <kbd>blockDim.x</kbd> and <kbd>blockDim.y</kbd>, which will help us determine the objective <em>x</em> and <em>y</em> coordinates, as we'll see.)</p>
+<p>Similarly, as before, we can determine which block we are in within a two-dimensional grid with <kbd>blockIdx.x</kbd> and <kbd>blockIdx.y</kbd>:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/45159b32-9f17-4a39-a50f-0e4bfb47b1f2.png" style="" width="786" height="674"/></div>
+<p class="CDPAlignLeft CDPAlign">After we think of the math a little bit, it should be clear that <kbd>_X</kbd> should be defined as <kbd>(threadIdx.x + blockIdx.x * blockDim.x)</kbd> and <kbd>_Y</kbd> should be defined as <kbd>( threadIdx.y + blockIdx.y * blockDim.y )</kbd>. (The parentheses are added so as not to interfere with the order of operations when the macros are inserted in the code.) Now, let's continue defining the remaining macros:</p>
+<pre>#define _WIDTH  ( blockDim.x * gridDim.x )
+#define _HEIGHT ( blockDim.y * gridDim.y  )
+
+#define _XM(x)  ( (x + _WIDTH) % _WIDTH )
+#define _YM(y)  ( (y + _HEIGHT) % _HEIGHT )</pre>
+<p>The <kbd>_WIDTH</kbd> and <kbd>_HEIGHT</kbd> <span>macros </span>will give us the width and height of our cell lattice, respectively, which should be clear from the diagrams. Let's discuss the <kbd>_XM</kbd> and <kbd>_YM</kbd> <span>macros</span>. In our implementation of LIFE, we'll have the endpoints "wrap around" to the other side of the lattice—for example, we'll consider the <em>x</em>-value of <kbd>-1</kbd> to be <kbd>_WIDTH - 1</kbd>, and a <em>y</em>-value of <kbd>-1</kbd> to be <kbd>_HEIGHT - 1</kbd>, and we'll likewise consider an <em>x</em>-value of <kbd>_WIDTH</kbd> to be <kbd>0</kbd> and a <em>y</em>-value of <kbd>_HEIGHT</kbd> to be <kbd>0</kbd>. Why do we need this? When we calculate the number of living neighbors of a given cell, we might be at some edge and the neighbors might be external points<span>—</span>defining these macros to modulate our points will cover this for us automatically. Notice that we have to add the width or height before we use C's modulus operator<span>—</span>this is because, unlike Python, the modulus operator in C can return negative values for integers.</p>
+<p>We now have one final macro to define. We recall that PyCUDA passes two-dimensional arrays into CUDA C as one-dimensional pointers; two-dimensional arrays are passed in <strong>row-wise</strong> from Python into one dimensional C pointers. This means that we'll have to translate a given Cartesian (<em>x</em>,<em>y</em>) point for a given cell on the lattice into a one dimensional point within the pointer corresponding to the lattice. Here, we can do so as follows:</p>
+<pre>#define _INDEX(x,y)  ( _XM(x)  + _YM(y) * _WIDTH )</pre>
+<p>Since our cell lattice is stored row-wise, we have to multiply the <em>y</em>-value by the width to offset to the point corresponding to the appropriate row. We can now finally begin with our implementation of LIFE. Let's start with the most important part of LIFE<span>—</span>counting the number of living neighbors a given cell has. We'll implement this using a CUDA <strong>device function</strong>, as follows:</p>
+<pre>__device__ int nbrs(int x, int y, int * in)
+{
+     return ( in[ _INDEX(x -1, y+1) ] + in[ _INDEX(x-1, y) ] + in[ _INDEX(x-1, y-1) ] \
+                   + in[ _INDEX(x, y+1)] + in[_INDEX(x, y - 1)] \
+                   + in[ _INDEX(x+1, y+1) ] + in[ _INDEX(x+1, y) ] + in[ _INDEX(x+1, y-1) ] );
+}<br/><br/></pre>
+<p>A device function is a C function written in serial, which is called by an individual CUDA thread in kernel. That is to say, this little function will be called in parallel by multiple threads from our kernel. We'll represent our cell lattice as a collection of 32-bit integers (1 will represent a living cell and 0 will represent a dead one), so this will work for our purposes; we just have to add the values of the neighbors around our current cell.</p>
+<div class="packt_infobox">A CUDA <strong>device function</strong> is a serial C function that is called by an individual CUDA thread from within a kernel. While these functions are serial in themselves, they can be run in parallel by multiple GPU threads. Device functions cannot by themselves by launched by a host computer onto a GPU, only kernels.</div>
+<p>We are now prepared to write our kernel implementation of LIFE. Actually, we've done most of the hard work already<span>—</span>we check the number of neighbors of the current thread's cell, check whether the current cell is living or dead, and then use the appropriate switch-case statements to determine its status for the next iteration according to the rules of LIFE. We'll use two integer pointer arrays for this kernel—one will be in reference to the last iteration as input (<kbd>lattice</kbd>) and the other in reference to the iteration that we'll calculate as output (<kbd>lattice_out</kbd>):</p>
+<pre>__global__ void conway_ker(int * lattice_out, int * lattice  )
+{
+   // x, y are the appropriate values for the cell covered by this thread
+   int x = _X, y = _Y;
+   
+   // count the number of neighbors around the current cell
+   int n = nbrs(x, y, lattice);
+                   
+    
+    // if the current cell is alive, then determine if it lives or dies for the next generation.
+    if ( lattice[_INDEX(x,y)] == 1)
+       switch(n)
+       {
+          // if the cell is alive: it remains alive only if it has 2 or 3 neighbors.
+          case 2:
+          case 3: lattice_out[_INDEX(x,y)] = 1;
+                  break;
+          default: lattice_out[_INDEX(x,y)] = 0;                   
+       }
+    else if( lattice[_INDEX(x,y)] == 0 )
+         switch(n)
+         {
+            // a dead cell comes to life only if it has 3 neighbors that are alive.
+            case 3: lattice_out[_INDEX(x,y)] = 1;
+                    break;
+            default: lattice_out[_INDEX(x,y)] = 0;         
+         }
+         
+}
+""")
+
+
+conway_ker = ker.get_function("conway_ker")<br/><br/></pre>
+<p>We remember to close off the inline CUDA C segment with the triple-parentheses, and then get a reference to our CUDA C kernel with <kbd>get_function</kbd>. Since the kernel will only update the lattice once, we'll set up a short function in Python that will cover for all of the overhead of updating the lattice for the animation:</p>
+<pre>def update_gpu(frameNum, img, newLattice_gpu, lattice_gpu, N):    </pre>
+<p>The <kbd>frameNum</kbd> <span>parameter </span>is just a value that is required by Matplotlib's animation module for update functions that we can ignore, while <kbd>img</kbd> will be the representative image of our cell lattice that is required by the module that will be iteratively displayed.</p>
+<p>Let's focus on the other three remaining parameters—<kbd>newLattice_gpu</kbd> and <kbd>lattice_gpu</kbd> will be PyCUDA arrays that we'll keep persistent, as we want to avoid re-allocating chunks of memory on the GPU when we can. <kbd>lattice_gpu</kbd> will be the current generation of the cell array that will correspond to the <kbd>lattice</kbd> <span>parameter </span>in the kernel, while <kbd>newLattice_gpu</kbd> will be the next generation of the lattice. <kbd>N</kbd> will indicate the the height and width of the lattice (in other words, we'll be working with an <em>N x N</em> lattice).</p>
+<p>We launch the kernel with the appropriate parameters and set the block and grid sizes as follows:</p>
+<pre>    conway_ker(newLattice_gpu, lattice_gpu, grid=(N/32,N/32,1), block=(32,32,1) )    </pre>
+<p>We'll set the block sizes as 32 x 32 with <kbd>(32, 32, 1)</kbd>; since we are only using two dimensions for our cell lattice, we can just set the <em>z</em>-dimension as one. Remember that blocks are limited to 1,024 threads—<em>32 x 32 = 1024</em>, so this will work. (Keep in mind that there is nothing special here about 32 x 32; we could use values such as 16 x 64 or 10 x 10 if we wanted to, as long as the total number of threads does not exceed 1,024.)</p>
+<div class="packt_infobox">The number of threads in a CUDA block is limited to a maximum of 1,024.</div>
+<p>We now look at grid value—here, since we are working with dimensions of 32, it should be clear that <em>N</em> (in this case) should be divisible by 32. <span>That means that in this case, we are limited to lattices such as 64 x 64, 96 x 96, 128 x 128, and 1024 x 1024. Again, if we want to use lattices of a different size, then we'll have to alter the dimensions of the blocks. </span>(If this doesn't make sense, then please look at the previous diagrams and review how we defined the width and height macros in our kernel.)</p>
+<p>We can now set up the image data for our animation after grabbing the latest generated lattice from the GPU's memory with the <kbd>get()</kbd> function. We finally copy the new lattice data into the current data using the PyCUDA slice operator, <kbd>[:]</kbd>, which will copy over the previously allocated memory on the GPU so that we don't have to re-allocate:</p>
+<pre>    img.set_data(newLattice_gpu.get() )    
+    lattice_gpu[:] = newLattice_gpu[:]
+    
+    return img</pre>
+<p>Let's set up a lattice of size 256 x 256. We now will set up an initial state for our lattice using the choice function from the <kbd>numpy.random</kbd> module. We'll populate a <em>N</em> x <em>N</em> graph of integers randomly with ones and zeros; generally, if around 25% of the points are ones and the rest zeros, we can generate some interesting lattice animations, so we'll go with that:</p>
+<pre>if __name__ == '__main__':
+    # set lattice size
+    N = 256
+    
+    lattice = np.int32( np.random.choice([1,0], N*N, p=[0.25, 0.75]).reshape(N, N) )
+    lattice_gpu = gpuarray.to_gpu(lattice)</pre>
+<p>Finally, we can set up the lattices on the GPU with the appropriate <kbd>gpuarray</kbd> functions and set up the Matplotlib animation accordingly, as follows:</p>
+<pre>lattice_gpu = gpuarray.to_gpu(lattice)<br/>    lattice_gpu = gpuarray.to_gpu(lattice)<br/>    newLattice_gpu = gpuarray.empty_like(lattice_gpu) <br/><br/>    fig, ax = plt.subplots()<br/>    img = ax.imshow(lattice_gpu.get(), interpolation='nearest')<br/>    ani = animation.FuncAnimation(fig, update_gpu, fargs=(img, newLattice_gpu, lattice_gpu, N, ) , interval=0, frames=1000, save_count=1000) <br/>     <br/>    plt.show()</pre>
+<p>We can now run our program and enjoy the show <span>(the code is also available as the <kbd>conway_gpu.py</kbd> file </span><span>under the <kbd>4</kbd> directory in the GitHub repository)</span>:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/bb012845-31d4-4511-a697-9eef0e2772b2.png" style="" width="1461" height="1436"/></div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Thread synchronization and intercommunication</h1>
+                </header>
+            
+            <article>
+                
+<p>We'll now discuss two important concepts in GPU programming<span>—</span><strong>thread synchronization</strong> and <strong>thread intercommunication</strong>. Sometimes, we need to ensure that every single thread has reached the same exact line in the code before we continue with any further computation; we call this thread synchronization. Synchronization works hand-in-hand with thread intercommunication, that is, different threads passing and reading input from each other; in this case, we'll usually want to make sure that all of the threads are aligned at the same step in computation before any data is passed around. We'll start here by learning about the CUDA <kbd>__syncthreads</kbd> device function, which is used for synchronizing a single block in a kernel.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using the __syncthreads() device function</h1>
+                </header>
+            
+            <article>
+                
+<p>In our prior example of Conway's <em>Game of Life</em>, our kernel only updated the lattice once for every time it was launched by the host. There are no issues with synchronizing all of the threads among the launched kernel in this case, since we only had to work with the lattice's previous iteration that was readily available. </p>
+<p>Now let's suppose that we want to do something slightly different<span>—</span>we want to re-write our kernel so that it performs a certain number of iterations on a given cell lattice without being re-launched over and over by the host. This may initially seem trivial<span>—</span>a naive solution would be to just put an integer parameter to indicate the number of iterations and a <kbd>for</kbd> loop in the inline <kbd>conway_ker</kbd> kernel, make some additional trivial changes, and be done with it. </p>
+<p>However, this raises the issue of <strong>race conditions</strong>; this is the issue of multiple threads reading and writing to the same memory address and the problems that may arise from that. Our old <kbd>conway_ker</kbd> kernel avoids this issue by using two arrays of memory, one that is strictly read from, and one that is strictly written to for each iteration. Furthermore, since the kernel only performs a single iteration, we are effectively using the host for the synchronization of the threads.</p>
+<p>We want to do multiple iterations of LIFE on the GPU that are fully synchronized; we also will want to use a single array of memory for the lattice. We can avoid race conditions by using a CUDA device function called <kbd>__syncthreads()</kbd>. This function is a <strong>block level synchronization barrier</strong>—this means that every thread that is executing within a block will stop when it reaches a <kbd>__syncthreads()</kbd> instance and wait until each and every other thread within the same block reaches that same invocation of <kbd>__syncthreads()</kbd> before the the threads continue to execute the subsequent lines of code.</p>
+<div class="packt_infobox"><kbd> __syncthreads()</kbd> can only synchronize threads within a single CUDA block, not all threads within a CUDA grid! </div>
+<p>Let's now create our new kernel; this will be a modification of the prior LIFE kernel that will perform a certain number of iterations and then stop. This means we'll not represent this as an animation, just as a static image, so we'll load the appropriate Python modules in the beginning. (This code is also available in the <kbd>conway_gpu_syncthreads.py</kbd> file, in the GitHub repository):</p>
+<pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>import numpy as np<br/>import matplotlib.pyplot as plt </pre>
+<p>Now, let's again set up our kernel that will compute LIFE:</p>
+<pre>ker = SourceModule("""</pre>
+<p>Of course, our CUDA C code will go here, which will be largely the same as before. We'll have to only make some changes to our kernel. Of course, we can preserve the device function, <kbd>nbrs</kbd>. In our declaration, we'll use only one array to represent the cell lattice. We can do this since we'll be using proper thread synchronization. We'll also have to indicate the number of iterations with an integer. We set the parameters as follows:</p>
+<pre><span>__global__ void conway_ker(int * lattice, int iters)<br/></span>{</pre>
+<p>We'll continue similarly as before, only iterating with a <kbd>for</kbd> loop:</p>
+<pre> int x = _X, y = _Y; <br/> for (int i = 0; i &lt; iters; i++)<br/> {<br/>     int n = nbrs(x, y, lattice); <br/>     int cell_value;</pre>
+<p>Let's recall that previously, we directly set the new cell lattice value directly within the array. Here, we'll hold the value in the <kbd>cell_value</kbd> <span>variable </span>until all of the threads in the block are synchronized. We proceed similarly as before, blocking execution with <kbd>__syncthreads</kbd> until all of the new cell values are determined for the current iteration, and only then setting the values within the lattice array:</p>
+<pre> if ( lattice[_INDEX(x,y)] == 1)<br/> switch(n)<br/> {<br/> // if the cell is alive: it remains alive only if it has 2 or 3 neighbors.<br/> case 2:<br/> case 3: cell_value = 1;<br/> break;<br/> default: cell_value = 0; <br/> }<br/> else if( lattice[_INDEX(x,y)] == 0 )<br/> switch(n)<br/> {<br/> // a dead cell comes to life only if it has 3 neighbors that are alive.<br/> case 3: cell_value = 1;<br/> break;<br/> default: cell_value = 0; <br/> } <br/> __syncthreads();<br/> lattice[_INDEX(x,y)] = cell_value; <br/> __syncthreads();<br/> } <br/>}<br/>""")</pre>
+<p>We'll now launch the kernel as before and display the output, iterating over the lattice 1,000,000 times. Note that we are using only a single block in our grid, which is of a size of 32 x 32, due to the limit of 1,024 threads per block. (Again, it should be emphasized that <kbd>__syncthreads</kbd> only works over all threads in a block, rather than over all threads in a grid, which is why we are limiting ourselves to a single block here):</p>
+<pre>conway_ker = ker.get_function("conway_ker")<br/>if __name__ == '__main__':<br/> # set lattice size<br/> N = 32<br/> lattice = np.int32( np.random.choice([1,0], N*N, p=[0.25, 0.75]).reshape(N, N) )<br/> lattice_gpu = gpuarray.to_gpu(lattice)<br/> conway_ker(lattice_gpu, np.int32(1000000), grid=(1,1,1), block=(32,32,1))<br/> fig = plt.figure(1)<br/> plt.imshow(lattice_gpu.get())</pre>
+<p>When we run the program, we'll get the desired output as follows (this is what a random LIFE lattice will converge to after one million iterations!):</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/38be0537-84a4-447c-a25b-0f60c15726b1.png" style="" width="1408" height="1411"/></div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Using shared memory</h1>
+                </header>
+            
+            <article>
+                
+<p>We can see from the prior example that the threads in the kernel can intercommunicate using arrays within the GPU's global memory; while it is possible to use global memory for most operations, we can speed things up by using <strong>shared memory</strong>. This is a type of memory meant specifically for intercommunication of threads within a single CUDA block; the advantage of using this over global memory is that it is much faster for pure inter-thread communication. In contrast to global memory, though, memory stored in shared memory cannot directly be accessed by the host<span>—</span>shared memory must be copied back into global memory by the kernel itself first.</p>
+<p>Let's first step back for a moment before we continue and think about what we mean. Let's look at some of the variables that are declared in our iterative LIFE kernel that we just saw. Let's first look at <kbd>x</kbd> and <kbd>y</kbd>, two integers that hold the Cartesian coordinates of a particular thread's cell. Remember that we are setting their values with the <kbd>_X</kbd> and <kbd>_Y</kbd> <span>macros</span>. <span>(Compiler optimizations notwithstanding, we want to store these values in variables to reduce computation because directly using <kbd>_X</kbd></span> <span>and</span><span> </span><kbd>_Y</kbd><span> will recompute the <kbd>x</kbd> and <kbd>y</kbd> values every time these macros are referenced in our code</span><span>):</span></p>
+<pre> int x = _X, y = _Y; </pre>
+<p>We note that, for every single thread, there will be a unique Cartesian point in the lattice that will correspond to <kbd>x</kbd> and <kbd>y</kbd>. <span>Similarly, we use a variable, <kbd>n</kbd>, which is declared with </span><kbd>int n = nbrs(x, y, lattice);</kbd><span>, to indicate the number of living neighbors around a particular cell. <span>This is because, when we normally declare variables in CUDA, they are by default local to each individual thread. Note that, even if we declare an array within a thread such as <kbd>int a[10];</kbd></span></span>, <span><span>there will be an array of size 10 that is local to each thread.</span></span></p>
+<div class="packt_tip">Local thread arrays (for example, a declaration of <kbd>int a[10];</kbd> within the kernel) and pointers to global GPU memory (for example, a value passed as a kernel parameter of the form <kbd>int * b</kbd>) may look and act similarly, but are very different. For every thread in the kernel, there will be a separate <kbd>a</kbd> array that the other threads cannot read, yet there is a single <kbd>b</kbd> that will hold the same values and be equally accessible for all of the threads.</div>
+<p>We are prepared to use shared memory. This allows us to declare variables and arrays that are shared among the threads within a single CUDA block. This memory is much faster than using global memory pointers (as we have been using till now), as well as reduces the overhead of allocating memory in the case of pointers.</p>
+<p>Let's say we want a shared integer array of size 10. We declare it as follows<span>—</span><kbd>__shared__ int a[10] </kbd>. Note that we don't have to limit ourselves to arrays; we can make shared singleton variables as follows: <kbd>__shared__ int x</kbd>.</p>
+<p>Let's rewrite a few lines of iterative version of LIFE that we saw in the last sub-section to make use of shared memory. First, let's just rename the input pointer to <kbd>p_lattice</kbd>, so we can instead use this variable name on our shared array, and lazily preserve all of the references to " lattice" in our code. Since we'll be sticking with a 32 x 32 cell lattice here, we set up the new shared <kbd>lattice</kbd> array as follows:</p>
+<pre>__global__ void conway_ker_shared(int * p_lattice, int iters)<br/>{<br/> int x = _X, y = _Y;<br/> __shared__ int lattice[32*32];</pre>
+<p>We'll now have to copy all values from the global memory <kbd>p_lattice</kbd> <span>array </span>into <kbd>lattice</kbd>. We'll index our shared array exactly in the same way, so we can just use our old <kbd>_INDEX</kbd> macro here. Note that we make sure to put <kbd>__syncthreads()</kbd> after we copy, to ensure that all of the memory accesses to lattice are entirely completed before we proceed with the LIFE algorithm:</p>
+<pre> lattice[_INDEX(x,y)] = p_lattice[_INDEX(x,y)];<br/> __syncthreads();</pre>
+<p>The rest of the kernel is exactly as before, only we have to copy from the shared lattice back into the GPU array. We do so as follows and then close off the inline code:</p>
+<pre> __syncthreads();<br/> p_lattice[_INDEX(x,y)] = lattice[_INDEX(x,y)];<br/> __syncthreads();<br/>} """)</pre>
+<p>We can now run this as before, with the same exact test code. (This example can be seen in <kbd>conway_gpu_syncthreads_shared.py</kbd> in the GitHub repository.)</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The parallel prefix algorithm</h1>
+                </header>
+            
+            <article>
+                
+<p>We'll now be using our new knowledge of CUDA kernels to implement the <strong>parallel prefix algorithm</strong>, also known as the <strong>scan design pattern</strong>. We have already seen simple examples of this in the form of PyCUDA's <kbd>InclusiveScanKernel</kbd> and <kbd>ReductionKernel</kbd> functions in the previous chapter. We'll now look into this idea in a little more detail.</p>
+<p>The central motivation of this design pattern is that we have a binary operator <img class="fm-editor-equation" src="assets/9388a619-6713-4ea7-93d8-a85fc2fd8094.png" style="width:0.75em;height:0.83em;" width="140" height="150"/> , that is to say a function that acts on two input values and gives one output value (such as<span>—</span>+, <img class="fm-editor-equation" src="assets/362dcb88-5323-4213-8ea4-03a9785d4984.png" style="width:0.92em;height:0.75em;" width="140" height="110"/>, <img class="fm-editor-equation" src="assets/2abe6459-7144-4bdf-9569-b0a70726e422.png" style="width:0.58em;height:0.75em;" width="120" height="150"/> (maximum), <img class="fm-editor-equation" src="assets/380e1f66-b930-42d9-b7d0-a565b74b858f.png" style="width:0.67em;height:0.83em;" width="120" height="150"/> (minimum)), and collection of elements, <img class="fm-editor-equation" src="assets/d10897a0-55d1-4a8f-9862-fd43a6f729ea.png" style="width:8.50em;height:0.83em;" width="1520" height="150"/>, and from these we wish to compute <img class="fm-editor-equation" src="assets/d1dace09-f460-4cee-abb6-81691be4dcf6.png" style="width:9.58em;height:0.83em;" width="2070" height="180"/> efficiently. Furthermore, we make the assumption that our binary operator <img class="fm-editor-equation" src="assets/2c1163a9-8a0f-480d-be93-f5cbaa606034.png" style="width:0.75em;height:0.83em;" width="140" height="150"/> is <strong>associative</strong><span>—</span>this means that, for any three elements, <em>x</em>, <em>y</em>, and <em>z</em>, we always have:<img class="fm-editor-equation" src="assets/7f9f94dd-6751-4a0e-abcc-32333a71812d.png" style="width:10.67em;height:1.17em;" width="2020" height="220"/> .</p>
+<p><span>We wish to retain the partial results, that is the <em>n - 1</em> sub-computations—<img class="fm-editor-equation" src="assets/cadd1c5c-4dfa-45f8-bca5-e3e810c6187b.png" style="width:16.83em;height:0.83em;" width="3640" height="180"/>. The aim of the parallel prefix algorithm is to produce this collection of <em>n</em> sums efficiently. It normally takes <em>O(n)</em> time to produce these <em>n</em> sums in a serial operation, and we wish to reduce the time complexity.</span></p>
+<div class="packt_infobox"><span>When the terms "parallel prefix" or "scan" are used, it usually means an algorithm that produces all of these <em>n</em> results, while "reduce"/"reduction" usually means an algorithm that only yields the single final result, <img class="fm-editor-equation" src="assets/864d06dd-ccd8-48c3-8a0a-fd437cd6436e.png" style="width:9.17em;height:1.00em;" width="1650" height="180"/>. (This is the case with PyCUDA.)</span></div>
+<p><span>There are actually several variations of the parallel prefix algorithm, and we'll first start with the simplest (and oldest) version first, which is called the naive parallel prefix algorithm.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">The naive parallel prefix algorithm</h1>
+                </header>
+            
+            <article>
+                
+<p>The <strong>naive parallel prefix algorithm</strong> is the original version of this algorithm; this algorithm is "naive" because it makes an assumption that given <em>n</em> input elements, <img class="fm-editor-equation" src="assets/2a2cf114-8fcf-41ec-83de-66803d5c7345.png" style="width:5.42em;height:0.83em;" width="980" height="150"/>, with the further assumption that <em>n</em> is <em>dyadic</em> (that is, <img class="fm-editor-equation" src="assets/f23d2bc1-c7c4-44fc-a947-ac7571697516.png" style="width:2.92em;height:1.08em;" width="540" height="200"/> for some positive integer, <em>k</em>), and we can run the algorithm in parallel over <em>n</em> processors (or <em>n</em> threads). Obviously, this will impose strong limits on the cardinality <em>n</em> of sets that we may process. However, given these conditions are satisfied, we have a nice result in that its computational time complexity is only <em>O(log n)</em>. We can see this from the pseudocode of the algorithm. Here, we'll indicate the input values with <img class="fm-editor-equation" src="assets/79ff2d6e-25d9-478d-8a3c-5fe79faa77cf.png" style="width:5.42em;height:0.83em;" width="980" height="150"/> and the output values as <img class="fm-editor-equation" src="assets/be8218cd-e2fd-4453-87fd-50f3cf71308c.png" style="width:5.33em;height:0.83em;" width="950" height="150"/>:</p>
+<pre>input: x<sub>0</sub>, ..., x<sub>n-1<br/></sub>initialize:<br/>for k=0 to n-1:<br/>    y<sub>k</sub> := x<sub>k<br/></sub>begin:<br/>parfor i=0 to n-1 :<br/>    for j=0 to log<sub>2</sub>(n):<br/>        if i &gt;= 2<sup>j</sup> :<br/>            y<sub>i</sub> := y<sub>i</sub> <img class="fm-editor-equation" src="assets/8e57ab05-677f-45e1-9527-489ad7f35c09.png" style="width:1.17em;height:1.25em;" width="140" height="150"/> y<sub>i - 2<sup>j<br/>            </sup></sub>else:<br/>            continue<br/>        end if<br/>    end for<br/>end parfor<br/>end<br/>output: y<sub>0</sub>, ..., y<sub>n-1</sub></pre>
+<p>Now, we can clearly see that this will take <em>O(log n)</em> asymptotic time, as the outer loop is parallelized over the <kbd>parfor</kbd> and the inner loop takes <em>log<sub>2</sub>(n)</em>. It should be easy to see after a few minutes of thought that the <em>y<sub>i</sub></em> values will yield our desired output.</p>
+<p>Now let's begin our implementation; here, our binary operator will simply be addition. Since this example is illustrative, this kernel will be strictly over 1,024 threads.</p>
+<p>Let's just set up the header and dive right into writing our kernel:</p>
+<pre>import pycuda.autoinit<br/>import pycuda.driver as drv<br/>import numpy as np<br/>from pycuda import gpuarray<br/>from pycuda.compiler import SourceModule<br/>from time import time<br/><br/>naive_ker = SourceModule("""<br/>__global__ void naive_prefix(double *vec, double *out)<br/>{<br/>     __shared__ double sum_buf[1024]; <br/>     int tid = threadIdx.x; <br/>     sum_buf[tid] = vec[tid];<br/><br/><br/></pre>
+<p>So, let's look at what we have: we represent our input elements as a GPU array of doubles, that is <kbd>double *vec</kbd>, and represent the output values with <kbd>double *out</kbd>. We declare a shared memory <kbd>sum_buf</kbd> <span>array </span>that we'll use for the calculation of our output. Now, let's look at the implementation of the algorithm itself:</p>
+<pre> int iter = 1;<br/> for (int i=0; i &lt; 10; i++)<br/> {<br/>     __syncthreads();<br/>     if (tid &gt;= iter )<br/>     {<br/>         sum_buf[tid] = sum_buf[tid] + sum_buf[tid - iter]; <br/>     } <br/>     iter *= 2;<br/> }<br/> __syncthreads();</pre>
+<p>Of course, there is no <kbd>parfor,</kbd> which is implicit over the <kbd>tid</kbd> <span>variable, </span>which indicates the thread number. We are also able to omit the use of <em>log<sub>2</sub></em> and <em>2<sup>i</sup></em> by starting with a variable that is initialized to 1, and then iteratively multiplying by 2 every iteration of i. (Note that if we want to be even more technical, we can do this with the bitwise shift operators .) We bound the iterations of <kbd>i</kbd> by 10, since <em>2<sup>10</sup> = 1024</em>. Now we'll close off our new kernel as follows:</p>
+<pre> __syncthreads();<br/> out[tid] = sum_buf[tid];<br/> __syncthreads();<br/> <br/>}<br/>""")<br/>naive_gpu = naive_ker.get_function("naive_prefix")<br/> </pre>
+<p>Let's now look at the test code following the kernel:</p>
+<pre>if __name__ == '__main__':<br/> testvec = np.random.randn(1024).astype(np.float64)<br/> testvec_gpu = gpuarray.to_gpu(testvec)<br/> <br/> outvec_gpu = gpuarray.empty_like(testvec_gpu)<br/> naive_gpu( testvec_gpu , outvec_gpu, block=(1024,1,1), grid=(1,1,1))<br/> <br/> total_sum = sum( testvec)<br/> total_sum_gpu = outvec_gpu[-1].get()<br/> <br/> print "Does our kernel work correctly? : {}".format(np.allclose(total_sum_gpu , total_sum) )</pre>
+<p>We're only going to concern ourselves with the final sum in the output, which we retrieve with <kbd>outvec_gpu[-1].get()</kbd>, recalling that the "-1" index gives the last member of an array in Python. This will be the sum of every element in <kbd>vec</kbd>; the partial sums are in the prior values of <kbd>outvec_gpu</kbd>. (This example can be seen in the <kbd>naive_prefix.py</kbd> <span>file </span>in the GitHub repository.)</p>
+<div class="packt_infobox">By its nature, the parallel prefix algorithm has to run over <em>n</em> threads, corresponding to a size-n array, where <em>n</em> is dyadic (again, this means that <em>n</em> is some power of 2). However, we can extend this algorithm to an arbitrary non-dyadic size assuming that our operator has a <strong>identity element</strong> (or equivalently, <strong>neutral element</strong>)<span>—</span>that is to say, that there is some value <em>e</em> so that for any <em>x</em> value, we have<span>—</span><img class="fm-editor-equation" src="assets/9a41546d-6056-4ca9-bfdd-0e9ec13ae195.png" style="width:8.00em;height:0.83em;" width="1440" height="150"/>.  In the case that our operator is + , the identity element is 0; in the case that it is <img class="fm-editor-equation" src="assets/04590efc-4d27-477f-a7bb-96da2f050011.png" style="width:0.75em;height:0.67em;" width="140" height="110"/>, it is 1; all we do then is just pad the elements <img class="fm-editor-equation" src="assets/f1e4ffaf-26a6-4f45-b9f4-20340837e38c.png" style="width:5.42em;height:0.83em;" width="980" height="150"/> with a series of <em>e</em> values so that we have the a dyadic cardinality of the new set <img class="fm-editor-equation" src="assets/8c22f00e-f896-44d2-99f2-7d5ecc3b35eb.png" style="width:11.67em;height:0.92em;" width="2310" height="180"/>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Inclusive versus exclusive prefix</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's stop for a moment and make a very subtle, but very important distinction. So far, we have been concerned with taking inputs of the form <img class="fm-editor-equation" src="assets/cb300a9a-6dff-4df9-b962-91cb62ccd143.png" style="width:5.42em;height:0.83em;" width="980" height="150"/> , and as output producing an array of sums of the form <img class="fm-editor-equation" src="assets/244e529c-37f3-46ba-a492-b34765482abb.png" style="width:12.92em;height:0.92em;" width="2530" height="180"/>. Prefix algorithms that produce output as such are called <strong>inclusive</strong>; in the case of an <strong>inclusive prefix algorithm</strong>, the corresponding element at each index is included in the summation in the same index of the output array. This is in contrast to prefix algorithms that are <strong>exclusive</strong>. An <strong>exclusive prefix algorithm</strong> differs in that it similarly takes <em>n</em> input values of the form <img class="fm-editor-equation" src="assets/1bba2db0-de4c-42d3-a676-d482b67584c2.png" style="width:5.42em;height:0.83em;" width="980" height="150"/> and produces the length-<em>n</em> output array <img class="fm-editor-equation" src="assets/c789f125-403d-4264-b4f4-a57d73c11977.png" style="width:13.75em;height:0.92em;" width="2700" height="180"/>. </p>
+<p>This is important because some efficient variations of the prefix algorithm are exclusive by their nature. We'll see an example of one in the next sub-section.</p>
+<div class="packt_infobox">Note that the exclusive algorithm yields nearly the same output as the inclusive algorithm, only it is right-shifted and omits the final value. We can therefore trivially obtain the equivalent output from either algorithm, provided we keep a copy of <img class="fm-editor-equation" src="assets/179c86ba-3a68-4b15-98bf-24d9e930e963.png" style="width:4.92em;height:0.75em;" width="980" height="150"/>.</div>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">A work-efficient parallel prefix algorithm</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we continue with our new algorithm, we'll look at the naive algorithm from two perspectives. In an ideal case, the computational time complexity is <em>O(log n)</em>, but this is only when we have a sufficient number of processors for our data set; when the cardinality (number of elements) of our dataset, <em>n</em>, is much larger than the number of processors, we have that this becomes an <em>O(n log n)</em> time algorithm.</p>
+<p>Let's define a new concept with relation to our binary operator <img class="fm-editor-equation" src="assets/b89f2449-e123-451e-a958-6a782b932821.png" style="width:0.83em;height:0.92em;" width="140" height="150"/>—the <strong>work</strong> performed by a parallel algorithm here is the number of invocations of this operator across all threads for the duration of the execution. Similarly, the <strong>span</strong> is the number of invocations a thread makes in the duration of execution of the kernel; while the <strong>span</strong> of the whole algorithm is the same as the longest span among each individual thread, which will tell us the total execution time.</p>
+<p>We seek to specifically reduce the amount of work performed by the algorithm across all threads, rather than focus merely span. In the case of the naive prefix, the additional work that is required costs a more time when the number of available processors falls short; this extra work will just spill over into the limited number of processors available.</p>
+<p>We'll present a new algorithm that is <strong>work efficient</strong>, and hence more suitable for a limited number of processors. This consists of two separate two distinct parts<span>—</span>the <strong>up-sweep (or reduce) phase</strong> and the <strong>down-sweep phase</strong>. We should also note the algorithm we'll see is an exclusive prefix algorithm.</p>
+<p>The <strong>up-sweep phase</strong> is similar to a single reduce operation to produce the value that is given by the reduce algorithm, that is <img class="fm-editor-equation" src="assets/f380e618-5246-4853-b1eb-976537a28ab6.png" style="width:5.67em;height:0.83em;" width="1230" height="180"/> ; in this case we retain the partial sums (<img class="fm-editor-equation" src="assets/b739e65c-64e0-4a07-ae84-740401252763.png" style="width:11.25em;height:0.83em;" width="2290" height="170"/>) that are required the achieve the end result. The down-sweep phase will then operate on these partial sums and give us the final result. Let's look at some pseudocode, starting with the up-sweep phase. (The next subsection will then dive into the implementation from the pseudocode immediately.)</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Work-efficient parallel prefix (up-sweep phase)</h1>
+                </header>
+            
+            <article>
+                
+<p>This is the pseudocode for the up-sweep. (Notice the <kbd>parfor</kbd> over the <kbd>j</kbd> variable, which means that this block of code can be parallelized over threads indexed by <kbd>j</kbd>):</p>
+<pre>input: x<sub>0</sub>, ..., x<sub>n-1</sub><sub><br/></sub>initialize:<br/>    for i = 0 to n - 1:<br/>        y<sub>i</sub> := x<sub>i</sub><br/>begin:<br/>for k=0 to log<sub>2</sub>(n) - 1:<br/>    parfor j=0 to n - 1: <br/>        if j is divisible by 2<sup>k+1</sup>:<br/>            y<sub>j+2<sup>k+1</sup>-1</sub> = y<sub>j+2<sup>k</sup>-1</sub> <img class="fm-editor-equation" src="assets/11f52afc-bbf0-448f-8f91-b8ece00862a8.png" style="width:1.17em;height:1.25em;" width="140" height="150"/> y<sub>j +2<sup>k+1 </sup>-1<sup><br/>            </sup></sub>else:<br/>            continue<br/>end<br/>output: y<sub>0</sub>, ..., y<sub>n-1</sub><br/> </pre>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Work-efficient parallel prefix (down-sweep phase)</h1>
+                </header>
+            
+            <article>
+                
+<p>Now let's continue with the down-sweep, which will operate on the output of the up-sweep:</p>
+<pre>input: x<sub>0</sub>, ..., x<sub>n-1<br/></sub>initialize:<br/>    for i = 0 to n - 2:<br/>        y<sub>i </sub>:= x<sub>i</sub><br/>    y<sub>n-1</sub> := 0<br/>begin:<br/>for k = log<sub>2</sub>(n) - 1 to 0:<br/>    parfor j = 0 to n - 1: <br/>        if j is divisible by 2<sup>k+1</sup>:<br/>            temp := y<sub>j+2<sup>k</sup>-1</sub><br/>            y<sub>j+2<sup>k</sup>-1</sub> := y<sub>j+2<sup>k+1</sup>-1</sub><br/>            y<sub>j+2<sup>k+1</sup>-1</sub> := y<sub>j+2<sup>k+1</sup>-1</sub> <img class="fm-editor-equation" src="assets/6475ceed-da68-4199-a588-f22a1b7a664d.png" style="width:1.17em;height:1.25em;" width="140" height="150"/> temp<br/>        else:<br/>            continue<br/>end<br/>output: y<sub>0</sub> , y<sub>1</sub> , ..., y<sub>n-1</sub></pre>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Work-efficient parallel prefix — implementation </h1>
+                </header>
+            
+            <article>
+                
+<p>As a capstone for this chapter, we'll write an implementation of this algorithm that can operate on arrays of arbitrarily large size over 1,024. This will mean that this will operate over grids as well as blocks; that being such, we'll have to use the host for synchronization; furthermore, this will require that we implement two separate kernels for up-sweep and down-sweep phases that will act as the <kbd>parfor</kbd> loops in both phases, as well as Python functions that will act as the outer <kbd>for</kbd> loop for the up- and down-sweeps.</p>
+<p>Let's begin with an up-sweep kernel. Since we'll be iteratively re-launching this kernel from the host, we'll also need a parameter that indicates current iteration (<kbd>k</kbd>). We'll use two arrays for the computation to avoid race conditions<span>—</span><kbd>x</kbd> (for the current iteration) and <kbd>x_old</kbd> (for the prior iteration). We declare the kernel as follows:</p>
+<pre>up_ker = SourceModule("""<br/>__global__ void up_ker(double *x, double *x_old, int k)<br/>{</pre>
+<p>Now let's set the <kbd>tid</kbd> variable, which will be the current thread's identification among <em>all</em> threads in <em>all</em> <em>blocks</em> in the grid. We use the same trick as in our original grid-level implementation of Conway's <em>Game of Life</em> that we saw earlier:</p>
+<pre>int tid =  blockIdx.x*blockDim.x + threadIdx.x;</pre>
+<p>We'll now use C bit-wise shift operators to generate 2<sup>k</sup> and 2<sup>k+1 </sup>directly from <kbd>k</kbd>. We now set <kbd>j</kbd> to be <kbd>tid</kbd> times <kbd>_2k1</kbd>—this will enable us to remove the "if <kbd>j</kbd> is divisible by 2<sup>k+1</sup>", as in the pseudocode, enabling us to only launch as many threads as we'll need:</p>
+<pre> int _2k = 1 &lt;&lt; k;<br/> int _2k1 = 1 &lt;&lt; (k+1);<br/><br/> int j = tid* _2k1;</pre>
+<div class="packt_infobox">We can easily generate dyadic (power-of-2) integers in CUDA C with the left bit-wise shift operator (<kbd>&lt;&lt;</kbd>). Recall that the integer 1 (that is 2<sup>0</sup>) is represented as 0001, 2 (2<sup>1</sup>) is represented as 0010, 4 (2<sup>2</sup> ) is represented as 0100, and so on. We can therefore compute 2<sup>k</sup> with the <kbd>1 &lt;&lt; k</kbd> <span>operation</span>.</div>
+<p>We can now run the up-sweep phase with a single line, noting that <kbd>j</kbd> is indeed divisible by 2<sup>k+1</sup> by its construction:</p>
+<pre><br/> x[j + _2k1 - 1] = x_old[j + _2k -1 ] + x_old[j + _2k1 - 1];<br/>}<br/>""")</pre>
+<p>We're done writing our kernel! But this is not a full implementation of the up-sweep, of course. We have to do the rest in Python. Let's get our kernel and begin the implementation. This mostly speaks for itself as it follows the pseudocode exactly; we should recall that we are updating <kbd>x_old_gpu</kbd> by copying from <kbd>x_gpu</kbd> using <kbd>[:]</kbd>, which will preserve the memory allocation and merely copy the new data over rather than re-allocate. Also note how we set our block and grid sizes depending on how many threads we have to launch—we try to keep our block sizes as multiples of size 32 (which is our rule-of-thumb in this text, we go into the details why we use 32 specifically in <a href="e853faad-3ee4-4df7-9cdb-98f74e435527.xhtml">Chapter 11</a>, <em>Performance Optimization in CUDA</em>). We should put <kbd>from __future__ import division</kbd> at the beginning of our file, since we'll use Python 3-style division in calculating our block and kernel sizes.</p>
+<p>One issue to mention is that we are assuming that <kbd>x</kbd> is of dyadic length 32 or greater—this can be modified trivially if you wish to have this operate on arrays of other sizes by padding our arrays with zeros, however:</p>
+<pre><br/>up_gpu = up_ker.get_function("up_ker")<br/><br/>def up_sweep(x):<br/>    x = np.float64(x)<br/>    x_gpu = gpuarray.to_gpu(np.float64(x) )<br/>    x_old_gpu = x_gpu.copy()<br/>    for k in range( int(np.log2(x.size) ) ) : <br/>        num_threads = int(np.ceil( x.size / 2**(k+1)))<br/>        grid_size = int(np.ceil(num_threads / 32))<br/>        <br/>        if grid_size &gt; 1:<br/>            block_size = 32<br/>        else:<br/>            block_size = num_threads<br/>            <br/>        up_gpu(x_gpu, x_old_gpu, np.int32(k) , block=(block_size,1,1), grid=(grid_size,1,1))<br/>        x_old_gpu[:] = x_gpu[:]<br/>        <br/>    x_out = x_gpu.get()<br/>    return(x_out)</pre>
+<p>Now we'll embark on writing the down-sweep. Again, let's start with the kernel, which will have the functionality of the inner <kbd>parfor</kbd> loop of the pseudocode. It follows similarly as before—again, we'll use two arrays, so using a <kbd>temp</kbd> variable as in the pseudocode is unnecessary here, and again we use bit-shift operators to obtain the values of 2<sup>k</sup> and 2<sup>k+1</sup>. We calculate <kbd>j</kbd> similarly to before:</p>
+<pre>down_ker = SourceModule("""<br/>__global__ void down_ker(double *y, double *y_old, int k)<br/>{<br/> int j = blockIdx.x*blockDim.x + threadIdx.x;<br/> <br/> int _2k = 1 &lt;&lt; k;<br/> int _2k1 = 1 &lt;&lt; (k+1);<br/><br/> <br/> int j = tid*_2k1;<br/><br/> y[j + _2k - 1 ] = y_old[j + _2k1 - 1];<br/> y[j + _2k1 - 1] = y_old[j + _2k1 - 1] + y_old[j + _2k - 1];<br/>}<br/>""")<br/><br/>down_gpu = down_ker.get_function("down_ker")</pre>
+<p>We now can write our Python function that will iteratively launch the kernel, which corresponds to the outer <kbd>for</kbd> loop of the down-sweep phase. This is similar to the Python function for the up-sweep phase. One important distinction from looking at the pseudocode is that we have to iterate from the largest value in the outer <kbd>for</kbd> loop to the smallest; we can just use Python's <kbd>reversed</kbd> function to do this. Now we can implement the down-sweep phase:</p>
+<pre><br/>def down_sweep(y):<br/>    y = np.float64(y)<br/>    y[-1] = 0<br/>    y_gpu = gpuarray.to_gpu(y)<br/>    y_old_gpu = y_gpu.copy()<br/>    for k in reversed(range(int(np.log2(y.size)))):<br/>        num_threads = int(np.ceil( y.size / 2**(k+1)))<br/>        grid_size = int(np.ceil(num_threads / 32))<br/>        <br/>        if grid_size &gt; 1:<br/>            block_size = 32<br/>        else:<br/>            block_size = num_threads<br/>            <br/>        down_gpu(y_gpu, y_old_gpu, np.int32(k), block=(block_size,1,1), grid=(grid_size,1,1))<br/>        y_old_gpu[:] = y_gpu[:]<br/>    y_out = y_gpu.get()<br/>    return(y_out)</pre>
+<p>Having implemented both the up-sweep and down-sweep phases, our last task is trivial to complete:</p>
+<pre>def efficient_prefix(x):<br/>        return(down_sweep(up_sweep(x)))<br/><br/></pre>
+<p>We have now fully implemented a host-synchronized version of the work-efficient parallel prefix algorithm! (This implementation is available in the <kbd>work-efficient_prefix.py</kbd> <span>file </span>in the repository, along with some test code.)</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We started with an implementation of Conway's <em>Game of Life</em>, which gave us an idea of how the many threads of a CUDA kernel are organized in a block-grid tensor-type structure. We then delved into block-level synchronization by way of the CUDA function, <kbd>__syncthreads()</kbd>, as well as block-level thread intercommunication by using shared memory; we also saw that single blocks have a limited number of threads that we can operate over, so we'll have to be careful in using these features when we create kernels that will use more than one block across a larger grid.</p>
+<p>We gave an overview of the theory of parallel prefix algorithms, and we ended by implementing a naive parallel prefix algorithm as a single kernel that could operate on arrays limited by a size of 1,024 (which was synchronized with <kbd>___syncthreads</kbd> and performed both the <kbd>for</kbd> and <kbd>parfor</kbd> loops internally), and with a work-efficient parallel prefix algorithm that was implemented across two kernels and three Python functions could operate on arrays of arbitrary size, with the kernels acting as the inner <kbd>parfor</kbd> loops of the algorithm, and with the Python functions effectively operating as the outer <kbd>for</kbd> loops and synchronizing the kernel launches.</p>
+
+
+            </article>
+
+            
+        </section>
+    </div></div>
+<div id="book-content"><div id="sbo-rt-content"><section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>Change the random vector in <span><span><kbd>simple_scalar_multiply_kernel.py</kbd> so that it is of a length of 10,000, and modify the <kbd>i</kbd> index in the definition of the kernel so that it can be used over multiple blocks in the form of a grid. See if you can now launch this kernel over 10,000 threads by setting block and grid parameters to something like <kbd>block=(100,1,1)</kbd> and <kbd>grid=(100,1,1)</kbd>.</span></span></li>
+<li>In the previous question, we launched a kernel that makes use of 10,000 threads simultaneously; as of 2018, there is no NVIDIA GPU with more than 5,000 cores. Why does this still work and give the expected results?</li>
+<li>The naive parallel prefix algorithm has time complexity O(<em>log n</em>) given that we have <em>n</em> or more processors for a dataset of size <em>n</em>. Suppose that we use a <span>naive parallel p</span><span>refix algorithm</span> on a GTX 1050 GPU with 640 cores. What does the asymptotic time complexity become in the case that <kbd>n &gt;&gt; 640</kbd>?</li>
+<li>Modify <kbd>naive_prefix.py</kbd> to operate on arrays of arbitrary size (possibly non-dyadic), only bounded by 1,024.</li>
+<li>The <kbd>__syncthreads()</kbd> <span>CUDA device function </span>only synchronizes threads across a single block. How can we synchronize across all threads in all blocks across a grid?</li>
+<li>You can convince yourself that the second prefix sum algorithm really is more work-efficient than the naive prefix sum algorithm with this exercise. Suppose that we have a dataset of size 32. What is the exact number of "addition" operations required by the first and second <span>algorithm</span> in this case?</li>
+<li>In the implementation of the work-efficient parallel prefix we use a Python function to iterate our kernels and synchronize the results. Why can't we just put a <kbd>for</kbd> loop inside the kernels with careful use of <kbd>__syncthreads()</kbd> instead?</li>
+<li>Why does it make more sense to implement the naive parallel prefix within a single kernel that handles its own synchronization within CUDA C, than it makes more sense to implement the work-efficient parallel prefix using both kernels and Python functions and have the host handle the synchronization?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </div></div></body></html>

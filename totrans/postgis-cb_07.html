@@ -1,0 +1,1032 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Into the Nth Dimension</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will cover:</p>
+<ul>
+<li>Importing LiDAR data</li>
+<li>Performing 3D queries on a LiDAR point cloud</li>
+<li>Constructing and serving buildings 2.5D</li>
+<li>Using ST_Extrude to extrude building footprints</li>
+<li>Creating arbitrary 3D objects for PostGIS</li>
+<li>Exporting models as X3D for the web</li>
+<li>Reconstructing Unmanned Aerial Vehicle (UAV) image footprints with PostGIS 3D</li>
+<li>UAV photogrammetry in PostGIS – point cloud</li>
+<li>UAV photogrammetry in PostGIS – DSM creation</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will explore the 3D capabilities of PostGIS. We will focus on three main categories: how to insert 3D data into PostGIS, how to analyze and perform queries using 3D data, and how to dump 3D data out of PostGIS. This chapter will use 3D point clouds as 3D data, including LiDAR data and those derived from <strong>Structure from Motion</strong> (<strong>SfM</strong>) techniques. Additionally, we will build a function that extrudes building footprints to 3D.</p>
+<p>It is important to note that for this chapter, we will address the postgreSQL-pointcloud extension; point clouds are usually large data sets of a three dimensional representation of point coordinates in a coordinate system. Point clouds are used to represent surfaces of sensed objects with great accuracy, such as by using geographic LiDAR data. The pointcloud extension will help us store LiDAR data into point cloud objects in our database. Also, this extension adds functions that allow you to transform point cloud objects into geometries and do spatial filtering using point cloud data. For more information about this extension, you can visit the official GitHub repository at <a href="https://github.com/pgpointcloud/pointcloud"><span class="URLPACKT">https://github.com/pgpointcloud/pointcloud</span></a>. In addition, you can check out Paul Ramsey's tutorial at <a href="http://workshops.boundlessgeo.com/tutorial-lidar/"><span class="URLPACKT">http://workshops.boundlessgeo.com/tutorial-lidar/</span></a>.</p>
+<p>Download the example datasets we have for your use, available at <a href="http://www.packtpub.com/support"><span class="URLPACKT">http://www.packtpub.com/support</span></a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Importing LiDAR data</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Light Detection And Ranging</strong> (<strong>LiDAR</strong>) is one of the most common devices for generating point cloud data. The system captures 3D location and other properties of objects or surfaces in a given space. This approach is very similar to radar in that it uses electromagnetic waves to measure distance and brightness, among other things. However, one main difference between LIDAR and radar is that the first one uses laser beam technology, instead of microwaves or radio waves. Another distinction is that LiDAR generally sends out a single focused pulse and measures the time of the returned pulse, calculating distance and depth. Radar, by contrast, will send out multiple pulses before receiving return pulses and thus, requires additional processing to determine the source of each pulse.</p>
+<p>LiDAR data has become quite common in conjunction with both ground and airborne applications, aiding in ground surveys, enhancing and substantially automating aspects of photogrammetric engineering. There are many data sources with plenty of LiDAR data.</p>
+<p>LiDAR data is typically distributed in the <strong>LAS</strong> or <strong>LASer</strong> <strong>format.</strong> The <strong>American Society for Photogrammetry and Remote Sensing</strong> (<strong>ASPRS</strong>) established the LAS standard. LAS is a binary format, so reading it to push into a PostGIS database is non-trivial. Fortunately, we can make use of the open source tool PDAL.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Our source data will be in the LAS format, which we will insert into our database using the PDAL library, available at <a href="https://www.pdal.io/"><span class="URLPACKT">https://www.pdal.io/</span></a>. This tool is available for Linux/UNIX and Mac users; for Windows, it is available with the OSGeo4W package (<a href="https://www.pdal.io/workshop/osgeo4w.html"><span class="URLPACKT">https://www.pdal.io/workshop/osgeo4w.html</span></a>).</p>
+<p>LAS data can contain a lot of interesting data, not just <em>X</em>, <em>Y</em>, and <em>Z</em> values. It can include the intensity of the return from the object sensed and the classification of the object (ground versus vegetation versus buildings). When we place our LAS file in our PostGIS database, we can optionally collect any of this information. Furthermore, PDAL internally constructs a pipeline to translate data for reading, processing, and writing.</p>
+<p>In preparation for this, we need to create a JSON file that represents the PDAL processing pipeline. For each LAS file, we create a JSON file to configure the reader and the writer to use the postgres-pointcloud option. We also need to write the database connection parameters. For the test file <kbd>test_1.las</kbd>, the code is as follows:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/20526f23-bacc-41d8-beb5-e26f1c3fa9eb.png"/></div>
+<p>Now, we can download our data. It is recommended to either download it from <a href="http://gis5.oit.ohio.gov/geodatadownload/"><span class="URLPACKT">http://gis5.oit.ohio.gov/geodatadownload/</span></a> or to download the sample dataset we have for your use, available at <a href="http://www.packtpub.com/support"><span class="URLPACKT">http://www.packtpub.com/support</span></a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>First, we need to convert our LAS file to a format that can be used by PDAL. We created a Python script, which reads from a directory of LAS files and generates its corresponding JSON. With this script, we can automate the generation if we have a large directory of files. Also, we chose Python for its simplicity and because you can execute the script regardless of the operating system you are using. To execute the script, run the following in the console (for Windows users, make sure you have the Python interpreter included in the <kbd>PATH</kbd> variable):</p>
+<pre><strong>$ python insert_files.py -f <span class="pl-k">&lt;</span>lasfiles_path<span class="pl-k">&gt;</span></strong></pre>
+<p>This script will read each LAS file, and will store within a folder called <kbd>pipelines</kbd> all the metadata related to the LAS file that will be inserted into the database.</p>
+<p>Now, using PDAL, we execute a <kbd>for</kbd> loop to insert LAS files into Postgres:</p>
+<pre>$ for file in `ls pipelines/*.json`; 
+  do 
+    pdal pipeline $file; 
+  done </pre>
+<p>This point cloud data is split into three different tables. If we want to merge them, we need to execute the following SQL command:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.lidar; 
+CREATE TABLE chp07.lidar AS WITH patches AS  
+( 
+  SELECT 
+    pa  
+  FROM "chp07"."N2210595"  
+  UNION ALL 
+  SELECT 
+    pa  
+  FROM "chp07"."N2215595"  
+  UNION ALL 
+  SELECT 
+    pa  
+  FROM "chp07"."N2220595" 
+) 
+SELECT 
+  2 AS id, 
+PC_Union(pa) AS pa  
+FROM patches;</strong> </pre>
+<p>The postgres-pointcloud extension uses two main point cloud objects as variables: the <em>PcPoint</em> object, which is a point that can have many dimensions, but a minimum of X and Y values that are placed in a space; and the <em>PcPatch</em> object,which is a collection of multiple PcPoints that are close together. According to the documentation of the plugin, it becomes inefficient to store large amounts of points as individual records in a table.</p>
+<p>Now that we have all of our data into our database within a single table, if we want to visualize our point cloud data, we need to create a spatial table to be understood by our layer viewer; for instance, QGIS. The point cloud plugin for Postgres has PostGIS integration, so we can transform our <em>PcPatch</em> and <em>PcPoint</em> objects into geometries and use PostGIS functions for analyzing the data:</p>
+<pre><strong>CREATE TABLE chp07.lidar_patches AS WITH pts AS  
+( 
+  SELECT 
+    PC_Explode(pa) AS pt  
+  FROM chp07.lidar 
+) 
+SELECT 
+  pt::geometry AS the_geom  
+FROM pts; 
+ALTER TABLE chp07.lidar_patches ADD COLUMN gid serial; 
+ALTER TABLE chp07.lidar_patches ADD PRIMARY KEY (gid);</strong> </pre>
+<p>This SQL script performs an inner query, which initially returns a set of <em>PcPoints</em> from the <em>PcPatch</em> using the <kbd>PC_Explode</kbd> <span>function.</span> Then, for each point returned, we cast from  <em>PcPoint</em> object to a PostGIS geometry object. Finally, we create the <kbd>gid</kbd> column and add it to the table as a primary key.</p>
+<p>Now, we can view our data using our favorite desktop GIS, as shown in the following image:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/0dc6fd63-5802-48ec-9972-c554932f59a3.png" style="width:39.08em;height:13.00em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <em>Performing 3D queries on a LiDAR point cloud</em> recipe</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Performing 3D queries on a LiDAR point cloud</h1>
+                </header>
+            
+            <article>
+                
+<p>In the previous recipe, <em>Importing LiDAR data</em>, we brought a LiDAR 3D point cloud into PostGIS, creating an explicit 3D dataset from the input. With the data in 3D form, we have the ability to perform spatial queries against it. In this recipe, we will leverage 3D indexes so that our nearest-neighbor search works in all the dimensions our data are in.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>We will use the LiDAR data imported in the previous recipe as our dataset of choice. We named that table <kbd>chp07.lidar</kbd>. To perform a nearest-neighbor search, we will require an index created on the dataset. Spatial indexes, much like ordinary database table indexes, are similar to book indexes insofar as they help us find what we are looking for faster. Ordinarily, such an index-creation step would look like the following (which we won't run this time):</p>
+<pre><strong>CREATE INDEX chp07_lidar_the_geom_idx  
+ON chp07.lidar USING gist(the_geom);</strong> </pre>
+<p>A 3D index does not perform as quickly as a 2D index for 2D queries, so a <kbd>CREATE INDEX</kbd> query defaults to creating a 2D index. In our case, we want to force the gist to apply to all three dimensions, so we will explicitly tell PostgreSQL to use the n-dimensional version of the index:</p>
+<pre><strong>CREATE INDEX chp07_lidar_the_geom_3dx 
+ON chp07.lidar USING gist(the_geom gist_geometry_ops_nd);</strong> </pre>
+<p>Note that the approach depicted in the previous code would also work if we had a time dimension or a 3D plus time. Let's load a second 3D dataset and the stream centerlines that we will use in our query:</p>
+<pre><strong>$ shp2pgsql -s 3734 -d -i -I -W LATIN1 -t 3DZ -g the_geom hydro_line chp07.hydro | PGPASSWORD=me psql -U me -d "postgis-cookbook" -h localhost</strong>  </pre>
+<p>This data, as shown in the following image, overlays nicely with our LiDAR point cloud:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/dd9b14d3-2d3c-427e-a1fa-bb13be93becf.png"/></div>
+<p>Now, we can build a simple query to retrieve all the LiDAR points within one foot of our stream centerline:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.lidar_patches_within; 
+CREATE TABLE chp07.lidar_patches_within AS 
+SELECT chp07.lidar_patches.gid, chp07.lidar_patches.the_geom 
+FROM chp07.lidar_patches, chp07.hydro  
+WHERE ST_3DDWithin(chp07.hydro.the_geom, chp07.lidar_patches.the_geom, 5);</strong> </pre>
+<p>But, this is a little bit of a sloppy approach; we could end up with duplicate LiDAR points, so we will refine our query with <kbd>LEFT JOIN</kbd> and <kbd>SELECT DISTINCT</kbd> instead, but continue using <kbd>ST_DWithin</kbd> as our limiting condition:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.lidar_patches_within_distinct; 
+CREATE TABLE chp07.lidar_patches_within_distinct AS 
+SELECT DISTINCT (chp07.lidar_patches.the_geom), chp07.lidar_patches.gid  
+FROM chp07.lidar_patches, chp07.hydro  
+WHERE ST_3DDWithin(chp07.hydro.the_geom, chp07.lidar_patches.the_geom, 5);</strong> </pre>
+<p>Now we can visualize our returned points, as shown in the following image:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/4f5387c4-7252-4aac-bbc8-90a34b835908.png" style="width:18.50em;height:21.83em;"/></div>
+<p>Try this query using <kbd>ST_DWithin</kbd> instead of <kbd>ST_3DDWithin</kbd>. You'll find an interesting difference in the number of points returned, since <kbd>ST_DWithin</kbd> will collect LiDAR points that may be close to our streamline in the XY plane, but not as close when looking at a 3D distance.</p>
+<p>You can imagine <kbd>ST_3DWithin</kbd> querying within a tunnel around our line. <kbd>ST_DWithin</kbd>, by contrast, is going to query a vertical wall of LiDAR points, as it is only searching for adjacent points based on XY distance, ignoring height altogether, and thus gathering up all the points within a narrow wall above and below our points.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Constructing and serving buildings 2.5D</h1>
+                </header>
+            
+            <article>
+                
+<p>In the <em>Detailed building footprints from LiDAR</em> recipe in <a href="68182eea-7041-4488-9f05-188b0a493ba5.xhtml"><span class="ChapterrefPACKT">Chapter 4</span></a>, <em>Working with Vector Data - Advanced Recipes</em>, we explored the automatic generation of building footprints using LiDAR data. What we were attempting to do was create 2D data from 3D data. In this recipe, we attempt the opposite, in a sense. We start with 2D polygons of building footprints and feed them into a function that extrudes them as 3D polygons.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>For this recipe, we will extrude a building footprint of our own making. Let us quickly create a table with a single building footprint, for testing purposes, as follows:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.simple_building; 
+CREATE TABLE chp07.simple_building AS  
+SELECT 1 AS gid, ST_MakePolygon( 
+  ST_GeomFromText( 
+    'LINESTRING(0 0,2 0, 2 1, 1 1, 1 2, 0 2, 0 0)' 
+  ) 
+) AS the_geom;</strong> </pre>
+<p>It would be beneficial to keep the creation of 3D buildings encapsulated as simply as possible in a function:</p>
+<pre><strong>CREATE OR REPLACE FUNCTION chp07.threedbuilding(footprint geometry, height numeric) 
+RETURNS geometry AS 
+$BODY$</strong> </pre>
+<p>Our function takes two inputs: the building footprint and a height to extrude to. We can also imagine a function that takes in a third parameter: the height of the base of the building.</p>
+<p>To construct the building walls, we will need to first convert our polygons into linestrings and then further separate the linestrings into their individual, two-point segments:</p>
+<pre><strong>WITH simple_lines AS 
+( 
+  SELECT  
+    1 AS gid,  
+    ST_MakeLine(ST_PointN(the_geom,pointn), 
+    ST_PointN(the_geom,pointn+1)) AS the_geom 
+  FROM ( 
+    SELECT 1 AS gid, 
+    polygon_to_line($1) AS the_geom  
+  ) AS a 
+  LEFT JOIN( 
+    SELECT  
+      1 AS gid,  
+      generate_series(1,  
+        ST_NumPoints(polygon_to_line($1))-1 
+      ) AS pointn  
+  ) AS b 
+  ON a.gid = b.gid 
+),</strong> </pre>
+<p>The preceding code returns each of the two-point segments of our original shape. For example, for <kbd>simple_building,</kbd> the output is as follows:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/e8b5d4be-7870-44db-8cf2-520f5b8b93dc.png" style="width:23.42em;height:7.92em;"/></div>
+<p>Now that we have a series of individual lines, we can use those to construct the walls of the building. First, we need to recast our 2D lines as 3D using <kbd>ST_Force3DZ</kbd>:</p>
+<pre><strong>threeDlines AS</strong><br/><strong>( 
+  SELECT ST_Force3DZ(the_geom) AS the_geom FROM simple_lines 
+),</strong></pre>
+<p>The output is as follows:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/2a2d705f-5b92-486a-bb6b-f8215a0d2326.png" style="width:25.92em;height:6.83em;"/></div>
+<p>The next step is to break each of those lines from <kbd>MULTILINESTRING</kbd> into many <kbd>LINESTRINGS</kbd>:</p>
+<pre><strong>explodedLine AS 
+( 
+  SELECT (ST_Dump(the_geom)).geom AS the_geom FROM threeDLines 
+),</strong> </pre>
+<p>The output for this is as follows:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/0306df57-a196-4da2-a91b-a74fd66da846.png" style="width:17.33em;height:9.17em;"/></div>
+<p>The next step is to construct a line representing the boundary of the extruded wall:</p>
+<pre><strong>threeDline AS 
+( 
+  SELECT ST_MakeLine( 
+    ARRAY[ 
+      ST_StartPoint(the_geom), 
+      ST_EndPoint(the_geom), 
+      ST_Translate(ST_EndPoint(the_geom), 0, 0, $2), 
+      ST_Translate(ST_StartPoint(the_geom), 0, 0, $2), 
+      ST_StartPoint(the_geom) 
+    ] 
+  ) 
+  AS the_geom FROM explodedLine 
+),</strong> </pre>
+<p>Now, we need to convert each linestring to <kbd>polygon.threeDwall</kbd>:</p>
+<pre><strong>threeDwall AS 
+( 
+  SELECT ST_MakePolygon(the_geom) as the_geom FROM threeDline 
+),</strong> </pre>
+<p>Finally, put in the roof and floor on our building, using the original geometry for the floor (forced to 3D) and a copy of the original geometry translated to our input height:</p>
+<pre><strong>buildingTop AS 
+( 
+  SELECT ST_Translate(ST_Force3DZ($1), 0, 0, $2) AS the_geom 
+), 
+-- and a floor 
+buildingBottom AS 
+( 
+  SELECT ST_Translate(ST_Force3DZ($1), 0, 0, 0) AS the_geom 
+),</strong> </pre>
+<p class="mce-root">We put the walls, roof, and floor together and, during the process, convert this to a 3D <kbd>MULTIPOLYGON</kbd>:</p>
+<pre><strong>wholeBuilding AS 
+( 
+  SELECT the_geom FROM buildingBottom 
+    UNION ALL 
+  SELECT the_geom FROM threeDwall 
+    UNION ALL 
+  SELECT the_geom FROM buildingTop 
+), 
+-- then convert this collecion to a multipolygon 
+multiBuilding AS 
+( 
+  SELECT ST_Multi(ST_Collect(the_geom)) AS the_geom FROM  
+    wholeBuilding 
+),</strong> </pre>
+<p>While we could leave our geometry as a <kbd>MULTIPOLYGON</kbd>, we'll do things properly and munge an informal cast to <kbd>POLYHEDRALSURFACE</kbd>. In our case, we are already effectively formatted as a <kbd>POLYHEDRALSURFACE</kbd>, so we'll just convert our geometry to text with <kbd>ST_AsText</kbd>, replace the word with <kbd>POLYHEDRALSURFACE</kbd>, and then convert our text back to geometry with <kbd>ST_GeomFromText</kbd>:</p>
+<pre><strong>textBuilding AS 
+( 
+  SELECT ST_AsText(the_geom) textbuilding FROM multiBuilding 
+), 
+textBuildSurface AS 
+( 
+  SELECT ST_GeomFromText(replace(textbuilding, 'MULTIPOLYGON', <br/>         'POLYHEDRALSURFACE')) AS the_geom FROM textBuilding 
+) 
+SELECT the_geom FROM textBuildSurface</strong> </pre>
+<p>Finally, the entire function is:</p>
+<pre><strong>CREATE OR REPLACE FUNCTION chp07.threedbuilding(footprint geometry,  
+  height numeric) 
+RETURNS geometry AS 
+$BODY$ 
+ 
+-- make our polygons into lines, and then chop up into individual line segments 
+WITH simple_lines AS 
+( 
+  SELECT 1 AS gid, ST_MakeLine(ST_PointN(the_geom,pointn), 
+    ST_PointN(the_geom,pointn+1)) AS the_geom 
+  FROM (SELECT 1 AS gid, polygon_to_line($1) AS the_geom ) AS a 
+  LEFT JOIN 
+  (SELECT 1 AS gid, generate_series(1,  
+    ST_NumPoints(polygon_to_line($1))-1) AS pointn  
+  ) AS b 
+  ON a.gid = b.gid 
+), 
+-- convert our lines into 3D lines, which will set our third  coordinate to 0 by default 
+threeDlines AS 
+( 
+  SELECT ST_Force3DZ(the_geom) AS the_geom FROM simple_lines 
+), 
+-- now we need our lines as individual records, so we dump them out using ST_Dump, and then just grab the geometry portion of the dump 
+explodedLine AS 
+( 
+  SELECT (ST_Dump(the_geom)).geom AS the_geom FROM threeDLines 
+), 
+-- Next step is to construct a line representing the boundary of the  extruded "wall" 
+threeDline AS 
+( 
+  SELECT ST_MakeLine( 
+    ARRAY[ 
+    ST_StartPoint(the_geom), 
+    ST_EndPoint(the_geom), 
+    ST_Translate(ST_EndPoint(the_geom), 0, 0, $2), 
+    ST_Translate(ST_StartPoint(the_geom), 0, 0, $2), 
+    ST_StartPoint(the_geom) 
+    ] 
+  ) 
+AS the_geom FROM explodedLine 
+), 
+-- we convert this line into a polygon 
+threeDwall AS 
+( 
+  SELECT ST_MakePolygon(the_geom) as the_geom FROM threeDline 
+), 
+-- add a top to the building 
+buildingTop AS 
+( 
+  SELECT ST_Translate(ST_Force3DZ($1), 0, 0, $2) AS the_geom 
+), 
+-- and a floor 
+buildingBottom AS 
+( 
+  SELECT ST_Translate(ST_Force3DZ($1), 0, 0, 0) AS the_geom 
+), 
+-- now we put the walls, roof, and floor together 
+wholeBuilding AS 
+( 
+  SELECT the_geom FROM buildingBottom 
+    UNION ALL 
+  SELECT the_geom FROM threeDwall 
+    UNION ALL 
+  SELECT the_geom FROM buildingTop 
+), 
+-- then convert this collecion to a multipolygon 
+multiBuilding AS 
+( 
+  SELECT ST_Multi(ST_Collect(the_geom)) AS the_geom FROM wholeBuilding 
+), 
+-- While we could leave this as a multipolygon, we'll do things properly and munge an informal cast 
+-- to polyhedralsurfacem which is more widely recognized as the appropriate format for a geometry like 
+-- this. In our case, we are already formatted as a polyhedralsurface, minus the official designation, 
+-- so we'll just convert to text, replace the word MULTIPOLYGON with POLYHEDRALSURFACE and then convert 
+-- back to geometry with ST_GeomFromText 
+ 
+textBuilding AS 
+( 
+  SELECT ST_AsText(the_geom) textbuilding FROM multiBuilding 
+), 
+textBuildSurface AS 
+( 
+  SELECT ST_GeomFromText(replace(textbuilding, 'MULTIPOLYGON',  
+    'POLYHEDRALSURFACE')) AS the_geom FROM textBuilding 
+) 
+SELECT the_geom FROM textBuildSurface 
+; 
+$BODY$ 
+  LANGUAGE sql VOLATILE 
+  COST 100; 
+ALTER FUNCTION chp07.threedbuilding(geometry, numeric) 
+  OWNER TO me;</strong> </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have a 3D-building extrusion function, we can easily extrude our building footprint with our nicely encapsulated function:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.threed_building; 
+CREATE TABLE chp07.threed_building AS  
+SELECT chp07.threeDbuilding(the_geom, 10) AS the_geom  
+FROM chp07.simple_building;</strong> </pre>
+<p>We can apply this function to a real building footprint dataset (available in our data directory), in which case, if we have a height field, we can extrude according to it:</p>
+<pre><strong>shp2pgsql -s 3734 -d -i -I -W LATIN1 -g the_geom building_footprints\c</strong><strong>hp07.building_footprints | psql -U me -d postgis-cookbook \<br/></strong><strong>-h &lt;HOST&gt; -p &lt;PORT&gt; </strong></pre>
+<pre><strong>DROP TABLE IF EXISTS chp07.build_footprints_threed; 
+CREATE TABLE chp07.build_footprints_threed AS  
+SELECT gid, height, chp07.threeDbuilding(the_geom, height) AS the_geom  
+FROM chp07.building_footprints;</strong> </pre>
+<p>The resulting output gives us a nice, extruded set of building footprints, as shown in the following image:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/9b9104f4-1cac-40b2-92a2-18103221083a.png" style="width:26.83em;height:12.08em;"/></div>
+<p>The <em>Detailed building footprints from LiDAR</em> recipe in <a href="68182eea-7041-4488-9f05-188b0a493ba5.xhtml"><span class="ChapterrefPACKT">Chapter 4</span></a>, <em>Working with Vector Data - Advanced Recipes</em>, explores the extraction of building footprints from LiDAR. A complete workflow could be envisioned, which extracts building footprints from LiDAR and then reconstructs polygon geometries using the current recipe, thus converting point clouds to surfaces, combining the current recipe with the one referenced previously.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using ST_Extrude to extrude building footprints</h1>
+                </header>
+            
+            <article>
+                
+<p>PostGIS 2.1 brought a lot of really cool additional functionality to PostGIS. Operations on PostGIS raster types are among the more important improvements that come with PostGIS 2.1. A quieter and equally potent game changer was the addition of the SFCGAL library as an optional extension to PostGIS. According to the website <a href="http://sfcgal.org/"><span class="URLPACKT">http://sfcgal.org/</span></a>, SFCGAL is a C++ wrapper library around CGAL with the aim of supporting ISO 19107:2013 and OGC Simple Features Access 1.2 for 3D operations.</p>
+<p>From a practical standpoint, what does this mean? It means that PostGIS is moving toward a fully functional 3D environment, from representation of the geometries themselves and the operations on those 3D geometries. More information is available at <a href="http://postgis.net/docs/reference.html#reference_sfcgal"><span class="URLPACKT">http://postgis.net/docs/reference.html#reference_sfcgal</span></a>.</p>
+<p>This and several other recipes will assume that you have a version of PostGIS installed with SFCGAL compiled and enabled. Doing so enables the following functions:</p>
+<ul>
+<li><kbd>ST_Extrude</kbd>: This extrudes a surface to a related volume</li>
+<li><kbd>ST_StraightSkeleton</kbd>: This computes a straight skeleton from a geometry</li>
+<li><kbd>ST_IsPlanar</kbd>: This checks whether a surface is a planar or not</li>
+<li><kbd>ST_Orientation</kbd>: This determines the surface orientation</li>
+<li><kbd>ST_ForceLHR</kbd>: This forces LHR orientation</li>
+<li><kbd>ST_MinkowskiSum</kbd>: This computes the Minkowski sum</li>
+<li><kbd>ST_Tesselate</kbd>: This performs surface Tessellation</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>For this recipe, we'll use <kbd>ST_Extrude</kbd> in much the same way we used our own custom-built function in the previous recipe, <em>Constructing and serving buildings 2.5D</em>. The advantage over the previous recipe is that we are not required to have the SFCGAL library compiled in PostGIS. The advantage to this recipe is that we have more control over the extrusion process; that is, we can extrude in all three dimensions.</p>
+<p><kbd>ST_Extrude</kbd> returns a geometry, specifically a polyhedral surface. It requires four parameters: an input geometry and the extrusion amount along the <em>X</em>, <em>Y</em>, and <em>Z</em> axes:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.buildings_extruded; 
+CREATE TABLE chp07.buildings_extruded AS  
+<span class="pl-k">SELECT</span> gid, ST_CollectionExtract(ST_Extrude(the_geom, 20, 20, 40), 3) as the_geom 
+<span class="pl-k">FROM</span> chp07.building_footprints</strong> </pre>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/4a0d0f7c-cec0-455e-81fc-92fd42b7f23e.png" style="width:35.92em;height:15.42em;"/></div>
+<p>And so, with the help of the <em>Constructing and serving buildings 2.5D</em> recipe, we get our extruded buildings, but with some additional flexibility.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating arbitrary 3D objects for PostGIS</h1>
+                </header>
+            
+            <article>
+                
+<p>Sources of 3D information are not only generated from LiDAR, nor are they purely synthesized from 2D geometries and associated attributes as in the <em>Constructing and serving buildings 2.5D</em> and <em>Using ST_Extrude to extrude building footprints</em> recipes, but they can also be created from the principles of computer vision as well. The process of calculating 3D information from the association of related keypoints between images is known as SfM.</p>
+<p>As a computer vision concept, we can leverage SfM to generate 3D information in ways similar to how the human mind perceives the world in 3D, and further store and process that information in a PostGIS database.</p>
+<div class="packt_tip">Computer vision is a discipline within computer science focused on automated analysis and inference from images and video. It is considered a research area that develops algorithms that interpret the world in a way that is similar to human vision. An excellent summary can be found at <a href="http://en.wikipedia.org/wiki/Computer_vision"><span class="URLPACKT">http://en.wikipedia.org/wiki/Computer_vision</span></a>.</div>
+<p>A number of open source projects have matured to deal with solving SfM problems. Popular among these are Bundler, which can be found at <a href="http://phototour.cs.washington.edu/bundler/"><span class="URLPACKT">http://phototour.cs.washington.edu/bundler/</span></a>, and <strong>VisualSFM</strong> at <a href="http://ccwu.me/vsfm/"><span class="URLPACKT">http://ccwu.me/vsfm/</span></a>. Binaries exist for multiple platforms for these tools, including versions. The nice thing about such projects is that a simple set of photos can be used to reconstruct 3D scenes.</p>
+<p>For our purposes, we will use VisualSFM and skip the installation and configuration of this software. The reason for this is that SfM is beyond the scope of a PostGIS book to cover in detail, and we will focus on how we can use the data in PostGIS.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>It is important to understand that SfM techniques, while highly effective, have certain limitations in the kinds of imagery that can be effectively processed into point clouds. The techniques are dependent upon finding matches between subsequent images and thus can have trouble processing images that are smooth, are missing the camera's embedded <strong>Exchangeable Image File Format</strong> (<strong>EXIF</strong>) information, or are from cell phone cameras.</p>
+<div class="packt_tip">EXIF tags are a metadata format for images. Stored in these tags are often the camera settings, camera type, lens type, and other information relevant to SfM extraction.</div>
+<p>We will start processing an image series into a point cloud with a photo series that we know largely works, but as you experiment with SfM, you can feed in your own photo series. Good tips on how to create a photo series that will result in a 3D model can be found at <a href="https://www.youtube.com/watch?v=IStU-WP2XKs&amp;t=348s"><span class="URLPACKT">https://www.youtube.com/watch?v=IStU-WP2XKs&amp;t=348s</span></a> and <a href="http://www.cubify.com/products/capture/photography_tips.aspx"><span class="URLPACKT">http://www.cubify.com/products/capture/photography_tips.aspx</span></a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Download VisualSFM from <a href="http://ccwu.me/vsfm/"><span class="URLPACKT">http://ccwu.me/vsfm/</span></a>. In a console terminal, execute the following:</p>
+<pre><strong>Visualsfm &lt;IMAGES_FOLDER&gt;</strong></pre>
+<p>VisualSFM will start rendering the 3D, model using as input a folder with images. It will take a couple of hours to process. Then, when it finishes, it will return a point cloud file.</p>
+<p>We can view this data in a program such as <strong>MeshLab</strong> at <a href="http://meshlab.sourceforge.net/"><span class="URLPACKT">http://meshlab.sourceforge.net/</span></a>. A good tutorial on using MeshLab to view point clouds can be found at <a href="http://www.cse.iitd.ac.in/~mcs112609/Meshlab%20Tutorial.pdf"><span class="URLPACKT">http://www.cse.iitd.ac.in/~mcs112609/Meshlab%20Tutorial.pdf</span></a>.</p>
+<p>The following image shows what our point cloud looks like when viewed in MeshLab:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/8eff27ef-10d9-4ce5-a42c-039fea1e9ec7.png" style="width:28.17em;height:18.42em;"/></div>
+<p>In the VisualSFM output, there is a file with the extension <kbd>.ply</kbd>, for example, <kbd>giraffe.ply</kbd> (included in the source code for this chapter). If you open this file in a text editor, it will look something like the following:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/df01490c-c68e-4000-bd9a-b0605bc8fda5.png" style="width:29.42em;height:18.58em;"/></div>
+<p>This is the header portion of our file. It specifies the .<kbd>ply</kbd> format, the encoding <kbd>format ascii 1.0</kbd>, the number of vertices, and then the column names for all the data returned: <kbd>x</kbd>, <kbd>y</kbd>, <kbd>z</kbd>, <kbd>nx</kbd>, <kbd>ny</kbd>, <kbd>nz</kbd>, <kbd>red</kbd>, <kbd>green</kbd>, and <kbd>blue</kbd>.</p>
+<p>For importing into PostGIS, we will import all the fields, but will focus on <kbd>x</kbd>, <kbd>y</kbd>, and <kbd>z</kbd> for our point cloud, as well as look at color. For our purposes, this file specifies relative <kbd>x</kbd>, <kbd>y</kbd>, and <kbd>z</kbd> coordinates, and the color of each of those points in channels <kbd>red</kbd>, <kbd>green</kbd>, and <kbd>blue</kbd>. These colors are 24-bit colors—and thus they can have integer values between 0 and 255.</p>
+<p>For the remainder of the recipe, we will create a PDAL pipeline, modifying the JSON structure reader to be a <kbd>.ply</kbd> file. Check the recipe for <em>Importing LiDAR data</em> in this chapter to see how to create a PDAL pipeline:</p>
+<pre><span class="pl-k">{</span>
+  <span class="pl-k">"pipeline": [{</span>
+    <span class="pl-k">"type": "readers.ply",</span>
+    <span class="pl-k">"filename": "/data/giraffe/giraffe.ply"</span>
+  <span class="pl-k">}, {</span>
+    <span class="pl-k">"type": "writers.pgpointcloud",</span>
+    <span class="pl-k">"connection": "host='localhost' dbname='postgis-cookbook' user='me' <br/>     password='me' port='5432'",</span>
+    <span class="pl-k">"table": "giraffe",</span>
+    <span class="pl-k">"srid": "3734",</span>
+    <span class="pl-k">"schema": "chp07"</span>
+  <span class="pl-k">}]</span>
+}  </pre>
+<p>Then we execute in the Terminal:</p>
+<pre><strong><span class="pl-k">$ pdal pipeline giraffe.json"</span></strong></pre>
+<p>This output will serve us for input in the next recipe.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Exporting models as X3D for the web</h1>
+                </header>
+            
+            <article>
+                
+<p>Entering 3D data in a PostGIS database is not nearly as interesting if we have no capacity for extracting the data back out in some useable form. One way to approach this problem is to leverage the PostGIS ability to write 3D tables to the X3D format.</p>
+<p>X3D is an XML standard for displaying 3D data and works well via the web. For those familiar with <strong>Virtual Reality Modeling Language</strong> (<strong>VRML</strong>), X3D is the next generation of that.</p>
+<p>To view X3D in the browser, a user has the choice of a variety of plugins, or they can leverage JavaScript APIs to enable viewing. We will perform the latter, as it requires no user configuration to work. We will use X3DOM's JavaScript framework to accomplish this. X3DOM is a demonstration of the integration of HTML5 and 3D and uses <strong>Web Graphics Library</strong> (<strong>WebGL</strong>); (<a href="https://en.wikipedia.org/wiki/WebGL"><span class="URLPACKT">https://en.wikipedia.org/wiki/WebGL</span></a>) to allow rendering and interaction with 3D content in the browser. This means that our data will not get displayed in browsers that are not WebGL compatible.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>We will be using the point cloud from the previous example to serve in X3D format. PostGIS documentation on X3D includes an example of using the <kbd>ST_AsX3D</kbd> function to output the formatted X3D code:</p>
+<pre><span class="pl-k">COPY(WITH pts AS (SELECT PC_Explode(pa) AS pt FROM chp07.giraffe) SELECT '</span>
+<span class="pl-k">&lt;X3D  </span>
+ <span class="pl-k">showStat="false" showLog="false" x="0px" y="0px" width="800px" </span>
+  <span class="pl-k">height="600px"&gt;</span>
+<span class="pl-k">  &lt;Scene&gt;</span>
+    <span class="pl-k">&lt;Transform&gt;</span>
+      <span class="pl-k">&lt;Shape&gt;' ||  ST_AsX3D(ST_Union(pt::geometry))  ||</span><span class="pl-k">'&lt;/Shape&gt;</span>
+    <span class="pl-k">&lt;/Transform&gt;</span>
+<span class="pl-k">  &lt;/Scene&gt;</span>
+<span class="pl-k">&lt;/X3D&gt;' FROM pts)</span>
+<span class="pl-k">TO STDOUT WITH CSV;</span></pre>
+<p>We included the copy to <kbd>STDOUT WITH CSV</kbd> to make a dump in raw code. The user is able to save this query as an SQL script file and execute it from the console in order to dump the result into a file. For instance:</p>
+<pre><strong><span class="pl-k">$ psql -U me -d postgis-cookbook -h localhost -f "x3d_query.sql" &gt; result.html</span><br/></strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>This example, while complete in serving the pure X3D, needs additional code to allow in-browser viewing. We do so by including style sheets, and the appropriate X3DOM includes the headers of an XHTML document:</p>
+<pre><span class="pl-k">&lt;link rel="stylesheet" type="text/css" </span><span class="pl-k">  href="http://x3dom.org/x3dom/example/x3dom.css" /&gt;<br/></span><span class="pl-k">&lt;script type="text/javascript" </span><span class="pl-k">src="http://x3dom.org/x3dom/example/x3dom.js"&gt;&lt;/script&gt;</span> </pre>
+<p>The full query to generate the XHTML of X3D data is as follows:</p>
+<pre><span class="pl-k">COPY(WITH pts AS (<br/>  SELECT PC_Explode(pa) AS pt FROM chp07.giraffe<br/>)<br/></span><span class="pl-k">SELECT regexp_replace('<br/></span><span class="pl-k">  &lt;!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"</span><span class="pl-k">    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"&gt;<br/></span><span class="pl-k">  &lt;html &gt;<br/></span><span class="pl-k">    &lt;head&gt;<br/></span><span class="pl-k">      &lt;meta http-equiv="X-UA-Compatible" content="chrome=1" /&gt;<br/></span><span class="pl-k">      &lt;meta http-equiv="Content-Type" content="text/html;charset=utf-8"</span><span class="pl-k">/&gt;<br/></span><span class="pl-k">      &lt;title&gt;Point Cloud in a Browser&lt;/title&gt;<br/></span><span class="pl-k">      &lt;link rel="stylesheet" type="text/css"<br/>       </span><span class="pl-k">href="http://x3dom.org/x3dom/example/x3dom.css" /&gt;<br/></span><span class="pl-k">      &lt;script type="text/javascript"<br/> </span><span class="pl-k">      src="http://x3dom.org/x3dom/example/x3dom.js"&gt;<br/>      &lt;/script&gt;<br/></span><span class="pl-k">    &lt;/head&gt;<br/></span><span class="pl-k">    &lt;body&gt;<br/></span><span class="pl-k">      &lt;h1&gt;Point Cloud in the Browser&lt;/h1&gt;<br/></span><span class="pl-k">      &lt;p&gt;<br/></span><span class="pl-k">        Use mouse to rotate, scroll wheel to zoom, and control <br/>        (or c</span><span class="pl-k">ommand) click to pan.<br/></span><span class="pl-k">      &lt;/p&gt;<br/></span><span class="pl-k">      &lt;X3D pl-k"&gt;       showStat="false" showLog="false" x="0px" y="0px" width="800px"<br/></span><span class="pl-k">       height="600px"&gt;<br/></span><span class="pl-k">        &lt;Scene&gt;<br/></span><span class="pl-k">          &lt;Transform&gt;<br/></span><span class="pl-k">            &lt;Shape&gt;' ||  ST_AsX3D(ST_Union(pt::geometry)) || </span><span class="pl-k">'&lt;/Shape&gt;<br/></span><span class="pl-k">          &lt;/Transform&gt;<br/></span><span class="pl-k">        &lt;/Scene&gt;<br/></span><span class="pl-k">      &lt;/X3D&gt;<br/></span><span class="pl-k">    &lt;/body&gt;<br/></span><span class="pl-k">  &lt;/html&gt;', E'[\\n\\r]+','', 'g')<br/>FROM pts)</span><span class="pl-k">TO STDOUT;</span></pre>
+<p>If we open the <kbd><span class="pl-k">.html</span></kbd> file in our favorite browser, we will get the following:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/a8f1d2a2-11c2-44b2-af55-190f175ad655.png" style="width:47.58em;height:37.92em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>One might want to use this X3D conversion as a function, feeding geometry into a function and getting a page in return. In this way, we can reuse the code easily for other tables. Embodied in a function, X3D conversion is as follows:</p>
+<pre><span class="pl-k">CREATE OR REPLACE FUNCTION AsX3D_XHTML(geometry)</span>
+<span class="pl-k">RETURNS character varying AS</span>
+<span class="pl-k">$BODY$</span>
+    
+<span class="pl-k">SELECT regexp_replace(</span>
+  <span class="pl-k">'</span>
+    <span class="pl-k">&lt;!DOCTYPE html PUBLIC </span><span class="pl-k">"</span><span class="pl-k">-//W3C//DTD XHTML 1.0 Strict//EN</span><span class="pl-k">" <br/></span><span class="pl-k">     "h</span><span class="pl-k">ttp://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd</span><span class="pl-k">"</span><span class="pl-k">&gt;</span>
+    <span class="pl-k">&lt;html xmlns= </span><span class="pl-k">"</span><span class="pl-k">http://www.w3.org/1999/xhtml</span><span class="pl-k">"</span><span class="pl-k">&gt;</span>
+    <span class="pl-k">  &lt;head&gt;</span>
+    <span class="pl-k">    &lt;meta http-equiv=</span><span class="pl-k">"</span><span class="pl-k">X-UA-Compatible</span><span class="pl-k">" </span><span class="pl-k">content=</span><span class="pl-k">"</span><span class="pl-k">chrome=1</span><span class="pl-k">"</span><span class="pl-k">/&gt;</span>
+    <span class="pl-k">    &lt;meta http-equiv=</span><span class="pl-k">"</span><span class="pl-k">Content-Type</span><span class="pl-k">" </span><span class="pl-k">content=</span><span class="pl-k">"</span><span class="pl-k">text/html;charset=utf-8</span><span class="pl-k">"</span><span class="pl-k">/&gt;</span>
+    <span class="pl-k">    &lt;title&gt;Point Cloud in a Browser&lt;/title&gt;</span>
+    <span class="pl-k">    &lt;link rel=</span><span class="pl-k">"</span><span class="pl-k">stylesheet</span><span class="pl-k">" </span><span class="pl-k">type=</span><span class="pl-k">"</span><span class="pl-k">text/css</span><span class="pl-k">"<br/>         </span><span class="pl-k">href=</span><span class="pl-k">"</span><span class="pl-k">http://x3dom.org/x3dom/example/x3dom.css</span><span class="pl-k">"</span><span class="pl-k">/&gt;</span>
+    <span class="pl-k">    &lt;script type=</span><span class="pl-k">"</span><span class="pl-k">text/javascript</span><span class="pl-k">"<br/>         </span><span class="pl-k">src=</span><span class="pl-k">"</span><span class="pl-k">http://x3dom.org/x3dom/example/x3dom.js</span><span class="pl-k">"</span><span class="pl-k">&gt;<br/>        &lt;/script&gt;</span>
+    <span class="pl-k">  &lt;/head&gt;</span>
+    <span class="pl-k">  &lt;body&gt;</span>
+    <span class="pl-k">    &lt;h1&gt;Point Cloud in the Browser&lt;/h1&gt;</span>
+    <span class="pl-k">    &lt;p&gt;</span>
+    <span class="pl-k">      Use mouse to rotate, scroll wheel to zoom, and control <br/>          (or </span><span class="pl-k">command) click to pan.</span>
+    <span class="pl-k">    &lt;/p&gt;</span>
+    <span class="pl-k">    &lt;X3D xmlns=</span><span class="pl-k">"</span><span class="pl-k">http://www.web3d.org/specifications/x3d-namespace</span><span class="pl-k">" <br/></span><span class="pl-k">         showStat=</span><span class="pl-k">"</span><span class="pl-k">false</span><span class="pl-k">" </span><span class="pl-k">showLog=</span><span class="pl-k">"</span><span class="pl-k">false</span><span class="pl-k">" </span><span class="pl-k"> x=</span><span class="pl-k">"</span><span class="pl-k">0px</span><span class="pl-k">" </span><span class="pl-k">y=</span><span class="pl-k">"</span><span class="pl-k">0px</span><span class="pl-k">" </span><span class="pl-k">width=</span><span class="pl-k">"</span><span class="pl-k">800px</span><span class="pl-k">"<br/></span>         <span class="pl-k">height=</span><span class="pl-k">"6</span><span class="pl-k">00px</span><span class="pl-k">"&gt;</span>
+    <span class="pl-k">      &lt;Scene&gt;</span>
+    <span class="pl-k">        &lt;Transform&gt;</span>
+    <span class="pl-k">          &lt;Shape&gt;</span><span class="pl-k">'</span><span class="pl-k">||  ST_AsX3D($1)  || </span><span class="pl-k">'</span><span class="pl-k">&lt;/Shape&gt;</span>
+    <span class="pl-k">        &lt;/Transform&gt;</span>
+    <span class="pl-k">      &lt;/Scene&gt;</span>
+    <span class="pl-k">    &lt;/X3D&gt;</span>
+    <span class="pl-k">  &lt;/body&gt;</span>
+    <span class="pl-k">&lt;/html&gt;</span>
+  <span class="pl-k">'</span><span class="pl-k">, E</span><span class="pl-k">'</span><span class="pl-k">[\\n\\r]+</span><span class="pl-k">' </span><span class="pl-k">, </span><span class="pl-k">'' </span><span class="pl-k">, </span><span class="pl-k">'</span><span class="pl-k">g</span><span class="pl-k">' </span><span class="pl-k">) As x3dXHTML;</span>
+<span class="pl-k">$BODY$</span>
+<span class="pl-k">LANGUAGE sql VOLATILE</span>
+<span class="pl-k">COST 100;</span></pre>
+<p>In order for the function to work, we need to first use <kbd>ST_UNION</kbd> on the geometry parameter to pass to the <kbd>AsX3D_XHTML</kbd> function:</p>
+<pre><strong>copy( 
+  WITH pts AS ( 
+    SELECT  
+      PC_Explode(pa) AS pt  
+    FROM giraffe 
+  ) 
+  SELECT AsX3D_XHTML(ST_UNION(pt::geometry)) FROM pts) to stdout;</strong> </pre>
+<p>We can now very simply generate the appropriate XHTML directly from the command line or a web framework.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Reconstructing Unmanned Aerial Vehicle (UAV) image footprints with PostGIS 3D</h1>
+                </header>
+            
+            <article>
+                
+<p>The rapid development of <strong>Unmanned Aerial Systems</strong> (<strong>UAS</strong>), also known as <strong>Unmanned Aerial Vehicles</strong> (<strong>UAVs</strong>), as data collectors is revolutionizing remote data collection in all sectors. Barriers to wider adoption outside military sectors include regulatory frameworks preventing their flight in some nations, such as, the United States, and the lack of open source implementations of post-processing software. In the next four recipes, we'll attempt preliminary solutions to the latter of these two barriers.</p>
+<p>For this recipe, we will be using the metadata from a UAV flight in Seneca County, Ohio, by the Ohio Department of Transportation to map the coverage of the flight. This is included in the code folder for this chapter.</p>
+<p>The basic idea for this recipe is to estimate the field of view of the UAV camera, generate a 3D pyramid that represents that field of view, and use the flight ephemeris (bearing, pitch, and roll) to estimate ground coverage.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting started</h1>
+                </header>
+            
+            <article>
+                
+<p>The metadata or ephemeris we have for the flight includes the bearing, pitch, and roll of the UAS, in addition to its elevation and location:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/d9b1d3e5-d649-4461-9f24-fa7b848ce352.png" style="width:28.58em;height:18.75em;"/></div>
+<p>To translate these ephemeris into PostGIS terms, we'll assume the following:</p>
+<ul>
+<li>90 degrees minus the pitch is equivalent to <kbd>ST_RotateX</kbd></li>
+<li>The negative roll is equivalent to <kbd>ST_RotateY</kbd></li>
+<li>90 degrees minus the bearing is equivalent to <kbd>ST_RotateZ</kbd></li>
+</ul>
+<p>In order to perform our analysis, we require external functions. These functions can be downloaded from <a href="https://github.com/smathermather/postgis-etc/tree/master/3D"><span class="URLPACKT">https://github.com/smathermather/postgis-etc/tree/master/3D</span></a>.</p>
+<p>We will use patched versions of <kbd>ST_RotateX</kbd>, <kbd>ST_RotateY</kbd> (<kbd>ST_RotateX.sql</kbd>, and <kbd>ST_RotateY.sql</kbd>), which allow us to rotate geometries around an input point, as well as a function for calculating our field of view, <kbd>pyramidMaker.sql</kbd>. Future versions of PostGIS will include these versions of <kbd>ST_RotateX</kbd> and <kbd>ST_RotateY</kbd> built in. We have another function, <kbd>ST_RotateXYZ</kbd>, which is built upon these and will also simplify our code by allowing us to specify three axes at the same time for rotation.</p>
+<p>For the final step, we'll need the capacity to perform volumetric intersection (the 3D equivalent of intersection). For this, we'll use <kbd>volumetricIntersection.sql</kbd>, which allows us to just return the volumetric portion of the intersection as a <strong>triangular irregular network</strong> (<strong>TIN</strong>).</p>
+<div class="packt_tip">A TIN is a 3D surface model for representing surfaces and volumes as a mesh of triangles.</div>
+<p>We will install the functions as follows:</p>
+<pre><strong>psql -U me -d postgis_cookbook -f ST_RotateX.sql</strong>
+<strong>psql -U me -d postgis_cookbook -f ST_RotateY.sql</strong>
+<strong>psql -U me -d postgis_cookbook -f ST_RotateXYZ.sql</strong>
+<strong>psql -U me -d postgis_cookbook -f pyramidMaker.sql</strong>
+<strong>psql -U me -d postgis_cookbook -f volumetricIntersection.sql</strong></pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>In order to calculate the viewing footprint, we will calculate a rectangular pyramid descending from the viewpoint to the ground. This pyramid will need to point to the left and right of the nadir according to the UAS's roll, forward or backward from the craft according to its pitch, and be oriented relative to the direction of movement of the craft according to its bearing.</p>
+<p>The <kbd>pyramidMaker</kbd> function will construct our pyramid for us and <kbd>ST_RotateXYZ</kbd> will rotate the pyramid in the direction we need to compensate for roll, pitch, and bearing.</p>
+<p>The following image is an example map of such a calculated footprint for a single image. Note the slight roll to the left for this example, resulting in an asymmetric-looking pyramid when viewed from above:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/104bebdd-9aa8-4eb6-836e-a2117231b533.png" style="width:26.25em;height:19.50em;"/></div>
+<p>The total track for the UAS flight overlayed on a contour map is shown in the following image:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/44b94751-c2db-4190-ac23-f8c526f32104.png" style="width:28.58em;height:25.00em;"/></div>
+<div class="packt_figref CDPAlignCenter CDPAlign">Total track for the flight viewed with QGIS</div>
+<p>We will write a function to calculate our footprint pyramid. To input to the function, we'll need the position of the UAS as geometry (origin), the pitch, bearing, and roll, as well as the field of view angle in <kbd>x</kbd> and <kbd>y</kbd> for the camera. Finally, we'll need the relative height of the craft above ground:</p>
+<pre><strong>CREATE OR REPLACE FUNCTION chp07.pbr(origin geometry, pitch numeric,  
+  bearing numeric, roll numeric, anglex numeric, angley numeric,  
+  height numeric) 
+  RETURNS geometry AS 
+$BODY$</strong> </pre>
+<p>Our pyramid function assumes that we know what the base size of our pyramid is. We don't know this initially, so we'll calculate its size based on the field of view angle of the camera and the height of the craft:</p>
+<pre><strong>WITH widthx AS 
+( 
+  SELECT height / tan(anglex) AS basex 
+), 
+widthy AS 
+( 
+  SELECT height / tan(angley) AS basey 
+), </strong></pre>
+<p>Now, we have enough information to construct our pyramid:</p>
+<pre><strong>iViewCone AS ( 
+  SELECT pyramidMaker(origin, basex::numeric, basey::numeric, height)  
+    AS the_geom 
+    FROM widthx, widthy 
+),</strong> </pre>
+<p>We will require the following code to rotate our view relative to pitch, roll, and bearing:</p>
+<pre><strong>iViewRotated AS ( 
+  SELECT ST_RotateXYZ(the_geom, pi() - pitch, 0 - roll, pi() -  
+    bearing, origin) AS the_geom FROM iViewCone 
+) 
+SELECT the_geom FROM iViewRotated</strong> </pre>
+<p>The whole function is as follows:</p>
+<pre><strong>CREATE OR REPLACE FUNCTION chp07.pbr(origin geometry, pitch numeric,  
+  bearing numeric, roll numeric, anglex numeric, angley numeric,  
+  height numeric) 
+  RETURNS geometry AS 
+$BODY$ 
+ 
+WITH widthx AS 
+( 
+  SELECT height / tan(anglex) AS basex 
+), 
+widthy AS 
+( 
+  SELECT height / tan(angley) AS basey 
+), 
+iViewCone AS ( 
+  SELECT pyramidMaker(origin, basex::numeric, basey::numeric, height)  
+    AS the_geom 
+    FROM widthx, widthy 
+), 
+iViewRotated AS ( 
+  SELECT ST_RotateXYZ(the_geom, pi() - pitch, 0 - roll, pi() -  
+    bearing, origin) AS the_geom FROM iViewCone 
+) 
+SELECT the_geom FROM iViewRotated 
+; 
+$BODY$ 
+  LANGUAGE sql VOLATILE 
+  COST 100;</strong> </pre>
+<p>Now, to use our function, let us import the UAS positions from the <kbd>uas_locations</kbd> shapefile included in the source for this chapter:</p>
+<pre><strong>shp2pgsql -s 3734 -W LATIN1 uas_locations_altitude_hpr_3734 uas_locations | \</strong><strong>PGPASSWORD=me psql -U me -d postgis-cookbook -h localhost</strong></pre>
+<p>Now, it is possible to calculate an estimated footprint for each UAS position:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.viewshed; 
+CREATE TABLE chp07.viewshed AS 
+SELECT 1 AS gid, roll, pitch, heading, fileName, chp07.pbr(ST_Force3D(geom), 
+  radians(0)::numeric, radians(heading)::numeric, radians(roll)::numeric, 
+  radians(40)::numeric, radians(50)::numeric, </strong><br/><strong>  ( (3.2808399 * altitude_a) - 838)::numeric) 
+AS the_geom FROM uas_locations;</strong> </pre>
+<p>If you import this with your favorite desktop GIS, such as QGIS, you will be able to see the following:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/5400b7a7-cfd6-492a-abf6-e056ca39ea44.png" style="width:25.92em;height:23.58em;"/></div>
+<p>With a terrain model, we can go a step deeper in this analysis. Since our UAS footprints are volumetric, we will first load the terrain model. We will load this from a <kbd>.backup</kbd> file included in the source code for this chapter:</p>
+<pre><strong>pg_restore -h localhost -p 8000 -U me -d "postgis-cookbook" \ </strong><strong>--schema chp07 --verbose "lidar_tin.backup"</strong></pre>
+<p>Next, we will create a smaller version of our <kbd>viewshed</kbd> table:</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.viewshed; 
+CREATE TABLE chp07.viewshed AS  
+SELECT 1 AS gid, roll, pitch, heading, fileName, chp07.pbr(ST_Force3D(geom), radians(0)::numeric, radians(heading)::numeric, radians(roll) ::numeric, radians(40)::numeric, radians(50)::numeric, 1000::numeric) AS the_geom  
+FROM uas_locations  
+WHERE fileName = 'IMG_0512.JPG';</strong> </pre>
+<p>If you import this with your favorite desktop GIS, such as QGIS, you will be able to see the following:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/384e3e01-1517-4988-a6c3-41176fe21b0a.png" style="width:31.17em;height:29.75em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">UAV photogrammetry in PostGIS – point cloud</h1>
+                </header>
+            
+            <article>
+                
+<p>We will use the techniques we've used in the previous recipe named <em>Creating arbitrary 3D objects for PostGIS</em> learn how to create and import a UAV-derived point cloud in PostGIS.</p>
+<p>One caveat before we begin is that while we will be working with geospatial data, we will be doing so in relative space, rather than a known coordinate system. In other words, this approach will calculate our dataset in an arbitrary coordinate system. <kbd>ST_Affine</kbd> could be used in combination with the field measurements of locations to transform our data into a known coordinate system, but this is beyond the scope of this book.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Much like with the <em>Creating arbitrary 3D objects for PostGIS</em> recipe,  we will be taking an image series and converting it into a point cloud. In this case, however, our image series will be from UAV imagery. Download the image series included in the code folder for this chapter, <kbd>uas_flight</kbd>, and feed it into VisualSFM (check <a href="http://ccwu.me/vsfm/">http://ccwu.me/vsfm/</a>for more information on how to use this tool); in order to retrieve a point cloud, name it <kbd>uas_points.ply</kbd> (this file is also included in this folder in case you would rather use it).</p>
+<p>The input for PostGIS is the same as before. Create a JSON file and use PDAL store it into the database:</p>
+<pre>{ 
+  "pipeline": [{ 
+    "type": "readers.ply", 
+    "filename": "/data/uas_flight/uas_points.ply" 
+  }, { 
+    "type": "writers.pgpointcloud", 
+    "connection": "host='localhost' dbname='postgis-cookbook' user='me'<br/>                   password='me' port='5432'", 
+    "table": "uas", 
+    "schema": "chp07" 
+  }] 
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, we copy data from the point cloud into our table. Refer to the <em>Importing LiDAR data recipe</em> in this chapter to verify the pointcloud extension object representation:</p>
+<pre><strong>$ pdal pipeline uas_points.json</strong></pre>
+<p>This data, as viewed in MeshLab (<span class="MsoHyperlink"><a href="http://www.meshlab.net/">http://www.meshlab.net/</a>)</span> from the .<kbd>ply</kbd> file, is pretty interesting:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><a><br/>
+<img src="assets/fc8744f6-98ec-48ba-bc78-27cb1f19ed45.png" style="width:50.67em;height:32.33em;"/></a></div>
+<p>The original data is color infrared imagery, so vegetation shows up red, and farm fields and roads as gray. Note the bright colors in the sky; those are camera position points that we'll need to filter out.</p>
+<p>The next step is to generate orthographic imagery from this data.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">UAV photogrammetry in PostGIS – DSM creation</h1>
+                </header>
+            
+            <article>
+                
+<p>The photogrammetry example would be incomplete if we did not produce a digital terrain model from our inputs. A fully rigorous solution where the input point cloud would be classified into ground points, building points, and vegetation points is not feasible here, but this recipe will provide the basic framework for accomplishing such a solution.</p>
+<p>In this recipe, we will create a 3D TIN, which will represent the surface of the point cloud.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we start, <kbd>ST_DelaunayTriangles</kbd> is available only in PostGIS 2.1 using GEOS 3.4. This is one of the few recipes in this book to require such advanced versions of PostGIS and GEOS.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p><kbd>ST_DelaunayTriangles</kbd> will calculate a 3D TIN with the correct flag: geometry <kbd>ST_DelaunayTriangles</kbd> (geometry <kbd>g1</kbd>, float <kbd>tolerance</kbd>, int4 <kbd>flags</kbd>):</p>
+<pre><strong>DROP TABLE IF EXISTS chp07.uas_tin; 
+CREATE TABLE chp07.uas_tin AS WITH pts AS  
+( 
+   <span class="pl-k">SELECT</span> PC_Explode(pa) AS pt  
+   <span class="pl-k">FROM</span> chp07.uas_flights 
+) 
+<span class="pl-k">SELECT</span> ST_DelaunayTriangles(ST_Union(pt::geometry), 0.0, 2) AS the_geom  
+<span class="pl-k">FROM</span> pts;</strong> </pre>
+<p>Now, we have a full TIN of a digital surface model at our disposal:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/4e8abb92-9074-4cf2-a2ca-dc36daabb460.jpg" style="width:58.58em;height:34.00em;"/></div>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

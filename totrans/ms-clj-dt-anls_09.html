@@ -1,0 +1,683 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;9.&#xA0;Analyzing Social Data Participation"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Analyzing Social Data Participation</h1></div></div></div><p>Social networks and websites have revolutionized the Internet. Most people online participate in some social network, either it's <a id="id681" class="indexterm"/>
+<span class="strong"><strong>Facebook</strong></span>, <a id="id682" class="indexterm"/>
+<span class="strong"><strong>Twitter</strong></span>, <a id="id683" class="indexterm"/>
+<span class="strong"><strong>Pinterest</strong></span>, <a id="id684" class="indexterm"/>
+<span class="strong"><strong>GitHub</strong></span>, <a id="id685" class="indexterm"/>
+<span class="strong"><strong>StackOverflow</strong></span>, or any of the zillion other social networking websites that have sprung up. They're an important way for people to connect and stay in contact, but they're also a major source of data about people's relationships and activities.</p><p>Analyzing this data is important for a number of reasons. Of course, advertisers and marketers want to squeeze as much information out of the data as they can. But if you're running the social network, you'll want to analyze the data to figure out what's working and what's falling flat. You want to ask yourself constantly what you can do to engage users better and to make your social network a more compelling, enjoyable, or useful experience for your users.</p><p>Over the course of this chapter, we'll get an open data dump from the<a id="id686" class="indexterm"/> <span class="strong"><strong>StackExchange</strong></span> (<a class="ulink" href="http://stackexchange.com">http://stackexchange.com</a>) website. This includes <a id="id687" class="indexterm"/>StackOverflow (<a class="ulink" href="http://stackoverflow.com/">http://stackoverflow.com/</a>) and a host of other question-and-answer sites. We'll analyze this in a number of different ways and try to learn both about how people interact and generate content on those sites and about what makes a good answer.</p><p>The following are the topics we are going to cover in this chapter:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Understanding the analyses we can perform</li><li class="listitem" style="list-style-type: disc">Getting the data</li><li class="listitem" style="list-style-type: disc">Finding patterns of participation</li><li class="listitem" style="list-style-type: disc">Comparing askers and answerers</li><li class="listitem" style="list-style-type: disc">Finding participation patterns over time</li><li class="listitem" style="list-style-type: disc">Finding up-voted answers</li><li class="listitem" style="list-style-type: disc">Tagging questions automatically</li></ul></div><div class="section" title="Setting up the project"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec59"/>Setting up the project</h1></div></div></div><p>Before we<a id="id688" class="indexterm"/> get started, let's set up the project. I've done this using <a id="id689" class="indexterm"/>Leiningen 2 (<a class="ulink" href="http://leiningen.org/">http://leiningen.org/</a>) and Stuart Sierra's reloaded project template (<a class="ulink" href="https://github.com/stuartsierra/reloaded">https://github.com/stuartsierra/reloaded</a>). I named the project <code class="literal">social-so</code> by running the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ lein new reloaded social-so</strong></span>
+</pre></div><p>Of course, we'll need more dependencies. The following is the <code class="literal">project.clj</code> file for this chapter:</p><div class="informalexample"><pre class="programlisting">(defproject social-so "0.1.0-SNAPSHOT"
+  :dependencies [[org.clojure/clojure "1.5.1"]
+                 [org.clojure/data.xml "0.0.7"]
+                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
+                 [org.clojure/data.json "0.2.4"]
+                 [cc.mallet/mallet "2.0.7"]
+                 [org.jsoup/jsoup "1.7.3"]]
+  :profiles {:dev {:dependencies
+                   [[org.clojure/tools.namespace "0.2.4"]]
+                   :source-paths ["dev"]}}
+  :jvm-opts ["-Xmx2048m"])</pre></div><p>The highlights here are that we'll use <code class="literal">org.clojure/data.xml</code> to read XML files, <code class="literal">org.clojure/data.json</code> to read JSON, and <code class="literal">org.jsoup/jsoup</code> to clean up HTML. If you're still using Java 6, you'll need <code class="literal">jsr166y</code> to provide concurrency with the reducers library. And we'll use <code class="literal">cc.mallet/mallet</code> to handle some Naïve Bayesian classification.</p><div class="section" title="Understanding the analyses"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec64"/>Understanding the analyses</h2></div></div></div><p>Now that we have the <a id="id690" class="indexterm"/>infrastructure out of the way, let's step back and think about what kind of data we have and what we can do with it.</p></div><div class="section" title="Understanding social network data"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec65"/>Understanding social network data</h2></div></div></div><p>Social networks <a id="id691" class="indexterm"/>come in two broad kinds:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">There are <a id="id692" class="indexterm"/><span class="strong"><strong>networking-oriented</strong></span> <a id="id693" class="indexterm"/>social networks. These include the<a id="id694" class="indexterm"/> usual subjects, such as<a id="id695" class="indexterm"/> Facebook (<a class="ulink" href="http://facebook.com">http://facebook.com</a>), LinkedIn<a id="id696" class="indexterm"/> (<a class="ulink" href="http://linkedin.com">http://linkedin.com</a>), Twitter<a id="id697" class="indexterm"/> (<a class="ulink" href="http://twitter.com/">http://twitter.com/</a>), or <a id="id698" class="indexterm"/>Sina Weibo (<a class="ulink" href="http://weibo.com">http://weibo.com</a>). These <a id="id699" class="indexterm"/>focus on allowing people <a id="id700" class="indexterm"/>to connect with each other, build relationships, and post updates about themselves.</li><li class="listitem">There are <span class="strong"><strong>knowledge-sharing-oriented</strong></span> <a id="id701" class="indexterm"/>social networks. These <a id="id702" class="indexterm"/>include the <a id="id703" class="indexterm"/>StackExchange (<a class="ulink" href="http://stackexchange.com">http://stackexchange.com</a>) family of social networks, including <a id="id704" class="indexterm"/>StackOverflow (<a class="ulink" href="http://stackoverflow.com">http://stackoverflow.com</a>) or Quora<a id="id705" class="indexterm"/> (<a class="ulink" href="https://www.quora.com/">https://www.quora.com/</a>). These <a id="id706" class="indexterm"/>focus on <a id="id707" class="indexterm"/>allowing people to exchange information and knowledge. Usually, they are more structured and focused on questions and answers than web forums or wikis.</li></ol></div><p>Obviously, these networks enable entirely different kinds of interactions and have different features and produce different kinds of data. Different kinds of analyses are appropriate.</p></div><div class="section" title="Understanding knowledge-based social networks"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec66"/>Understanding knowledge-based social networks</h2></div></div></div><p>In <a id="id708" class="indexterm"/>knowledge-based social <a id="id709" class="indexterm"/>networks, people come together to share information. Often, these are question-and-answer forums, such as the StackExchange network of sites, but also on <a id="id710" class="indexterm"/>
+<span class="strong"><strong>Quora</strong></span> (<a class="ulink" href="https://www.quora.com/">https://www.quora.com/</a>), <a id="id711" class="indexterm"/>
+<span class="strong"><strong>Yahoo Answers</strong></span> (<a class="ulink" href="http://answers.yahoo.com/">http://answers.yahoo.com/</a>), and so on.</p><p>Generally, in this genre of social network, some users post questions. Others answer them. There's usually some kind of in-site economy, whether it's represented by badges, points, or some combination. This encourages people to keep both questions and answers on topic, to answer questions, and to set and maintain the community's tone. Sometimes, there are moderators, sometimes the communities are self-moderated, and sometimes there's a combination of the two.</p><p>Looking at the front page of <a id="id712" class="indexterm"/>StackOverflow, we can see the basic elements of the social network. Look at the following screenshot:</p><div class="mediaobject"><img src="graphics/4139OS_09_01.jpg" alt="Understanding knowledge-based social networks"/></div><p>The preceding <a id="id713" class="indexterm"/>screenshot depicts a very interesting layout. You can easily notice the following two things:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">There's a button labeled <span class="strong"><strong>Ask Question</strong></span> at the upper right-hand side for posting a question. This isn't as large as you might expect, since those asking questions are presumably motivated to find the button and are willing to click through into another page to do it. This is different than the posting boxes found on sites such as Facebook or Twitter, where they try to reduce the friction for posting new statuses in order to encourage people to do it.</li><li class="listitem" style="list-style-type: disc">There is also a list of recently posted questions. This can be filtered to display tags that you're interested in. For example, you can use this to find either questions that you are qualified to answer or those you are interested in learning about yourself.</li></ul></div><p>So we <a id="id714" class="indexterm"/>can see immediately that the primary interactions of the site are accessible from the front page. Also, the site's design makes it easier to do the more difficult interaction (answering questions).</p><p>We can already guess that most users will join to post only one or two questions and never participate on the site again. This group may potentially be quite large. Who those users are and how to motivate them to answer questions may be one critical question that StackExchange has.</p><p>There may also be a similar dynamic among the users who do answer questions. There are probably a small number of users who answer most of the questions. StackExchange may be interested in how to get contributions more evenly from all users, not just from a few <span class="emphasis"><em>power users</em></span>.</p></div><div class="section" title="Introducing the 80/20 rule"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec67"/>Introducing the 80/20 rule</h2></div></div></div><p>In fact, both of these <a id="id715" class="indexterm"/>observations are examples of the general principle of social networks. This <a id="id716" class="indexterm"/>has been called the <span class="strong"><strong>80/20</strong></span> rule. This simply states that approximately 80 percent of the content will be created by 20 percent of the users. It's also known as the <a id="id717" class="indexterm"/>
+<span class="strong"><strong>Pareto Principle</strong></span>, which states more generally that 80 percent of the effects come from 20 percent of the causes. Although in different social networks, the details may be off—for example, 15 percent of the users may create 95 percent of the content—in general this observation is surprisingly robust. One of the things that we'll look at in this chapter is exactly how the 80/20 rule applies to the StackOverflow data.</p><p>With this in mind, let's get the data so we can start looking at it.</p><div class="section" title="Getting the data"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec40"/>Getting the data</h3></div></div></div><p>In this chapter, we're going to<a id="id718" class="indexterm"/> focus on knowledge-based social networks, and in particular, we'll work with the StackExchange sites. For some time, StackExchange has made public a <a id="id719" class="indexterm"/>periodic data dump of their sites (<a class="ulink" href="http://blog.stackexchange.com/category/cc-wiki-dump/">http://blog.stackexchange.com/category/cc-wiki-dump/</a>). This will provide a great test bed for working with a social network site's data.</p><p>The data dump is made available through the <a id="id720" class="indexterm"/>
+<span class="strong"><strong>Internet Archive</strong></span> (<a class="ulink" href="https://archive.org/">https://archive.org/</a>). The webpage for that is currently at <a class="ulink" href="https://archive.org/details/stackexchange">https://archive.org/details/stackexchange</a>. You can download the entire dump using a <a id="id721" class="indexterm"/>
+<span class="strong"><strong>BitTorrent</strong></span> client (<a class="ulink" href="http://www.bittorrent.com/">http://www.bittorrent.com/</a>) such as <span class="strong"><strong>μTorrent</strong></span><a id="id722" class="indexterm"/> (<a class="ulink" href="http://www.utorrent.com/">http://www.utorrent.com/</a>). However, we're only interested in the StackOverflow posts and comments, so if you'd like, you can just download those two archives. Of course, combined they're about 6 GB, so the torrent may make the most sense, anyway.</p><div class="mediaobject"><img src="graphics/4139OS_09_02.jpg" alt="Getting the data"/></div><p>The archived files are compressed using the 7z format. Windows users can get a utility for extracting this from the <span class="strong"><strong>7-zip</strong></span> site<a id="id723" class="indexterm"/> (<a class="ulink" href="http://www.7-zip.org/">http://www.7-zip.org/</a>). That site's download page also has links to some unofficial binaries for Mac OS X and Linux (<a class="ulink" href="http://www.7-zip.org/download.html">http://www.7-zip.org/download.html</a>). Both of these platforms also have command-line binaries available. For example, <span class="strong"><strong>Homebrew</strong></span><a id="id724" class="indexterm"/> (<a class="ulink" href="http://brew.sh/">http://brew.sh/</a>) has a recipe for this named <span class="strong"><strong>p7zip</strong></span>.</p><p>Extract this data into your project directory, into a subdirectory named <code class="literal">data</code>, using the following lines of code:</p><div class="informalexample"><pre class="programlisting">cd data
+7z x ~/torrents/stackexchange/stackoverflow.com-Posts.7z</pre></div><p>Now we're ready to start digging into the data and see what surprises it has for us.</p></div><div class="section" title="Looking at the amount of data"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec41"/>Looking at the amount of data</h3></div></div></div><p>First, we need to see<a id="id725" class="indexterm"/> how much data there will be. The raw archive for this part of the data is about 6 GB. Not insignificant, but it's not petabytes, either.</p><p>So the compressed file is almost 5 GB, and the expanded file is 23 GB! We have a lot of data to look at.</p><div class="section" title="Looking at the data format"><div class="titlepage"><div><div><h4 class="title"><a id="ch09lvl4sec11"/>Looking at the data format</h4></div></div></div><p>All of the files are in <a id="id726" class="indexterm"/>XML format. The file labeled <code class="literal">Posts</code> contains both the questions and the answers.</p><p>The format of the data is fairly simple (but for a full description, see the <code class="literal">README.txt</code> file). The following is the first entry:</p><div class="informalexample"><pre class="programlisting">&lt;row Id="4"
+     PostTypeId="1"
+     AcceptedAnswerId="7"
+     CreationDate="2008-07-31T21:42:52.667"
+     Score="251"
+     ViewCount="15207"
+     Body="&amp;lt;p&amp;gt;I want to use a track-bar to change a form's opacity.&amp;lt;/p&amp;gt;
+
+&amp;lt;p&amp;gt;This is my code:&amp;lt;/p&amp;gt;
+
+&amp;lt;pre&amp;gt;&amp;lt;code&amp;gt;decimal trans = trackBar1.Value / 5000;
+this.Opacity = trans;
+&amp;lt;/code&amp;gt;&amp;lt;/pre&amp;gt;
+
+&amp;lt;p&amp;gt;When I try to build it, I get this error:&amp;lt;/p&amp;gt;
+
+&amp;lt;blockquote&amp;gt;
+  &amp;lt;p&amp;gt;Cannot implicitly convert type 'decimal' to 'double'.&amp;lt;/p&amp;gt;
+&amp;lt;/blockquote&amp;gt;
+
+&amp;lt;p&amp;gt;I tried making &amp;lt;strong&amp;gt;trans&amp;lt;/strong&amp;gt; to &amp;lt;strong&amp;gt;double&amp;lt;/strong&amp;gt;, but then the control doesn't work.This code has worked fine for me in VB.NET in the past. &amp;lt;/p&amp;gt;
+"
+     OwnerUserId="8"
+     LastEditorUserId="2648239"
+     LastEditorDisplayName="Rich B"
+     LastEditDate="2014-01-03T02:42:54.963"
+     LastActivityDate="2014-01-03T02:42:54.963"
+     Title="When setting a form's opacity should I use a decimal or double?"
+     Tags="&amp;lt;c#&amp;gt;&amp;lt;winforms&amp;gt;&amp;lt;forms&amp;gt;&amp;lt;type-conversion&amp;gt;&amp;lt;opacity&amp;gt;"
+     AnswerCount="13"
+     CommentCount="25"
+     FavoriteCount="23"
+     CommunityOwnedDate="2012-10-31T16:42:47.213" /&gt;</pre></div><p>As we can see from <code class="literal">README.txt</code>, this post represents a question (the <code class="literal">PostTypeId</code> field is <code class="literal">1</code>). We can see its body, its tags, and its accepted answer, as well as a lot of the metadata about this post. This should give us plenty to go on.</p><p>If we look at the third entry, we'll<a id="id727" class="indexterm"/> see one of the accepted answers for this post, as follows:</p><div class="informalexample"><pre class="programlisting">&lt;row Id="7"
+     PostTypeId="2"
+     ParentId="4"
+     CreationDate="2008-07-31T22:17:57.883"
+     Score="193"
+     Body="&amp;lt;p&amp;gt;An explicit cast to double isn't necessary.&amp;lt;/p&amp;gt;
+
+&amp;lt;pre&amp;gt;&amp;lt;code&amp;gt;double trans = (double)trackBar1.Value / 5000.0;
+&amp;lt;/code&amp;gt;&amp;lt;/pre&amp;gt;
+
+&amp;lt;p&amp;gt;Identifying the constant as &amp;lt;code&amp;gt;5000.0&amp;lt;/code&amp;gt; (or as &amp;lt;code&amp;gt;5000d&amp;lt;/code&amp;gt;) is sufficient:&amp;lt;/p&amp;gt;
+
+&amp;lt;pre&amp;gt;&amp;lt;code&amp;gt;double trans = trackBar1.Value / 5000.0;
+double trans = trackBar1.Value / 5000d;
+&amp;lt;/code&amp;gt;&amp;lt;/pre&amp;gt;
+"
+     OwnerUserId="9"
+     LastEditorUserId="967315"
+     LastEditDate="2012-10-14T11:50:16.703"
+     LastActivityDate="2012-10-14T11:50:16.703"
+     CommentCount="0" /&gt;</pre></div><p>So, for answers (the <code class="literal">PostTypeId</code> field is 2), we can get their parents, their body texts, and their scores. Their parents indicate which child was accepted. This should be enough to help us analyze their content.</p><p>In both cases, we also have <code class="literal">OwnerUserId</code>, and this will help us understand how people interact with the site and with each other.</p><p>The text-field attributes allow rich content (<code class="literal">Body</code> and <code class="literal">Title</code>), and these are handled by encoding HTML into the fields. We'll need to escape those and probably scrub out the tags. That won't be a problem, but we'll need to keep it in mind.</p></div></div><div class="section" title="Defining and loading the data"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec42"/>Defining and loading the data</h3></div></div></div><p>We can trace out <a id="id728" class="indexterm"/>some of the data that we'll need to use throughout this chapter. We can <a id="id729" class="indexterm"/>put these into the <code class="literal">src/social_so/data.clj</code> file.</p><p>We'll use two record types. The <code class="literal">CountRank</code> type will hold together a raw count and its rank in the list of frequencies, and the <code class="literal">UserInfo</code> type will store the user and the frequencies and ranks for the different types of posts that they've made. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defrecord CountRank [count rank])
+(defrecord UserInfo [user post q a])</pre></div><p>The <code class="literal">post</code>, <code class="literal">q</code>, and <code class="literal">a</code> fields will keep track of the frequencies and rank by all posts, by question posts, and by answer posts.</p><p>Together, these record structures should help us get a start in understanding this data and some of the patterns of participation.</p><p>For loading the data, let's move to a new file, named <code class="literal">src/social_so/xml.clj</code>, and let's give it the following namespace declaration:</p><div class="informalexample"><pre class="programlisting">(ns social-so.xml
+  (:require [clojure.data.xml :as xml]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
+            [social-so.data :as d]
+            [social-so.utils :as u])
+  (:import [org.jsoup Jsoup]
+           [org.jsoup.safety Whitelist]))</pre></div><p>We'll use the functions in this namespace to read the XML file and build the records containing the data.</p><p>At the most basic level, we need to be able to read the post elements from the XML file. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn read-posts [stream] (:content (xml/parse stream)))</pre></div><p>We'll also need to access a little bit of data from each element. The following are some getter functions for an identifier for the user and for the post type code:</p><div class="informalexample"><pre class="programlisting">(defn get-user [el]
+  (let [{:keys [attrs]} el]
+    (or (u/-&gt;long (:OwnerUserId attrs))
+        (u/to-lower (:OwnerDisplayName attrs)))))
+(defn get-post-type [el]
+  (u/-&gt;long (:PostTypeId (:attrs el))))</pre></div><p>In this snippet, <code class="literal">el</code> represents the XML element being processed, and we're using a custom function to lowercase the string (<code class="literal">social-so.utils</code>/<code class="literal">to-lower</code>) to be a little defensive about being passed <code class="literal">null</code> values.</p><p>Loading the data<a id="id730" class="indexterm"/> from the XML files will take place in two stages. First, we'll get the <a id="id731" class="indexterm"/>raw frequencies, and then we'll sort the data several different ways and assign ranks to the data.</p></div><div class="section" title="Counting frequencies"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec43"/>Counting frequencies</h3></div></div></div><p>The way that we'll count the <a id="id732" class="indexterm"/>frequencies is to walk over the posts in the XML file. We'll maintain an index of the users with their <code class="literal">UserInfo</code> records. The first time each user is found, they will get a new <code class="literal">UserInfo</code> object. Subsequently, their <code class="literal">UserInfo</code> record will be updated with new counts.</p><p>Let's see how this works in practice.</p><p>The first function, <code class="literal">update-user-info</code>, operates on the level of a single record. It takes a <code class="literal">UserInfo</code> record and updates it based on the type of post currently being processed. If the record is nil, then a new one is created follows:</p><div class="informalexample"><pre class="programlisting">(defn update-user-info [user-id post-el user-info]
+  (let [incrs {:question [1 0], :answer [0 1]}
+        [q-inc a-inc] (incrs (get-post-type post-el))]
+    (cond
+      (nil? q-inc) user-info
+      (nil? user-info) (d/-&gt;UserInfo user-id 1 q-inc a-inc)
+      :else
+      (assoc user-info
+             :post (inc (:post user-info))
+             :q (+ (:q user-info) q-inc)
+             :a (+ (:a user-info) a-inc)))))</pre></div><p>The next function operates at the level of the index from <code class="literal">user-id</code> to <code class="literal">UserInfo</code> records. It takes an XML post, and it gets the user's information from it. It tries to retrieve the <code class="literal">UserInfo</code> record for that user from the index, and it uses <code class="literal">update-user-info</code> to increment the counts in that record. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn update-user-index [user-index post-el]
+  (let [user (get-user post-el)]
+    (-&gt;&gt; user
+      (get user-index)
+      (update-user-info user post-el)
+      (assoc user-index user))))</pre></div><p>Finally, <code class="literal">load-user-infos</code> opens the XML file, reads in the posts, and counts the raw frequencies of the posts <a id="id733" class="indexterm"/>for each user. Finally, it forces the result with <code class="literal">doall</code>, because we're working inside of a <code class="literal">with-open</code> block, so we'll want to have the results fully realized before we close the file. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn load-user-infos [filename]
+  (with-open [s (io/input-stream filename)]
+    (-&gt;&gt; s
+      read-posts
+      (reduce update-user-index {})
+      vals
+      (remove nil?)
+      doall)))</pre></div><p>Now we're ready to walk over these, multiple times, and assign ranks based on the various counts.</p></div><div class="section" title="Sorting and ranking"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec44"/>Sorting and ranking</h3></div></div></div><p>Currently, we're <a id="id734" class="indexterm"/>storing<a id="id735" class="indexterm"/> the raw frequency under the <code class="literal">UserInfo</code> records' fields. However, we want to move the frequencies into a <code class="literal">CountRank</code> record and store the rank alongside it. We will achieve this by performing the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">We'll find the rank using the <code class="literal">rank-on</code> function. This sorts by one of the properties of the <code class="literal">UserInfo</code> records (<code class="literal">:post</code>, <code class="literal">:q</code>, or <code class="literal">:a</code>) and then associates each instance with a rank by containing both within a vector pair. Look at the following code:<div class="informalexample"><pre class="programlisting">(defn rank-on [user-property coll]
+  (-&gt;&gt; coll
+    (sort-by user-property)
+    reverse
+    (map vector (range))))</pre></div></li><li class="listitem">The function <code class="literal">update-rank</code> will then take the rank-and-user pair from <code class="literal">rank-on</code> and associate it with the appropriate property, as follows:<div class="informalexample"><pre class="programlisting">(defn update-rank [user-property rank-info]
+  (let [[rank user-info] rank-info]
+    (assoc user-info user-property
+           (d/-&gt;CountRank (get user-info user-property) 
+                          rank))))</pre></div></li><li class="listitem">The next function, <code class="literal">add-rank-data</code>, coordinates this process by calling these functions on all users. And the function controlling this process, <code class="literal">add-all-ranks</code>, does this on each user as follows:<div class="informalexample"><pre class="programlisting">(defn add-rank-data [user-property users]
+  (map #(update-rank user-property %)
+       (rank-on user-property users)))
+(defn add-all-ranks [users]
+  (-&gt;&gt; users
+    (add-rank-data :post)
+    (add-rank-data :q)
+    (add-rank-data :a)))</pre></div></li><li class="listitem">We can combine reading the XML file and counting the posts with sorting and ranking the users. Look at the following code:<div class="informalexample"><pre class="programlisting">(defn load-xml [filename]
+  (add-all-ranks (load-user-infos filename)))</pre></div></li></ol></div><p>All of these functions <a id="id736" class="indexterm"/>make it simple to load the XML file and to assign the ranks. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def users (x/load-xml</strong></span>
+<span class="strong"><strong>                    "data/stackoverflow.com-Posts"))</strong></span>
+<span class="strong"><strong>user=&gt; (count users)</strong></span>
+<span class="strong"><strong>1594450</strong></span>
+<span class="strong"><strong>user=&gt; (first users)</strong></span>
+<span class="strong"><strong>{:user 22656,</strong></span>
+<span class="strong"><strong> :post {:count 28166, :rank 0},</strong></span>
+<span class="strong"><strong> :q {:count 29, :rank 37889},</strong></span>
+<span class="strong"><strong> :a {:count 28137, :rank 0}}</strong></span>
+</pre></div><p>Now we have the information that we'll need to perform the first round of analyses.</p></div><div class="section" title="Finding the patterns of participation"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec45"/>Finding the patterns of participation</h3></div></div></div><p>Now that we have some data <a id="id737" class="indexterm"/>loaded, let's roll up our sleeves and see what we can learn from it.</p><p>Before we do, however, it would be nice to have some way to generate reports of which users are the most active for each type of post. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn print-top-rank [col-name key-fn n users]
+  (let [fmt "%4s   %6s   %14s\n"
+        sort-fn #(:rank (key-fn %))]
+    (printf fmt "Rank" "User" col-name)
+    (printf fmt "----" "------" "--------------")
+    (doseq [user (take n (sort-by sort-fn users))]
+      (let [freq (key-fn user)]
+        (printf fmt (:rank freq) (:user user) (:count freq))))))</pre></div><p>This allows us to create tables listing the top 10 (or so) users for each post type.</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Rank</p>
+</th><th style="text-align: left" valign="bottom">
+<p>User</p>
+</th><th style="text-align: left" valign="bottom">
+<p>All Posts</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>0</p>
+</td><td style="text-align: left" valign="top">
+<p>22656</p>
+</td><td style="text-align: left" valign="top">
+<p>28166</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>1</p>
+</td><td style="text-align: left" valign="top">
+<p>29407</p>
+</td><td style="text-align: left" valign="top">
+<p>20342</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>2</p>
+</td><td style="text-align: left" valign="top">
+<p>157882</p>
+</td><td style="text-align: left" valign="top">
+<p>15444</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>3</p>
+</td><td style="text-align: left" valign="top">
+<p>17034</p>
+</td><td style="text-align: left" valign="top">
+<p>13287</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>4</p>
+</td><td style="text-align: left" valign="top">
+<p>34397</p>
+</td><td style="text-align: left" valign="top">
+<p>13209</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>5</p>
+</td><td style="text-align: left" valign="top">
+<p>23354</p>
+</td><td style="text-align: left" valign="top">
+<p>12312</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>6</p>
+</td><td style="text-align: left" valign="top">
+<p>115145</p>
+</td><td style="text-align: left" valign="top">
+<p>11806</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>7</p>
+</td><td style="text-align: left" valign="top">
+<p>20862</p>
+</td><td style="text-align: left" valign="top">
+<p>10455</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>8</p>
+</td><td style="text-align: left" valign="top">
+<p>57695</p>
+</td><td style="text-align: left" valign="top">
+<p>9730</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>9</p>
+</td><td style="text-align: left" valign="top">
+<p>19068</p>
+</td><td style="text-align: left" valign="top">
+<p>9560</p>
+</td></tr></tbody></table></div><p>Based on this table, we<a id="id738" class="indexterm"/> can see that some users are <span class="emphasis"><em>very</em></span> active. The top user has almost 8,000 more posts than the second most active user, who is still very, very active.</p><p>The following graph, of the post counts of the top 1,000 users, shows how quickly the activity falls off and how much the top users dominate the conversation:</p><div class="mediaobject"><img src="graphics/4139OS_09_03.jpg" alt="Finding the patterns of participation"/></div><p>We can break this down <a id="id739" class="indexterm"/>further, however. I would expect the people who post questions to behave differently than the people who post answers.</p></div></div><div class="section" title="Matching the 80/20 rule"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec68"/>Matching the 80/20 rule</h2></div></div></div><p>Previously, we talked <a id="id740" class="indexterm"/>about the 80/20 rule: that 80 percent of the content is created by <a id="id741" class="indexterm"/>20 percent of the users. That's obviously a rough estimate, but it does provide a good intuition for the dynamics of these networks.</p><p>To find the break-down, we need to perform the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Sort the users in descending order by the count that we're interested in.</li><li class="listitem">Partition them into <a id="id742" class="indexterm"/><span class="strong"><strong>quintiles</strong></span>, that is, five equally sized buckets.</li><li class="listitem">Sum the counts for each bucket.</li></ol></div><p>To implement this, we can use a function named <code class="literal">quantile-on</code>, which sorts a collection and breaks it into the buckets. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn quantile-on [n key-fn coll]
+  (let [len (count coll)
+        part-size (+ (quot len n)
+                     (if (zero? (mod len n)) 0 1))]
+    (partition-all part-size (sort-by key-fn coll))))</pre></div><p>Now we just need to <a id="id743" class="indexterm"/>pull out<a id="id744" class="indexterm"/> the appropriate fields and sum their values, as follows:</p><div class="informalexample"><pre class="programlisting">(defn sum-count
+  ([key-fn] (partial sum-count key-fn))
+  ([key-fn coll]
+   (-&gt;&gt; coll
+     (map #(:count (key-fn %)))
+     (remove nil?)
+     (reduce + 0))))We can use these functions to find the percentage of users in each quintile:
+user=&gt; (def p-counts
+            (map (d/sum-count :post)
+                 (d/quantile-on 5 #(:rank (:post %)) users)))
+user=&gt; p-counts
+(15587701 1282402 507654 318890 318828)
+user=&gt; (def total (reduce + 0 p-counts))
+user=&gt; (map #(float (/ % total)) p-counts)
+(0.8652395 0.07118336 0.028178774 0.017700894 0.017697452)</pre></div><p>So the top 20 percent of users actually produce more than 85 percent of the content. The quintiles drop off rapidly from there.</p><div class="mediaobject"><img src="graphics/4139OS_09_04.jpg" alt="Matching the 80/20 rule"/></div><p>And we can pull these into a <a id="id745" class="indexterm"/>graph to be able to<a id="id746" class="indexterm"/> see the distribution of contributors more easily.</p></div><div class="section" title="Looking for the 20 percent of questioners"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec69"/>Looking for the 20 percent of questioners</h2></div></div></div><p>While finding those <a id="id747" class="indexterm"/>who post questions, we can also see who are most active in asking questions.</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Rank</p>
+</th><th style="text-align: left" valign="bottom">
+<p>User</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Question Posts</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>0</p>
+</td><td style="text-align: left" valign="top">
+<p>39677</p>
+</td><td style="text-align: left" valign="top">
+<p>1858</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>1</p>
+</td><td style="text-align: left" valign="top">
+<p>4653</p>
+</td><td style="text-align: left" valign="top">
+<p>1605</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>2</p>
+</td><td style="text-align: left" valign="top">
+<p>34537</p>
+</td><td style="text-align: left" valign="top">
+<p>1604</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>3</p>
+</td><td style="text-align: left" valign="top">
+<p>179736</p>
+</td><td style="text-align: left" valign="top">
+<p>1327</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>4</p>
+</td><td style="text-align: left" valign="top">
+<p>117700</p>
+</td><td style="text-align: left" valign="top">
+<p>1327</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>5</p>
+</td><td style="text-align: left" valign="top">
+<p>149080</p>
+</td><td style="text-align: left" valign="top">
+<p>1261</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>6</p>
+</td><td style="text-align: left" valign="top">
+<p>84201</p>
+</td><td style="text-align: left" valign="top">
+<p>1177</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>7</p>
+</td><td style="text-align: left" valign="top">
+<p>434051</p>
+</td><td style="text-align: left" valign="top">
+<p>1107</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>8</p>
+</td><td style="text-align: left" valign="top">
+<p>325418</p>
+</td><td style="text-align: left" valign="top">
+<p>1074</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>9</p>
+</td><td style="text-align: left" valign="top">
+<p>146780</p>
+</td><td style="text-align: left" valign="top">
+<p>1055</p>
+</td></tr></tbody></table></div><p>When we run this, it <a id="id748" class="indexterm"/>gives us a very different set of frequencies. These are more than an order of magnitude less than the frequencies for all posts.</p><p>We can also get the numbers for the distribution of questioners.</p><p>If we use <code class="literal">quantile-on</code> and <code class="literal">sum-count</code> again, we can also see the break-down by quintile. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def q-counts (map (d/sum-count :q)</strong></span>
+<span class="strong"><strong>                          (d/quantile-on 5 #(:rank (:q %)) users)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 q-counts))</strong></span>
+<span class="strong"><strong>user=&gt; q-counts</strong></span>
+<span class="strong"><strong>(5182709 711037 318890 262051 0)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) q-counts)</strong></span>
+<span class="strong"><strong>(0.80045706 0.109817974 0.049251802 0.040473152 0.0)</strong></span>
+</pre></div><p>And the following is the graph for this group:</p><div class="mediaobject"><img src="graphics/4139OS_09_05.jpg" alt="Looking for the 20 percent of questioners"/></div><p>Interesting. So the <a id="id749" class="indexterm"/>lowest quintile doesn't contribute anything. Presumably, those are the users who answer questions. We'll look at this group more in a minute. But overall, the distribution of those asking questions follows what we'd expect from the 80/20 rule.</p></div><div class="section" title="Looking for the 20 percent of respondents"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec70"/>Looking for the 20 percent of respondents</h2></div></div></div><p>Because most of the <a id="id750" class="indexterm"/>posts are answers, we can expect that these frequencies will be closer to the aggregate frequencies. We'll find this similarly to how we found the frequencies of those asking questions. </p><p>Look at the following table:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Rank</p>
+</th><th style="text-align: left" valign="bottom">
+<p>User</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Answer Posts</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>0</p>
+</td><td style="text-align: left" valign="top">
+<p>22656</p>
+</td><td style="text-align: left" valign="top">
+<p>28137</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>1</p>
+</td><td style="text-align: left" valign="top">
+<p>29407</p>
+</td><td style="text-align: left" valign="top">
+<p>20310</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>2</p>
+</td><td style="text-align: left" valign="top">
+<p>157882</p>
+</td><td style="text-align: left" valign="top">
+<p>15431</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>3</p>
+</td><td style="text-align: left" valign="top">
+<p>17034</p>
+</td><td style="text-align: left" valign="top">
+<p>13285</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>4</p>
+</td><td style="text-align: left" valign="top">
+<p>34397</p>
+</td><td style="text-align: left" valign="top">
+<p>13157</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>5</p>
+</td><td style="text-align: left" valign="top">
+<p>23354</p>
+</td><td style="text-align: left" valign="top">
+<p>12270</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>6</p>
+</td><td style="text-align: left" valign="top">
+<p>115145</p>
+</td><td style="text-align: left" valign="top">
+<p>11784</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>7</p>
+</td><td style="text-align: left" valign="top">
+<p>20862</p>
+</td><td style="text-align: left" valign="top">
+<p>10447</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>8</p>
+</td><td style="text-align: left" valign="top">
+<p>57695</p>
+</td><td style="text-align: left" valign="top">
+<p>9711</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>9</p>
+</td><td style="text-align: left" valign="top">
+<p>19068</p>
+</td><td style="text-align: left" valign="top">
+<p>9557</p>
+</td></tr></tbody></table></div><p>We can see that there is a <a id="id751" class="indexterm"/>lot of similarity between this set of numbers and the first one. And in fact there is a lot of similarity between the distribution of this set of posters and the last set, as we can see in the following screenshot:</p><div class="mediaobject"><img src="graphics/4139OS_09_06.jpg" alt="Looking for the 20 percent of respondents"/></div><p>Looking at the distribution overall, however, we can see that the question answerers are even more lopsided than the question askers.</p><p>Let us try to break down the contributors who answer the questions:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def a-counts (map (d/sum-count :a)</strong></span>
+<span class="strong"><strong>                          (d/quantile-on 5 #(:rank (:a %)) users)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 a-counts))</strong></span>
+<span class="strong"><strong>user=&gt; a-counts</strong></span>
+<span class="strong"><strong>(10950972 413668 176148 0 0)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) a-counts)</strong></span>
+<span class="strong"><strong>(0.9488929 0.035844 0.015263082 0.0 0.0)</strong></span>
+</pre></div><p>And the following is the graph for this data:</p><div class="mediaobject"><img src="graphics/4139OS_09_07.jpg" alt="Looking for the 20 percent of respondents"/></div><p>So almost half of <a id="id752" class="indexterm"/>the users never post an answer! However, the top 20 percent of users post 95 percent of the answers. So answering questions appears to be dominated by a few users, while question asking is (marginally) more widespread.</p></div><div class="section" title="Combining ranks"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec71"/>Combining ranks</h2></div></div></div><p>We can see even<a id="id753" class="indexterm"/> more similarity if we compare <a id="id754" class="indexterm"/>the ranks. This table shows the rank for each category of post for all of the top 10 users in any category. (Note that the ranks begin at 0, not 1.)</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>User ID</p>
+</th><th style="text-align: left" valign="bottom">
+<p>All Post Rank</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Question Post Rank</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Answer Post Rank</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>4653</p>
+</td><td style="text-align: left" valign="top">
+<p>423</p>
+</td><td style="text-align: left" valign="top">
+<p>1</p>
+</td><td style="text-align: left" valign="top">
+<p>21342</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>17034</p>
+</td><td style="text-align: left" valign="top">
+<p>3</p>
+</td><td style="text-align: left" valign="top">
+<p>602037</p>
+</td><td style="text-align: left" valign="top">
+<p>3</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>19068</p>
+</td><td style="text-align: left" valign="top">
+<p>9</p>
+</td><td style="text-align: left" valign="top">
+<p>420772</p>
+</td><td style="text-align: left" valign="top">
+<p>9</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>20862</p>
+</td><td style="text-align: left" valign="top">
+<p>7</p>
+</td><td style="text-align: left" valign="top">
+<p>169469</p>
+</td><td style="text-align: left" valign="top">
+<p>7</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>22656</p>
+</td><td style="text-align: left" valign="top">
+<p>0</p>
+</td><td style="text-align: left" valign="top">
+<p>37889</p>
+</td><td style="text-align: left" valign="top">
+<p>0</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>23354</p>
+</td><td style="text-align: left" valign="top">
+<p>5</p>
+</td><td style="text-align: left" valign="top">
+<p>22760</p>
+</td><td style="text-align: left" valign="top">
+<p>5</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>29407</p>
+</td><td style="text-align: left" valign="top">
+<p>1</p>
+</td><td style="text-align: left" valign="top">
+<p>33177</p>
+</td><td style="text-align: left" valign="top">
+<p>1</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>34397</p>
+</td><td style="text-align: left" valign="top">
+<p>4</p>
+</td><td style="text-align: left" valign="top">
+<p>16478</p>
+</td><td style="text-align: left" valign="top">
+<p>4</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>34537</p>
+</td><td style="text-align: left" valign="top">
+<p>358</p>
+</td><td style="text-align: left" valign="top">
+<p>2</p>
+</td><td style="text-align: left" valign="top">
+<p>8024</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>39677</p>
+</td><td style="text-align: left" valign="top">
+<p>345</p>
+</td><td style="text-align: left" valign="top">
+<p>0</p>
+</td><td style="text-align: left" valign="top">
+<p>151684</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>57695</p>
+</td><td style="text-align: left" valign="top">
+<p>8</p>
+</td><td style="text-align: left" valign="top">
+<p>65071</p>
+</td><td style="text-align: left" valign="top">
+<p>8</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>84201</p>
+</td><td style="text-align: left" valign="top">
+<p>631</p>
+</td><td style="text-align: left" valign="top">
+<p>6</p>
+</td><td style="text-align: left" valign="top">
+<p>10521</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>115145</p>
+</td><td style="text-align: left" valign="top">
+<p>6</p>
+</td><td style="text-align: left" valign="top">
+<p>54339</p>
+</td><td style="text-align: left" valign="top">
+<p>6</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>117700</p>
+</td><td style="text-align: left" valign="top">
+<p>595</p>
+</td><td style="text-align: left" valign="top">
+<p>4</p>
+</td><td style="text-align: left" valign="top">
+<p>29654</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>146780</p>
+</td><td style="text-align: left" valign="top">
+<p>923</p>
+</td><td style="text-align: left" valign="top">
+<p>9</p>
+</td><td style="text-align: left" valign="top">
+<p>123737</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>149080</p>
+</td><td style="text-align: left" valign="top">
+<p>682</p>
+</td><td style="text-align: left" valign="top">
+<p>5</p>
+</td><td style="text-align: left" valign="top">
+<p>56862</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>157882</p>
+</td><td style="text-align: left" valign="top">
+<p>2</p>
+</td><td style="text-align: left" valign="top">
+<p>101282</p>
+</td><td style="text-align: left" valign="top">
+<p>2</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>179736</p>
+</td><td style="text-align: left" valign="top">
+<p>605</p>
+</td><td style="text-align: left" valign="top">
+<p>3</p>
+</td><td style="text-align: left" valign="top">
+<p>36463</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>325418</p>
+</td><td style="text-align: left" valign="top">
+<p>523</p>
+</td><td style="text-align: left" valign="top">
+<p>8</p>
+</td><td style="text-align: left" valign="top">
+<p>3502</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>434051</p>
+</td><td style="text-align: left" valign="top">
+<p>858</p>
+</td><td style="text-align: left" valign="top">
+<p>7</p>
+</td><td style="text-align: left" valign="top">
+<p>164416</p>
+</td></tr></tbody></table></div><p>The data in this table makes certain points clear:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The top-ranked users asking questions are a very different set than the top-ranked users answering questions. The top questioner was ranked 141,674th as an answerer, and the top answerer was ranked 37,887th as a questioner.</li><li class="listitem" style="list-style-type: disc">Once we're beyond the top posters, neither subgroup correlates well with the aggregate of all posts. All of these users rank within the top 1,000 for all types of posts. This just indicates that the question answerers don't completely dominate the questioners.</li></ul></div><p>These observations <a id="id755" class="indexterm"/>confirm what we found<a id="id756" class="indexterm"/> looking at the quintiles and the graphs. Both of these groups look very different from each other, and from the aggregate of the two.</p><p>Let's break down the groups into those who only post questions, those who only post answers, and those who do both. That should give us more insight into the types of participation.</p><div class="section" title="Looking at those who only post questions"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec46"/>Looking at those who only post questions</h3></div></div></div><p>We can get the users <a id="id757" class="indexterm"/>who only post answers fairly easily, and then running the previous analyses on that subset is also not difficult. Let's see how this will work. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def qs (filter #(zero? (:count (:a %))) users))</strong></span>
+<span class="strong"><strong>user=&gt; (def q-counts</strong></span>
+<span class="strong"><strong>            (map (d/sum-count :q)</strong></span>
+<span class="strong"><strong>                 (d/quantile-on 5 #(:rank (:q %)) qs)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 q-counts))</strong></span>
+<span class="strong"><strong>user=&gt; (count qs)</strong></span>
+<span class="strong"><strong>780460</strong></span>
+<span class="strong"><strong>user=&gt; q-counts</strong></span>
+<span class="strong"><strong>(969148 272085 156092 156092 156092)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) q-counts)</strong></span>
+<span class="strong"><strong>(0.566916 0.15915973 0.09130809 0.09130809 0.09130809)</strong></span>
+</pre></div><p>So first we filtered for only users who post no answers. This leaves us with 49 percent of the total number of users, so this is really an extremely large group of StackOverflow users.</p><p>However, the interesting part is that their distribution is more uniform. The most active quintile has posted less than two-thirds of the questions. The following graph makes that clear:</p><div class="mediaobject"><img src="graphics/4139OS_09_08.jpg" alt="Looking at those who only post questions"/></div><p>The ratios for<a id="id758" class="indexterm"/> these are much different than we've seen so far. This group is much less driven by a few users. But when you think about it, this makes sense. Many people who come to StackOverflow only post one question, and that's the extent of their interaction. In fact, the bottom three quintiles only post one question and no answers. That's almost 33 percent of the total number of users.</p><p>Let's see how this compares to those who post only answers.</p></div><div class="section" title="Looking at those who only post answers"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec47"/>Looking at those who only post answers</h3></div></div></div><p>Getting the users who only <a id="id759" class="indexterm"/>post answers will be almost exactly like the process we just went through. However, this time we'll switch questions and answers, of course. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def as (filter #(zero? (:count (:q %))) users))</strong></span>
+<span class="strong"><strong>user=&gt; (def a-counts (map (d/sum-count :a)</strong></span>
+<span class="strong"><strong>                          (d/quantile-on 5 #(:rank (:a %)) as)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 a-counts))</strong></span>
+<span class="strong"><strong>user=&gt; (count as)</strong></span>
+<span class="strong"><strong>375667</strong></span>
+<span class="strong"><strong>user=&gt; (float (/ (count as) (count users)))</strong></span>
+<span class="strong"><strong>0.23561831</strong></span>
+<span class="strong"><strong>user=&gt; a-counts</strong></span>
+<span class="strong"><strong>(1413820 116198 75134 75134 75131)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) a-counts)</strong></span>
+<span class="strong"><strong>(0.80540407 0.06619396 0.042801227 0.042801227 0.042799518)</strong></span>
+</pre></div><p>This time, we're working with a group roughly half the size of those who post only questions, roughly a quarter of the entire group of users. And the distribution of the top quintile is much closer to what we'd expect from the 80/20 rule.</p><p>Again, notice that <a id="id760" class="indexterm"/>the last few quintiles appear to have users who have only posted one answer. In fact, about 16 percent of the total number of users have posted no questions and only one answer. This seems to be one of the most curious groups, and trying to get more interaction out of them would be a priority (as I'm sure it has been for StackExchange).</p><p>The graph for this, shown following this paragraph, is somewhat between the last graph (for those who ask only questions) and the first few graphs. The first quintile is about 80 percent, but the rest don't taper off as much as they sometimes do.</p><div class="mediaobject"><img src="graphics/4139OS_09_09.jpg" alt="Looking at those who only post answers"/></div><p>Now let's look at the <a id="id761" class="indexterm"/>breakdown for the rest of the users, those who've posted both questions and answers.</p></div><div class="section" title="Looking at those who post both questions and answers"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec48"/>Looking at those who post both questions and answers</h3></div></div></div><p>The predicate needed to <a id="id762" class="indexterm"/>select those users who have posted both questions and answers will be slightly different than what we've seen in the last two sections. However, once we have those users, the analysis will be the same. The only wrinkle will be that we'll get the distribution for both questions and answers.</p><p>We'll get the users who answer both using a slightly more complicated predicate, which we will page to remove. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def both (remove #(or (zero? (:count (:q %)))</strong></span>
+<span class="strong"><strong>                              (zero? (:count (:a %))))</strong></span>
+<span class="strong"><strong>                         users))</strong></span>
+<span class="strong"><strong>user=&gt; (count both)</strong></span>
+<span class="strong"><strong>438261</strong></span>
+</pre></div><p>Now we'll also need to compute the values for both the questions and the answers. First, let's see what the questions look like:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def bq-counts</strong></span>
+<span class="strong"><strong>            (map (d/sum-count :q)</strong></span>
+<span class="strong"><strong>                 (d/quantile-on 5 #(:rank (:q %)) both)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 bq-counts))</strong></span>
+<span class="strong"><strong>user=&gt; bq-counts</strong></span>
+<span class="strong"><strong>(3450712 730467 335892 160458 87649)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) bq-counts)</strong></span>
+<span class="strong"><strong>(0.72415173 0.1532927 0.07048887 0.033673033 0.018393647)</strong></span>
+</pre></div><p>The graph that follows<a id="id763" class="indexterm"/> makes clear that the ratios on this are more like the distribution that we'd expect:</p><div class="mediaobject"><img src="graphics/4139OS_09_10.jpg" alt="Looking at those who post both questions and answers"/></div><p>Looking at the numbers for the answers from this group, we again seem to be following a very rough approximation of the 80/20 rule. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def ba-counts</strong></span>
+<span class="strong"><strong>            (map (d/sum-count :a)</strong></span>
+<span class="strong"><strong>                 (d/quantile-on 5 #(:rank (:a %)) both)))</strong></span>
+<span class="strong"><strong>user=&gt; (def total (reduce + 0 ba-counts))</strong></span>
+<span class="strong"><strong>user=&gt; ba-counts</strong></span>
+<span class="strong"><strong>(8564601 740590 270367 122164 87649)</strong></span>
+<span class="strong"><strong>user=&gt; (map #(float (/ % total)) ba-counts)</strong></span>
+<span class="strong"><strong>(0.8752454 0.075683385 0.027629714 0.01248435 0.008957147)</strong></span>
+</pre></div><p>And the following is the graph for this data:</p><div class="mediaobject"><img src="graphics/4139OS_09_11.jpg" alt="Looking at those who post both questions and answers"/></div><p>So the group who <a id="id764" class="indexterm"/>has posted both questions and answers seem to be more balanced and have a more typical interaction with the website.</p><p>Another way of looking at this data is to look at how the number of questions each user posts by the number of answers each posts. This gives us an indication of how active users are in each type of activity. Look at the following graph:</p><div class="mediaobject"><img src="graphics/4139OS_09_12.jpg" alt="Looking at those who post both questions and answers"/></div><p>This graph makes <a id="id765" class="indexterm"/>clear that typically users engage in one type of activity or another, and there's not as much cross-over as you might have expected. Also, the scales of the axes are a bit deceiving: the <span class="emphasis"><em>y</em></span> axis is over 16 times larger than the <span class="emphasis"><em>x</em></span> axis.</p><p>Now that we have a better understanding of the way that users are interacting with StackOverflow and the ways that they're generating content, let's look at that content and see if we can figure out what makes a good answer and what doesn't.</p></div></div><div class="section" title="Finding the up-voted answers"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec72"/>Finding the up-voted answers</h2></div></div></div><p>Answers can be rated in a <a id="id766" class="indexterm"/>couple of <a id="id767" class="indexterm"/>different ways. The community can vote an answer up or down, and the original poster can accept an answer. For the purposes of this demonstration, we'll look at accepted answers; however, both metrics might be useful and interesting to explore.</p><p>We'll look at how we might automatically recognize answers that will be accepted.</p><p>On the one hand, this would be very useful to do. If the original poster forgets to accept an answer, the website could prompt them with a possible solution. Also, the site could send the poster an e-mail when someone posts an answer that should be considered.</p><p>But on the other <a id="id768" class="indexterm"/>hand, <a id="id769" class="indexterm"/>acceptable answers probably don't share common linguistic features that any kind of algorithm could latch on to in order to identify potential solutions. I'm doubtful that we'll be able to train an algorithm to identify acceptable answers.</p><p>Still, let's try and see how well we can actually do.</p></div><div class="section" title="Processing the answers"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec73"/>Processing the answers</h2></div></div></div><p>There are over 18 million <a id="id770" class="indexterm"/>posts at this <a id="id771" class="indexterm"/>point. We can always work on the full data set eventually, but to get started, let's pull out a sample of the data. To make things easier, I've uploaded a random sample of 100,000 answers on <a class="ulink" href="http://www.ericrochester.com/mastering-clj-data/data/post-sample-100000.json.gz">http://www.ericrochester.com/mastering-clj-data/data/post-sample-100000.json.gz</a>. These have been transformed into the data structure that we'll use everywhere.</p><p>You can download these with <code class="literal">curl</code> and decompress it with <code class="literal">gzip</code> as follows:</p><div class="informalexample"><pre class="programlisting">$ curl -O http://www.ericrochester.com/mastering-clj-data/data/post-sample-100000.json.gz
+$ gunzip post-sample-100000.json.gz</pre></div><p>We'll put the code for this section into the <code class="literal">src/social_so/post.clj</code> file, and at the top we'll add the following namespace declaration:</p><div class="informalexample"><pre class="programlisting">(ns social-so.post
+  (:require [clojure.java.io :as io]
+            [clojure.data.json :as json]
+            [social-so.data :as d]
+            [social-so.utils :as u]
+            [social-so.xml :as x]))</pre></div><p>To represent the data that we'll work with, we'll use the <code class="literal">PostInfo</code> record type. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defrecord PostInfo
+  [id post-type body-text score accepted-for])</pre></div><p>The interesting fields here are <code class="literal">body-text</code>, which contains the answer's text, stripped of HTML, and <code class="literal">accepted-for</code>, which is nil if the post isn't accepted or contains the question's ID, if the post was accepted for its question.</p><p>This is a flat data record, so it's easy to load the JSON data into these structures. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn load-post-infos [filename]
+  (with-open [r (io/reader filename)]
+    (doall
+      (-&gt;&gt; (json/read r :key-fn keyword)
+        (map map-&gt;PostInfo)
+        (map #(assoc % :post-type (keyword (:post-type %))))))))</pre></div><p>And now we can<a id="id772" class="indexterm"/> read the data on the REPL, <a id="id773" class="indexterm"/>assuming we've aliased this namespace to <code class="literal">p</code>. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def s (p/load-post-infos "post-sample-100000.json"))</strong></span>
+<span class="strong"><strong>user=&gt; (count s)</strong></span>
+<span class="strong"><strong>100000</strong></span>
+<span class="strong"><strong>user=&gt; (count (filter :accepted-for s))</strong></span>
+<span class="strong"><strong>21250</strong></span>
+<span class="strong"><strong>user=&gt; (count (remove :accepted-for s))</strong></span>
+<span class="strong"><strong>78750</strong></span>
+<span class="strong"><strong>user=&gt; (pprint (first s))</strong></span>
+<span class="strong"><strong>{:id 1146880,</strong></span>
+<span class="strong"><strong> :post-type :a,</strong></span>
+<span class="strong"><strong> :body-text</strong></span>
+<span class="strong"><strong> "But while processing i cancelled the transaction.  WP - Basically, if it was a transaction, and you canceled it before it finished, then whatever had started would have been undone. What your database looks like now should be the same as it looked before the UPDATE.",</strong></span>
+<span class="strong"><strong> :score 0,</strong></span>
+<span class="strong"><strong> :accepted-for nil}</strong></span>
+</pre></div><p>Looking at these briefly, we can see that just over 20 percent of the posts in the sample were accepted.</p><div class="section" title="Predicting the accepted answer"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec49"/>Predicting the accepted answer</h3></div></div></div><p>Now that the data is in a <a id="id774" class="indexterm"/>usable form, let's turn our attention to categorizing the posts. To do this, we'll use <a id="id775" class="indexterm"/>
+<span class="strong"><strong>MALLET</strong></span> (<a class="ulink" href="http://mallet.cs.umass.edu/">http://mallet.cs.umass.edu/</a>). We saw MALLET before in <a class="link" href="ch03.html" title="Chapter 3. Topic Modeling – Changing Concerns in the State of the Union Addresses">Chapter 3</a>, <span class="emphasis"><em>Topic Modeling – Changing Concerns in the State of the Union Addresses</em></span>, on topic modeling. That's usually the task that this library is used for. However, it also provides an implementation of a number of classification algorithms, and we'll use one of those now.</p><p>Over the course of<a id="id776" class="indexterm"/> this chapter, we'll categorize the posts as what MALLET calls <code class="literal">instances</code>. This will divide them into categories based on features, or clues within each instance. We'll use MALLET to take each post, create an instance from it, identify its features and categories, and finally use those to train a classifier. We can later use this classifier on new posts.</p></div></div><div class="section" title="Setting up"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec74"/>Setting up</h2></div></div></div><p>We'll use a new<a id="id777" class="indexterm"/> namespace for this code. Open the file <code class="literal">src/social_so/nlp.clj</code> and add the following namespace declaration to the top of the file:</p><div class="informalexample"><pre class="programlisting">(ns social-so.nlp
+  (:import [cc.mallet.types Instance InstanceList]
+           [cc.mallet.pipe
+            Input2CharSequence TokenSequenceLowercase
+            CharSequence2TokenSequence SerialPipes
+            Target2Label FeatureSequence2FeatureVector
+            TokenSequenceRemoveStopwords
+            TokenSequence2FeatureSequence]
+           [cc.mallet.pipe.iterator ArrayDataAndTargetIterator]
+           [cc.mallet.classify NaiveBayes NaiveBayesTrainer Trial]
+           [cc.mallet.classify.evaluate ConfusionMatrix]))</pre></div><p>That's a lot of imports. But really, that's the most complicated that this code will be. MALLET does a lot of the heavy lifting for us.</p><p>In the code to come, we'll refer to this in the REPL with the <code class="literal">n</code> prefix. To make this available, execute the following line (after the <span class="strong"><strong>user=&gt;</strong></span> prompt) in your REPL environment:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (require '[social-so.nlp :as n])</strong></span>
+</pre></div><p>Now we're ready to start filling in the blanks.</p><div class="section" title="Creating the InstanceList object"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec50"/>Creating the InstanceList object</h3></div></div></div><p>MALLET <a id="id778" class="indexterm"/>represents each<a id="id779" class="indexterm"/> input as an <code class="literal">Instance</code> object. <code class="literal">Instance</code> objects contain their data, a target label, name, and other metadata.</p><p>MALLET works on collections of <code class="literal">Instance</code> objects as an <code class="literal">InstanceList</code>, which is just a collection of <code class="literal">Instance</code> objects. All the instances in the list are processed using the same pipe of transformations.</p><p>Each step in the pipe changes one property of each <code class="literal">Instance</code> object in the list. For example, one pipe (<code class="literal">CharSequence2TokenSequence</code>) tokenizes the input, and another (<code class="literal">Target2Label</code>) creates an index of the target labels.</p><p>The following figure illustrates this process:</p><div class="mediaobject"><img src="graphics/4139OS_09_13.jpg" alt="Creating the InstanceList object"/></div><p>For the features in the documents and their labels, the <code class="literal">InstanceList</code> also maintains <span class="strong"><strong>alphabets</strong></span>. These are indexes from the input strings to integers. The integers serve to distinguish the inputs and also act as indexes in arrays. This allows MALLET to work with frequencies as an array, which saves both space and processing time. The trick is that all of the <code class="literal">Instance</code> objects being processed must share the same alphabet. The <code class="literal">InstanceList</code> makes sure that they do.</p><p>For our processing, to make clear what transformations we'll use, we'll define them all in a function named <code class="literal">make-pipe</code>. The following is that function:</p><div class="informalexample"><pre class="programlisting">(defn make-pipe []
+  (SerialPipes.
+    [(Target2Label.)
+     (Input2CharSequence. "UTF-8")
+     (CharSequence2TokenSequence.
+       #"\p{L}[\p{L}\p{P}]+\p{L}")
+     (TokenSequenceLowercase.)
+     (TokenSequenceRemoveStopwords. false false)
+     (TokenSequence2FeatureSequence.)
+     (FeatureSequence2FeatureVector.)]))</pre></div><p>What's happening here? Let's take the steps apart.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem"><code class="literal">Target2Label</code> builds the alphabet for the <code class="literal">Instance</code> objects' target property.</li><li class="listitem"><code class="literal">Input2CharSequence</code> reads the input from a string, file, or URL named in the data property and replaces it with the resource's content.</li><li class="listitem"><code class="literal">CharSequence2TokenSequence</code> tokenizes the string in the data property.</li><li class="listitem"><code class="literal">TokenSequenceLowercase</code> lowercases the tokens in the data property.</li><li class="listitem"><code class="literal">TokenSequenceRemoveStopwords</code> filters out stop words (common words) from the tokens in the data.</li><li class="listitem"><code class="literal">TokenSequence2FeatureSequence</code> creates the alphabet of tokens and convert the sequence of tokens to a sequence of feature indexes.</li><li class="listitem"><code class="literal">FeatureSequence2FeatureVector</code> converts the sequence of feature indexes to a vector for a bag-of-words approach.</li></ol></div><p>So, at the end of this pipeline, each document will be represented by a vector indicating how many times each feature appears in that document. Features can be almost anything, but usually they are words that appear in the document or metadata (author, date, tags) associated with that document. This is the format that the classifiers—as well as many other machine learning and natural language algorithms—expect.</p><p>This handles the processing of the <code class="literal">Instance</code> objects, but before we can do that, we'll need to convert the <code class="literal">PostInfo</code> objects into <code class="literal">Instance</code> objects.</p><p>MALLET <a id="id780" class="indexterm"/>has a number of classes that do this from more primitive <a id="id781" class="indexterm"/>data types. They take some kind of collection of primitive inputs and iterate over the <code class="literal">Instance</code> objects they represent. In our case, we'll use <code class="literal">ArrayDataAndTargetIterator</code>. This iterates over two string arrays. One contains each input's data, and the other contains each input's target.</p><p>We'll wrap creating this with the function <code class="literal">post-info-iterator</code>. This uses the <code class="literal">accepted-tag</code> function to decide whether the post was accepted or not and tag it appropriately. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn accepted-tag [post-info]
+  (if (:accepted-for post-info) "accepted" "not"))
+(defn post-info-iterator [post-infos]
+  (ArrayDataAndTargetIterator.
+    (into-array (map :body-text post-infos))
+    (into-array (map accepted-tag post-infos))))</pre></div><p>Once we have these functions, we can use them to populate an <code class="literal">InstanceList</code> that will run all the documents through the transformation pipeline that we defined earlier. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn post-info-instances [post-infos]
+  (doto (InstanceList. (make-pipe))
+    (.addThruPipe (post-info-iterator post-infos))))</pre></div><p>Now we're <a id="id782" class="indexterm"/>ready. Let's pick up with the <code class="literal">PostInfo</code> sample that we extracted <a id="id783" class="indexterm"/>earlier and bound to <code class="literal">s</code> in the <span class="emphasis"><em>Processing the answers</em></span> section. This contains a sequence of <code class="literal">PostInfo</code> instances. In the REPL, we can create an <code class="literal">InstanceList</code> using the functions that we just defined as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def ilist (n/post-info-instances s))</strong></span>
+</pre></div><p>Now we can think about how we're going to use these documents to train and test a classifier.</p></div></div><div class="section" title="Training sets and Test sets"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec75"/>Training sets and Test sets</h2></div></div></div><p>Now that we've processed<a id="id784" class="indexterm"/> our data into a format that MALLET <a id="id785" class="indexterm"/>can use, we'll divide the input corpus into a test set and a training set. We can use different relative sizes for each, but often we'll train on more documents than we'll test on.</p><p>MALLET's <code class="literal">InstanceList</code> class has a <code class="literal">split</code> method, but we'll define a thin wrapper over it to make it easier to use. MALLET's <code class="literal">split</code> method takes an array listing the proportions of the total for each group. Since we only want two groups that completely divide the input, we can pass in the proportion for one group and compute the value of the other group's proportion. We'll also return a hash-map indicating which of the output lists is for testing and which is for training.</p><p>The following is the <code class="literal">split-sets</code> function that acts as the wrapper:</p><div class="informalexample"><pre class="programlisting">(defn split-sets [test-ratio ilist]
+  (let [split-on (double-array [test-ratio (- 1.0 test-ratio)])
+        [test-set training-set] (.split ilist split-on)]
+    {:test test-set, :training training-set}))</pre></div><p>And we can use the following on the command line to divide the input:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def tt-sets (n/split-sets 0.2 ilist))</strong></span>
+</pre></div><p>Now we're ready to use these for training and testing.</p><div class="section" title="Training"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec51"/>Training</h3></div></div></div><p>Before we can use a <a id="id786" class="indexterm"/>classifier, we have to train it on the training set that we just created.</p><p>For this example, we'll create a Naive Bayesian classifier. Again, we'll just create a thin wrapper function. In this case, it's not that significantly simpler than creating the Bayesian trainer and calling it on the data. However, it will allow us to use the trainer without having to tease out which MALLET packages we have to import. This allows us to require our <code class="literal">social-so.nlp</code> namespace into the REPL and execute the entire process.</p><p>The following is the wrapper:</p><div class="informalexample"><pre class="programlisting">(defn bayes-train [ilist] (.train (NaiveBayesTrainer.) ilist))</pre></div><p>And we can use the following in the REPL to get a trained Bayesian classifier:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (def bayes (n/bayes-train (:training tt-sets)))</strong></span>
+</pre></div><p>That's it. We've trained our classifier. Now let's see how to use it.</p></div><div class="section" title="Testing"><div class="titlepage"><div><div><h3 class="title"><a id="ch09lvl3sec52"/>Testing</h3></div></div></div><p>To test the <a id="id787" class="indexterm"/>classifier, MALLET provides a <code class="literal">Trial</code> class that encapsulates running a classifier over some inputs that are already tagged. It provides counts over how accurate the classifier is and calculates statistics to show how well it does.</p><p>To make it easier to load the development environment and to use this class, we'll create a factory function for it as follows:</p><div class="informalexample"><pre class="programlisting">(defn trial [classifier ilist] (Trial. classifier ilist))</pre></div><p>And now let's use this function at the REPL as follows:</p><div class="informalexample"><pre class="programlisting">user=&gt; (def trial (n/trial bayes (:test tt-sets)))</pre></div><p>Well, great. Now what can we do with this?</p></div></div><div class="section" title="Evaluating the outcome"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec76"/>Evaluating the outcome</h2></div></div></div><p>There are several factors to <a id="id788" class="indexterm"/>consider when evaluating a classifier's ability to identify inputs as belonging to category <span class="emphasis"><em>X</em></span>. Let's consider what they are and see how we can get them from the <code class="literal">Trial</code> object.</p><p>First, we need to think about the classifier's <span class="strong"><strong>precision or positive predictive value</strong></span> (<span class="strong"><strong>PPV</strong></span>). This takes into account how many items the classifier incorrectly included in category <span class="emphasis"><em>X</em></span>, and it's given by the ratio of the true positives with all labeled positive. In our case, that means the number of items that were correctly identified as <code class="literal">accepted</code> divided by all of those identified as <code class="literal">accepted</code>. You can get this using the <code class="literal">getPrecision</code> method, as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (.getPrecision trial "accepted")</strong></span>
+<span class="strong"><strong>0.2837067983289024</strong></span>
+</pre></div><p>So we can see that it correctly identified the accepted rows rather poorly.</p><p>The next number that we need to consider is the classifier's <span class="strong"><strong>recall</strong></span>. This is sometimes referred to as its <span class="strong"><strong>sensitivity</strong></span> or <span class="strong"><strong>true positive rate</strong></span> (<span class="strong"><strong>TPR</strong></span>). This is the percentage of all positives that it found, and it's found by dividing the true positives by the true positives and the false negatives. MALLET exposes this with the <code class="literal">getRecall</code> method as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (.getRecall trial "accepted")</strong></span>
+<span class="strong"><strong>0.1808716707021792</strong></span>
+</pre></div><p>In this case, the recall is actually worse than the precision, which is <span class="emphasis"><em>saying</em></span> something.</p><p>Next, we'll consider the <span class="strong"><strong>accuracy</strong></span> (<span class="strong"><strong>ACC</strong></span>) of the classifier. This is the ratio of true classifications, both positive and negative, to the total number of items. This is rendered from the <code class="literal">getAccuracy</code> method. Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (.getAccuracy trial)</strong></span>
+<span class="strong"><strong>0.73655</strong></span>
+</pre></div><p>Presumably, this classifier's<a id="id789" class="indexterm"/> precision and recall are better when identifying not-accepted answers. Let's test that as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (.getPrecision trial "not")</strong></span>
+<span class="strong"><strong>0.8052052743709334</strong></span>
+<span class="strong"><strong>user=&gt; (.getRecall trial "not")</strong></span>
+<span class="strong"><strong>0.881159420289855</strong></span>
+</pre></div><p>These results aren't great. A simple baseline that classifies everything as <span class="emphasis"><em>not accepted</em></span> would actually score slightly better than this (80 percent). The criteria involved in accepting an answer don't appear to be captured by the simple token features that we've used here.</p><p>The performance here is likely because <code class="literal">not accepted</code> is the default state for an answer, and the status of most answers.</p><p>There's one final number that we want to pay attention to. The F1 score is a measure of the classifier's accuracy. This combines the precision and recall into a single number ranging from 0 (poor) to 1 (perfect). Look at the following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (.getF1 trial "accepted")</strong></span>
+<span class="strong"><strong>0.22090788111784712</strong></span>
+</pre></div><p>Again, we can <a id="id790" class="indexterm"/>see that the classifier doesn't do a good job.</p><p>We can get more detailed information about how well the classifier did by looking at its <a id="id791" class="indexterm"/>
+<span class="strong"><strong>confusion</strong></span> matrix. This is a matrix that breaks down how many items are predicated to be in both categories, and how many actually are.</p><p>MALLET has a <code class="literal">ConfusionMatrix</code> class for displaying these charts. We'll again wrap that class in a function to make it easier to call. Look at the following code:</p><div class="informalexample"><pre class="programlisting">(defn confusion-matrix [trial] (str (ConfusionMatrix. trial)))</pre></div><p>This generates the confusion matrix and returns it as a string. Let's call this and print the matrix out as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>user=&gt; (println (n/confusion-matrix trial))</strong></span>
+<span class="strong"><strong>Confusion Matrix, row=true, column=predicted  accuracy=0.73655</strong></span>
+<span class="strong"><strong>       label   0   1  |total</strong></span>
+<span class="strong"><strong>  0      not 13984 1886  |15870</strong></span>
+<span class="strong"><strong>  1 accepted 3383 747  |4130</strong></span>
+</pre></div><p>Now we can see where the numbers came from. Rows are the actual classes, and columns are how the classifier predicted the classes. The true positives in the lower right-hand side are much smaller than the total number of positives in the bottom row. On the other hand, the true negatives in the upper left-hand side are the majority of the total number of negatives in the top row.</p><p>Naive Bayesian classifiers don't perform well here, but it's possible (although unlikely) that other classifiers might. It's also possible that adding more metadata as features might help. For example, the length of time between when the question was posted and when the answer was posted might be fruitful. Other features that might help are the length of the answer or the answerer's reputation. Reputation is the points awarded for accepted answers, though, so including them introduces circularity – we'd be training directly on what we're attempting to classify.</p></div></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec60"/>Summary</h1></div></div></div><p>However the results of the last experiment, we can see that there's a lot of information embedded in social networks. Depending on the nature of the network, we can have different kinds of interactions and different kinds of data in the network.</p><p>In the final chapter, which is next, we'll look at whether analyzing financial data and using machine learning to examine news documents help predict the future of stock prices.</p></div></body></html>

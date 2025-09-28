@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en-US">
+<head>
+<meta charset="utf-8"/>
+<meta name="generator" content="packt"/>
+<title>4 Importing Unhandled Data Objects</title>
+<link rel="stylesheet" type="text/css" href="../styles/stylesheet1.css"/>
+<link rel="stylesheet" type="text/css" href="../styles/stylesheet2.css"/>
+
+</head>
+<body>
+
+<section id="importing-unhandled-data-objects" class="level1 pkt" data-number="5">
+<h1 data-number="5">4 Importing Unhandled Data Objects</h1>
+<p>In this chapter, you'll look at using R and Python in what is typically the first phase of report creation: <strong>data ingestion</strong>. Power BI is a very powerful tool from this point of view, because it has many connectors to various data sources out of the box. In addition to being able to import data directly by connecting to data sources, you can easily solve more complex data loading scenarios with Power BI. For example, you can merge multiple CSV files or multiple Excel Workbook’s sheets dynamically directly from Power BI, even using the <strong>M language</strong> to apply special logic to the merge step. You can also scrape any web page by just clicking on web page contents without using any code. All this is possible thanks to Power BI's standard features, without having to use R or Python.</p>
+<p>There are, however, cases in which the data to be imported and used in Power BI comes from <strong>processing done on external systems</strong>, which persist data in formats that are not directly managed by Power BI. Imagine being a Power BI report developer and having to interface with a team of data scientists. Some complex processing done by them on fairly large datasets might require non-trivial run times. That's why data scientists often <strong>serialize the result</strong> of such processing in files of an acceptable size, so they can deserialize them very quickly if needed. Now suppose the data scientist team provides you with one of these files serialized in R or Python and asks you to use it for some calculations needed to create a visual in your report. How would you do it?</p>
+<p>In this chapter, you will see how to work with serialized files from R (<code>.rds</code>) and Python (<code>.pkl</code>) in Power BI. The following topics will be discussed in this chapter:</p>
+<ul>
+<li>Importing RDS files in R</li>
+<li>Importing PKL files in Python</li>
+</ul>
+<section id="technical-requirements-3" class="level2" data-number="5.1">
+<h2 data-number="5.1">Technical requirements</h2>
+<p>This chapter requires you to have a working internet connection and <strong>Power BI Desktop</strong> already installed on your machine. You must have properly configured the R and Python engines and IDEs as outlined in <em>Chapter 2, Configuring R with Power BI</em>, and <em>Chapter 3, Configuring Python with Power BI</em>.</p>
+</section>
+<section id="importing-rds-files-in-r" class="level2" data-number="5.2">
+<h2 data-number="5.2">Importing RDS files in R</h2>
+<p>In this section, you will develop mainly R code, and in the various examples, we will give you an overview of what we are going to do. If you have little experience with R, you should familiarize yourself with the data structures that R provides by starting with this quickstart: <a href="http://bit.ly/r-data-struct-quickstart">http://bit.ly/r-data-struct-quickstart</a>. Take a look at the <em>References</em> section for more in-depth information.</p>
+<section id="a-brief-introduction-to-tidyverse" class="level3" data-number="5.2.1">
+<h3 data-number="5.2.1">A brief introduction to Tidyverse</h3>
+<p>A data scientist using R as an analytical language for data analysis and data science must know the set of packages that goes by the name of <strong>Tidyverse</strong> (<a href="https://www.tidyverse.org">https://www.tidyverse.org</a>). It provides everything needed for data wrangling and data visualization, giving the analyst a consistent approach to the entire ecosystem of packages it provides. In this way, it tries to heal the initial situation of "chaos" of R functionalities provided by packages developed by developers who had not agreed on a common framework.</p>
+<blockquote>
+<p><strong>Note</strong></p>
+<p>If you are new to R, you might want to start with this quickstart by Software Carpentry to get familiar with the main concepts: <a href="http://bit.ly/tidy-quickstart">http://bit.ly/tidy-quickstart</a>. The <em>References</em> section also contains links to in-depth information about Tidyverse.</p>
+</blockquote>
+<p>The fundamental data type to know about in Tidyverse to be able to work with tabular data is the <strong>tibble</strong>. Tibbles (the New Zealand way of pronouncing "tables") are a modern version of R <strong>dataframes</strong>. Starting from a tibble, you can perform all the data transformations you want with simple functions provided by the Tidyverse packages.</p>
+<p>Today, you will often find the use of the <strong>%&gt;% pipe</strong> (the R language allows symbols wrapped in <code>%</code> to be defined as functions and the <code>&gt;</code> implies a chaining) in data analyses performed in the Tidyverse world. Borrowed from the <strong>magrittr</strong> package included in Tidyverse, the pipe has the function of forwarding the object on its left inside the function on its right as the first parameter. In short, if you need to select the <code>my_col</code> column from a <code>my_tbl</code> tibble, instead of using <code>select( my_tbl, my_col )</code>, you can use the piped form <code>my_tbl %&gt;% select( my_col )</code>, making the code much more readable.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>Currently, R Core is planning to introduce a new graphical form of the pipe, which is <code>|&gt;</code>. So, be ready to use it when they make it available.</p>
+</blockquote>
+<p>For the purpose of summarily understanding the code used in this section, we will describe it piece by piece, explaining the functionality of each R object used.</p>
+</section>
+<section id="creating-a-serialized-r-object" class="level3" data-number="5.2.2">
+<h3 data-number="5.2.2">Creating a serialized R object</h3>
+<p>Now imagine for a moment that you are part of the data scientist team that has to do the complex processing of a dataset and then serialize the result obtained in a file to be reused as needed. The first thing to do is to configure the environment to install the latest version of Tidyverse.</p>
+<section id="configuring-the-environment-and-installing-tidyverse" class="level4" data-number="5.2.2.1">
+<h4 data-number="5.2.2.1">Configuring the environment and installing Tidyverse</h4>
+<p>Open RStudio and proceed as shown here:</p>
+<ol>
+<li>Make sure the most recent R engine (4.0.2 in our case) is selected (<strong>Tools</strong> and <strong>Global Options…</strong>).</li>
+<li><p>Create a new project by clicking on the <strong>Project</strong> icon in the upper-right corner and then <strong>New Project...</strong>:</p>
+<figure>
+<img src="../media/file72.png" alt="Figure 4.1 – Create a new RStudio project" /><figcaption aria-hidden="true">Figure 4.1 – Create a new RStudio project</figcaption>
+</figure>
+<p>An RStudio project makes it straightforward to divide your work into multiple contexts, each with its own working directory, workspace, history, and source documents.</p></li>
+<li>Click on <strong>New Directory</strong> and then on <strong>New Project</strong>.</li>
+<li><p>Now enter a name for the project folder, choose in which folder do you want to place it, and click <strong>Create Project</strong>:</p>
+<figure>
+<img src="../media/file73.png" alt="Figure 4.2 – Create a new project folder" /><figcaption aria-hidden="true">Figure 4.2 – Create a new project folder</figcaption>
+</figure>
+<p>You can also find this project ready for you in the GitHub repository here: <code>Chapter04\importing-rds-files\importing-rds-files.Rproj</code>.RStudio will restart the R session and the project folder you have just created will become the working directory of your project.</p></li>
+<li>If you recall, back in <em>Chapter 3, Configuring Python with Power BI</em>, you already disabled the MRO restriction on using a snapshot made at an earlier date from which to download packages. This was meant to install the latest versions of the packages. The problem is that the effect of that operation was temporary. In order to see that, run the <code>getOption("repos")</code> command in the console right now. You'll see that the default repository is still the snapshot set by MRO.</li>
+<li><p>In order to permanently override the repository at the project level, you must write the same code you used previously inside an <code>.Rprofile</code> file located in the project folder. To do this, go to the console and type <code>file.edit(".Rprofile")</code>. This will create the <code>.Rprofile</code> file in the project folder if it does not exist, and will open it in an editor window in RStudio. At that point, enter the following code:</p>
+<pre><code>local({r &lt;- getOption(&quot;repos&quot;)
+  r[&quot;CRAN&quot;] &lt;- &quot;https://cloud.r-project.org/&quot;
+  options(repos = r)
+})
+message(&quot;Default repo replaced with &#39;https://cloud.r-project.org/&#39;&quot;)</code></pre>
+<p>Now save the <code>.Rprofile</code> file by pressing <em>Ctrl + S</em> (or <strong>File</strong> | <strong>Save</strong>) and then close the project by clicking on the <strong>Project</strong> icon (a cube containing “R”) in the upper-right corner, and then click <strong>Close Project</strong>:</p>
+<figure>
+<img src="../media/file74.png" alt="Figure 4.3 – Close the current RStudio project" /><figcaption aria-hidden="true">Figure 4.3 – Close the current RStudio project</figcaption>
+</figure></li>
+<li>Reopen the project you just closed (you can find it in the list in the usual project menu at the top right, or you can find the <code>.Rproj</code> file in the project folder). You will notice that the message <em>"Default repo replaced with 'https://cloud.r-project.org/'"</em> will appear in the console.</li>
+<li><p>Type the <code>getOption("repos")</code> command again in the console and press <em>Enter</em>. Now you’ll see the new CRAN repository as the default one:</p>
+<figure>
+<img src="../media/file75.png" alt="Figure 4.4 – The new CRAN repository set as default" /><figcaption aria-hidden="true">Figure 4.4 – The new CRAN repository set as default</figcaption>
+</figure></li>
+<li>Now let's install all Tidyverse packages by simply running the following command on the console: <code>install.packages("tidyverse")</code> (it’s equivalent to installing it through the GUI by clicking on the <strong>Packages</strong> tab at the bottom right and then on <strong>Install</strong>).</li>
+</ol>
+<p>Awesome! Now you are sure that you have installed the latest version of Tidyverse.</p>
+</section>
+<section id="creating-the-rds-files" class="level4" data-number="5.2.2.2">
+<h4 data-number="5.2.2.2">Creating the RDS files</h4>
+<p>We will now walk you through creating the serialization of an R object in an RDS file. Assume that the computational time required to create this object is very large. We will also have you create an object that is not a simple tibble, which could have been easily exported first to CSV and then imported into Power BI. Let’s start:</p>
+<ol>
+<li>Open a new R script in your project by pressing <em>Ctrl + Shift + N</em> (or by clicking the <strong>+</strong> <strong>New File</strong> icon and then <strong>R Script</strong>).</li>
+<li><p>Now you will load in memory both the Tidyverse packages (using the <code>library</code> command) and the <em>growth population</em> tibble contained in the <strong>tidyr</strong> package (using the <code>data</code> command), consisting of a subset of data taken from the <em>World Health Organization Global Tuberculosis Report</em>:</p>
+<pre><code>library(tidyverse)
+data(&quot;population&quot;)
+# Let’s have a look at the tibble
+population</code></pre>
+<p>The latest command (which matches the name of the tibble) allows you to observe the contents of the first few lines of the tibble and its columns’ data types. Highlight all the commands and press <em>Ctrl + Enter</em> (or click on the <strong>Run</strong> icon on the top right of the panel) to run them. You will see the following result:</p>
+<figure>
+<img src="../media/file76.png" alt="Figure 4.5 – Load the “population” tibble" /><figcaption aria-hidden="true">Figure 4.5 – Load the “population” tibble</figcaption>
+</figure>
+<p>Everything that follows <strong>#</strong> is a comment.</p></li>
+<li><p>Now let’s check how many distinct countries there are in the tibble. You’ll use the <code>distinct</code> function and then the <code>pull</code> one in order to extract the single column of distinct countries from the tibble in vector format:</p>
+<pre><code>population %&gt;% 
+  distinct(country) %&gt;% 
+  pull()</code></pre>
+<p>You’ll see a list of all the distinct countries, like this one:</p>
+<figure>
+<img src="../media/file77.png" alt="Figure 4.6 – List of distinct countries" /><figcaption aria-hidden="true">Figure 4.6 – List of distinct countries</figcaption>
+</figure>
+<p>Try highlighting the code only up to and including <code>distinct(country)</code> and running the highlighted code. You will always see distinct countries, but still as part of a tibble.</p></li>
+<li><p>Now we want to group the year and population information into separate tibbles for each country. In short, we want to have a tibble that contains the countries and for each of them another tibble with the demographic information by year. You can do that using the <code>nest</code> function:</p>
+<pre><code>nested_population_tbl &lt;- population %&gt;% 
+  tidyr::nest( demographic_data = -country )
+nested_population_tbl</code></pre>
+<p>You have just assigned the <code>nested_population_tbl</code> variable the new tibble containing the nested demographic data. Observe that we made the <code>nest</code> function call explicit by calling it from its <code>tidyr</code> source package using <code>::</code>. Also, observe how easy it is to "nest" everything except the country column into a list of tibbles contained in the new <code>demografic_data</code> column. Highlighting and running the previous chunk of code, you’ll see the following result:</p>
+<figure>
+<img src="../media/file78.png" alt="Figure 4.7 – Tibble of nested demographic data" /><figcaption aria-hidden="true">Figure 4.7 – Tibble of nested demographic data</figcaption>
+</figure>
+<p>Note that the new <code>demographic_data</code> column is a list of tibbles.</p></li>
+<li><p>Now you can finally serialize the <code>nested_population_tbl</code> object into an RDS file using the <code>saveRDS</code> function:</p>
+<pre><code>saveRDS(nested_population_tbl, &quot;nested_population_tbl.rds&quot;)</code></pre></li>
+</ol>
+<p>You can find the R code shown here in the GitHub repository associated with the book in the <code>Chapter04\importing-rds-files\01-create-object-to-serialize.R</code> file. To properly execute the code contained in the file, you should first open the RStudio project, double-clicking on the <code>Chapter04\importing-rds-files\importing-rds-files.Rproj</code> file. Then you can open the previously mentioned R script using the <strong>Files</strong> tab in the bottom-right panel of RStudio.</p>
+<p>Awesome! You can verify that a file has been serialized correctly by taking a look at the same panel:</p>
+<figure>
+<img src="../media/file79.png" alt="Figure 4.8 – The RDS file correctly created" /><figcaption aria-hidden="true">Figure 4.8 – The RDS file correctly created</figcaption>
+</figure>
+<p>In the same way, you’ll create an RDS object that contains time series views for four selected countries. The time series data is the same as the population growth data you saw earlier. Let's see how you can generate this file:</p>
+<ol>
+<li>Install the fantastic <strong>timetk</strong> package by Matt Dancho by entering the <code>install.packages("timetk")</code> command into the RStudio console. It makes it easy to visualize, wrangle, and feature engineer time series data for forecasting and machine learning predictions. For more details, take a look here: <a href="https://business-science.github.io/timetk/">https://business-science.github.io/timetk/</a>.</li>
+<li>Open the <code>Chapter04\importing-rds-files\04-create-plots-object-to-serialize.R</code> file in RStudio. The first part of the file contains code already seen in the previous section and is used to generate the nested tibble of the population.</li>
+<li><p>Immediately after creating the nested tibble, you’ll see how to plot the time series data related to country Sweden. Every single R function used is explained in the code:</p>
+<pre><code>selected_country &lt;- &quot;Sweden&quot;
+nested_population_tbl %&gt;% 
+  # Get the row related to the selected country
+  filter( country == selected_country ) %&gt;% 
+  # Get the content of &#39;demografic_data&#39; for
+  # that row. Note that it is a list
+  pull( demographic_data ) %&gt;%
+  # Extract the &#39;demografic_data&#39; tibble from
+  # the list (it has only 1 element)
+  pluck(1) %&gt;% 
+  # Now plot the time series declaring the date variable
+  # and the value one. 
+  timetk::plot_time_series(
+    .date_var = year,
+    .value = population,
+    .title = paste0(&quot;Global population of &quot;, selected_country),
+    .smooth = FALSE,     # --&gt; remove the smooth line
+    .interactive = FALSE # --&gt; generate a static plot
+  )</code></pre>
+<p>Here is the result:</p>
+<figure>
+<img src="../media/file80.png" alt="Figure 4.9 – Population growth time series plot for Sweden" /><figcaption aria-hidden="true">Figure 4.9 – Population growth time series plot for Sweden</figcaption>
+</figure></li>
+<li><p>You will now create a time series graph for each country in the nested tibble following the previous example. The great thing is that thanks to the power of <strong>functional programming</strong> provided by the <strong>map functions</strong> of the <code>purrr</code> package, you can do this in one go using only one function. As always, you’ll find detailed explanations in the code:</p>
+<pre><code>nested_population_plots_tbl &lt;- nested_population_tbl %&gt;%
+  # Select a subset of countries
+  filter( country %in% c(&quot;Italy&quot;, &quot;Sweden&quot;, &quot;France&quot;, &quot;Germany&quot;) ) %&gt;%
+  # Add a new column called &#39;plot&#39; applying the plot_time_series
+  # function to the values of the demographic_data tibble (.x)
+  # for each country (.y) in the &#39;country&#39; field.
+  # Do this thanks to the map2 function.
+  mutate( plot = map2( demographic_data, country, ~ timetk::plot_time_series(.data = .x, 
+     .date_var = year,
+      .value = population,
+      .title = paste0(&quot;Global population of &quot;, .y),
+      .smooth = FALSE,
+      .interactive = FALSE) )
+  ) %&gt;%
+  # Return just the &#39;country&#39; and &#39;plot&#39; columns.
+  select( country, plot )</code></pre></li>
+<li><p>After that, only the plots list extracted by the <code>nested_population_plots_tbl</code> tibble is serialized in an RDS file:</p>
+<pre><code># The index of list items corresponds to the country_id values                   # into the selected countries tibble.
+plots_lst &lt;- nested_population_plots_tbl$plot
+# Serialize the list of plots
+saveRDS(plots_lst, &quot;plots_lst.rds&quot;)</code></pre></li>
+</ol>
+<p>Well done! You've serialized your R objects into RDS files. If you want to try deserializing them, you can follow the code in the <code>02-deserialize-object-from-rds.R</code> and <code>05-deserialize-plots-object-from-rds.R</code> files you can found in the GitHub repository.</p>
+<p>You are now ready to use the nested tibble serialized in a file directly in Power BI.</p>
+</section>
+</section>
+<section id="using-an-rds-file-in-power-bi" class="level3" data-number="5.2.3">
+<h3 data-number="5.2.3">Using an RDS file in Power BI</h3>
+<p>It is clear that an RDS file must necessarily be used via R scripts in Power BI. As you may have learned by now, there are two Power BI objects through which you can use R scripts: <strong>Power Query Editor</strong> and <strong>R visuals</strong>. Let's start with the simplest case, which is to import the RDS file into Power Query Editor.</p>
+<section id="importing-an-rds-file-into-power-query-editor" class="level4" data-number="5.2.3.1">
+<h4 data-number="5.2.3.1">Importing an RDS file into Power Query Editor</h4>
+<p>You'll import a serialized R object into Power Query Editor when you know <em>you can extract tabular information from the object</em> and want to persist it in the Power BI data model. Let's see how it's done:</p>
+<ol>
+<li>Go to RStudio and create a new R script into the project by pressing <em>Ctrl + Shift + N</em>. You could copy and paste the content of the <code>02-deserialize-object-from-rds.R</code> file (or open it directly if you used the GitHub <code>.Rproj</code> file to open the project).</li>
+<li><p>Load the RDS file via the <code>readRDS</code> function and assign it to the new <code>deserialized_tbl</code> variable like so:</p>
+<pre><code>library(tidyverse)
+project_folder &lt;- &quot;C:/&lt;your&gt;/&lt;absolute&gt;/&lt;project_folder&gt;/&lt;path&gt;&quot;
+deserialized_tbl &lt;- readRDS( file.path(project_folder, &quot;nested_population_tbl.RDS&quot;) )</code></pre>
+<p>Note that we are using an absolute path to read the RDS file, even though we are in an RStudio project and could have referenced the file without a path. This is because <em>Power BI does not have the concept of "projects" that RStudio does and therefore needs an absolute path</em> to locate the file correctly. Also, note that in R you can use either the double-backslash (<code>\\</code>) or the simple slash (<code>/</code>) as a separator in path strings.</p></li>
+<li><p>Now try extracting the demographics of Sweden from the nested tibble as follows:</p>
+<pre><code>sweden_population_tbl &lt;- deserialized_tbl %&gt;% 
+  filter( country == &quot;Sweden&quot; ) %&gt;% 
+  pull( demographic_data ) %&gt;%
+  pluck(1)
+sweden_population_tbl</code></pre>
+<p>In this piece of code, we are assigning to the <code>sweden_population_tbl</code> variable the content of the <code>deserialized_tbl</code> variable, to which we apply the following transformations:a) We filter it for the country Sweden through the filter function (thus obtaining the row associated with the country Sweden).b) From this row, we detach the content of the <code>demographic_data</code> field from the original tibble using the <code>pull</code> function (you’ll get a list).c) Since the content of the <code>demographic_data</code> column is a list containing only one tibble, the content must be unlisted using the <code>pluck</code> function. The result is the Sweden demographic data organized in one tibble, as shown in <em>Figure 4.11</em>:</p>
+<figure>
+<img src="../media/file81.png" alt="Figure 4.10 – The content of the Sweden demographic data organized in a tibble" /><figcaption aria-hidden="true">Figure 4.10 – The content of the Sweden demographic data organized in a tibble</figcaption>
+</figure></li>
+<li>Now open Power BI Desktop and make sure it is referencing the earliest MRO. Click then on <strong>Get data</strong> and then <strong>More…</strong>. Start typing <code>script</code> into the search textbox and double-click on R script. The R script editor will pop up.</li>
+<li>Copy and paste the content of the <code>03-deserialize-object-from-rds-in-power-bi.R</code> file into the R script editor, changing the absolute path to the RDS file accordingly, and then click on <strong>OK</strong>.</li>
+<li><p>The <strong>Navigator</strong> window will open, giving you the option to select which dataframe to import:</p>
+<figure>
+<img src="../media/file82.png" alt="Figure 4.11 – Import the deserialized dataframe into Power BI" /><figcaption aria-hidden="true">Figure 4.11 – Import the deserialized dataframe into Power BI</figcaption>
+</figure>
+<p>You will see as many dataframes (remember that tibbles are specializations of dataframes) as you have defined within your script. Select the <strong>sweden_population_tbl</strong> dataframe and click <strong>Load</strong>.</p></li>
+<li>When loading is finished, click on the table icon on the left menu of Power BI Desktop to verify that the data has been imported correctly in tabular form:</li>
+</ol>
+<figure>
+<img src="../media/file83.png" alt="Figure 4.12 – The dataframe is correctly imported" /><figcaption aria-hidden="true">Figure 4.12 – The dataframe is correctly imported</figcaption>
+</figure>
+<p>Great! You have correctly imported your RDS file into Power BI to use its contents with Power Query in the most appropriate way.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>As you may have noticed, <em>the only R data structure that Power BI can work with are dataframes (or datatable) with columns that have standard data types</em>. It is not possible to import any other type of R objects. If you had imported the <em>deserialized_tbl</em> dataframe directly, the values in the <em>demographic_data</em> column would have generated an error and would have been unavailable.</p>
+</blockquote>
+<p>Sometimes it may happen that you don't have the ability to deserialize an RDS file in Power Query Editor and extract its information in a tabular format in order to persist it in the Power BI data model. You may need to deserialize the content of an RDS file on the fly in an R visual in order to use its information in a visualization. You'll see how to solve this scenario in the next section.</p>
+</section>
+<section id="importing-an-rds-file-in-an-r-visual" class="level4" data-number="5.2.3.2">
+<h4 data-number="5.2.3.2">Importing an RDS file in an R visual</h4>
+<p>Now suppose you have received the RDS file containing the time series charts for each country from the data scientists team. Your goal is to allow the report user to view the charts by selecting a country.</p>
+<p>The problem you are facing is as follows: you know that in order to import any information from Power Query Editor via the R script, it must be in tabular format and must use standard data types. The charts made available by the data scientists are grouped in a list in the <em>ggplot</em> format (<strong>ggplot</strong> offers a powerful graphics language for creating elegant and complex plots in R), which in itself is not a standard data type. How do you import them into Power BI? You’ll need a little bit of <em>lateral thinking</em>.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>As you probably already know, it is possible to serialize any programming object in its <strong>byte representation</strong> (raw vector in R). The byte representation can in turn be transformed into its <strong>string representation</strong>. Once you have strings (a standard data type), you can organize them into a dataframe. After that's done, you can import that dataframe into Power BI.</p>
+</blockquote>
+<p>The moment you need to "feed" an R visual with data, keep the following considerations in mind:</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>When you select more than one column from more than one table in the Power BI data model (there must be a relationship between them) as values of an R visual, these values <em>will form a single dataframe (deduplicated)</em> to be referenced in the R script of the visual.</p>
+</blockquote>
+<p>Also, keep the following in mind:</p>
+<blockquote>
+<p><strong>Tip</strong></p>
+<p>In some cases, you may want to <em>not delete duplicate rows</em>. In that case, you can add an index field to your dataset (row number) that causes all rows to be considered unique and prevents grouping.</p>
+</blockquote>
+<p>It wouldn't make sense to import a dataframe containing a string representation of something in Power Query Editor if you couldn't transform it back to the original object. Fortunately, the previously mentioned direct transformation operations are all invertible, so you can use the inverse transformations within an R visual to extract and display plots appropriately. Also added to this process is a limitation of the data handled in R visuals that appears to be undocumented.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>If a string is longer than 32,766 characters, once passed into the default dataframe to be referenced within an R visual, <em>it is truncated</em>. To avoid truncation, it is necessary to split the string into smaller chunks (we chose an arbitrary length of 10,000) and persist those chunks in a dataframe column before using the data into the R visual.</p>
+</blockquote>
+<p>That said, in summary, what you will be doing in this section is as follows:</p>
+<ol>
+<li>Import the RDS file containing the named list of plots in <strong>Power Query Editor</strong>. From it, extract a dataframe of country names and a dataframe containing plots information.</li>
+<li>Use the countries dataframe in a slicer with a single choice.</li>
+<li>Each time a country is selected from the slicer, the <strong>R visual</strong> will display the plot of the time series of the population growth of that country.</li>
+</ol>
+<p>Let’s summarize all the processes of wrangling the plots data in a figure that contains the functions you will find in the code:</p>
+<figure>
+<img src="../media/file84.png" alt="Figure 4.13 – Deserialize the RDS file content into an R visual" /><figcaption aria-hidden="true">Figure 4.13 – Deserialize the RDS file content into an R visual</figcaption>
+</figure>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>It hasn’t been possible to directly import the single dataframe containing both the country names and the corresponding plots, because the R engine returns a mysterious <strong>ENVSXP Error</strong>. A named list works like a charm.</p>
+</blockquote>
+<p>In the following steps, we will not explain in detail all the functions used, simply because we will refer to the code shared in the GitHub associated with this book, in which every single detail is commented. So, let’s start:</p>
+<ol>
+<li>Open Power BI Desktop and go to <strong>Get data</strong>, then <strong>More…</strong>, then <strong>R Script</strong> to import the RDL files.</li>
+<li>Open the <code>06-deserialize-plots-object-from-rds-in-power-bi.R</code> file from the GitHub repository, copy the content, changing the absolute path to the RDL file accordingly, paste it into the R Script editor, and click <strong>OK</strong>.</li>
+<li><p>Power Query will detect three dataframes created into your script. Select only the <strong>plots_df</strong> dataframe (the one containing the string representation of bytes of plots), and the <strong>selected_countries_df</strong> one. Then click <strong>Load</strong>:</p>
+<figure>
+<img src="../media/file85.png" alt="Figure 4.14 – Select the two dataframes containing useful data" /><figcaption aria-hidden="true">Figure 4.14 – Select the two dataframes containing useful data</figcaption>
+</figure></li>
+<li><p>Click on the <strong>Data</strong> icon on the left ribbon and then click on the <strong>Manage relationships</strong> button:</p>
+<figure>
+<img src="../media/file86.png" alt="Figure 4.15 – The Manage relationships button" /><figcaption aria-hidden="true">Figure 4.15 – The Manage relationships button</figcaption>
+</figure></li>
+<li><p>The engine has automatically created the relationship between the two imported tables:</p>
+<figure>
+<img src="../media/file87.png" alt="Figure 4.16 – Relation between tables automatically detected" /><figcaption aria-hidden="true">Figure 4.16 – Relation between tables automatically detected</figcaption>
+</figure>
+<p>Click <strong>Close</strong>.</p></li>
+<li><p>Go back to the report canvas clicking on the <strong>Report</strong> icon on the left ribbon:</p>
+<figure>
+<img src="../media/file88.png" alt="Figure 4.17 – The Report icon" /><figcaption aria-hidden="true">Figure 4.17 – The Report icon</figcaption>
+</figure></li>
+<li><p>Now click on the <strong>Slicer</strong> icon:</p>
+<figure>
+<img src="../media/file89.png" alt="Figure 4.18 – The Slicer icon" /><figcaption aria-hidden="true">Figure 4.18 – The Slicer icon</figcaption>
+</figure></li>
+<li><p>Keeping the <strong>Slicer</strong> visual region selected into the canvas, click on the <strong>selected_countries_df</strong> table on the <strong>Fields</strong> panel, and select the <strong>country</strong> field:</p>
+<figure>
+<img src="../media/file90.png" alt="Figure 4.19 – Select the country_name column for the Slicer visual" /><figcaption aria-hidden="true">Figure 4.19 – Select the country_name column for the Slicer visual</figcaption>
+</figure></li>
+<li><p>Then click the <strong>Format</strong> icon of the <strong>Slicer</strong> and enable the <strong>Single select</strong> option:</p>
+<figure>
+<img src="../media/file91.png" alt="Figure 4.20 – Allow only a single selection" /><figcaption aria-hidden="true">Figure 4.20 – Allow only a single selection</figcaption>
+</figure>
+<p>It is very important to set <strong>Single select</strong>, because <em>the logic inside the R visual will manage the deserialization of a single plot</em>.</p></li>
+<li><p>Now the Slicer visual will show all the countries contained in the <strong>selected_countries_tbl</strong>:</p>
+<figure>
+<img src="../media/file92.png" alt="Figure 4.21 – This is what the Slicer visual looks like" /><figcaption aria-hidden="true">Figure 4.21 – This is what the Slicer visual looks like</figcaption>
+</figure></li>
+<li><p>Click on the report canvas in order to deselect the <strong>Slicer</strong> visual and click then on the <strong>R script visual</strong> icon:</p>
+<figure>
+<img src="../media/file93.png" alt="Figure 4.22 – The R script visual icon" /><figcaption aria-hidden="true">Figure 4.22 – The R script visual icon</figcaption>
+</figure>
+<p>The usual <strong>Enable script visuals</strong> window pops up. Click on <strong>Enable</strong>.</p></li>
+<li>Move and stretch the R visual borders in order to cover almost all the report canvas. Keeping it selected, click on the <strong>plots_df</strong> table into the <strong>Fields</strong> panel and select the <strong>chunk_id</strong>, <strong>country_id</strong>, and <strong>plot_str</strong> fields:</li>
+</ol>
+<figure>
+<img src="../media/file94.png" alt="Figure 4.23 – Select the fields to use in the R visual" /><figcaption aria-hidden="true">Figure 4.23 – Select the fields to use in the R visual</figcaption>
+</figure>
+<p>Feel free to turn the R visual title off in the <strong>Format</strong> tab.</p>
+<ol>
+<li>Open the <code>07-deserialize-plots-df-into-r-visual.R</code> file from the GitHub repository, copy the content, and paste it into the R visual’s script editor. Then click on the <strong>Run</strong> icon on the top right of the R script editor.</li>
+<li>Now you can click on each country into the Slicer in order to see its population time series:</li>
+</ol>
+<figure>
+<img src="../media/file95.png" alt="Figure 4.24 – Showing the population growth for Italy" /><figcaption aria-hidden="true">Figure 4.24 – Showing the population growth for Italy</figcaption>
+</figure>
+<p>Outstanding! You have just created a report that very few could have made.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>This technique can be very useful when you need to build complex visualizations in R that require the use of packages not provided by the R visual in Power BI Service. These visualizations can be made "offline," serialized to file, and then used on a shared report on the service.</p>
+</blockquote>
+<p>You've just seen how to import an RDS file despite not being able to do so out of the box in Power BI, and how you can then use it directly within an R visual.</p>
+<p>In the next section, you'll see how you can do the same thing for files serialized with Python.</p>
+</section>
+</section>
+</section>
+<section id="importing-pkl-files-in-python" class="level2" data-number="5.3">
+<h2 data-number="5.3">Importing PKL files in Python</h2>
+<p>Let’s give you an overview of what you're going to implement using the Python code on GitHub. If you are not familiar with Python, you should familiarize yourself with the basic structures through this tutorial: <a href="http://bit.ly/py-data-struct-quickstart">http://bit.ly/py-data-struct-quickstart</a>. For a more detailed study of how to implement algorithms and data structures in Python, we suggest this free e-book: <a href="http://bit.ly/algo-py-ebook">http://bit.ly/algo-py-ebook</a>.</p>
+<section id="a-very-short-introduction-to-the-pydata-world" class="level3" data-number="5.3.1">
+<h3 data-number="5.3.1">A very short introduction to the PyData world</h3>
+<p>The <strong>PyData</strong> world is made up of users and developers who are passionate about data analytics and love to use open source data tools. The PyData community also loves to share best practices, new approaches, and emerging technologies for managing, processing, analyzing, and visualizing data. The most important and popular packages used by the Python data management community are as follows:</p>
+<ul>
+<li><strong>NumPy</strong>: This is the main library for scientific computing in Python. It provides a high-performance multidimensional array object and tools for working with data.</li>
+<li><strong>Pandas</strong>: The <em>Python Data Analysis Library</em> (pandas comes from <em>panel data</em>) is built upon NumPy and takes data in a tabular format (such as a CSV file, TSV file, or SQL database table) in order to create a Python object with rows and columns called a <strong>DataFrame</strong>. This object is very similar to a table in statistical software and people familiar with R conceptually equate the pandas DataFrame with R's dataframe data type.</li>
+<li><strong>Matplotlib</strong>: This is a Python package used to produce plots. It began as a project in the early 2000s to use Python to visualize electronic signals in the brains of patients with epilepsy. The creator of Matplotlib was a neurobiologist and was looking for a way to replicate MATLAB's graphing capabilities with Python.</li>
+<li><strong>Scikit-learn</strong>: Also known as <strong>sklearn</strong>, this derives its name from the fusion of the two words <em>"SciPy"</em> and <em>"Toolkit."</em> It is a free and robust machine learning library for Python designed to interact with the NumPy, SciPy, pandas, and Matplotlib, among others.</li>
+</ul>
+<p>Going into detail about what is possible using these libraries is not the purpose of this book.</p>
+<blockquote>
+<p><strong>Note</strong></p>
+</blockquote>
+<p>If you want to start learning how to work with data in Python by taking advantage of these libraries, we recommend starting with this free book: <a href="http://bit.ly/data-science-py-ebook">http://bit.ly/data-science-py-ebook</a>. After that, for further study, you can't miss the opportunity to study this fantastic book: <em>Python Machine Learning: Machine Learning and Deep Learning with Python, Scikit-Learn, and TensorFlow 2, Third Edition</em>, by Sebastian Raschka, Packt.</p>
+<p>In order to summarily understand the code used in this section, we will try to describe its functionality piece by piece, referring you to the comments in the code on GitHub for more details.</p>
+</section>
+<section id="creating-a-serialized-python-object" class="level3" data-number="5.3.2">
+<h3 data-number="5.3.2">Creating a serialized Python object</h3>
+<p>As done in the previous section, now imagine that you are part of another team of data scientists that needs to do some complex, time-consuming data analysis with Python. Needing to reuse the results obtained in other processes, the team decides to use a <strong>Pickle file</strong> (PKL). It is obtained by serializing and then writing to a file any Python object, using the <strong>pickle</strong> library. As you have already seen in the previous section, serializing means converting an object in memory into a stream of bytes that can be either saved to disk or sent over a network. Obviously, this is an easily reversible operation. In fact, there is the possibility to deserialize a serialized object.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>Before you start, make sure that the path where you unzipped the GitHub repository ZIP file <strong>doesn't contain any spaces in the names of the folders that make it up</strong>, otherwise the Python script execution will give an error.</p>
+</blockquote>
+<p>So, let’s start to install what we need in our environment and initialize the IDE appropriately.</p>
+<section id="configuring-the-environment-and-installing-the-pydata-packages" class="level4" data-number="5.3.2.1">
+<h4 data-number="5.3.2.1">Configuring the environment and installing the PyData packages</h4>
+<p>Open your <strong>Anaconda Prompt</strong> (from the <strong>Start</strong> menu) and proceed as follows:</p>
+<ol>
+<li><p>Make sure to use the <code>pbi_powerquery_env</code> environment, entering this code:</p>
+<pre><code>conda activate pbi_powerquery_env</code></pre>
+<p>Now you will install some missing packages that are necessary to be able to use the code in this section.</p></li>
+<li>Enter the following command to install <strong>matplotlib</strong>: <code>pip install matplotlib</code>.</li>
+</ol>
+<p>Great! Your Python environment is now ready to run your scripts. Now open Visual Studio Code and proceed as shown:</p>
+<ol>
+<li>Go to <strong>File</strong> and then <strong>Open Folder…</strong>. Make sure to choose the <strong>importing-pkl-files</strong> folder contained in the GitHub repository you previously unzipped, under the <strong>Chapter04</strong> folder. Click <strong>Select Folder</strong>.</li>
+<li>Open the <code>01-create-object-to-serialize-in-pkl.py</code> file, clicking on it into the Explorer on the right, under the selected folder.</li>
+<li>Remember you have to choose the environment in which to run your script. So, press <em>Ctrl + Shift + P</em> to open the Visual Studio Code palette and start entering the text “interpreter.” Then, select <strong>Python: Select Interpreter</strong>, and then choose the <code>pbi_powerquery_env</code> environment.</li>
+</ol>
+<p>Excellent! Now you are ready to serialize your first Python object.</p>
+</section>
+<section id="creating-the-pkl-files" class="level4" data-number="5.3.2.2">
+<h4 data-number="5.3.2.2">Creating the PKL files</h4>
+<p>Two of the most commonly used data structures in Python are <strong>lists</strong> and <strong>dictionaries</strong>. While by now you're familiar with lists, which you've seen before in R, if you've never developed in a programming language, perhaps dictionaries might sound new to you. Dictionaries are data structures that consist of a collection of <strong>key-value pairs</strong>. You can define them using curly braces (<code>{…}</code>). Specifically, in this section, you will create a dictionary with key-value pairs that consists of the country name and a dataframe containing data about the growth of the country’s population.</p>
+<p>The data you will use is the same data you used in the previous section. This time, instead of loading it from a package in memory, you'll do it directly from a CSV file. Let’s go:</p>
+<ol>
+<li>Since the <code>01-create-object-to-serialize-in-pkl.py</code> file is already open in Visual Studio Code, just run the code via the green arrow icon in the upper-right corner (<strong>Run Python File in Terminal</strong>). This way, the whole script will be executed.</li>
+<li><p>You won't see anything particular in the console, just the command that runs <code>python.exe</code> with the current script path as a parameter. But if you look in the explorer on the left, you will see that the <code>nested_population_dict.pkl</code> file has been created correctly:</p>
+<figure>
+<img src="../media/file96.png" alt="Figure 4.25 – Your first PKL file has been created" /><figcaption aria-hidden="true">Figure 4.25 – Your first PKL file has been created</figcaption>
+</figure></li>
+<li><p>Just like in Rstudio, you can only run pieces of code by highlighting them and pressing <em>Ctrl + Enter</em>. You need to change a settings option in order to allow the use of the <strong>interactive window</strong> with Python. Go to <strong>Settings</strong>, pressing <em>Ctrl + ,</em> (comma), then start entering <code>Send Selection To Interactive Window</code> in the search bar and check the selected option:</p>
+<figure>
+<img src="../media/file97.png" alt="Figure 4.26 – Enable the execution of Python code chunks in the Jupyter interactive window" /><figcaption aria-hidden="true">Figure 4.26 – Enable the execution of Python code chunks in the Jupyter interactive window</figcaption>
+</figure></li>
+<li>Now you have to install the <em>IPython kernel</em> (<code>ipykernel</code>) into your <code>pbi_powerquery_env</code> environment. Usually, this operation is done automatically by Visual Studio Code, but sometimes you can run into errors. So, it’s better to do it manually. Open your Anaconda Prompt and enter the following command: <code>conda install --name pbi_powerquery_env ipykernel -y</code>.</li>
+<li><p>Now select the code from the beginning (<code>import pandas as pd</code>) to the line where <code>countries</code> are defined (<code>countries = population_df.country.unique()</code>), then press <em>Shift + Enter</em>. Your chunk of code will be sent to the interactive window:</p>
+<figure>
+<img src="../media/file98.png" alt="Figure 4.27 – Run selected chunks of script in Visual Studio Code" /><figcaption aria-hidden="true">Figure 4.27 – Run selected chunks of script in Visual Studio Code</figcaption>
+</figure>
+<p>Clicking on the <strong>Variables</strong> icon into the interactive windows as shown in <em>Figure 4.28</em>, you can also inspect the content of each variable.</p></li>
+</ol>
+<p>Hey, maybe you didn't notice, but with minimal effort, you have just created your first PLK file! You can train yourself to deserialize the newly created PKL file by running the code in the <code>02-deserialize-object-from-pkl.py</code> file.</p>
+<p>Now we will now guide you in creating a second PKL file that contains a serialized dictionary with pairs composed of the country and the respective time series on population growth. This time, though, you will keep only four countries in the dictionary for simplicity. Let's proceed:</p>
+<ol>
+<li>Open the <code>04-create-plots-object-to-serialize-in-pkl.py</code> file from the explorer on the left.</li>
+<li><p>You can run the code a piece at a time to better understand how it works. About halfway through the script, you will find the following code:</p>
+<pre><code># Let&#39;s try to plot the time series for Sweden
+selected_country = &quot;Sweden&quot;
+x = nested_population_dict[selected_country].year
+y = nested_population_dict[selected_country].population
+# Create a figure object
+fig_handle = plt.figure()
+# Plot a simple line for each (x,y) point
+plt.plot(x, y)
+# Add a title to the figure
+plt.title(&quot;Global population of &quot; + selected_country)
+# Show the figure
+fig_handle.show()</code></pre></li>
+<li><p>After running that piece of code, an interactive window will open in which the time series graph of Sweden is shown:</p>
+<figure>
+<img src="../media/file99.png" alt="Figure 4.28 – Interactive window showing the time series plot of Sweden" /><figcaption aria-hidden="true">Figure 4.28 – Interactive window showing the time series plot of Sweden</figcaption>
+</figure>
+<p>Keep it open if you want to create new figures, otherwise you might get a weird error.</p></li>
+<li>The last piece of code creates a new dictionary containing graphs for each country and serializes it to file. Once executed, you can see the <code>nested_population_plots_dict.pkl</code> file in the explorer on the left:</li>
+</ol>
+<figure>
+<img src="../media/file100.png" alt="Figure 4.29 – The new dictionary is correctly serialized in a PKL file" /><figcaption aria-hidden="true">Figure 4.29 – The new dictionary is correctly serialized in a PKL file</figcaption>
+</figure>
+<p>Amazing! You serialized your second dictionary as well. You can practice deserializing it using the code in the <code>05-deserialize-plots-object-from-pkl.py</code> script.</p>
+<p>Now you're ready to test your PKL files in Power BI, either in Power Query Editor or in Python visuals.</p>
+</section>
+</section>
+<section id="using-a-pkl-file-in-power-bi" class="level3" data-number="5.3.3">
+<h3 data-number="5.3.3">Using a PKL file in Power BI</h3>
+<p>It is clear that a PKL file must necessarily be used through Python scripts in Power BI. So, there are two Power BI objects through which you can use Python scripts: <strong>Power Query Editor</strong> and <strong>Python visuals</strong>. Let's start with the simplest case, which is to import the PKL file into Power Query Editor.</p>
+<section id="importing-a-pkl-file-in-power-query-editor" class="level4" data-number="5.3.3.1">
+<h4 data-number="5.3.3.1">Importing a PKL file in Power Query Editor</h4>
+<p>You will import a serialized Python object into Power Query Editor once you know how to extract tabular information from the object and then persist it in the Power BI data model. Let's take a look at how to do this:</p>
+<ol>
+<li>Open Power BI Desktop and make sure it is referencing the <code>pbi_powerquery_env</code> environment. Then click on <strong>Get</strong> <strong>data</strong> and then <strong>More…</strong>. Start typing <code>script</code> into the search textbox and double-click on Python script. The Python script editor will pop up.</li>
+<li>Open the <code>03-deserialize-object-from-pkl-in-power-bi.py</code> file in Visual Studio Code and copy its content. Then paste it into the Python script editor in Power BI Desktop, changing the absolute path to the PKL file accordingly, and click <strong>OK</strong>.</li>
+<li>The <strong>Navigator</strong> window will open, giving you the option to select which dataframe to import:</li>
+</ol>
+<figure>
+<img src="../media/file101.png" alt="Figure 4.30 – Import the deserialized dataframe into Power BI" /><figcaption aria-hidden="true">Figure 4.30 – Import the deserialized dataframe into Power BI</figcaption>
+</figure>
+<p>Select the <strong>sweden_population_tbl</strong> dataframe and click <strong>Load</strong>.</p>
+<ol>
+<li>When loading is finished, click on the table icon on the left menu of Power BI Desktop to verify that the data has been imported correctly in tabular form:</li>
+</ol>
+<figure>
+<img src="../media/file102.png" alt="Figure 4.31 – The dataframe is correctly imported" /><figcaption aria-hidden="true">Figure 4.31 – The dataframe is correctly imported</figcaption>
+</figure>
+<p>Nice job! You have correctly imported your PKL file into Power BI to use its contents with Power Query in the most appropriate way.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>As with R scripts, <strong>the only Python data structure that Power BI can work with are pandas DataFrames with columns that have standard data types</strong>. It is not possible to import any other type of Python object. That’s exactly why you couldn't import the dictionary directly.</p>
+</blockquote>
+<p>As should be clear to you by now from the previous section, it can happen that a PKL file doesn’t contain information in tabular format that can be extracted in Power Query Editor. You may need to deserialize the contents of a PKL file directly within a Python visual in order to use that information to create a chart. You will see how to solve this scenario in the next section.</p>
+</section>
+<section id="importing-a-pkl-file-in-a-python-visual" class="level4" data-number="5.3.3.2">
+<h4 data-number="5.3.3.2">Importing a PKL file in a Python visual</h4>
+<p>Now let's assume that you received a PKL file containing the time series graphs for each country from the data scientists team. Your goal is to allow the report user to view the graphs by selecting a country.</p>
+<p>The problem you face is the following: you know that in order to import any information into Power Query Editor via Python scripts, it must be in tabular format and must use standard data types. The charts provided by the data scientists are grouped in a dictionary in the <strong>figure format</strong> of <strong>Matplotlib</strong>, which itself is not a standard data type. So, how do you import the dictionary into Power BI? The same "trick" used with R in the previous section applies.</p>
+<p>In summary, what you will do in this section is this:</p>
+<ol>
+<li>Import the PKL file containing the dictionary of plots in Power Query Editor. Extract its keys (countries) and expose them in a dataframe. Use its byte stream representation to fill another dataframe.</li>
+<li>Use the countries dataframe as a slicer with a single choice.</li>
+<li>Each time a country is selected from the slicer, the Python visual will deserialize the byte stream into the input dataframe and it will display the plot of the time series of the population growth of that country.</li>
+</ol>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>Also, in this case, when you select more than one column from more than one table in the Power BI data model (there must be a relationship between them) as values of a Python visual, these values <em>will form a single dataframe (deduplicated)</em> to be referenced in the Python script of the Visual.</p>
+</blockquote>
+<p>In addition, the same suggestion as was made for the R dataframe input applies:</p>
+<blockquote>
+<p><strong>Tip</strong></p>
+<p>In some cases, you may want to <em>not delete duplicate rows</em>. In that case, you can add an index field to your Pandas dataset (row number) that causes all rows to be considered unique and prevents grouping.</p>
+</blockquote>
+<p>Again, even the Python visuals add a size limitation to the data it imports that appears to be undocumented:</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>If a string is longer than 32,766 characters, <em>it is truncated</em> once passed into the input dataframe of a Python visual. To avoid truncation, we need to split the string into chunks of 32,000 characters each (this is an arbitrary value chosen by us) and persist these chunks in a column of the dataframe before using the data in the Python visual.</p>
+</blockquote>
+<p>Here is the process summarised in a figure that contains the functions you will find in the code:</p>
+<figure>
+<img src="../media/file103.png" alt="Figure 4.32 – Deserialize the PKL file content into a Python visual" /><figcaption aria-hidden="true">Figure 4.32 – Deserialize the PKL file content into a Python visual</figcaption>
+</figure>
+<p>In the following steps, we will not explain in detail all the Python functions used, simply because we will refer to the code shared in the GitHub repository associated with this book, where every single detail is commented. So, let's get started:</p>
+<ol>
+<li>Open Power BI Desktop and go to <strong>Get data</strong>, then <strong>More…</strong>, and then <strong>Python Script</strong> to import the PKL files.</li>
+<li>Open the <code>06-deserialize-plots-object-from-pkl-in-power-bi.py</code> file from the GitHub repository, copy the content, paste it into the Python script editor, changing the absolute path to the PKL file accordingly, and click <strong>OK</strong>.</li>
+<li><p>Power Query will detect three dataframes created in your script. Select only the <code>plots_df</code> (the one containing the chunks of byte strings of each plot) and selected <code>_countries_df</code> (the one containing the country names) dataframes:</p>
+<figure>
+<img src="../media/file104.png" alt="Figure 4.33 – Selecting the two dataframes containing useful data" /><figcaption aria-hidden="true">Figure 4.33 – Selecting the two dataframes containing useful data</figcaption>
+</figure>
+<p>Then click <strong>Load</strong>.</p></li>
+<li><p>Click on the <strong>Data</strong> icon in the left ribbon and then click on the <strong>Manage relationships</strong> button:</p>
+<figure>
+<img src="../media/file105.png" alt="Figure 4.34 – The Manage relationships button" /><figcaption aria-hidden="true">Figure 4.34 – The Manage relationships button</figcaption>
+</figure></li>
+<li><p>The engine has automatically created the relationship between the two imported tables:</p>
+<figure>
+<img src="../media/file106.png" alt="Figure 4.35 – Relationship between tables automatically detected" /><figcaption aria-hidden="true">Figure 4.35 – Relationship between tables automatically detected</figcaption>
+</figure>
+<p>Click <strong>Close</strong> and go back to the report canvas using the <strong>Report</strong> icon in the left ribbon.</p></li>
+<li><p>Now click on the <strong>Slicer</strong> visual icon:</p>
+<figure>
+<img src="../media/file107.png" alt="Figure 4.36 – The Slicer visual icon" /><figcaption aria-hidden="true">Figure 4.36 – The Slicer visual icon</figcaption>
+</figure></li>
+<li><p>Keeping the Slicer visual region selected into the canvas, click on the <strong>selected_countries_df</strong> table on the <strong>Fields</strong> panel and select the <strong>country_name</strong> field:</p>
+<figure>
+<img src="../media/file108.png" alt="Figure 4.37 – Select the country_name column for the Slicer visual" /><figcaption aria-hidden="true">Figure 4.37 – Select the country_name column for the Slicer visual</figcaption>
+</figure></li>
+<li>Then click the <strong>Format</strong> icon of the Slicer as you did in the previous section and enable the <strong>Single select</strong> option. The Slicer visual will show all the country names contained in the <strong>selected_countries_df</strong> table. It is very important to set <strong>Single select</strong>, because <em>the logic inside the Python visual will manage the deserialization of a single plot</em>.</li>
+<li><p>Click on the report canvas in order to deselect the Slicer visual region and click on the <strong>Python visual</strong> icon:</p>
+<figure>
+<img src="../media/file109.png" alt="Figure 4.39 – The Python visual icon" /><figcaption aria-hidden="true">Figure 4.39 – The Python visual icon</figcaption>
+</figure>
+<p>The usual <strong>Enable script visuals</strong> window pops up. Click on <strong>Enable</strong>.</p></li>
+<li><p>Move and stretch the Python visual borders in order to cover almost all the report canvas. Keeping it selected, click on the <strong>plots_df</strong> table in the <strong>Fields</strong> panel and select all three <code>chunk_id</code>, <code>country_id</code>, and <code>plot_str</code> fields:</p>
+<figure>
+<img src="../media/file110.png" alt="Figure 4.40 – Select the fields to use in the Python visual" /><figcaption aria-hidden="true">Figure 4.40 – Select the fields to use in the Python visual</figcaption>
+</figure>
+<p>Feel free to turn the Python visual title off in the <strong>Format</strong> tab.</p></li>
+<li>Open the <code>07-deserialize-plots-df-into-python-visual.py</code> file from the GitHub repository, copy the content, and paste it into the Python visual’s script editor. Then, click on the <strong>Run</strong> icon on the top right of the Python script editor.</li>
+<li>Now you can click on each country in the Slider in order to see the population time series:</li>
+</ol>
+<figure>
+<img src="../media/file111.png" alt="Figure 4.41 – Showing the population growth for Germany" /><figcaption aria-hidden="true">Figure 4.41 – Showing the population growth for Germany</figcaption>
+</figure>
+<p>Brilliant! You've just created a report using a methodology that few people in the world know about.</p>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<p>This technique can be very useful when you need to build complex visualizations in Python that require the use of packages not provided by Python visuals in Power BI Service. These visualizations can be made offline, serialized to a file, and then used on a shared report on the service.</p>
+</blockquote>
+</section>
+</section>
+</section>
+<section id="summary-3" class="level2" data-number="5.4">
+<h2 data-number="5.4">Summary</h2>
+<p>In this chapter, you got to learn about the Tidyverse approach to R development and how to serialize R objects to files. After that, you learned how to use these serialized files, both in Power Query Editor and in R visuals.</p>
+<p>You then approached the same issues using Python. Specifically, you learned which packages are most used by the PyData community, learned how to serialize Python objects to files, and how to use them in Power BI, both in Power Query Editor and in Python visuals.</p>
+<p>In the next chapter, you'll have a chance to learn how powerful regular expressions and fuzzy string matching are and what benefits they can bring to your Power BI reports.</p>
+</section>
+<section id="references" class="level2" data-number="5.5">
+<h2 data-number="5.5">References</h2>
+<p>For additional reading, check out the following books and articles:</p>
+<ul>
+<li><em>“An Introduction to R” by R Core</em> (<a href="https://cran.r-project.org/doc/manuals/r-release/R-intro.html">https://cran.r-project.org/doc/manuals/r-release/R-intro.html</a>).</li>
+<li><em>“R for Data Science”</em> by Hadley Wickham (<a href="https://r4ds.had.co.nz/index.html">https://r4ds.had.co.nz/index.html</a>).</li>
+<li><em>“Machine Learning with R: Expert techniques for predictive modeling, 3rd Edition”</em> by Brett Lantz, Packt Publishing (<a href="https://www.packtpub.com/product/mastering-machine-learning-with-r-third-edition/9781789618006">https://www.packtpub.com/product/mastering-machine-learning-with-r-third-edition/9781789618006</a>).</li>
+</ul>
+</section>
+</section>
+</body>
+</html>
