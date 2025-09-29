@@ -1,0 +1,565 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;8.&#xA0;Building a Complete Mapping Application using Python and QGIS"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08" class="calibre1"/>Chapter 8. Building a Complete Mapping Application using Python and QGIS</h1></div></div></div><p class="calibre8">In this chapter, we will design and start building a complete turnkey mapping application. While our example application might seem somewhat specialized, the process of designing and implementing this application, and much of the code that we use, will apply to all sorts of mapping applications that you might like to write yourself.</p><p class="calibre8">Due to the complexity of the application we're creating, we will split the implementation across two chapters. In this chapter, we will lay the groundwork for the mapping application by:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Designing the application</li><li class="listitem">Building the high-resolution basemap on which our vector data will be displayed</li><li class="listitem">Implementing the overall structure of the application</li><li class="listitem">Defining the application's user interface</li></ul></div><p class="calibre8">In the following chapter, we will implement the map tools that let the user enter and manipulate map data, edit attributes, and calculate the shortest path between two points.</p></div>
+
+<div class="book" title="Chapter&#xA0;8.&#xA0;Building a Complete Mapping Application using Python and QGIS">
+<div class="book" title="Introducing ForestTrails"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch08lvl1sec57" class="calibre1"/>Introducing ForestTrails</h1></div></div></div><p class="calibre8">Imagine<a id="id506" class="calibre1"/> that you work for a company responsible for developing and maintaining a large recreational forest. People use the various access roads and purpose-built trails in the forest for walking, biking and horse riding. Your task is to write a computer program that lets the user create a database of access roads and trails to assist with the ongoing maintenance of the forest. For simplicity, we will use the term <span class="strong"><strong class="calibre9">track</strong></span> to <a id="id507" class="calibre1"/>refer to either an access road or a trail. Each track will have the following:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong class="calibre9">Type</strong></span>: Whether the<a id="id508" class="calibre1"/> track is a walking trail, a bike trail, a horse trail, or an access road</li><li class="listitem"><span class="strong"><strong class="calibre9">Name</strong></span>: Not <a id="id509" class="calibre1"/>all trails and access roads are named, though some are</li><li class="listitem"><span class="strong"><strong class="calibre9">Direction</strong></span>: Some<a id="id510" class="calibre1"/> trails and access roads are one-way, while others can be travelled in both directions</li><li class="listitem"><span class="strong"><strong class="calibre9">Status</strong></span>: Whether the track is<a id="id511" class="calibre1"/> currently open or closed</li></ul></div><p class="calibre8">Since the recreational forest is continually being developed, new tracks are being regularly added, while existing tracks are sometimes modified or even removed if they are no longer needed. This means that you can't hardwire the set of tracks into your program; you will need to include a <span class="strong"><em class="calibre10">track editing</em></span> mode so that the user can add, edit, and remove tracks.</p><p class="calibre8">A specific request you have been given is to produce a set of directions that the track maintenance team can follow in order to go from a given starting point to any place in the forest. To implement this, the program will have to let the user choose the starting and ending points, and calculate and display the <span class="strong"><strong class="calibre9">shortest available path</strong></span>
+<a id="id512" class="calibre1"/> between those two points.</p></div></div>
+<div class="book" title="Designing the ForestTrails application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec58" class="calibre1"/>Designing the ForestTrails application</h1></div></div></div><p class="calibre8">Based on <a id="id513" class="calibre1"/>our set of requirements, it seems clear that tracks can be represented by LineString geometries. We will also need an appropriate basemap on which these geometries will be displayed. This means that our application will have at least the following two map layers:</p><div class="mediaobject"><img src="../images/00088.jpeg" alt="Designing the ForestTrails application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Since we want the data to be persistent, we will use a SpatiaLite database to hold our track data, while the basemap is simply a GeoTIFF raster image that we load and display.</p><p class="calibre8">Along with these two main map layers, we will make use of memory-based layers to display the following temporary information on top of the map:</p><div class="book"><ul class="itemizedlist"><li class="listitem">The currently selected starting point</li><li class="listitem">The currently selected ending point</li><li class="listitem">The shortest available path between these two points</li></ul></div><p class="calibre8">To keep things<a id="id514" class="calibre1"/> easier, we're going to display each of these in a separate map layer. This <a id="id515" class="calibre1"/>means that our application is going to have a total of five map layers:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">basemapLayer</code></li><li class="listitem"><code class="email">trackLayer</code></li><li class="listitem"><code class="email">startPointLayer</code></li><li class="listitem"><code class="email">endPointLayer</code></li><li class="listitem"><code class="email">shortestPathLayer</code></li></ul></div><p class="calibre8">Along with the map itself, our application will sport a toolbar and a menu bar, both of which let the user access the various features of the system. The following actions will be available in the <a id="id516" class="calibre1"/>toolbar and menu bar:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong class="calibre9">Zoom in</strong></span>: This<a id="id517" class="calibre1"/> will let the user zoom in on the map.</li><li class="listitem"><span class="strong"><strong class="calibre9">Zoom out</strong></span>: This<a id="id518" class="calibre1"/> lets the user zoom out.</li><li class="listitem"><span class="strong"><strong class="calibre9">Pan</strong></span>: This<a id="id519" class="calibre1"/> is the pan mode we implemented earlier, which allows the user to move around on the map.</li><li class="listitem"><span class="strong"><strong class="calibre9">Edit</strong></span>: Clicking<a id="id520" class="calibre1"/> on this item will turn on the track editing mode. If we are already in the track editing mode, clicking on it again will prompt the user to save their changes before turning off the editing mode.</li><li class="listitem"><span class="strong"><strong class="calibre9">Add track</strong></span>: This<a id="id521" class="calibre1"/> lets the user add a new track. Note that this item is only available while in the track editing mode.</li><li class="listitem"><span class="strong"><strong class="calibre9">Edit track</strong></span>: This <a id="id522" class="calibre1"/>lets the user edit an existing track. This is only enabled if the user is in the track editing mode.</li><li class="listitem"><span class="strong"><strong class="calibre9">Delete track</strong></span>: This<a id="id523" class="calibre1"/> lets the user delete a track. This is only available in the track editing mode.</li><li class="listitem"><span class="strong"><strong class="calibre9">Get info</strong></span>: This <a id="id524" class="calibre1"/>enables the Get Info map tool. When the user clicks on a track, this tool will display the attributes for that track, and allow the user to make changes to those attributes.</li><li class="listitem"><span class="strong"><strong class="calibre9">Set start point</strong></span>: This <a id="id525" class="calibre1"/>lets the user set the current starting point for the shortest path calculation.</li><li class="listitem"><span class="strong"><strong class="calibre9">Set end point</strong></span>: This<a id="id526" class="calibre1"/> item lets the user click on the map to set the ending point for the shortest path calculation.</li><li class="listitem"><span class="strong"><strong class="calibre9">Find the shortest path</strong></span>: This <a id="id527" class="calibre1"/>displays the shortest available path between the current starting and ending points. Clicking on this item again will hide the path.</li></ul></div><p class="calibre8">This gives us a good idea of what our application should look like, and how it will work. Let's now start writing our ForestTrails program by implementing the basic logic for the application and its main window.</p></div>
+
+<div id="page" style="height:0pt"/><div class="book" title="Creating the application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec59" class="calibre1"/>Creating the application</h1></div></div></div><p class="calibre8">Our application<a id="id528" class="calibre1"/> is going to be a standalone Python program built using PyQt and the PyQGIS library. Taking the Lex application we implemented in <a class="calibre1" title="Chapter 5. Using QGIS in an External Application" href="part0033_split_000.html#page">Chapter 5</a>, <span class="strong"><em class="calibre10">Using QGIS in an External Application</em></span>, as a starting point, let's see how we can organize the source files for the ForestTrails system. We'll start with the following basic structure:</p><div class="mediaobject"><img src="../images/00089.jpeg" alt="Creating the application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">This is very <a id="id529" class="calibre1"/>similar to the structure we used for the Lex application, so most of this should be familiar to you. The main difference is that we're using two subdirectories to hold additional files. Let's take a look at what each of these<a id="id530" class="calibre1"/> files and directories will be used for:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">constants.py</code>: This <a id="id531" class="calibre1"/>module will hold various constants used throughout the ForestTrails system.</li><li class="listitem"><code class="email">data</code>: This <a id="id532" class="calibre1"/>is a directory that we will use to hold our raster basemap as well as the SpatiaLite database that holds our tracks.</li><li class="listitem"><code class="email">forestTrails.py</code>: This<a id="id533" class="calibre1"/> is the main program for our application.</li><li class="listitem"><code class="email">Makefile</code>: This<a id="id534" class="calibre1"/> file tells the make tool how to compile the <code class="email">resources.qrc</code> file into a <code class="email">resources.py</code> module that our application can use.</li><li class="listitem"><code class="email">mapTools.py</code>: This<a id="id535" class="calibre1"/> module implements our various map tools.</li><li class="listitem"><code class="email">resources</code>: This<a id="id536" class="calibre1"/> is a directory where we will place our various icons and other resources. Since we have so many icon files, it makes sense to put these into a subdirectory rather than cluttering up the main directory with all these files.</li><li class="listitem"><code class="email">resources.qrc</code>: This<a id="id537" class="calibre1"/> is the resource description file for our application.</li><li class="listitem"><code class="email">run_lin.sh</code>: This<a id="id538" class="calibre1"/> bash shell script is used to run our application on Linux systems.</li><li class="listitem"><code class="email">run_mac.sh</code>: This<a id="id539" class="calibre1"/> bash shell script is used to run our application on Mac OS X systems.</li><li class="listitem"><code class="email">run_win.bat</code>: This<a id="id540" class="calibre1"/> batch file is used to run our application on MS Windows machines.</li><li class="listitem"><code class="email">ui_mainWindow.py</code>: This<a id="id541" class="calibre1"/> Python module defines the user interface for our main window.</li></ul></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="Laying out the application"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_1"><a id="ch08lvl2sec29" class="calibre1"/>Laying out the application</h2></div></div></div><p class="calibre8">Let's <a id="id542" class="calibre1"/>implement the ForestTrails system one small step at a time. Create a directory to hold the source code for the ForestTrails system, and then create the <code class="email">data</code> and <code class="email">resources</code> subdirectories within it. As many of the files in the main directory are straightforward, let's just go ahead and create the following files:</p><div class="book"><ul class="itemizedlist"><li class="listitem">The <code class="email">Makefile</code> should look like this:<div class="informalexample"><pre class="programlisting">RESOURCE_FILES = resources.py
+
+default: compile
+
+compile: $(RESOURCE_FILES)
+
+%.py : %.qrc
+  pyrcc4 -o $@ $&lt;
+
+%.py : %.ui
+  pyuic4 -o $@ $&lt;
+
+clean:
+  rm $(RESOURCE_FILES)
+  rm *.pyc</pre></div><div class="note" title="Note"><h3 class="title2"><a id="tip19" class="calibre1"/>Tip</h3><p class="calibre8">Note that if your <code class="email">pyrcc4</code> command is in a nonstandard location, you might need to modify this file so that <code class="email">make</code> can find it.</p></div></li><li class="listitem">Create the <code class="email">resources.qrc</code> file as follows:<div class="informalexample"><pre class="programlisting">&lt;RCC&gt;
+&lt;qresource&gt;
+&lt;file&gt;resources/mActionZoomIn.png&lt;/file&gt;
+&lt;file&gt;resources/mActionZoomOut.png&lt;/file&gt;
+&lt;file&gt;resources/mActionPan.png&lt;/file&gt;
+&lt;file&gt;resources/mActionEdit.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionAddTrack.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionEditTrack.png&lt;/file&gt;
+&lt;file&gt;resources/mActionDeleteTrack.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionGetInfo.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionSetStartPoint.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionSetEndPoint.svg&lt;/file&gt;
+&lt;file&gt;resources/mActionFindShortestPath.svg&lt;/file&gt;
+&lt;/qresource&gt;
+&lt;/RCC&gt;</pre></div><p class="calibre26">Note<a id="id543" class="calibre1"/> that we've included various image files that will be used for our toolbar actions. All these files are in our <code class="email">resources</code> subdirectory. We'll look at how to obtain these image files shortly.</p></li><li class="listitem">The <code class="email">run-lin.sh</code> file should look like this:<div class="informalexample"><pre class="programlisting">#!/bin/sh
+export PYTHONPATH="/path/to/qgis/build/output/python/"
+export LD_LIBRARY_PATH="/path/to/qgis/build/output/lib/"
+export QGIS_PREFIX="/path/to/qgis/build/output/"
+python forestTrails.py</pre></div></li><li class="listitem">Similarly, <code class="email">run-mac.sh</code> should contain the following:<div class="informalexample"><pre class="programlisting">export PYTHONPATH="$PYTHONPATH:/Applications/QGIS.app/Contents/Resources/python"
+export DYLD_FRAMEWORK_PATH="/Applications/QGIS.app/Contents/Frameworks"
+export QGIS_PREFIX="/Applications/QGIS.app/Contents/Resources"
+python forestTrails.py</pre></div></li><li class="listitem">The <code class="email">run-win.bat</code> file should contain:<div class="informalexample"><pre class="programlisting">SET OSGEO4W_ROOT=C:\OSGeo4W
+SET QGIS_PREFIX=%OSGEO4W_ROOT%\apps\qgis
+SET PATH=%PATH%;%QGIS_PREFIX%\bin
+SET PYTHONPATH=%QGIS_PREFIX%\python;%PYTHONPATH%
+python forestTrails.py</pre></div><div class="note" title="Note"><h3 class="title2"><a id="note30" class="calibre1"/>Note</h3><p class="calibre8">If your QGIS installation is in a nonstandard place, you might need to modify the appropriate script so that the required libraries can be found.</p></div></li></ul></div><p class="calibre8">Since the <code class="email">resources.qrc</code> file imports our various toolbar icons and makes them available to the <a id="id544" class="calibre1"/>application, we'll want to set up those icon files. Let's do that now.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="Defining the toolbar icons"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_2"><a id="ch08lvl2sec30" class="calibre1"/>Defining the toolbar icons</h2></div></div></div><p class="calibre8">There <a id="id545" class="calibre1"/>are a total of 11 toolbar actions that we will want to display icons for:</p><div class="mediaobject"><img src="../images/00090.jpeg" alt="Defining the toolbar icons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Feel free to create or download your own icons for these toolbar actions, or you can use the icon files included in the source code provided with this chapter. The file format isn't important, just as long as you include the right suffix in the <code class="email">resoures.qrc</code> file, and in <code class="email">ui_mainWindow.py</code> when the toolbar action is initialized.</p><p class="calibre8">Make sure you place these files into the <code class="email">resources</code> subdirectory, and run <code class="email">make</code> to build the <code class="email">resources.py</code> module so that these icons are available for your application to use.</p><p class="calibre8">With this groundwork done, we're ready to start defining the application code itself. Let's start with the <code class="email">constants.py</code> module.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="The constants.py module"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_3"><a id="ch08lvl2sec31" class="calibre1"/>The constants.py module</h2></div></div></div><p class="calibre8">This<a id="id546" class="calibre1"/> module will hold various constants that <a id="id547" class="calibre1"/>we use to represent the track attribute values; by defining them in one place, we make sure that the attribute values are used consistently, and we don't have to remember exactly what the values are. For example, the <code class="email">type</code> attribute for the tracks layer can have the following values:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">ROAD</code></li><li class="listitem"><code class="email">WALKING</code></li><li class="listitem"><code class="email">BIKE</code></li><li class="listitem"><code class="email">HORSE</code></li></ul></div><p class="calibre8">Rather than hardwiring these values every time we need them, we're going to define these values in the <code class="email">constants.py</code> module. Create this module and enter the following code into it:</p><div class="informalexample"><pre class="programlisting">TRACK_TYPE_ROAD    = "ROAD"
+TRACK_TYPE_WALKING = "WALKING"
+TRACK_TYPE_BIKE    = "BIKE"
+TRACK_TYPE_HORSE   = "HORSE"
+
+TRACK_DIRECTION_BOTH     = "BOTH"
+TRACK_DIRECTION_FORWARD  = "FORWARD"
+TRACK_DIRECTION_BACKWARD = "BACKWARD"
+
+TRACK_STATUS_OPEN   = "OPEN"
+TRACK_STATUS_CLOSED = "CLOSED"</pre></div><p class="calibre8">We'll be adding a few more constants as we go along, but this is enough to get us started.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="The forestTrails.py module"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_4"><a id="ch08lvl2sec32" class="calibre1"/>The forestTrails.py module</h2></div></div></div><p class="calibre8">This<a id="id548" class="calibre1"/> module defines the main program for <a id="id549" class="calibre1"/>the ForestTrails application. It looks very similar to the <code class="email">lex.py</code> module we defined in <a class="calibre1" title="Chapter 5. Using QGIS in an External Application" href="part0033_split_000.html#page">Chapter 5</a>, <span class="strong"><em class="calibre10">Using QGIS in an External Application</em></span>. Create your <code class="email">forestTrails.py </code>file, and enter the following <code class="email">import</code> statements into it:</p><div class="informalexample"><pre class="programlisting">import os, os.path, sys
+
+from qgis.core import *
+from qgis.gui import *
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
+
+from ui_mainWindow import Ui_MainWindow
+
+import resources
+from constants import *
+from mapTools import *</pre></div><p class="calibre8">Next, we want<a id="id550" class="calibre1"/> to define the main window for our application in a class, which we will call <code class="email">ForestTrailsWindow</code>. This is where the bulk <a id="id551" class="calibre1"/>of the application code will be implemented; this class will get quite complicated, but we're going to start easy and just define the window itself, and have empty placeholder methods for all the toolbar actions.</p><p class="calibre8">Let's define the class itself and the <code class="email">__init__()</code> method to initialize a new window:</p><div class="informalexample"><pre class="programlisting">class ForestTrailsWindow(QMainWindow, Ui_MainWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+
+        self.setupUi(self)
+
+        self.connect(self.actionQuit, SIGNAL("triggered()"),
+                     self.quit)
+        self.connect(self.actionZoomIn, SIGNAL("triggered()"),
+                     self.zoomIn)
+        self.connect(self.actionZoomOut, SIGNAL("triggered()"),
+                     self.zoomOut)
+        self.connect(self.actionPan, SIGNAL("triggered()"),
+                     self.setPanMode)
+        self.connect(self.actionEdit, SIGNAL("triggered()"),
+                     self.setEditMode)
+        self.connect(self.actionAddTrack, SIGNAL("triggered()"),
+                     self.addTrack)
+        self.connect(self.actionEditTrack, SIGNAL("triggered()"),
+                     self.editTrack)
+        self.connect(self.actionDeleteTrack,SIGNAL("triggered()"),
+                     self.deleteTrack)
+        self.connect(self.actionGetInfo, SIGNAL("triggered()"),
+                     self.getInfo)
+        self.connect(self.actionSetStartPoint,
+                     SIGNAL("triggered()"),
+                self.setStartPoint)
+        self.connect(self.actionSetEndPoint,
+                     SIGNAL("triggered()"),
+                  self.setEndPoint)
+        self.connect(self.actionFindShortestPath,
+                     SIGNAL("triggered()"),
+                     self.findShortestPath)
+
+        self.mapCanvas = QgsMapCanvas()
+        self.mapCanvas.useImageToRender(False)
+        self.mapCanvas.setCanvasColor(Qt.white)
+        self.mapCanvas.show()
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mapCanvas)
+        self.centralWidget.setLayout(layout)</pre></div><p class="calibre8">This is very <a id="id552" class="calibre1"/>similar to the <code class="email">__init__()</code> method <a id="id553" class="calibre1"/>for the Lex application; we'll define the <code class="email">Ui_MainWindow</code> class in the <code class="email">ui_mainWindow.py</code> module to set up the application's user interface. This is where all those <code class="email">actionXXX</code> instance variables will be defined. In our <code class="email">__init__()</code> method, we're connecting these actions to various methods, which will respond when the user selects the action from the toolbar or menu bar.</p><p class="calibre8">The rest of the <code class="email">__init__()</code> method simply sets up a map canvas and lays it out within the window. With this method behind us, we can now define all those action-handling methods. We can borrow two of these directly from <code class="email">lex.py</code>:</p><div class="informalexample"><pre class="programlisting">    def zoomIn(self):
+        self.mapCanvas.zoomIn()
+
+    def zoomOut(self):
+        self.mapCanvas.zoomOut()</pre></div><p class="calibre8">For the rest, we'll hold off on implementing them until the application is a bit more complete. To allow our program to run, we'll set up empty placeholder methods for the remaining action handlers:</p><div class="informalexample"><pre class="programlisting">    def quit(self):
+        pass
+
+    def setPanMode(self):
+        pass
+
+    def setEditMode(self):
+        pass
+
+    def addTrack(self):
+        pass
+
+    def editTrack(self):
+        pass
+
+    def deleteTrack(self):
+        pass
+
+    def getInfo(self):
+        pass
+
+    def setStartingPoint(self):
+        pass
+
+    def setEndingPoint(self):
+        pass
+
+    def findShortestPath(self):
+        pass</pre></div><p class="calibre8">The last <a id="id554" class="calibre1"/>part of the <code class="email">forestTrails.py</code> module<a id="id555" class="calibre1"/> is the <code class="email">main()</code> function, which is called when the program is run:</p><div class="informalexample"><pre class="programlisting">def main():
+    QgsApplication.setPrefixPath(os.environ['QGIS_PREFIX'], True)
+    QgsApplication.initQgis()
+
+    app = QApplication(sys.argv)
+
+    window = ForestTrailsWindow()
+    window.show()
+    window.raise_()
+    window.setPanMode()
+
+    app.exec_()
+    app.deleteLater()
+    QgsApplication.exitQgis()
+
+if __name__ == "__main__":
+    main()</pre></div><p class="calibre8">Once again, this is almost identical to the code we saw earlier in the Lex application.</p><p class="calibre8">This <a id="id556" class="calibre1"/>completes our initial implementation <a id="id557" class="calibre1"/>of the <code class="email">forestTrails.py</code> module. Our next step is to create the module that will hold all our map tools.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="The mapTools.py module"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_5"><a id="ch08lvl2sec33" class="calibre1"/>The mapTools.py module</h2></div></div></div><p class="calibre8">We <a id="id558" class="calibre1"/>used <code class="email">mapTools.py</code> in the Lex application to <a id="id559" class="calibre1"/>define our various map tools separately from the main program. We're going to do the same here. For now, though, our <code class="email">mapTools.py</code> module is almost empty:</p><div class="informalexample"><pre class="programlisting">from qgis.core import *
+from qgis.gui import *
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
+from constants import *</pre></div><p class="calibre8">Obviously, we'll be adding to this as we start to implement our various map tools, but for now, this is enough.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="The ui_mainWindow.py module"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_6"><a id="ch08lvl2sec34" class="calibre1"/>The ui_mainWindow.py module</h2></div></div></div><p class="calibre8">This is<a id="id560" class="calibre1"/> the last module we need to <a id="id561" class="calibre1"/>define for our initial implementation of the ForestTrails system. As in the Lex application, this module defines a <code class="email">Ui_MainWindow</code> class, which implements the application's user interface, and defines <code class="email">QAction</code> objects for the various menu and toolbar items. We'll start by importing the modules that our class will need:</p><div class="informalexample"><pre class="programlisting">from PyQt4.QtGui import *
+from PyQt4.QtCore import *
+import resources</pre></div><p class="calibre8">Next, we'll define the <code class="email">Ui_MainWindow</code> class and the <code class="email">setupUi()</code> method that will do all the work:</p><div class="informalexample"><pre class="programlisting">class Ui_MainWindow(object):
+    def setupUi(self, window):</pre></div><p class="calibre8">The first part of the <code class="email">setupUi()</code> method sets the title for the window, creates a <code class="email">centralWidget</code> instance variable to hold the map view, and initializes the application's menus and toolbar:</p><div class="informalexample"><pre class="programlisting">        window.setWindowTitle("Forest Trails")
+
+        self.centralWidget = QWidget(window)
+        self.centralWidget.setMinimumSize(800, 400)
+        window.setCentralWidget(self.centralWidget)
+
+        self.menubar = window.menuBar()
+        self.fileMenu = self.menubar.addMenu("File")
+        self.mapMenu = self.menubar.addMenu("Map")
+        self.editMenu = self.menubar.addMenu("Edit")
+        self.toolsMenu = self.menubar.addMenu("Tools")
+
+        self.toolBar = QToolBar(window)
+        window.addToolBar(Qt.TopToolBarArea, self.toolBar)</pre></div><p class="calibre8">Next, we <a id="id562" class="calibre1"/>want to define all the <code class="email">QAction</code> objects for <a id="id563" class="calibre1"/>the various toolbar and menu items. For each action, we'll define the action's icon and keyboard shortcut, and check whether or not the action is <span class="strong"><strong class="calibre9">checkable</strong></span> (that is, stays on when the user clicks on it):</p><div class="informalexample"><pre class="programlisting">        self.actionQuit = QAction("Quit", window)
+        self.actionQuit.setShortcut(QKeySequence.Quit)
+
+        icon = QIcon(":/resources/mActionZoomIn.png")
+        self.actionZoomIn = QAction(icon, "Zoom In", window)
+        self.actionZoomIn.setShortcut(QKeySequence.ZoomIn)
+
+        icon = QIcon(":/resources/mActionZoomOut.png")
+        self.actionZoomOut = QAction(icon, "Zoom Out", window)
+        self.actionZoomOut.setShortcut(QKeySequence.ZoomOut)
+
+        icon = QIcon(":/resources/mActionPan.png")
+        self.actionPan = QAction(icon, "Pan", window)
+        self.actionPan.setShortcut("Ctrl+1")
+        self.actionPan.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionEdit.svg")
+        self.actionEdit = QAction(icon, "Edit", window)
+        self.actionEdit.setShortcut("Ctrl+2")
+        self.actionEdit.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionAddTrack.svg")
+        self.actionAddTrack = QAction(icon, "Add Track", window)
+        self.actionAddTrack.setShortcut("Ctrl+A")
+        self.actionAddTrack.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionEditTrack.png")
+        self.actionEditTrack = QAction(icon, "Edit", window)
+        self.actionEditTrack.setShortcut("Ctrl+E")
+        self.actionEditTrack.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionDeleteTrack.svg")
+        self.actionDeleteTrack = QAction(icon, "Delete", window)
+        self.actionDeleteTrack.setShortcut("Ctrl+D")
+        self.actionDeleteTrack.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionGetInfo.svg")
+        self.actionGetInfo = QAction(icon, "Get Info", window)
+        self.actionGetInfo.setShortcut("Ctrl+I")
+        self.actionGetInfo.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionSetStartPoint.svg")
+        self.actionSetStartPoint = QAction(
+                icon, "Set Start Point", window)
+        self.actionSetStartPoint.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionSetEndPoint.svg")
+        self.actionSetEndPoint = QAction(
+                icon, "Set End Point", window)
+        self.actionSetEndPoint.setCheckable(True)
+
+        icon = QIcon(":/resources/mActionFindShortestPath.svg")
+        self.actionFindShortestPath = QAction(
+                icon, "Find Shortest Path", window)
+        self.actionFindShortestPath.setCheckable(True)</pre></div><p class="calibre8">We<a id="id564" class="calibre1"/> then <a id="id565" class="calibre1"/>add the various actions to our application's menus:</p><div class="informalexample"><pre class="programlisting">        self.fileMenu.addAction(self.actionQuit)
+
+        self.mapMenu.addAction(self.actionZoomIn)
+        self.mapMenu.addAction(self.actionZoomOut)
+        self.mapMenu.addAction(self.actionPan)
+        self.mapMenu.addAction(self.actionEdit)
+
+        self.editMenu.addAction(self.actionAddTrack)
+        self.editMenu.addAction(self.actionEditTrack)
+        self.editMenu.addAction(self.actionDeleteTrack)
+        self.editMenu.addAction(self.actionGetInfo)
+
+        self.toolsMenu.addAction(self.actionSetStartPoint)
+        self.toolsMenu.addAction(self.actionSetEndPoint)
+        self.toolsMenu.addAction(self.actionFindShortestPath)</pre></div><p class="calibre8">Finally, we'll add the actions to our toolbar and tell the window to resize itself to fit its contents:</p><div class="informalexample"><pre class="programlisting">        self.toolBar.addAction(self.actionZoomIn)
+        self.toolBar.addAction(self.actionZoomOut)
+        self.toolBar.addAction(self.actionPan)
+        self.toolBar.addAction(self.actionEdit)
+        self.toolBar.addSeparator()
+        self.toolBar.addAction(self.actionAddTrack)
+        self.toolBar.addAction(self.actionEditTrack)
+        self.toolBar.addAction(self.actionDeleteTrack)
+        self.toolBar.addAction(self.actionGetInfo)
+        self.toolBar.addSeparator()
+        self.toolBar.addAction(self.actionSetStartPoint)
+        self.toolBar.addAction(self.actionSetEndPoint)
+        self.toolBar.addAction(self.actionFindShortestPath)
+
+        window.resize(window.sizeHint())</pre></div><p class="calibre8">This<a id="id566" class="calibre1"/> completes our implementation of the<a id="id567" class="calibre1"/> <code class="email">ui_mainWindow.py</code> module. We now have a complete mini application that should be able to run. Let's try it out.</p></div></div>
+
+<div class="book" title="Creating the application">
+<div class="book" title="Running the application"><div class="book"><div class="book"><div class="book"><h2 class="title1" id="calibre_pb_7"><a id="ch08lvl2sec35" class="calibre1"/>Running the application</h2></div></div></div><p class="calibre8">Now that you've <a id="id568" class="calibre1"/>entered all this code, it's time to check whether it works. Let's try to run the application using the appropriate startup script. Open a terminal or command-line window, navigate into the <code class="email">forestTrails</code> directory, and run the appropriate startup script.</p><p class="calibre8">If all goes well, you should see the application's main window along with the toolbar and menu items:</p><div class="mediaobject"><img src="../images/00091.jpeg" alt="Running the application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Of course, the main window's map view is empty, and none of the toolbar or menu items do anything yet, but <a id="id569" class="calibre1"/>at least we have a working framework for our application. Our next steps are to obtain the basemap for our application, set up our map layers, and then start implementing the various toolbar and menu bar items.</p></div></div>
+<div class="book" title="Obtaining the basemap"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec60" class="calibre1"/>Obtaining the basemap</h1></div></div></div><p class="calibre8">To follow<a id="id570" class="calibre1"/> through this section of the chapter, you are going to need access to the GDAL command-line tools. GDAL is probably already installed on your computer, as QGIS makes use of it. If you don't already have GDAL installed, go<a id="id571" class="calibre1"/> to <a class="calibre1" href="http://www.gdal.org">www.gdal.org</a> and click on the <span class="strong"><strong class="calibre9">Downloads</strong></span> link to download and install a copy onto your machine.</p><p class="calibre8">One of the challenges of writing a mapping application is to obtain a high-quality basemap on top of which your geospatial data will be displayed. In our case, we want our basemap to show an aerial photograph of the forest. We're going to use the Whakarewarewa Forest in Rotorua, New Zealand, for our ForestTrails application. Fortunately, suitable aerial photographs are available from the <span class="strong"><em class="calibre10">Land Information New Zealand</em></span> website.</p><p class="calibre8">Go to the following web page, which provides high-resolution aerial photos for the Bay of Plenty, New Zealand:</p><p class="calibre8">
+<a class="calibre1" href="https://data.linz.govt.nz/layer/1760-bay-of-plenty-025m-rural-aerial-photos-2011-2012/">https://data.linz.govt.nz/layer/1760-bay-of-plenty-025m-rural-aerial-photos-2011-2012/</a></p><p class="calibre8">We want to download a basemap that covers the Whakarewarewa forest, which is just south of the city of Rotorua. In the map on the right-hand side of the page, pan and zoom until the following area of the map is visible:</p><div class="mediaobject"><img src="../images/00092.jpeg" alt="Obtaining the basemap" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">The dark circular <a id="id572" class="calibre1"/>area in the center of the map is Lake Rotorua. Zoom in further and pan down to the area just south of Rotorua:</p><div class="mediaobject"><img src="../images/00093.jpeg" alt="Obtaining the basemap" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">This map shows the Whakarewarewa forest image we want to download. Next, click on the<a id="id573" class="calibre1"/> <span class="strong"><strong class="calibre9">crop</strong></span> tool (<span class="strong"><img src="../images/00094.jpeg" alt="Obtaining the basemap" class="calibre27"/></span>) in the upper right-hand corner and select the following area of the map:</p><div class="mediaobject"><img src="../images/00095.jpeg" alt="Obtaining the basemap" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">With the <a id="id574" class="calibre1"/>appropriate area of the map selected, click on the <span class="strong"><strong class="calibre9">"Download or Order"</strong></span> link in the upper right-hand corner. The window that appears gives you the option to download the basemap. Make sure you select the following options:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Map Projection will be NZGD2000</li><li class="listitem">Image format will be TIFF in the original resolution<div class="note" title="Note"><h3 class="title2"><a id="note31" class="calibre1"/>Note</h3><p class="calibre8">You will need to register to download the file, but the registration process only takes a few seconds, and it doesn't cost anything.</p></div></li></ul></div><p class="calibre8">The resulting download should be about 2.8 GB, just under the 3 GB limit for file downloads from this site. If it's too big, you'll have to select a smaller area to download.</p><p class="calibre8">Once you've downloaded the file, you will end up with a ZIP archive that contains a number of TIFF format raster image files. Next, we need to combine these images into a single <code class="email">.tif</code> file for our basemap. To do this, we'll use the <code class="email">gdal_merge.py</code> command that comes with GDAL:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre9">gdal_merge.py -o /dst/path/basemap.tif *.tif</strong></span>
+</pre></div><p class="calibre8">Choose an appropriate destination for the <code class="email">basemap.tif</code> file (by replacing <code class="email">/dst/path</code> with a sensible location, for example, the path to your desktop). If the current directory is not set to the folder that contains the downloaded <code class="email">.tif</code> files, you'll need to also specify the source path in the command.</p><p class="calibre8">It will take a while for this command to stitch together the various images, but the result should be a single large file named <code class="email">basemap.tif</code>. This is a TIFF-format raster image that contains the aerial <a id="id575" class="calibre1"/>photograph you selected, geo referenced to the appropriate portion of the Earth's surface.</p><p class="calibre8">Unfortunately, we can't use this file directly. To see why, run the <code class="email">gdalinfo</code> command on the downloaded file:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre9">gdalinfo basemap.tif</strong></span>
+</pre></div><p class="calibre8">Among other things, this tells us which coordinate reference system the file is using:</p><div class="informalexample"><pre class="programlisting">    Coordinate System is:
+    PROJCS["NZGD2000 / New Zealand Transverse Mercator 2000",
+        GEOGCS["NZGD2000",
+            DATUM["New_Zealand_Geodetic_Datum_2000",
+                SPHEROID["GRS 1980",6378137,298.2572221010002,
+                    AUTHORITY["EPSG","7019"]],
+                AUTHORITY["EPSG","6167"]],
+            PRIMEM["Greenwich",0],
+            UNIT["degree",0.0174532925199433],
+            AUTHORITY["EPSG","4167"]],
+        ...</pre></div><p class="calibre8">As you can see, the downloaded basemap uses the <a id="id576" class="calibre1"/>
+<span class="strong"><strong class="calibre9">New Zealand Transverse Mercator 2000</strong></span> coordinate system. We need to translate this into the WGS84 (geographic latitude/longitude coordinate) coordinate system so that we can use it in the ForestTrails program. To do this, we'll use the <code class="email">gdalwarp</code> command, like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre9">    gdalwarp -t_srs EPSG:4326 basemap.tif basemap_wgs84.tif</strong></span>
+</pre></div><p class="calibre8">If you look at the resulting image using <code class="email">gdalinfo</code>, you'll see that it has been converted into the lat/long coordinate system:</p><div class="informalexample"><pre class="programlisting">    Coordinate System is:
+    GEOGCS["WGS 84",
+        DATUM["WGS_1984",
+            SPHEROID["WGS 84",6378137,298.257223563,
+                AUTHORITY["EPSG","7030"]],
+            AUTHORITY["EPSG","6326"]],
+        PRIMEM["Greenwich",0],
+        UNIT["degree",0.0174532925199433],
+        AUTHORITY["EPSG","4326"]]</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="note32" class="calibre1"/>Note</h3><p class="calibre8">You might wonder why we didn't download the file directly in the WGS84 coordinate system. We downloaded the file in its original CRS because this gives us more control over the final image. Reprojecting the image ourselves also makes it easier to see how the image was changed when it was reprojected.</p></div><p class="calibre8">So far, so good. However, if we look at the resulting image, we'll see another problem:</p><div class="mediaobject"><img src="../images/00096.jpeg" alt="Obtaining the basemap" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">The translation<a id="id577" class="calibre1"/> from NZGD2000 into WGS84 rotated the basemap slightly, so the borders of the map don't look good. Now, we need to trim the map to get rid of the unwanted borders. To do this, we'll use the <code class="email">gdal_warp</code> command again, this time with a target extent:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre9">gdalwarp -te 176.241 -38.2333 176.325 -38.1557 basemap_wgs84.tif basemap_trimmed.tif</strong></span>
+</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="tip20" class="calibre1"/>Tip</h3><p class="calibre8">You might need to adjust the lat/long values if you have selected slightly different bounds when downloading the basemap. The corner coordinate values displayed by <code class="email">gdalinfo</code> will give you a clue as to what values have to be used.</p></div><p class="calibre8">The resulting file is a good raster basemap for us to use for our ForestTrails program:</p><div class="mediaobject"><img src="../images/00097.jpeg" alt="Obtaining the basemap" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Copy the final <a id="id578" class="calibre1"/>image into your <code class="email">forestTrails/data</code> directory and rename it back to <code class="email">basemap.tif</code>.</p></div>
+<div class="book" title="Defining the map layers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec61" class="calibre1"/>Defining the map layers</h1></div></div></div><p class="calibre8">We know<a id="id579" class="calibre1"/> that we want to have a total of five map <a id="id580" class="calibre1"/>layers in our application. The basemap layer will display the <code class="email">basemap.tif</code> file we just downloaded, while the track layer will use a SpatiaLite database to store and display the track data entered by the user. The remaining map layers will display temporary features held in memory.</p><p class="calibre8">Let's start by defining a new method in our <code class="email">forestTrails.py</code> module to initialize the SpatiaLite database we will use for the track layer:</p><div class="informalexample"><pre class="programlisting">    def setupDatabase(self):
+        cur_dir = os.path.dirname(os.path.realpath(__file__))
+        dbName = os.path.join(cur_dir, "data", "tracks.sqlite")
+        if not os.path.exists(dbName):
+            fields = QgsFields()
+            fields.append(QgsField("id", QVariant.Int))
+            fields.append(QgsField("type", QVariant.String))
+            fields.append(QgsField("name", QVariant.String))
+            fields.append(QgsField("direction", QVariant.String))
+            fields.append(QgsField("status", QVariant.String))
+
+            crs = QgsCoordinateReferenceSystem(4326,
+                        QgsCoordinateReferenceSystem.EpsgCrsId)
+
+            writer = QgsVectorFileWriter(dbName, 'utf-8', fields,
+                                         QGis.WKBLineString,
+                                         crs, 'SQLite',
+                                         ["SPATIALITE=YES"])
+
+            if writer.hasError() != QgsVectorFileWriter.NoError:
+                print "Error creating tracks database!"
+
+            del writer</pre></div><p class="calibre8">As you can see, we<a id="id581" class="calibre1"/> check to see whether the SpatiaLite database file exists in our <code class="email">data</code> subdirectory, and create a new database if necessary. We define the various fields that will hold the various track attributes, and use a <code class="email">QgsVectorFileWriter</code> object to create the database.</p><p class="calibre8">You will also <a id="id582" class="calibre1"/>need to modify the <code class="email">main()</code> function to call the <code class="email">setupDatabase()</code> method. Add the following line to this function after the call to <code class="email">window.raise_()</code>:</p><div class="informalexample"><pre class="programlisting">    window.setupDatabase()</pre></div><p class="calibre8">Now that we've set up our database for the track layer, we can define our various map layers. We'll create a new method called <code class="email">setupMapLayers()</code> to do this. Let's start by defining a <code class="email">layers</code> variable to hold the various map layers, and initialize our base map layer:</p><div class="informalexample"><pre class="programlisting">    def setupMapLayers(self):
+        cur_dir = os.path.dirname(os.path.realpath(__file__))
+        layers = []
+
+        filename = os.path.join(cur_dir, "data", "basemap.tif")
+        self.baseLayer = QgsRasterLayer(filename, "basemap")
+        QgsMapLayerRegistry.instance().addMapLayer(self.baseLayer)
+        layers.append(QgsMapCanvasLayer(self.baseLayer))</pre></div><p class="calibre8">Next, we want to set up our <span class="strong"><strong class="calibre9">tracks</strong></span> layer. Since this is stored in a SpatiaLite database, we have to use a <code class="email">QgsDataSourceURI</code> object to connect the database to the map layer. The following code shows how this is done:</p><div class="informalexample"><pre class="programlisting">        uri = QgsDataSourceURI()
+        uri.setDatabase(os.path.join(cur_dir, "data",
+ "tracks.sqlite"))
+        uri.setDataSource('', 'tracks', 'GEOMETRY')
+
+        self.trackLayer = QgsVectorLayer(uri.uri(), "Tracks",
+                                         "spatialite")
+        QgsMapLayerRegistry.instance().addMapLayer(
+            self.trackLayer)
+        layers.append(QgsMapCanvasLayer(self.trackLayer))</pre></div><p class="calibre8">We can now set up a memory-based map layer to display the shortest path:</p><div class="informalexample"><pre class="programlisting">        self.shortestPathLayer = QgsVectorLayer(
+            "LineString?crs=EPSG:4326",
+            "shortestPathLayer", "memory")
+        QgsMapLayerRegistry.instance().addMapLayer(
+            self.shortestPathLayer)
+        layers.append(QgsMapCanvasLayer(self.shortestPathLayer))</pre></div><p class="calibre8">We saw<a id="id583" class="calibre1"/> how<a id="id584" class="calibre1"/> to create memory-based map layers in <a class="calibre1" title="Chapter 6. Mastering the QGIS Python API" href="part0047_split_000.html#page">Chapter 6</a>, <span class="strong"><em class="calibre10">Mastering the QGIS Python API</em></span>, so there shouldn't be any surprises here; we're simply defining the shortest path layer to hold a LineString geometry.</p><p class="calibre8">Next, we want to set up another memory-based map layer to show the user's selected starting point:</p><div class="informalexample"><pre class="programlisting">        self.startPointLayer = QgsVectorLayer(
+                                   "Point?crs=EPSG:4326",
+                                   "startPointLayer", "memory")
+        QgsMapLayerRegistry.instance().addMapLayer(
+            self.startPointLayer)
+        layers.append(QgsMapCanvasLayer(self.startPointLayer))</pre></div><p class="calibre8">Also, we want to set another map layer for the ending point:</p><div class="informalexample"><pre class="programlisting">        self.endPointLayer = QgsVectorLayer(
+             "Point?crs=EPSG:4326",
+             "endPointLayer", "memory")
+        QgsMapLayerRegistry.instance().addMapLayer(
+            self.endPointLayer)
+        layers.append(QgsMapCanvasLayer(self.endPointLayer))</pre></div><p class="calibre8">This completes all five of our map layers. The final part of the <code class="email">setupMapLayers()</code> method adds these various layers to the map canvas. Note that because we defined the map layers in back-to-front order (in other words, the first entry in <code class="email">layers</code> is the basemap, which should appear at the back), we have to reverse the layers before we add them to the map canvas. Here is the relevant code:</p><div class="informalexample"><pre class="programlisting">        layers.reverse()
+        self.mapCanvas.setLayerSet(layers)
+        self.mapCanvas.setExtent(self.baseLayer.extent())</pre></div><p class="calibre8">The last thing we have to do is add a call to <code class="email">setupMapLayers()</code> from within our <code class="email">main()</code> function. Add the following immediately after the <code class="email">window.setupDatabase()</code> line:</p><div class="informalexample"><pre class="programlisting">window.setupMapLayers()</pre></div><p class="calibre8">Now that our map layers are set up, we can run our program again. There's no vector data yet, but the basemap <a id="id585" class="calibre1"/>should be visible, and we<a id="id586" class="calibre1"/> can zoom in and out using the toolbar icons:</p><div class="mediaobject"><img src="../images/00098.jpeg" alt="Defining the map layers" class="calibre11"/></div><p class="calibre12"> </p></div>
+<div class="book" title="Defining the map renderers"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec62" class="calibre1"/>Defining the map renderers</h1></div></div></div><p class="calibre8">Now that <a id="id587" class="calibre1"/>we have the map layers, we'll <a id="id588" class="calibre1"/>want to set up appropriate symbols and renderers to draw the vector data onto the map. Let's start by defining a method called <a id="id589" class="calibre1"/>
+<code class="email">setupRenderers()</code>, which creates the renderers for our various map layers. Our first renderer will display the track layer, where we use a <code class="email">QgsRuleBasedRendererV2</code> object to display the tracks in different ways depending on the type of track, whether or not the track is open, and whether it is bidirectional or can only be used in one direction. Here is the relevant code:</p><div class="informalexample"><pre class="programlisting">    def setupRenderers(self):
+        root_rule = QgsRuleBasedRendererV2.Rule(None)
+
+        for track_type in (TRACK_TYPE_ROAD, TRACK_TYPE_WALKING,
+                           TRACK_TYPE_BIKE, TRACK_TYPE_HORSE):
+            if track_type == TRACK_TYPE_ROAD:
+                width = ROAD_WIDTH
+            else:
+                width = TRAIL_WIDTH
+
+            lineColor = "light gray"
+            arrowColor = "dark gray"
+
+            for track_status in (TRACK_STATUS_OPEN,TRACK_STATUS_CLOSED):
+                for track_direction in (TRACK_DIRECTION_BOTH,
+                                        TRACK_DIRECTION_FORWARD,
+                                        TRACK_DIRECTION_BACKWARD):
+                    symbol = self.createTrackSymbol(width,lineColor, arrowColor,track_status,track_direction)
+                    expression = ("(type='%s') and " +
+                                  "(status='%s') and " +
+                                  "(direction='%s')") % (track_type,track_status,                            track_direction)
+
+                    rule = QgsRuleBasedRendererV2.Rule(symbol,filterExp=expression)
+                    root_rule.appendChild(rule)
+
+        symbol = QgsLineSymbolV2.createSimple({'color' : "black"})
+        rule = QgsRuleBasedRendererV2.Rule(symbol, elseRule=True)
+        root_rule.appendChild(rule)
+
+        renderer = QgsRuleBasedRendererV2(root_rule)
+        self.trackLayer.setRendererV2(renderer)</pre></div><p class="calibre8">As you <a id="id590" class="calibre1"/>can see, we iterate over all the possible track types. Based on the track type, we choose a suitable line width. We also choose a color to use for the line and the arrowheads—for now, we're simply using the same color for every <a id="id591" class="calibre1"/>type of track. We then iterate over all the possible status and direction values, and call a helper method named <code class="email">createTrackSymbol()</code> to create a suitable symbol for this track type, status, and direction. We then create a <code class="email">QgsRuleBasedRendererV2.Rule</code> object that uses that symbol for those tracks with the given type, status, and direction. Finally, we define an "else" rule for the renderer, displaying the track as a simple black line if the track doesn't have any of the expected attribute values.</p><p class="calibre8">Our remaining map layers will use straightforward line or marker symbols to display the shortest path, and the starting and ending points. Here's the remainder of the <code class="email">setupRenderers()</code> method, which defines these map renderers:</p><div class="informalexample"><pre class="programlisting">        symbol = QgsLineSymbolV2.createSimple({'color' : "blue"})
+        symbol.setWidth(ROAD_WIDTH)
+        symbol.setOutputUnit(QgsSymbolV2.MapUnit)
+        renderer = QgsSingleSymbolRendererV2(symbol)
+        self.shortestPathLayer.setRendererV2(renderer)
+
+        symbol = QgsMarkerSymbolV2.createSimple(
+                            {'color' : "green"})
+        symbol.setSize(POINT_SIZE)
+        symbol.setOutputUnit(QgsSymbolV2.MapUnit)
+        renderer = QgsSingleSymbolRendererV2(symbol)
+        self.startPointLayer.setRendererV2(renderer)
+
+        symbol = QgsMarkerSymbolV2.createSimple({'color' : "red"})
+        symbol.setSize(POINT_SIZE)
+        symbol.setOutputUnit(QgsSymbolV2.MapUnit)
+        renderer = QgsSingleSymbolRendererV2(symbol)
+        self.endPointLayer.setRendererV2(renderer)</pre></div><p class="calibre8">Now that<a id="id592" class="calibre1"/> we've defined the <code class="email">setupRenderers()</code> method itself, let's <a id="id593" class="calibre1"/>modify our <code class="email">main()</code> function to call it. Add the following line immediately after the call to <code class="email">setupMapLayers()</code>:</p><div class="informalexample"><pre class="programlisting">window.setupRenderers()</pre></div><p class="calibre8">There are a few more things we need to do to finish implementing our map renderers. Firstly, we need to define the <code class="email">createTrackSymbol()</code> helper method that we used to set up the track renderer. Add the following to your <code class="email">ForestTrailsWindow</code> class:</p><div class="informalexample"><pre class="programlisting">    def createTrackSymbol(self, width, lineColor, arrowColor,
+                          status, direction):
+        symbol = QgsLineSymbolV2.createSimple({})
+        symbol.deleteSymbolLayer(0) # Remove default symbol layer.
+
+        symbolLayer = QgsSimpleLineSymbolLayerV2()
+        symbolLayer.setWidth(width)
+        symbolLayer.setWidthUnit(QgsSymbolV2.MapUnit)
+        symbolLayer.setColor(QColor(lineColor))
+        if status == TRACK_STATUS_CLOSED:
+            symbolLayer.setPenStyle(Qt.DotLine)
+        symbol.appendSymbolLayer(symbolLayer)
+
+        if direction == TRACK_DIRECTION_FORWARD:
+            registry = QgsSymbolLayerV2Registry.instance()
+            markerLineMetadata = registry.symbolLayerMetadata(
+                "MarkerLine")
+            markerMetadata     = registry.symbolLayerMetadata(
+                "SimpleMarker")
+
+            symbolLayer = markerLineMetadata.createSymbolLayer(
+                                {'width': '0.26',
+                                 'color': arrowColor,
+                                 'rotate': '1',
+                                 'placement': 'interval',
+                                 'interval' : '20',
+                                 'offset': '0'})
+            subSymbol = symbolLayer.subSymbol()
+            subSymbol.deleteSymbolLayer(0)
+            triangle = markerMetadata.createSymbolLayer(
+                                {'name': 'filled_arrowhead',
+                                 'color': arrowColor,
+                                 'color_border': arrowColor,
+                                 'offset': '0,0',
+                                 'size': '3',
+                                 'outline_width': '0.5',
+                                 'output_unit': 'mapunit',
+                                 'angle': '0'})
+            subSymbol.appendSymbolLayer(triangle)
+
+            symbol.appendSymbolLayer(symbolLayer)
+        elif direction == TRACK_DIRECTION_BACKWARD:
+            registry = QgsSymbolLayerV2Registry.instance()
+            markerLineMetadata = registry.symbolLayerMetadata(
+                "MarkerLine")
+            markerMetadata     = registry.symbolLayerMetadata(
+                "SimpleMarker")
+
+            symbolLayer = markerLineMetadata.createSymbolLayer(
+                                {'width': '0.26',
+                                 'color': arrowColor,
+                                 'rotate': '1',
+                                 'placement': 'interval',
+                                 'interval' : '20',
+                                 'offset': '0'})
+            subSymbol = symbolLayer.subSymbol()
+            subSymbol.deleteSymbolLayer(0)
+            triangle = markerMetadata.createSymbolLayer(
+                                {'name': 'filled_arrowhead',
+                                 'color': arrowColor,
+                                 'color_border': arrowColor,
+                                 'offset': '0,0',
+                                 'size': '3',
+                                 'outline_width': '0.5',
+                                 'output_unit': 'mapunit',
+                                 'angle': '180'})
+            subSymbol.appendSymbolLayer(triangle)
+
+            symbol.appendSymbolLayer(symbolLayer)
+
+        return symbol</pre></div><p class="calibre8">The complex part of this method is the code to draw an arrowhead onto the track to indicate the track's direction. Apart from this, we simply draw a line to represent the track using the specified color and width, and if the track is closed, we draw the track as a dotted line.</p><p class="calibre8">Our final <a id="id594" class="calibre1"/>task here is to add some more entries to our <code class="email">constants.py</code> module <a id="id595" class="calibre1"/>to represent the various sizes and line widths used by our renderers. Add the following to the end of this module:</p><div class="informalexample"><pre class="programlisting">ROAD_WIDTH  = 0.0001
+TRAIL_WIDTH = 0.00003
+POINT_SIZE  = 0.0004</pre></div><p class="calibre8">All of these values are in map units.</p><p class="calibre8">Unfortunately, we can't see these renderers being used yet, as we don't have any vector features to display, but we need to implement them now so that our code will work when the time comes. We won't see these renderers in action until the next chapter, when the user starts adding tracks and selecting start/end points on the map.</p></div>
+<div class="book" title="The Pan Tool"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec63" class="calibre1"/>The Pan Tool</h1></div></div></div><p class="calibre8">To let the <a id="id596" class="calibre1"/>user <a id="id597" class="calibre1"/>move around the map, we'll make use of the <code class="email">PanTool</code> class we implemented in an earlier chapter. Add the following class definition to the <code class="email">mapTools.py</code> module:</p><div class="informalexample"><pre class="programlisting">class PanTool(QgsMapTool):
+    def __init__(self, mapCanvas):
+        QgsMapTool.__init__(self, mapCanvas)
+        self.setCursor(Qt.OpenHandCursor)
+        self.dragging = False
+
+    def canvasMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.dragging = True
+            self.canvas().panAction(event)
+
+    def canvasReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.dragging:
+            self.canvas().panActionEnd(event.pos())
+            self.dragging = False</pre></div><p class="calibre8">Back in our <code class="email">forestTrails.py</code> module, add the following new method:</p><div class="informalexample"><pre class="programlisting">    def setupMapTools(self):
+        self.panTool = PanTool(self.mapCanvas)
+        self.panTool.setAction(self.actionPan)</pre></div><p class="calibre8">This method will<a id="id598" class="calibre1"/> initialize the various map tools that our application will use; we'll add to this method as we go along. For now, add the following to your <code class="email">main()</code> function, after the call to <code class="email">window.setupRenderers()</code>:</p><div class="informalexample"><pre class="programlisting">    window.setupMapTools()</pre></div><p class="calibre8">We can now<a id="id599" class="calibre1"/> replace our dummy implementation of <code class="email">setPanMode()</code> with the real thing:</p><div class="informalexample"><pre class="programlisting">    def setPanMode(self):
+        self.mapCanvas.setMapTool(self.panTool)</pre></div><p class="calibre8">If you run your program now, you'll see that the user can now zoom in and out and use the pan tool to move around the basemap.</p></div>
+<div class="book" title="Implementing the track editing mode"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec64" class="calibre1"/>Implementing the track editing mode</h1></div></div></div><p class="calibre8">Our final<a id="id600" class="calibre1"/> task for this chapter is to <a id="id601" class="calibre1"/>implement the track editing mode. We learned in the previous chapter how we can turn on the editing mode for a map layer and then use various map tools to let the user add, edit, and delete features. We'll start to implement the actual map tools in <a class="calibre1" title="Chapter 9. Completing the ForestTrails Application" href="part0072_split_000.html#page">Chapter 9</a>, <span class="strong"><em class="calibre10">Completing the ForestTrails Application</em></span>, but for now, let's define our track editing mode itself.</p><p class="calibre8">The <code class="email">setEditMode()</code> method is used to enter and leave the track editing mode. Replace the placeholder method you defined earlier with this new implementation:</p><div class="informalexample"><pre class="programlisting">    def setEditMode(self):
+        if self.editing:
+            if self.modified:
+                reply = QMessageBox.question(self, "Confirm",
+                                             "Save Changes?",
+                                             QMessageBox.Yes |
+                                             QMessageBox.No,
+                                             QMessageBox.Yes)
+                if reply == QMessageBox.Yes:
+                    self.trackLayer.commitChanges()
+                else:
+                    self.trackLayer.rollBack()
+            else:
+                self.trackLayer.commitChanges()
+            self.trackLayer.triggerRepaint()
+            self.editing = False
+            self.setPanMode()
+        else:
+            self.trackLayer.startEditing()
+            self.trackLayer.triggerRepaint()
+            self.editing  = True
+            self.modified = False
+            self.setPanMode()
+        self.adjustActions()</pre></div><p class="calibre8">If the user is <a id="id602" class="calibre1"/>currently editing the tracks and has<a id="id603" class="calibre1"/> made some changes, we ask the user whether they want to save their changes, and either commit the changes or roll them back. If no changes have been made, we roll back (to turn off the vector layer's editing mode) and switch back to the panning mode.</p><p class="calibre8">There are a couple of instance variables that we use here to monitor the state of our track editing: <code class="email">self.editing</code> will be set to <code class="email">True</code> if we're currently editing the tracks, and <code class="email">self.modified</code> is set to <code class="email">True</code> if the user has changed anything in the track layer. We'll have to add the following to our <code class="email">ForestTrailsWindow.__init__()</code> method to initialize these two instance variables:</p><div class="informalexample"><pre class="programlisting">        self.editing  = False
+        self.modified= False</pre></div><p class="calibre8">There's another method that we haven't seen before: <code class="email">adjustActions()</code>. This method will enable/disable and check/uncheck the various actions: depending on the application's current state. For example, when we enter the track editing mode, our <code class="email">adjustActions()</code> method will enable the add, edit, and delete tools, and these tools will be disabled again when the user leaves the track-editing mode.</p><p class="calibre8">We can't implement all of <code class="email">adjustActions()</code>at the moment because we haven't yet defined the various map tools that our application will use. For now, we'll write the first half of this method:</p><div class="informalexample"><pre class="programlisting">    def adjustActions(self):
+       if self.editing:
+            self.actionAddTrack.setEnabled(True)
+            self.actionEditTrack.setEnabled(True)
+            self.actionDeleteTrack.setEnabled(True)
+            self.actionGetInfo.setEnabled(True)
+            self.actionSetStartPoint.setEnabled(False)
+            self.actionSetEndPoint.setEnabled(False)
+            self.actionFindShortestPath.setEnabled(False)
+        else:
+            self.actionAddTrack.setEnabled(False)
+            self.actionEditTrack.setEnabled(False)
+            self.actionDeleteTrack.setEnabled(False)
+            self.actionGetInfo.setEnabled(False)
+            self.actionSetStartPoint.setEnabled(True)
+            self.actionSetEndPoint.setEnabled(True)
+            self.actionFindShortestPath.setEnabled(True)</pre></div><p class="calibre8">We'll also need to add a call to <code class="email">adjustActions()</code> in our <code class="email">main()</code> function after the call to <code class="email">setPanMode()</code>:</p><div class="informalexample"><pre class="programlisting">    window.adjustActions()</pre></div><p class="calibre8">With the track editing mode implemented, the user can click on the <span class="strong"><strong class="calibre9">Edit</strong></span> toolbar icon to enter the track editing mode, and click on it again to leave that mode. Of course, we can't make any changes yet, but the code itself is in place.</p><p class="calibre8">There's one more <a id="id604" class="calibre1"/>feature we'd like to add to our<a id="id605" class="calibre1"/> application; if the user makes some changes to the track layer and then tries to quit the application, we'd like to give the user the chance to save their changes. To do this, we'll implement the <code class="email">quit()</code> method, which we linked to the <code class="email">actionQuit</code> action:</p><div class="informalexample"><pre class="programlisting">    def quit(self):
+        if self.editing and self.modified:
+            reply = QMessageBox.question(self, "Confirm",
+                                         "Save Changes?",
+                                         QMessageBox.Yes |
+                                         QMessageBox.No |
+                                         QMessageBox.Cancel,
+                                         QMessageBox.Yes)
+            if reply == QMessageBox.Yes:
+                self.curEditedLayer.commitChanges()
+            elif reply == QMessageBox.No:
+                self.curEditedLayer.rollBack()
+
+            if reply != QMessageBox.Cancel:
+                qApp.quit()
+        else:
+            qApp.quit()</pre></div><p class="calibre8">This is very similar to the part of the <code class="email">setEditMode()</code> method that lets the user leave the track editing mode, except that we call <code class="email">qApp.quit()</code> to quit the application at the end. We have one more method to define, which intercepts an attempt to close the window and calls <code class="email">self.quit()</code>. This prompts the user to save their changes if they close the window while editing. Here is the definition for this method:</p><div class="informalexample"><pre class="programlisting">    def closeEvent(self, event):
+        self.quit()</pre></div></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch08lvl1sec65" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">In this chapter, we designed and started to implement a complete mapping application for maintaining a map of tracks and roads within a recreational forest. We implemented the application itself, defined our map layers, obtained a high-resolution basemap for our application, and implemented zooming, panning, and the code necessary for editing the track layer.</p><p class="calibre8">In the next chapter, we will round out the implementation of our ForestTrails system by implementing the map tools to let the user add, edit, and delete tracks. We will also implement the code for editing track attributes and finding the shortest available path between two points.</p></div></body></html>

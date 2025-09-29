@@ -1,0 +1,340 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;7.&#xA0;Selecting and Editing Features in a PyQGIS Application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07" class="calibre1"/>Chapter 7. Selecting and Editing Features in a PyQGIS Application</h1></div></div></div><p class="calibre8">When running the QGIS application, the user has a range of tools available to create and manipulate geospatial <a id="id455" class="calibre1"/>features. For example, the <span class="strong"><strong class="calibre9">Add Feature</strong></span> tool lets the user <a id="id456" class="calibre1"/>create a new feature, while the <span class="strong"><strong class="calibre9">Move Feature</strong></span> tool and the <a id="id457" class="calibre1"/>
+<span class="strong"><strong class="calibre9">Node</strong></span> tool allow the user to move and edit existing geospatial features. However, these tools are only available within QGIS itself—if you want to write an external application on top of the PyQGIS library, these built-in tools aren't available, and you will have to implement these features yourself.</p><p class="calibre8">In this chapter, we will look at what is involved in adding functionality to a PyQGIS application so that the user can select and edit geospatial features. In particular, we will examine:</p><div class="book"><ul class="itemizedlist"><li class="listitem">How to work with selections</li><li class="listitem">How the layer editing mode can be used to save or undo the changes the user has made to a map layer</li><li class="listitem">How to create map tools that will allow the user to add and edit Point geometries</li><li class="listitem">How to let the user remove a geometry from a map layer</li><li class="listitem">How to implement custom map tools that allow the user to add LineString and Polygon geometries to a map layer</li><li class="listitem">How to let the user edit a LineString or Polygon geometry</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;7.&#xA0;Selecting and Editing Features in a PyQGIS Application">
+<div class="book" title="Working with selections"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch07lvl1sec49" class="calibre1"/>Working with selections</h1></div></div></div><p class="calibre8">The vector <a id="id458" class="calibre1"/>layer class, <code class="email">QgsVectorLayer</code>, includes support for keeping track of the user's current selection. Doing this is relatively straightforward: there are methods that set and alter the selection, as well as retrieve the selected features. When features are selected, they are visually highlighted on the screen so that the user can see what has been selected.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="tip18" class="calibre1"/>Tip</h3><p class="calibre8">If you create your own custom symbol layer, you will need to handle the highlighting of the selected features yourself. We saw how to do this in <a class="calibre1" title="Chapter 6. Mastering the QGIS Python API" href="part0047_split_000.html#page">Chapter 6</a>, <span class="strong"><em class="calibre10">Mastering the QGIS Python API</em></span>, in the section titled <span class="strong"><em class="calibre10">Implementing symbol layers in Python</em></span>.</p></div><p class="calibre8">While there are several ways in which the user can select features, the most straightforward <a id="id459" class="calibre1"/>way is to click on them. This can be implemented by using a simple map tool, for example:</p><div class="informalexample"><pre class="programlisting">class SelectTool(QgsMapToolIdentify):
+    def __init__(self, window):
+        QgsMapToolIdentify.__init__(self, window.mapCanvas)
+        self.window = window
+        self.setCursor(Qt.ArrowCursor)
+
+    def canvasReleaseEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                         self.TopDownStopAtFirst,
+                         self.VectorLayer)
+        if len(found_features) &gt; 0:
+            layer = found_features[0].mLayer
+            feature = found_features[0].mFeature
+
+            if event.modifiers() &amp; Qt.ShiftModifier:
+                layer.select(feature.id())
+            else:
+                layer.setSelectedFeatures([feature.id()])
+        else:
+            self.window.layer.removeSelection()</pre></div><p class="calibre8">This is very similar to the <code class="email">ExploreTool</code> we implemented in the previous chapter as part of the Lex application. The only difference is that, instead of displaying information about the clicked-on feature, we tell the map layer to select it.</p><p class="calibre8">Note that we check to see if the <span class="strong"><em class="calibre10">Shift</em></span> key is held down. If so, the clicked-on feature is added to the current selection; otherwise, the current selection will be replaced with the newly selected feature. Also, if the user clicks on the background of the map, the current selection will be removed. These are all standard user interface conventions the user will be familiar with.</p><p class="calibre8">Once we have a selection, it is quite straightforward to get the selected features from the map layer. For example:</p><div class="informalexample"><pre class="programlisting">if layer.selectedFeatureCount() == 0:
+    QMessageBox.information(self, "Info",
+                            "There is nothing selected.")
+else:
+    msg = []
+    msg.append("Selected Features:")
+    for feature in layer.selectedFeatures():
+        msg.append("   " + feature.attribute("NAME"))
+    QMessageBox.information(self, "Info", "\n".join(msg))</pre></div><p class="calibre8">If you want to see <a id="id460" class="calibre1"/>all this in action, you can download and run the <span class="strong"><strong class="calibre9">SelectionExplorer</strong></span> program, which is included in the sample code of this chapter.</p></div></div>
+<div class="book" title="Using the layer editing mode"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec50" class="calibre1"/>Using the layer editing mode</h1></div></div></div><p class="calibre8">To let the user <a id="id461" class="calibre1"/>change the contents of a map layer, you first have to turn on the <span class="strong"><strong class="calibre9">editing mode</strong></span> for that layer. The layer editing mode is similar to the way transactions are handled in a database:</p><div class="mediaobject"><img src="../images/00081.jpeg" alt="Using the layer editing mode" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">The changes you <a id="id462" class="calibre1"/>make to the layer are held in memory until you decide to either <span class="strong"><strong class="calibre9">commit</strong></span> the changes to the layer, or <span class="strong"><strong class="calibre9">roll </strong></span>
+<a id="id463" class="calibre1"/>
+<span class="strong"><strong class="calibre9">back</strong></span> the changes to discard them. The following pseudocode is an example of how to implement this using PyQGIS:</p><div class="informalexample"><pre class="programlisting">layer.startEditing()
+
+# ...make changes...
+
+if modified:
+    reply = QMessageBox.question(window, "Confirm",
+                                 "Save changes to layer?",
+                                 QMessageBox.Yes | QMessageBox.No,
+                                 QMessageBox.Yes)
+    if reply == QMessageBox.Yes:
+        layer.commitChanges()
+    else:
+        line.rollBack()
+else:
+     layer.rollBack()</pre></div><p class="calibre8">As you can see, we turn on the editing mode for a given map layer by calling <code class="email">layer.startEditing()</code>. As well as set up an internal <span class="strong"><em class="calibre10">editing buffer</em></span> to hold the changes you make, this tells the <a id="id464" class="calibre1"/>layer to visually highlight the layer's features by drawing small vertex markers on each of the vertices, as shown in the following image:</p><div class="mediaobject"><img src="../images/00082.jpeg" alt="Using the layer editing mode" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">We then allow the user to make changes to the layer's features. We will learn how this is done in the following sections of this chapter. When the user turns off the editing mode, we check whether any changes have been made, and if so, display a confirmation message box to the user. Depending on the user's response, we either save the changes by calling <code class="email">layer.commitChanges()</code> or discard them by calling <code class="email">layer.rollBack()</code>.</p><p class="calibre8">Both <code class="email">commitChanges()</code> and <code class="email">rollBack()</code> turn off the editing mode, hiding the vertex markers and erasing the contents of the editing buffer.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note28" class="calibre1"/>Note</h3><p class="calibre8">When you use the layer's editing mode, you <span class="strong"><em class="calibre10">must</em></span> use the various methods in <code class="email">QgsVectorLayer</code> to modify the features, rather than using the equivalent methods in the data provider. For example, you should call <code class="email">layer.addFeature(feature)</code> instead of <code class="email">layer.dataProvider().addFeatures([feature])</code>.</p><p class="calibre8">The layer's editing methods only work when the layer is in the editing mode. These methods add the changes to the internal editing buffer so that they can be committed or rolled back at the appropriate time. If you make your changes directly to the data provider, you will bypass the editing buffer, so the rollback feature won't work.</p></div><p class="calibre8">Now that we have seen the <a id="id465" class="calibre1"/>overall process used to edit the contents of a map layer, let's create some map tools that will let the user add and edit geospatial data.</p></div>
+<div class="book" title="Adding Points"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec51" class="calibre1"/>Adding Points</h1></div></div></div><p class="calibre8">The following <a id="id466" class="calibre1"/>map tool allows the user to add a new Point feature to the given layer:</p><div class="informalexample"><pre class="programlisting">class AddPointTool(QgsMapTool):
+    def __init__(self, canvas, layer):
+        QgsMapTool.__init__(self, canvas)
+        self.canvas = canvas
+        self.layer  = layer
+        self.setCursor(Qt.CrossCursor)
+
+    def canvasReleaseEvent(self, event):
+        point = self.toLayerCoordinates(self.layer, event.pos())
+
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPoint(point))
+        self.layer.addFeature(feature)
+        self.layer.updateExtents()</pre></div><p class="calibre8">As you can see, this straightforward map tool sets the mouse cursor to a cross shape, and when the user releases the mouse over the map canvas, a new <code class="email">QgsGeometry</code> object is created that represents a point at the current mouse position. This point is then added to the layer using <code class="email">layer.addFeature()</code>, and the layer's extent is updated in case the newly added point is outside the layer's current extent.</p><p class="calibre8">Of course, this map tool is only a starting point—you would typically add code to set the feature's attributes and to notify the application that a point has been added. However, as you can see, allowing the user to create a new Point feature is quite straightforward.</p></div>
+<div class="book" title="Editing Points"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec52" class="calibre1"/>Editing Points</h1></div></div></div><p class="calibre8">Editing a Point <a id="id467" class="calibre1"/>feature is also quite straightforward: since the geometry consists of only one point, the user can simply click-and-drag to move the point around within the map layer. The following is a map tool that implements this behavior:</p><div class="informalexample"><pre class="programlisting">class MovePointTool(QgsMapToolIdentify):
+    def __init__(self, mapCanvas, layer):
+        QgsMapToolIdentify.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer    = layer
+        self.dragging = False
+        self.feature  = None
+
+    def canvasPressEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) &gt; 0:
+            self.dragging = True
+            self.feature  = found_features[0].mFeature
+        else:
+            self.dragging = False
+            self.feature  = None
+
+    def canvasMoveEvent(self, event):
+        if self.dragging:
+            point = self.toLayerCoordinates(self.layer,
+                                            event.pos())
+
+            geometry = QgsGeometry.fromPoint(point)
+
+            self.layer.changeGeometry(self.feature.id(), geometry)
+            self.canvas().refresh()
+
+    def canvasReleaseEvent(self, event):
+        self.dragging = False
+        self.feature  = None</pre></div><p class="calibre8">As you can see, we subclass <code class="email">QgsMapToolIdentify</code> for this map tool. This lets us use the <code class="email">identify()</code> method to find the geometry that the user clicked on, just like we did in the <code class="email">SelectTool</code>, which we implemented earlier in this chapter.</p><p class="calibre8">Notice that our <code class="email">canvasMoveEvent()</code> method keeps track of the user's current mouse position. It also updates the feature's geometry by calling <code class="email">layer.changeGeometry()</code> to remember the changed mouse position as the user moves the point around. The <code class="email">canvasPressEvent()</code> enables dragging if and only if the user clicked on a Point, and the <code class="email">canvasReleaseEvent()</code> method tidies up so that the user can move another point by clicking on it.</p><p class="calibre8">If you are writing a standalone PyQGIS application that includes a point-based <code class="email">QgsVectorLayer</code>, you can use the <code class="email">AddPointTool</code> and <code class="email">MovePointTool</code> classes we defined here to allow the <a id="id468" class="calibre1"/>user to add and edit Point features within your vector layer. The only thing missing (for Point geometries) is the ability to remove points. Let's implement this now.</p></div>
+<div class="book" title="Deleting Points and other features"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec53" class="calibre1"/>Deleting Points and other features</h1></div></div></div><p class="calibre8">Fortunately, the <a id="id469" class="calibre1"/>code required to delete a Point feature will also work for other types of geometries, so we don't need to implement separate <code class="email">DeletePointTool</code>, <code class="email">DeleteLineTool</code>, and <code class="email">DeletePolygonTool</code> classes. Instead, we only need a generic <code class="email">DeleteTool</code>. The following code implements this map tool:</p><div class="informalexample"><pre class="programlisting">class DeleteTool(QgsMapToolIdentify):
+    def __init__(self, mapCanvas, layer):
+        QgsMapToolIdentify.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer   = layer
+        self.feature = None
+
+    def canvasPressEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) &gt; 0:
+            self.feature = found_features[0].mFeature
+        else:
+            self.feature = None
+
+    def canvasReleaseEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) &gt; 0:
+            if self.feature.id() == found_features[0].mFeature.id():
+                self.layer.deleteFeature(self.feature.id())</pre></div><p class="calibre8">Once again, we are using the <code class="email">QgsMapToolIdentify</code> class to let us quickly find the feature the user clicked on. We use the <code class="email">canvasPressEvent()</code> and <code class="email">canvasReleaseEvent()</code> methods to ensure that the user clicked and released the mouse over the same feature; this ensures that the map tool works in a more user-friendly way than simply deleting the feature when the user clicks on it. If both the mouse click and the mouse release were over the same feature, we would delete it.</p><p class="calibre8">With the help of these map tools, it is quite straightforward to implement a PyQGIS application that allows <a id="id470" class="calibre1"/>the user to add, edit, and delete Point features within a map layer. These, however, are the "low hanging fruit"—our next task, where we have to let the user add and edit LineString and Polygon geometries, is more complex.</p></div>
+<div class="book" title="Adding lines and polygons"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec54" class="calibre1"/>Adding lines and polygons</h1></div></div></div><p class="calibre8">To add a <a id="id471" class="calibre1"/>LineString or a Polygon geometry, the user will <span class="strong"><em class="calibre10">draw</em></span> the desired shape by <a id="id472" class="calibre1"/>clicking on each vertex in turn. Appropriate feedback will be displayed as the user clicks on each vertex. For example, a LineString geometry would be displayed in the following way:</p><div class="mediaobject"><img src="../images/00083.jpeg" alt="Adding lines and polygons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">To draw the outline of a Polygon geometry, the user will once again click on each vertex in turn. This time, however, the polygon itself will be displayed to make the resulting shape clear, as the following image shows:</p><div class="mediaobject"><img src="../images/00084.jpeg" alt="Adding lines and polygons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">In both cases, the basic logic of clicking on each vertex and displaying appropriate feedback is the same.</p><p class="calibre8">QGIS includes a map tool named <code class="email">QgsMapToolCapture</code>, which handles exactly this behavior: it allows the user to draw a LineString or the outline of a Polygon geometry by clicking on each vertex in turn. Unfortunately, <code class="email">QgsMapToolCapture</code> is not available as part of the PyQGIS library, so we will have to re-implement it ourselves using Python.</p><p class="calibre8">Let's start by looking at the design of our <code class="email">QgsMapToolCapture</code> port, which we will call <code class="email">CaptureTool</code>. This will be a standard map tool, derived from <code class="email">QgsMapTool</code>, which makes use of <code class="email">QgsRubberBand</code> objects to draw the visual highlighting of the LineString or Polygon as it is drawn.</p><p class="calibre8">A <code class="email">QgsRubberBand</code> is a <a id="id473" class="calibre1"/>map canvas item that draws a geometry on top of the map. Since a rubber band draws its <a id="id474" class="calibre1"/>entire geometry in a single color and style, we have to use two rubber bands in our capture tool: one that draws the already captured part of the geometry and <a id="id475" class="calibre1"/>a second temporary rubber band that extends the geometry out to the current mouse position. The following illustration shows how this works for both LineString and Polygon geometries:</p><div class="mediaobject"><img src="../images/00085.jpeg" alt="Adding lines and polygons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Here are some <a id="id476" class="calibre1"/>additional features that we will include in <code class="email">CaptureTool</code>:</p><div class="book"><ul class="itemizedlist"><li class="listitem">It will have a <span class="strong"><em class="calibre10">capture mode</em></span> that indicates whether the user is creating a LineString or a Polygon geometry.</li><li class="listitem">The user can press the <span class="strong"><em class="calibre10">Backspace</em></span> or <span class="strong"><em class="calibre10">Delete</em></span> key to remove the last vertex added.</li><li class="listitem">The user can press the <span class="strong"><em class="calibre10">Enter</em></span> or <span class="strong"><em class="calibre10">Return</em></span> key to finish the capturing process.</li><li class="listitem">If we are capturing a Polygon, the geometry will be <span class="strong"><em class="calibre10">closed</em></span> when the user finishes capturing. This means that we add an extra point to the geometry so that the outline begins and ends at the same point.</li><li class="listitem">When the user finishes capturing a geometry, the geometry will be added to the layer, and a callback function will be used to tell the application that a new geometry has been added.</li></ul></div><p class="calibre8">Now that we know what we're doing, let's start implementing the <code class="email">CaptureTool</code> class. The first part of our class definition will look like the following:</p><div class="informalexample"><pre class="programlisting">class CaptureTool(QgsMapTool):
+    CAPTURE_LINE    = 1
+    CAPTURE_POLYGON = 2
+
+    def __init__(self, canvas, layer, onGeometryAdded,
+                 captureMode):
+        QgsMapTool.__init__(self, canvas)
+        self.canvas          = canvas
+        self.layer           = layer
+        self.onGeometryAdded = onGeometryAdded
+        self.captureMode     = captureMode
+        self.rubberBand      = None
+        self.tempRubberBand  = None
+        self.capturedPoints  = []
+        self.capturing       = False
+        self.setCursor(Qt.CrossCursor)</pre></div><p class="calibre8">At the top of our class, we define two constants, <code class="email">CAPTURE_LINE</code> and <code class="email">CAPTURE_POLYGON</code>, which define the available <a id="id477" class="calibre1"/>capture modes. We then have the class initializer, which will <a id="id478" class="calibre1"/>accept the following parameters:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">canvas</code>: This is the <code class="email">QgsMapCanvas</code> this <a id="id479" class="calibre1"/>map tool will be part of.</li><li class="listitem"><code class="email">layer</code>: This is the <code class="email">QgsVectorLayer</code> the geometry will be <a id="id480" class="calibre1"/>added to.</li><li class="listitem"><code class="email">onGeometryAdded</code>: This <a id="id481" class="calibre1"/>is a Python-callable object (that is, a method or function) that will be called when a new geometry has been added to the map layer.</li><li class="listitem"><code class="email">captureMode</code>: This <a id="id482" class="calibre1"/>indicates whether we are capturing a LineString or a Polygon geometry.</li></ul></div><p class="calibre8">We then set the various instance variables to their initial state, and tell the map tool to use a cross cursor, which makes it easier for the user to see exactly where they are clicking.</p><p class="calibre8">Our next task is to implement the various <code class="email">XXXEvent()</code> methods to respond to the user's actions. We'll start with <code class="email">canvasReleaseEvent()</code>, which responds to a left-click by adding a new vertex to the geometry, and to a right-click by finishing off the capture process and then adding the geometry to the map layer.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note29" class="calibre1"/>Note</h3><p class="calibre8">We implement this behavior in the <code class="email">canvasReleaseEvent()</code> method, rather than <code class="email">canvasPressEvent()</code>, because we want the vertex to be added when the user releases the mouse button, rather than when they initially press it.</p></div><p class="calibre8">Here is the implementation of the <code class="email">canvasReleaseEvent()</code> method. Note that we make use of several helper methods, which we will define shortly:</p><div class="informalexample"><pre class="programlisting">    def canvasReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if not self.capturing:
+                self.startCapturing()
+            self.addVertex(event.pos())
+        elif event.button() == Qt.RightButton:
+            points = self.getCapturedGeometry()
+            self.stopCapturing()
+            if points != None:
+                self.geometryCaptured(points)</pre></div><p class="calibre8">Next, we have the <code class="email">canvasMoveEvent()</code> method, which responds to the action of the user moving the mouse by updating the temporary rubber band to reflect the current mouse position:</p><div class="informalexample"><pre class="programlisting">    def canvasMoveEvent(self, event):
+        if self.tempRubberBand != None and self.capturing:
+            mapPt,layerPt = self.transformCoordinates(event.pos())
+            self.tempRubberBand.movePoint(mapPt)</pre></div><p class="calibre8">The interesting part here is the call to <code class="email">tempRubberBand.movePoint()</code>. The <code class="email">QgsRubberBand</code> class works in map coordinates, so we first have to convert from the current mouse position, which is in pixels, to map coordinates. We then call <code class="email">movePoint()</code>, which moves the current vertex in the rubber band to the new position.</p><p class="calibre8">There is one more event <a id="id483" class="calibre1"/>handling method to define: <code class="email">onKeyEvent()</code>. This <a id="id484" class="calibre1"/>responds to the user pressing the <span class="strong"><em class="calibre10">Backspace</em></span> or <span class="strong"><em class="calibre10">Delete</em></span> keys by removing the last added vertex, and to the user pressing <span class="strong"><em class="calibre10">Return</em></span> or <span class="strong"><em class="calibre10">Enter</em></span> by closing and saving the current geometry. Here is the code for this method:</p><div class="informalexample"><pre class="programlisting">    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Backspace or \
+           event.key() == Qt.Key_Delete:
+            self.removeLastVertex()
+            event.ignore()
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            points = self.getCapturedGeometry()
+            self.stopCapturing()
+            if points != None:
+                self.geometryCaptured(points)</pre></div><p class="calibre8">Now that we've defined our event handling methods, let's now define the various helper methods that these event handlers rely on. We'll start with the <code class="email">transformCoordinates()</code> method, which converts from a mouse position, which is in canvas coordinates, to map and layer coordinates:</p><div class="informalexample"><pre class="programlisting">    def transformCoordinates(self, canvasPt):
+        return (self.toMapCoordinates(canvasPt),
+                self.toLayerCoordinates(self.layer, canvasPt))</pre></div><p class="calibre8">If, for example, the mouse is currently at position <code class="email">(17,53)</code> on the canvas, this may translate to a map and layer coordinate of <code class="email">lat=37.234</code> and <code class="email">long=-112.472</code>. As the map and layer might use different coordinate reference systems, we calculate and return the coordinates for both.</p><p class="calibre8">Let's now define <a id="id485" class="calibre1"/>the <code class="email">startCapturing()</code> method, which prepares our two <a id="id486" class="calibre1"/>rubber bands and sets <code class="email">self.capturing</code> to <code class="email">True</code>, so we know that we are currently capturing a geometry:</p><div class="informalexample"><pre class="programlisting">    def startCapturing(self):
+        color = QColor("red")
+        color.setAlphaF(0.78)
+
+        self.rubberBand = QgsRubberBand(self.canvas,
+                                        self.bandType())
+        self.rubberBand.setWidth(2)
+        self.rubberBand.setColor(color)
+        self.rubberBand.show()
+
+        self.tempRubberBand = QgsRubberBand(self.canvas,
+                                            self.bandType())
+        self.tempRubberBand.setWidth(2)
+        self.tempRubberBand.setColor(color)
+        self.tempRubberBand.setLineStyle(Qt.DotLine)
+        self.tempRubberBand.show()
+
+        self.capturing = True</pre></div><p class="calibre8">Notice that we use another helper method, <code class="email">bandType()</code>, to decide on the type of geometry that the rubber band should draw. Let's define that method now:</p><div class="informalexample"><pre class="programlisting">    def bandType(self):
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            return QGis.Polygon
+        else:
+            return QGis.Line</pre></div><p class="calibre8">Next up is the <code class="email">stopCapturing()</code> method, which removes our two rubber bands from the map canvas, resets our instance variables back to their initial state, and tells the map canvas to refresh itself so that the rubber bands are hidden:</p><div class="informalexample"><pre class="programlisting">    def stopCapturing(self):
+        if self.rubberBand:
+            self.canvas.scene().removeItem(self.rubberBand)
+            self.rubberBand = None
+        if self.tempRubberBand:
+            self.canvas.scene().removeItem(self.tempRubberBand)
+            self.tempRubberBand = None
+        self.capturing = False
+        self.capturedPoints = []
+        self.canvas.refresh()</pre></div><p class="calibre8">We now come to <a id="id487" class="calibre1"/>the <code class="email">addVertex()</code> method. This adds a new vertex to the current geometry <a id="id488" class="calibre1"/>at the clicked-on mouse position, and updates the rubber bands to match:</p><div class="informalexample"><pre class="programlisting">    def addVertex(self, canvasPoint):
+        mapPt,layerPt = self.transformCoordinates(canvasPoint)
+
+        self.rubberBand.addPoint(mapPt)
+        self.capturedPoints.append(layerPt)
+
+        self.tempRubberBand.reset(self.bandType())
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            self.tempRubberBand.addPoint(mapPt)
+        elif self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            firstPoint = self.rubberBand.getPoint(0, 0)
+            self.tempRubberBand.addPoint(firstPoint)
+            self.tempRubberBand.movePoint(mapPt)
+            self.tempRubberBand.addPoint(mapPt)</pre></div><p class="calibre8">Note that we add the captured point to the <code class="email">self.capturedPoints</code> list. This is the list of points that will define the geometry when we finish capturing. Setting up the temporary rubber band is a bit convoluted, but the basic idea is to define LineString or Polygon so that it covers the currently highlighted portion of the new geometry.</p><p class="calibre8">Let's now define the <code class="email">removeLastVertex()</code> method, which is called when the user presses <span class="strong"><em class="calibre10">Backspace</em></span> or <span class="strong"><em class="calibre10">Delete</em></span> to undo their last click. This method is slightly complicated because we have to update both rubber bands to remove the last vertex, as well as the <code class="email">self.capturedPoints</code> list:</p><div class="informalexample"><pre class="programlisting">    def removeLastVertex(self):
+        if not self.capturing: return
+
+        bandSize     = self.rubberBand.numberOfVertices()
+        tempBandSize = self.tempRubberBand.numberOfVertices()
+        numPoints    = len(self.capturedPoints)
+
+        if bandSize &lt; 1 or numPoints &lt; 1:
+            return
+
+        self.rubberBand.removePoint(-1)
+
+        if bandSize &gt; 1:
+            if tempBandSize &gt; 1:
+                point = self.rubberBand.getPoint(0, bandSize-2)
+                self.tempRubberBand.movePoint(tempBandSize-2,
+                                              point)
+        else:
+            self.tempRubberBand.reset(self.bandType())
+
+        del self.capturedPoints[-1]</pre></div><p class="calibre8">We've now defined quite a few methods for our <code class="email">CaptureTool</code>. Fortunately, there are only two methods left. Let's now define the <code class="email">getCapturedGeometry()</code> method. This method checks whether a <a id="id489" class="calibre1"/>LineString geometry has at least two points, and whether a <a id="id490" class="calibre1"/>Polygon geometry has at least three points. It then closes the polygon and returns the list of points that make up the captured geometry:</p><div class="informalexample"><pre class="programlisting">    def getCapturedGeometry(self):
+        points = self.capturedPoints
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            if len(points) &lt; 2:
+                return None
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            if len(points) &lt; 3:
+                return None
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            points.append(points[0]) # Close polygon.
+        return points</pre></div><p class="calibre8">Finally, we have the <code class="email">geometryCaptured()</code> method, which responds to the geometry that is captured. This method creates a new geometry of the given type, adds it as a feature to the map layer, and uses the <code class="email">onGeometryAdded</code> callable object passed to the initializer of our <code class="email">CaptureTool</code>, to tell the rest of the application that a new geometry has been added to the layer:</p><div class="informalexample"><pre class="programlisting">    def geometryCaptured(self, layerCoords):
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            geometry = QgsGeometry.fromPolyline(layerCoords)
+        elif self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            geometry = QgsGeometry.fromPolygon([layerCoords])
+
+        feature = QgsFeature()
+        feature.setGeometry(geometry)
+        self.layer.addFeature(feature)
+        self.layer.updateExtents()
+        self.onGeometryAdded()</pre></div><p class="calibre8">While <code class="email">CaptureTool</code> is complicated, it is a very powerful class that allows the user to add new lines and polygons to a <a id="id491" class="calibre1"/>map layer. There are a few features we haven't implemented here (coordinate snapping, checking whether the resulting geometry is valid, and adding <a id="id492" class="calibre1"/>support for inner rings that form "holes" within a polygon), but even as is, this is a useful tool for adding new features to a map.</p></div>
+<div class="book" title="Editing lines and polygons"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec55" class="calibre1"/>Editing lines and polygons</h1></div></div></div><p class="calibre8">The last major <a id="id493" class="calibre1"/>functionality we will examine is the ability to edit LineString and Polygon features. Just as the <code class="email">CaptureTool</code> allowed the user to click and drag to create new <a id="id494" class="calibre1"/>lines and polygons, we will implement <code class="email">EditTool</code>, which lets the user click and drag to move the existing feature's vertices. The following image shows what the user will see when they use this tool to move a vertex:</p><div class="mediaobject"><img src="../images/00086.jpeg" alt="Editing lines and polygons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Our editing tool will also let the user add new vertices by double-clicking on a line segment, and delete vertices by right-clicking on the same line segment.</p><p class="calibre8">Let's define our <code class="email">EditTool</code> class:</p><div class="informalexample"><pre class="programlisting">class EditTool(QgsMapTool):
+    def __init__(self, mapCanvas, layer, onGeometryChanged):
+        QgsMapTool.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer             = layer
+        self.onGeometryChanged = onGeometryChanged
+        self.dragging          = False
+        self.feature           = None
+        self.vertex            = None</pre></div><p class="calibre8">As you can see, <code class="email">EditTool</code> is a subclass of <code class="email">QgsMapTool</code>, and the initializer accepts three parameters: the map canvas, the layer to be edited, and an <code class="email">onGeometryChanged</code> callable object, which will be called when the user makes a change to a geometry.</p><p class="calibre8">Next, we want to define the <code class="email">canvasPressEvent()</code> method. We'll start by identifying the feature that the user clicked on:</p><div class="informalexample"><pre class="programlisting">    def canvasPressEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return</pre></div><p class="calibre8">We'll implement the <code class="email">findFeatureAt()</code> method shortly. Now that we know which feature the user clicked on, we want to identify the vertex within that feature that is closest to the click point, and how far away from the vertex the user clicked. Here is the relevant code:</p><div class="informalexample"><pre class="programlisting">        mapPt,layerPt = self.transformCoordinates(event.pos())
+        geometry = feature.geometry()
+
+        vertexCoord,vertex,prevVertex,nextVertex,distSquared = \
+            geometry.closestVertex(layerPt)
+
+        distance = math.sqrt(distSquared)</pre></div><p class="calibre8">As you can see, we're <a id="id495" class="calibre1"/>using a copy of the <code class="email">transformCoordinates()</code> method (borrowed from our <code class="email">CaptureTool</code> class) to convert from canvas coordinates to map and layer coordinates. We then use the <code class="email">QgsGeometry.closestVertex()</code> method to identify the closest vertex to the mouse click. This method returns a number of values, including the square of the distance from the closest vertex to the mouse position. We use the <code class="email">math.sqrt()</code> function to convert this into a regular distance value, which will be in layer coordinates.</p><p class="calibre8">Now that we know how far away the mouse click was from the vertex, we have to decide whether the distance was <a id="id496" class="calibre1"/>too much. If the user didn't click anywhere near a vertex, we'll want to ignore the mouse click. To do this, we'll calculate a <span class="strong"><strong class="calibre9">tolerance</strong></span> value. The <a id="id497" class="calibre1"/>tolerance is determined by how far the click point can be from a vertex while still considering it to be a click on that vertex. As with the distance value we calculated earlier, the tolerance is measured in layer coordinates. We'll use a helper method, <code class="email">calcTolerance()</code>, to calculate this value. Here is the relevant code to add at the end of our <code class="email">canvasPressEvent()</code> method:</p><div class="informalexample"><pre class="programlisting">        tolerance = self.calcTolerance(event.pos())
+        if distance &gt; tolerance: return</pre></div><p class="calibre8">As you can see, we ignore the mouse click if it is too far away from the vertex, that is, if the distance is greater than the tolerance. Now that we know that the user did click near the vertex, we want to respond to that mouse click. How we do this depends on whether the user pressed the left or the right mouse button:</p><div class="informalexample"><pre class="programlisting">        if event.button() == Qt.LeftButton:
+            # Left click -&gt; move vertex.
+            self.dragging = True
+            self.feature  = feature
+            self.vertex   = vertex
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()
+        elif event.button() == Qt.RightButton:
+            # Right click -&gt; delete vertex.
+            self.deleteVertex(feature, vertex)
+            self.canvas().refresh()</pre></div><p class="calibre8">As you can see, we're relying on a number of helper methods to do most of the work. We'll define these methods shortly, but first, let's finish implementing our event handling methods, starting with <code class="email">canvasMoveEvent()</code>. This method responds as the user moves the mouse <a id="id498" class="calibre1"/>over the canvas. It does this by moving the dragged vertex (if any) to the current mouse position:</p><div class="informalexample"><pre class="programlisting">    def canvasMoveEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()</pre></div><p class="calibre8">Next, we have <code class="email">canvasReleaseEvent()</code>, which moves the vertex to its final position, refreshes the map <a id="id499" class="calibre1"/>canvas, and updates our instance variables to reflect the fact that we are no longer dragging a vertex:</p><div class="informalexample"><pre class="programlisting">    def canvasReleaseEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.layer.updateExtents()
+            self.canvas().refresh()
+            self.dragging = False
+            self.feature  = None
+            self.vertex   = None</pre></div><p class="calibre8">Our final event-handling method is <code class="email">canvasDoubleClickEvent()</code>, which responds to a double-click by adding a new vertex to the feature. This method is similar to the <code class="email">canvasPressEvent()</code> method; we have to identify the clicked-on feature, and then identify which line segment the user double-clicked on:</p><div class="informalexample"><pre class="programlisting">    def canvasDoubleClickEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return
+
+        mapPt,layerPt = self.transformCoordinates(event.pos())
+        geometry      = feature.geometry()
+
+        distSquared,closestPt,beforeVertex = \
+            geometry.closestSegmentWithContext(layerPt)
+
+        distance = math.sqrt(distSquared)
+        tolerance = self.calcTolerance(event.pos())
+        if distance &gt; tolerance: return</pre></div><p class="calibre8">As you can see, we ignore the double-click if the mouse position is too far away from the line segment. Next, we want to add the new vertex to the geometry, and update the map layer and the map <a id="id500" class="calibre1"/>canvas to reflect this change:</p><div class="informalexample"><pre class="programlisting">        geometry.insertVertex(closestPt.x(), closestPt.y(),
+                              beforeVertex)
+        self.layer.changeGeometry(feature.id(), geometry)
+        self.canvas().refresh()</pre></div><p class="calibre8">This completes all of the event-handling methods for our <code class="email">EditTool</code>. Let's now implement our various <a id="id501" class="calibre1"/>helper methods, starting with the <code class="email">findFeatureAt()</code> method that identifies the clicked-on feature:</p><div class="informalexample"><pre class="programlisting">    def findFeatureAt(self, pos):
+        mapPt,layerPt = self.transformCoordinates(pos)
+        tolerance = self.calcTolerance(pos)
+        searchRect = QgsRectangle(layerPt.x() - tolerance,
+                                  layerPt.y() - tolerance,
+                                  layerPt.x() + tolerance,
+                                  layerPt.y() + tolerance)
+
+        request = QgsFeatureRequest()
+        request.setFilterRect(searchRect)
+        request.setFlags(QgsFeatureRequest.ExactIntersect)
+
+        for feature in self.layer.getFeatures(request):
+            return feature
+
+        return None</pre></div><p class="calibre8">We use the tolerance value to define a search rectangle centered around the click point, and identify the first feature that intersects that rectangle:</p><div class="mediaobject"><img src="../images/00087.jpeg" alt="Editing lines and polygons" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Next up is the <code class="email">calcTolerance()</code> method, which calculates how much distance we can tolerate before a click is considered to be too far away from a vertex or geometry:</p><div class="informalexample"><pre class="programlisting">    def calcTolerance(self, pos):
+        pt1 = QPoint(pos.x(), pos.y())
+        pt2 = QPoint(pos.x() + 10, pos.y())
+
+        mapPt1,layerPt1 = self.transformCoordinates(pt1)
+        mapPt2,layerPt2 = self.transformCoordinates(pt2)
+        tolerance = layerPt2.x() - layerPt1.x()
+
+        return tolerance</pre></div><p class="calibre8">We calculate this by identifying two points on the map canvas that are ten pixels apart, and converting both of these coordinates into layer coordinates. We then return the distance between these two points, which will be the tolerance in the layer coordinate system.</p><p class="calibre8">We now get to the interesting part: moving and deleting vertices. Let's start with the method to move a vertex to a new location:</p><div class="informalexample"><pre class="programlisting">    def moveVertexTo(self, pos):
+        geometry = self.feature.geometry()
+        layerPt = self.toLayerCoordinates(self.layer, pos)
+        geometry.moveVertex(layerPt.x(), layerPt.y(), self.vertex)
+        self.layer.changeGeometry(self.feature.id(), geometry)
+        self.onGeometryChanged()</pre></div><p class="calibre8">As you can see, we convert the position into layer coordinates, tell the <code class="email">QgsGeometry</code> object to move the vertex to <a id="id502" class="calibre1"/>this location, and then tell the layer to save the updated geometry. Finally, we use the <code class="email">onGeometryChanged</code> callable object to tell the rest of the application that the geometry has been changed.</p><p class="calibre8">Deleting a vertex is slightly more complicated, as we have to prevent the user from deleting a vertex if there aren't enough vertices left to make a valid geometry—LineString must have a <a id="id503" class="calibre1"/>minimum of two vertices, while a polygon must have at least three. Here is the implementation of our <code class="email">deleteVertex()</code> method:</p><div class="informalexample"><pre class="programlisting">    def deleteVertex(self, feature, vertex):
+        geometry = feature.geometry()
+
+        if geometry.wkbType() == QGis.WKBLineString:
+            lineString = geometry.asPolyline()
+            if len(lineString) &lt;= 2:
+                return
+        elif geometry.wkbType() == QGis.WKBPolygon:
+            polygon = geometry.asPolygon()
+            exterior = polygon[0]
+            if len(exterior) &lt;= 4:
+                return
+
+        if geometry.deleteVertex(vertex):
+            self.layer.changeGeometry(feature.id(), geometry)
+            self.onGeometryChanged()</pre></div><p class="calibre8">Note that the polygon check has to allow for the fact that the first and last points on the polygon's exterior are the same. This is why we check to see whether a polygon has at least four coordinates rather than three.</p><p class="calibre8">This completes our implementation of the <code class="email">EditTool</code> class for editing LineString and Polygon geometries. To see this map tool in action along with the other geometry-editing map tools we defined <a id="id504" class="calibre1"/>in this chapter, check out the <span class="strong"><strong class="calibre9">GeometryEditor</strong></span> program, which <a id="id505" class="calibre1"/>is included in the sample code of this chapter.</p></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch07lvl1sec56" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">In this chapter, we learned how to write a PyQGIS application that lets the user select and edit features. We created a map tool that uses the selection-handling methods in <code class="email">QgsVectorLayer</code> to let the user select features, and learned how to work with the currently selected features within your program. We then looked at how the layer's editing mode allows the user to make changes and then either commit those changes or discard them. Finally, we created a series of map tools that allow the user to add, edit, and delete Point, LineString, and Polygon geometries within a map layer.</p><p class="calibre8">Putting all these tools together, your PyQGIS application can sport a complete range of selection- and geometry-editing features. In the final two chapters of this book, we will use these tools together with the knowledge we gained in the previous chapters, to build a complete standalone mapping application using Python and QGIS.</p></div></body></html>

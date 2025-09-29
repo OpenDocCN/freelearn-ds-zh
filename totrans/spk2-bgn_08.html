@@ -1,0 +1,888 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;8.&#xA0;Spark Graph Processing"><div class="titlepage"><div><div><h1 class="title"><a id="ch08"/>Chapter 8. Spark Graph Processing</h1></div></div></div><p>A graph is a mathematical concept and a data structure in computer science. It has huge applications in many real-world use cases. It is used to model a pair-wise relationship between entities. An entity here is known as a vertex and two vertices are connected by an edge. A graph comprises a collection of vertices, and the edges connecting them.</p><p>Conceptually, it is a deceptively simple abstraction, but when it comes to processing a huge number of vertices and edges, it is computationally intensive and consumes a lot of processing time and computing resources. Here is a representation of a graph with four vertices and three edges:</p><p>
+</p><div class="mediaobject"><img alt="Spark Graph Processing" src="graphics/B05289_08_01_new.jpg"/><div class="caption"><p>Figure 1</p></div></div><p>
+</p><p>We will cover the following topics in this chapter:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Graphs and their uses</li><li class="listitem" style="list-style-type: disc">The GraphX library</li><li class="listitem" style="list-style-type: disc">The PageRank algorithm</li><li class="listitem" style="list-style-type: disc">The Connected component algorithm</li><li class="listitem" style="list-style-type: disc">GraphFrames</li><li class="listitem" style="list-style-type: disc">Graph Queries</li></ul></div><div class="section" title="Understanding graphs and their usage"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec65"/>Understanding graphs and their usage</h1></div></div></div><p>There are numerous application constructs that can be modeled as graphs. In a social networking application, the relationship between users can be modeled as a graph in which the users form the vertices of the graph and the relationships between users form the edges of the graph. In a multi-stage job scheduling application, the individual tasks form the vertices of the graph and the sequencing of the tasks forms the edges. In a road traffic modeling system, the towns form the vertices of the graph and the roads connecting the towns form the edges.</p><p>The edges of a given graph have a very important property, namely <span class="emphasis"><em>the direction of the connection</em></span>. In many use cases, the direction of the connection doesn't matter. The case of connectivity between cities by roads is one such example. But if the use case is to produce driving directions within a city, the connectivity between traffic junctions has a direction. Take any two traffic junctions and there will be road connectivity, but it is also possible that it is a one-way road. So it all depends on the direction the traffic is flowing. If the road is open to traffic from traffic junction J1 to J2 but closed from J2 to J1, then the graph of driving directions will have a connectivity from J1 to J2 and not from J2 to J1. In such cases, the edge connecting J1 and J2 has a direction. If the road between J2 and J3 is open in both directions, then the edge connecting J2 and J3 has no direction. A graph in which all the edges have a direction is called a <span class="strong"><strong>directed graph</strong></span>.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="tip59"/>Tip</h3><p>When representing a graph pictorially, it is mandatory to give the direction on the edges of the directed graph. If it is not a directed graph, the edge can be represented without any direction at all or with direction to both sides. This is up to the individual's choice. <span class="emphasis"><em>Figure 1</em></span> is not a directed graph, but is represented with directions to both the vertices that the edge is connecting.</p></div></div><p>In <span class="emphasis"><em>Figure 2</em></span>, the relationship between two users in a social networking application use case is represented as a graph. Users form the vertices and the relationships between the users form the edges. User A follows User B. At the same time, User A is the son of User B. In this graph, there are two parallel edges sharing the same source and destination vertices. A graph containing parallel edges is called a multigraph. The graph shown in <span class="emphasis"><em>Figure 2</em></span> is also a directed graph. This is a good example of a <span class="strong"><strong>directed multigraph</strong></span>.</p><p>
+</p><div class="mediaobject"><img alt="Understanding graphs and their usage" src="graphics/image_08_002.jpg"/><div class="caption"><p>Figure 2</p></div></div><p>
+</p><p>In real-world use cases, the vertices and edges of a graph represent real-world entities. These entities have properties. For example, in the social connectivity graph of users from a social networking application, the users form the vertices and users have many properties such as name, e-mail, phone number, and so on. Similarly, the relationships between the users form the edges of the graph and the edges connecting user vertices can have properties such as relationship. Any graph processing application library should be flexible enough to attach any kind of property to the vertices and edges of a graph.</p></div></div>
+<div class="section" title="The Spark GraphX library"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec66"/>The Spark GraphX library</h1></div></div></div><p>For graph processing, many libraries are available in the open source world. Giraph, Pregel, GraphLab, and Spark GraphX are some of them. Spark GraphX is one of the recent entrants into this space.</p><p>What is so special about Spark GraphX? Spark GraphX is a graph processing library built on top of the Spark data processing framework. Compared to the other graph processing libraries, Spark GraphX has a real advantage. It can make use of all the data processing capabilities of Spark. However, in reality, the performance of graph processing algorithms is not the only aspect that needs consideration.</p><p>In many applications, the data that needs to be modeled as a graph does not exist in that form naturally. In many use cases, more than the graph processing, lots of processor time and other computing resources are expended to get the data in the right format so that the graph processing algorithms can be applied. This is the sweet spot where the combination of the Spark data processing framework and the Spark GraphX library deliver their value. The data processing jobs to make the data ready to be consumed by the Spark GraphX can be easily done using the plethora of tools available in the Spark toolkit. In summary, the Spark GraphX library, which is part of the Spark family, combines the power of the core data processing capabilities of Spark and a very easy-to-use graph processing library.</p><p>Revisit the bigger picture once again, as given in <span class="emphasis"><em>Figure 3</em></span>, to set the context and see what is being discussed here before getting into the use cases. Unlike other chapters, in this chapter, the code samples will only be done in Scala because the Spark GraphX library only has a Scala API available at the moment.</p><p>
+</p><div class="mediaobject"><img alt="The Spark GraphX library" src="graphics/image_08_003.jpg"/><div class="caption"><p>Figure 3</p></div></div><p>
+</p><div class="section" title="GraphX overview"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec45"/>GraphX overview</h2></div></div></div><p>In any real-world use case, it is easy to understand the concept of a graph comprising vertices and edges. But when it comes to the implementation, this is not a data structure that is very well understood by even good designers and programmers. The reason is simple: unlike other ubiquitous data structures such as list, set, map, queue, and so on, graphs are not commonly used in most applications. Taking this into consideration, the concepts are introduced slowly and steadily, one step at a time, with simple and trivial examples, before taking up some real-world use cases.</p><p>The most important aspect of the Spark GraphX library is a data type, Graph, which extends the Spark <span class="strong"><strong>resilient distributed dataset </strong></span>(<span class="strong"><strong>RDD</strong></span>) and introduces a new graph abstraction. The graph abstraction in Spark GraphX is a directed multigraph with properties attached to all the vertices and edges. The properties for each of these vertices and edges can be user defined types that are supported by the Scala type system. These types are parameterized in the Graph type. A given graph may be required to have different data types for vertices or edges. This is possible by using a type system related by an inheritance hierarchy. In addition to all these basic ground rules, the library includes a collection of graph builders and algorithms.</p><p>A vertex in a graph is identified by a unique 64-bit long identifier, <code class="literal">org.apache.spark.graphx.VertexId</code>. Instead of the VertexId type, a simple Scala type, Long, can also be used. In addition to that, vertices can take any type as a property. An edge in a graph should have a source vertex identifier, a destination vertex identifier, and any type as a property.</p><p>
+<span class="emphasis"><em>Figure 4</em></span> shows a graph with a vertex property as a String type and an edge property as a String type. In addition to the properties, each vertex has a unique identifier and each edge has a source vertex number and destination vertex number.</p><p>
+</p><div class="mediaobject"><img alt="GraphX overview" src="graphics/image_08_004.jpg"/><div class="caption"><p>Figure 4</p></div></div><p>
+</p><p>When processing a graph, there are methods to get the vertices and edges. But these independent objects of a graph in isolation may not be sufficient while doing processing.</p><p>A vertex has its unique identifier and a property, as stated previously. An edge is uniquely identified by its source and destination vertices. To easily process each edge in graph processing applications, the triplet abstraction of the Spark GraphX library provides an easy way to access the properties of the source vertex, destination vertex, and the edge from a single object.</p><p>The following Scala code snippet is used to create the graph shown in <span class="emphasis"><em>Figure 4</em></span> using the Spark GraphX library. After creating the graph, many methods are invoked on the graph that expose various properties of the graph. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; import org.apache.spark._&#13;
+  import org.apache.spark._&#13;
+    scala&gt; import org.apache.spark.graphx._
+	&#13;
+	import org.apache.spark.graphx._&#13;
+	scala&gt; import org.apache.spark.rdd.RDD&#13;
+	import org.apache.spark.rdd.RDD&#13;
+  scala&gt; //Create an RDD of users containing tuple values with a mandatory
+  Long and another String type as the property of the vertex
+  scala&gt; val users: RDD[(Long, String)] = sc.parallelize(Array((1L,
+  "Thomas"), (2L, "Krish"),(3L, "Mathew")))&#13;
+  users: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[0]
+  at parallelize at &lt;console&gt;:31&#13;
+  scala&gt; //Created an RDD of Edge type with String type as the property of the edge
+  scala&gt; val userRelationships: RDD[Edge[String]] = sc.parallelize(Array(Edge(1L, 2L, "Follows"),    Edge(1L, 2L, "Son"),Edge(2L, 3L, "Follows")))&#13;
+userRelationships: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[String]] = ParallelCollectionRDD[1] at parallelize at &lt;console&gt;:31&#13;
+    scala&gt; //Create a graph containing the vertex and edge RDDs as created beforescala&gt; val userGraph = Graph(users, userRelationships)&#13;
+	userGraph: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@ed5cf29&#13;
+	
+	scala&gt; //Number of edges in the graph
+	scala&gt; userGraph.numEdges&#13;
+      res3: Long = 3&#13;
+    scala&gt; //Number of vertices in the graph
+	scala&gt; userGraph.numVertices&#13;
+      res4: Long = 3&#13;
+	  scala&gt; //Number of edges coming to each of the vertex. 
+	  scala&gt; userGraph.inDegrees&#13;
+res7: org.apache.spark.graphx.VertexRDD[Int] = VertexRDDImpl[19] at RDD at
+ VertexRDD.scala:57&#13;
+scala&gt; //The first element in the tuple is the vertex id and the second
+ element in the tuple is the number of edges coming to that vertex
+ scala&gt; userGraph.inDegrees.foreach(println)&#13;
+      (3,1)&#13;
+    &#13;
+      (2,2)&#13;
+    scala&gt; //Number of edges going out of each of the vertex. scala&gt; userGraph.outDegrees&#13;
+	res9: org.apache.spark.graphx.VertexRDD[Int] = VertexRDDImpl[23] at RDD at VertexRDD.scala:57&#13;
+    scala&gt; //The first element in the tuple is the vertex id and the second
+	element in the tuple is the number of edges going out of that vertex
+	scala&gt; userGraph.outDegrees.foreach(println)&#13;
+      (1,2)&#13;
+    &#13;
+      (2,1)&#13;
+    scala&gt; //Total number of edges coming in and going out of each vertex. 
+	scala&gt; userGraph.degrees&#13;
+res12: org.apache.spark.graphx.VertexRDD[Int] = VertexRDDImpl[27] at RDD at
+ VertexRDD.scala:57&#13;
+    scala&gt; //The first element in the tuple is the vertex id and the second 
+	element in the tuple is the total number of edges coming in and going out of that vertex.
+	scala&gt; userGraph.degrees.foreach(println)&#13;
+      (1,2)&#13;
+    &#13;
+      (2,3)&#13;
+    &#13;
+      (3,1)&#13;
+    scala&gt; //Get the vertices of the graph
+	scala&gt; userGraph.vertices&#13;
+res11: org.apache.spark.graphx.VertexRDD[String] = VertexRDDImpl[11] at RDD at VertexRDD.scala:57&#13;
+    scala&gt; //Get all the vertices with the vertex number and the property as a tuplescala&gt; userGraph.vertices.foreach(println)&#13;
+      (1,Thomas)&#13;
+    &#13;
+      (3,Mathew)&#13;
+    &#13;
+      (2,Krish)&#13;
+    scala&gt; //Get the edges of the graph
+	scala&gt; userGraph.edges&#13;
+res15: org.apache.spark.graphx.EdgeRDD[String] = EdgeRDDImpl[13] at RDD at
+ EdgeRDD.scala:41&#13;
+    scala&gt; //Get all the edges properties with source and destination vertex numbers
+	scala&gt; userGraph.edges.foreach(println)&#13;
+      Edge(1,2,Follows)&#13;
+    &#13;
+      Edge(1,2,Son)&#13;
+    &#13;
+      Edge(2,3,Follows)&#13;
+    scala&gt; //Get the triplets of the graph
+	scala&gt; userGraph.triplets&#13;
+res18: org.apache.spark.rdd.RDD[org.apache.spark.graphx.EdgeTriplet[String,String]]
+ = MapPartitionsRDD[32] at mapPartitions at GraphImpl.scala:48&#13;
+    scala&gt; userGraph.triplets.foreach(println)
+	((1,Thomas),(2,Krish),Follows)
+	((1,Thomas),(2,Krish),Son)
+	((2,Krish),(3,Mathew),Follows)</strong></span>
+</pre><p>Readers will be familiar with Spark programming using RDDs. The preceding code snippet elucidated the process of constructing the vertices and edges of a graph using RDDs. RDDs can be constructed using data persisted in various data stores. In real-world use cases, most of the time the data will come from external sources, such as NoSQL data stores, and there are ways to construct RDDs using such data. Once the RDDs are constructed, graphs can be constructed using that.</p><p>The preceding code snippet also explained the various methods available with the graph to get all the required details of a given graph. The teaser use case covered here is a very small graph in terms of size. In real-world use cases, the number of vertices and edges of a graph can be in the millions. Since all these abstractions are implemented as RDDs, all the inherent goodness of immutability, partitioning, distribution, and parallel processing comes out of the box, hence making graph processing highly scalable. Finally, the following tables show how the vertices and edges are represented:</p><p>
+<span class="strong"><strong>Vertex table</strong></span>:</p><div class="informaltable"><table border="1"><colgroup><col/><col/></colgroup><tbody><tr><td>
+<p>
+<span class="strong"><strong>VertexId</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Vertex property</strong></span>
+</p>
+</td></tr><tr><td>
+<p>1</p>
+</td><td>
+<p>Thomas</p>
+</td></tr><tr><td>
+<p>2</p>
+</td><td>
+<p>Krish</p>
+</td></tr><tr><td>
+<p>3</p>
+</td><td>
+<p>Mathew</p>
+</td></tr></tbody></table></div><p>
+<span class="strong"><strong>Edge table:</strong></span>
+</p><div class="informaltable"><table border="1"><colgroup><col/><col/><col/></colgroup><tbody><tr><td>
+<p>
+<span class="strong"><strong>Source VertexId</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Destination VertexId</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Edge property</strong></span>
+</p>
+</td></tr><tr><td>
+<p>1</p>
+</td><td>
+<p>2</p>
+</td><td>
+<p>Follows</p>
+</td></tr><tr><td>
+<p>1</p>
+</td><td>
+<p>2</p>
+</td><td>
+<p>Son</p>
+</td></tr><tr><td>
+<p>2</p>
+</td><td>
+<p>3</p>
+</td><td>
+<p>Follows</p>
+</td></tr></tbody></table></div><p>
+<span class="strong"><strong>Triplet table</strong></span>:</p><div class="informaltable"><table border="1"><colgroup><col/><col/><col/><col/><col/></colgroup><tbody><tr><td>
+<p>
+<span class="strong"><strong>Source VertexId</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Destination VertexId</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Source vertex Property</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Edge property</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Destination vertex property</strong></span>
+</p>
+</td></tr><tr><td>
+<p>1</p>
+</td><td>
+<p>2</p>
+</td><td>
+<p>Thomas</p>
+</td><td>
+<p>Follows</p>
+</td><td>
+<p>Krish</p>
+</td></tr><tr><td>
+<p>1</p>
+</td><td>
+<p>2</p>
+</td><td>
+<p>Thomas</p>
+</td><td>
+<p>Son</p>
+</td><td>
+<p>Krish</p>
+</td></tr><tr><td>
+<p>2</p>
+</td><td>
+<p>3</p>
+</td><td>
+<p>Krish</p>
+</td><td>
+<p>Follows</p>
+</td><td>
+<p>Mathew</p>
+</td></tr></tbody></table></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note60"/>Note</h3><p>It is important to note that these tables are only for explanation purposes. The real internal representation follows the rules and regulations of RDD representation.</p></div></div><p>If anything is represented as an RDD, it is bound to get partitioned and distributed. But if the partitioning and distribution are done freely, without any control for the graph, then it is going to be suboptimal when it comes to graph processing performance. Because of that, the creators of the Spark GraphX library have thought through this problem well in advance and implemented a graph partitioning strategy in order to have an optimized representation of the graph as RDDs.</p></div><div class="section" title="Graph partitioning"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec46"/>Graph partitioning</h2></div></div></div><p>It is important to understand a little bit about how the graph RDDs are partitioned and distributed across various partitions. This will be useful for advanced optimizations that determine the partition and distribution of the various RDDs that are the constituent parts of a graph.</p><p>In general, there are three RDDs for a given graph. Apart from the vertex RDD and the edge RDD, one more RDD is used internally, and that is the routing RDD. To have optimal performance, all the vertices needed to form a given edge are kept in the same partition where the edge is stored. If a given vertex is participating in multiple edges and these edges are located in different partitions, then this particular vertex can be stored in multiple partitions.</p><p>To keep track of the partitions where a given vertex is stored redundantly, a routing RDD is also maintained, containing the vertex details and the partitions in which each vertex is available.</p><p>
+<span class="emphasis"><em>Figure 5</em></span> explains this:</p><p>
+</p><div class="mediaobject"><img alt="Graph partitioning" src="graphics/image_08_005.jpg"/><div class="caption"><p>Figure 5</p></div></div><p>
+</p><p>In <span class="emphasis"><em>Figure 5</em></span>, assume that the edges are partitioned into partitions 1 and 2. Also assume that the vertices are partitioned into partitions 1 and 2.</p><p>In partition 1, all the vertices required for the edges are available locally. But in partition 2, only one vertex for the edge is available locally. So the missing vertex is also stored in partition 2 so that all the required vertices are available locally.</p><p>To keep track of the replications, the vertex routing RDD maintains the partition numbers where a given vertex is available. In <span class="emphasis"><em>Figure 5</em></span>, in the vertex routing RDD, callout symbols are used to show the partitions in which these vertices are replicated. In this way, while processing the edges or triplets, all the information related to the constituent vertices is available locally and performance will be highly optimal. Since the RDDs are immutable, the problems associated with information getting changed are removed, even if they are stored in multiple partitions.</p></div><div class="section" title="Graph processing"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec47"/>Graph processing</h2></div></div></div><p>The constituent elements of a graph exposed to the users are the vertex RDD and the edge RDD. Just like any other data structure, a graph also undergoes lots of changes because of the change in the underlying data. To make the required graph operations to support various use cases, there are many algorithms available, using which the data hidden in the graph data structure can be processed to produce the desired business outcomes. Before getting into the algorithms to process a graph, it is good to understand some of the basics of graph processing using an air travel use case.</p><p>Assume that a person is trying to find a cheap return air ticket from Manchester to Bangalore. In the travel preferences, this person has mentioned that he/she doesn't care about the number of stops but the price should be the lowest. Assume that the air ticket reservation system has picked up the same stops for both the onward and the return journey and produced the following routes or journey legs with the cheapest price:</p><p>Manchester → London → Colombo → Bangalore</p><p>Bangalore → Colombo → London → Manchester</p><p>This route plan is a perfect example of a graph. If the onward journey is considered as one graph and the return journey is considered as another graph, the return journey graph can be produced by reversing the onward journey graph. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; import org.apache.spark._&#13;
+import org.apache.spark._&#13;
+scala&gt; import org.apache.spark.graphx._&#13;
+import org.apache.spark.graphx._&#13;
+scala&gt; import org.apache.spark.rdd.RDD&#13;
+import org.apache.spark.rdd.RDD&#13;
+scala&gt; //Create the vertices with the stops&#13;
+scala&gt; val stops: RDD[(Long, String)] = sc.parallelize(Array((1L, "Manchester"), (2L, "London"),(3L, "Colombo"), (4L, "Bangalore")))&#13;
+stops: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[33] at parallelize at &lt;console&gt;:38&#13;
+scala&gt; //Create the edges with travel legs&#13;
+scala&gt; val legs: RDD[Edge[String]] = sc.parallelize(Array(Edge(1L, 2L, "air"),    Edge(2L, 3L, "air"),Edge(3L, 4L, "air"))) &#13;
+legs: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[String]] = ParallelCollectionRDD[34] at parallelize at &lt;console&gt;:38 &#13;
+scala&gt; //Create the onward journey graph&#13;
+scala&gt; val onwardJourney = Graph(stops, legs)onwardJourney: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@190ec769scala&gt; onwardJourney.triplets.map(triplet =&gt; (triplet.srcId, (triplet.srcAttr, triplet.dstAttr))).sortByKey().collect().foreach(println)&#13;
+(1,(Manchester,London))&#13;
+(2,(London,Colombo))&#13;
+(3,(Colombo,Bangalore))&#13;
+scala&gt; val returnJourney = onwardJourney.reversereturnJourney: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@60035f1e&#13;
+scala&gt; returnJourney.triplets.map(triplet =&gt; (triplet.srcId, (triplet.srcAttr,triplet.dstAttr))).sortByKey(ascending=false).collect().foreach(println)&#13;
+(4,(Bangalore,Colombo))&#13;
+(3,(Colombo,London))&#13;
+(2,(London,Manchester))</strong></span>
+</pre><p>The source and destination of the onward journey legs are reversed in the return journey legs. When a graph is reversed, only the source and destination vertices of the edges are reversed and the identity of the vertices remains the same.</p><p>In other words, the vertex identifiers of each of the vertices remain the same. While processing a graph, it is important to know the names of the triplet attributes. They are useful for writing programs and processing the graph. As a continuation of the same Scala REPL session, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; returnJourney.triplets.map(triplet =&gt; (triplet.srcId,triplet.dstId,triplet.attr,triplet.srcAttr,triplet.dstAttr)).foreach(println) &#13;
+(2,1,air,London,Manchester) &#13;
+(3,2,air,Colombo,London) &#13;
+(4,3,air,Bangalore,Colombo) &#13;
+</strong></span>
+</pre><p>The following table gives the list of attributes of a triplet that can be used to process a graph and extract the required data from the graph. The preceding code snippet and the following table may be cross-verified to fully understand:</p><div class="informaltable"><table border="1"><colgroup><col/><col/></colgroup><tbody><tr><td>
+<p>
+<span class="strong"><strong>Triplet attribute</strong></span>
+</p>
+</td><td>
+<p>
+<span class="strong"><strong>Description</strong></span>
+</p>
+</td></tr><tr><td>
+<p>
+<code class="literal">srcId</code>
+</p>
+</td><td>
+<p>Source vertex identifier</p>
+</td></tr><tr><td>
+<p>
+<code class="literal">dstId</code>
+</p>
+</td><td>
+<p>Destination vertex identifier</p>
+</td></tr><tr><td>
+<p>
+<code class="literal">attr</code>
+</p>
+</td><td>
+<p>Edge property</p>
+</td></tr><tr><td>
+<p>
+<code class="literal">srcAttr</code>
+</p>
+</td><td>
+<p>Source vertex property</p>
+</td></tr><tr><td>
+<p>
+<code class="literal">dstAttr</code>
+</p>
+</td><td>
+<p>Destination vertex property</p>
+</td></tr></tbody></table></div><p>In a graph, vertices are RDDs and edges are RDDs, and just by virtue of that, transformations are possible.</p><p>Now, to demonstrate graph transformations, the same use case is used, with a slight twist. Assume that a travel agent is getting special discount prices from the airline companies for selected routes. The travel agent decides to keep the discount and offer the market price to his/her customers, and for this purpose he/she adds 10% to the price given by the airline company. This travel agent has noticed that the airport names are being displayed inconsistently and wanted to make sure that there is consistent representation when displayed throughout the website and decides to change all the stop names to upper case. As a continuation of the same Scala REPL session, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>
+scala&gt; // Create the vertices &#13;
+scala&gt; val stops: RDD[(Long, String)] = sc.parallelize(Array((1L,
+ "Manchester"), (2L, "London"),(3L, "Colombo"), (4L, "Bangalore"))) &#13;
+stops: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[66] at parallelize at &lt;console&gt;:38 &#13;
+scala&gt; //Create the edges &#13;
+scala&gt; val legs: RDD[Edge[Long]] = sc.parallelize(Array(Edge(1L, 2L, 50L),    Edge(2L, 3L, 100L),Edge(3L, 4L, 80L))) &#13;
+legs: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[Long]] = ParallelCollectionRDD[67] at parallelize at &lt;console&gt;:38 &#13;
+scala&gt; //Create the graph using the vertices and edges &#13;
+scala&gt; val journey = Graph(stops, legs) &#13;
+journey: org.apache.spark.graphx.Graph[String,Long] = org.apache.spark.graphx.impl.GraphImpl@8746ad5 &#13;
+scala&gt; //Convert the stop names to upper case &#13;
+scala&gt; val newStops = journey.vertices.map {case (id, name) =&gt; (id, name.toUpperCase)} &#13;
+newStops: org.apache.spark.rdd.RDD[(org.apache.spark.graphx.VertexId, String)] = MapPartitionsRDD[80] at map at &lt;console&gt;:44 &#13;
+scala&gt; //Get the edges from the selected journey and add 10% price to the original price &#13;
+scala&gt; val newLegs = journey.edges.map { case Edge(src, dst, prop) =&gt; Edge(src, dst, (prop + (0.1*prop))) } &#13;
+newLegs: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[Double]] = MapPartitionsRDD[81] at map at &lt;console&gt;:44 &#13;
+scala&gt; //Create a new graph with the original vertices and the new edges &#13;
+scala&gt; val newJourney = Graph(newStops, newLegs) &#13;
+newJourney: org.apache.spark.graphx.Graph[String,Double]
+ = org.apache.spark.graphx.impl.GraphImpl@3c929623 &#13;
+scala&gt; //Print the contents of the original graph &#13;
+scala&gt; journey.triplets.foreach(println) &#13;
+((1,Manchester),(2,London),50) &#13;
+((3,Colombo),(4,Bangalore),80) &#13;
+((2,London),(3,Colombo),100) &#13;
+scala&gt; //Print the contents of the transformed graph &#13;
+scala&gt;  newJourney.triplets.foreach(println) &#13;
+((2,LONDON),(3,COLOMBO),110.0) &#13;
+((3,COLOMBO),(4,BANGALORE),88.0) &#13;
+((1,MANCHESTER),(2,LONDON),55.0) &#13;
+</strong></span>
+</pre><p>In essence, these transformations are truly RDD transformations. If there is a conceptual understanding of how these different RDDs are cobbled together to form a graph, any programmer with RDD programming proficiency will be able to do graph processing very well. This is another testament to the power of the unified programming model of Spark.</p><p>The preceding use case did the map transformation on vertex and edge RDDs. Similarly, filter transformations are another useful type that is commonly used. Apart from these, all the transformations and actions can be used to process the vertex and edge RDDs.</p></div><div class="section" title="Graph structure processing"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec48"/>Graph structure processing</h2></div></div></div><p>In the previous section, one type of graph processing is done by individually processing the required vertices or edges. One disadvantage of this approach is that the processing is going through three different stages, as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Extract vertices or edges from the graph</li><li class="listitem" style="list-style-type: disc">Process the vertices or edges</li><li class="listitem" style="list-style-type: disc">Re-create a new graph with the processed vertices and edges</li></ul></div><p>This is tedious and prone to user programming errors. To circumvent this problem, there are some structural operators available in the Spark GraphX library that let users process the graph as an individual unit that produces a new graph.</p><p>One important structural operation has already been discussed in the previous section, which is the reversal of a graph producing a new graph with all the directions of the edges reversed. Another frequently used structural operation is the extraction of a subgraph from a given graph. The resultant subgraph can be the entire parent graph itself or a subset of the parent graph, depending on the operation that is done on the parent graph.</p><p>When creating a graph from data from external sources, there is a possibility that the edges may have invalid vertices. This is very much a possibility if the vertices and the edges are created from the data coming from two different sources or different applications. With these vertices and edges, if a graph is created, some of the edges will have invalid vertices, and processing will result in unexpected outcomes. The following is a use case where some of the edges containing invalid vertices and pruning are done to get rid of that using a structural operator. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; import org.apache.spark._&#13;
+  import org.apache.spark._    scala&gt; import org.apache.spark.graphx._&#13;
+  import org.apache.spark.graphx._    scala&gt; import org.apache.spark.rdd.RDD&#13;
+  import org.apache.spark.rdd.RDD    scala&gt; //Create an RDD of users containing tuple values with a mandatory
+  Long and another String type as the property of the vertex
+  scala&gt; val users: RDD[(Long, String)] = sc.parallelize(Array((1L,
+  "Thomas"), (2L, "Krish"),(3L, "Mathew")))&#13;
+users: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[104]
+ at parallelize at &lt;console&gt;:45&#13;
+    scala&gt; //Created an RDD of Edge type with String type as the property of
+	the edge
+	scala&gt; val userRelationships: RDD[Edge[String]] =
+	sc.parallelize(Array(Edge(1L, 2L, "Follows"), Edge(1L, 2L,
+	"Son"),Edge(2L, 3L, "Follows"), Edge(1L, 4L, "Follows"), Edge(3L, 4L, "Follows")))&#13;
+	userRelationships:
+	org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[String]] =
+	ParallelCollectionRDD[105] at parallelize at &lt;console&gt;:45&#13;
+    scala&gt; //Create a vertex property object to fill in if an invalid vertex id is given in the edge
+	scala&gt; val missingUser = "Missing"&#13;
+missingUser: String = Missing&#13;
+    scala&gt; //Create a graph containing the vertex and edge RDDs as created
+	before
+	scala&gt; val userGraph = Graph(users, userRelationships, missingUser)&#13;
+userGraph: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@43baf0b9&#13;
+    scala&gt; //List the graph triplets and find some of the invalid vertex ids given and for them the missing vertex property is assigned with the value "Missing"scala&gt; userGraph.triplets.foreach(println)&#13;
+      ((3,Mathew),(4,Missing),Follows)  &#13;
+      ((1,Thomas),(2,Krish),Son)    &#13;
+      ((2,Krish),(3,Mathew),Follows)    &#13;
+      ((1,Thomas),(2,Krish),Follows)    &#13;
+      ((1,Thomas),(4,Missing),Follows)&#13;
+    scala&gt; //Since the edges with the invalid vertices are invalid too, filter out
+	those vertices and create a valid graph. The vertex predicate here can be any valid filter condition of a vertex. Similar to vertex predicate, if the filtering is to be done on the edges, instead of the vpred, use epred as the edge predicate.
+	scala&gt; val fixedUserGraph = userGraph.subgraph(vpred = (vertexId, attribute) =&gt; attribute != "Missing")&#13;
+fixedUserGraph: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@233b5c71 &#13;
+  </strong></span>
+<span class="strong"><strong>
+  scala&gt; fixedUserGraph.triplets.foreach(println)
+  ((2,Krish),(3,Mathew),Follows)
+  ((1,Thomas),(2,Krish),Follows)
+  ((1,Thomas),(2,Krish),Son)</strong></span>
+</pre><p>In huge graphs, at times depending on the use case, there can be a whole lot of parallel edges. In some use cases, it is possible to combine the data of the parallel edges and maintain only one edge instead of maintaining lots of parallel edges. In the preceding use case, the final graph without any invalid edges, there are parallel edges, one with the property <code class="literal">Follows</code> and the other with <code class="literal">Son</code>, which have the same source and destination vertices.</p><p>It is fine to combine these parallel edges into one single edge with the property concatenated from the parallel edges, which will reduce the number of edges without losing information. This is accomplished by the groupEdges structural operation of the graph. As a continuation of the same Scala REPL session, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; // Import the partition strategy classes &#13;
+scala&gt; import org.apache.spark.graphx.PartitionStrategy._ &#13;
+import org.apache.spark.graphx.PartitionStrategy._ &#13;
+scala&gt; // Partition the user graph. This is required to group the edges &#13;
+scala&gt; val partitionedUserGraph = fixedUserGraph.partitionBy(CanonicalRandomVertexCut) &#13;
+partitionedUserGraph: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@5749147e &#13;
+scala&gt; // Generate the graph without parallel edges and combine the properties of duplicate edges &#13;
+scala&gt; val graphWithoutParallelEdges = partitionedUserGraph.groupEdges((e1, e2) =&gt; e1 + " and " + e2) &#13;
+graphWithoutParallelEdges: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@16a4961f &#13;
+scala&gt; // Print the details &#13;
+scala&gt; graphWithoutParallelEdges.triplets.foreach(println) &#13;
+((1,Thomas),(2,Krish),Follows and Son) &#13;
+((2,Krish),(3,Mathew),Follows) &#13;
+</strong></span>
+</pre><p>The preceding structural change in the graph reduced the number of edges by grouping the edges. When the edge property is numerical, and if it makes sense to consolidate by aggregating them, then also reduce the number of edges by removing the parallel edges, which can reduce the graph processing time considerably.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note61"/>Note</h3><p>One important point to note in this code snippet is that the graph has been partitioned before the group-by operation on the edges.</p></div></div><p>By default, the edges and the constituent vertices of a given graph need not be co-located in the same partition. For the group-by operation to work, all the parallel edges have to be located on the same partition. The CanonicalRandomVertexCut partition strategy makes sure that colocation happens for all the edges between two vertices, irrespective of direction.</p><p>There are some more structural operators available in the Spark GraphX library and a consultation of the Spark documentation will give a good insight into them. They can be used depending on the use case.</p></div></div>
+<div class="section" title="Tennis tournament analysis"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec67"/>Tennis tournament analysis</h1></div></div></div><p>Since the basic graph processing fundamentals are in place, now it is time to take up a real-world use case that uses graphs. Here, a tennis tournament's results are modeled using a graph. The Barclays ATP World Tour 2015 singles competition results are modeled using a graph. The vertices contain the player details and the edges contain the individual matches played. The edges are formed in such a way that the source vertex is the player who won the match and the destination vertex is the player who lost the match. The edge property contains the type of the match, the points the winner got in the match, and the head-to-head count of the players in the match. The points system used here is fictitious and is nothing but a weight earned by the winner in that particular match. The initial group matches carried the least weight, the semi-final matches carried more weight, and the final match carried the most weight. With this way of modeling the results, find out the following details by processing the graph:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">List all the match details.</li><li class="listitem" style="list-style-type: disc">List all the matches with player names, the match type, and the result.</li><li class="listitem" style="list-style-type: disc">List all the Group 1 winners with the points in the match.</li><li class="listitem" style="list-style-type: disc">List all the Group 2 winners with the points in the match.</li><li class="listitem" style="list-style-type: disc">List all the semi-final winners with the points in the match.</li><li class="listitem" style="list-style-type: disc">List the final winner with the points in the match.</li><li class="listitem" style="list-style-type: disc">List the players with the total points they earned in the whole tournament.</li><li class="listitem" style="list-style-type: disc">List the winner of the match by finding the highest number of points scored by the player.</li><li class="listitem" style="list-style-type: disc">In the group-based matches, because of the round robin scheme of draws, it is possible that the same players can meet more than once. Find if there are any such players who have played each other more than once in this tournament.</li><li class="listitem" style="list-style-type: disc">List the players who have won at least one match.</li><li class="listitem" style="list-style-type: disc">List the players who have lost at least one match.</li><li class="listitem" style="list-style-type: disc">List the players who have won at least one match and lost at least one match.</li><li class="listitem" style="list-style-type: disc">List the players who have no wins at all.</li><li class="listitem" style="list-style-type: disc">List the players who have no losses at all.</li></ul></div><p>Those who are not familiar with the game of tennis have no need to worry because the rules of the games are not discussed here and are not required to understand this use case. For all practical purposes, it is to be taken only as a game played between two people, where one wins and the other loses. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; import org.apache.spark._&#13;
+  import org.apache.spark._    
+  scala&gt; import org.apache.spark.graphx._&#13;
+  import org.apache.spark.graphx._    
+  scala&gt; import org.apache.spark.rdd.RDD&#13;
+  import org.apache.spark.rdd.RDD&#13;
+    scala&gt; //Define a property class that is going to hold all the properties of the vertex which is nothing but player information
+	scala&gt; case class Player(name: String, country: String)&#13;
+      defined class Player&#13;
+    scala&gt; // Create the player vertices
+	scala&gt; val players: RDD[(Long, Player)] = sc.parallelize(Array((1L, Player("Novak Djokovic", "SRB")), (3L, Player("Roger Federer", "SUI")),(5L, Player("Tomas Berdych", "CZE")), (7L, Player("Kei Nishikori", "JPN")), (11L, Player("Andy Murray", "GBR")),(15L, Player("Stan Wawrinka", "SUI")),(17L, Player("Rafael Nadal", "ESP")),(19L, Player("David Ferrer", "ESP"))))&#13;
+players: org.apache.spark.rdd.RDD[(Long, Player)] = ParallelCollectionRDD[145] at parallelize at &lt;console&gt;:57&#13;
+    scala&gt; //Define a property class that is going to hold all the properties of the edge which is nothing but match informationscala&gt; case class Match(matchType: String, points: Int, head2HeadCount: Int)&#13;
+      defined class Match&#13;
+    scala&gt; // Create the match edgesscala&gt; val matches: RDD[Edge[Match]] = sc.parallelize(Array(Edge(1L, 5L, Match("G1", 1,1)), Edge(1L, 7L, Match("G1", 1,1)), Edge(3L, 1L, Match("G1", 1,1)), Edge(3L, 5L, Match("G1", 1,1)), Edge(3L, 7L, Match("G1", 1,1)), Edge(7L, 5L, Match("G1", 1,1)), Edge(11L, 19L, Match("G2", 1,1)), Edge(15L, 11L, Match("G2", 1, 1)), Edge(15L, 19L, Match("G2", 1, 1)), Edge(17L, 11L, Match("G2", 1, 1)), Edge(17L, 15L, Match("G2", 1, 1)), Edge(17L, 19L, Match("G2", 1, 1)), Edge(3L, 15L, Match("S", 5, 1)), Edge(1L, 17L, Match("S", 5, 1)), Edge(1L, 3L, Match("F", 11, 1))))&#13;
+matches: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[Match]] = ParallelCollectionRDD[146] at parallelize at &lt;console&gt;:57&#13;
+    scala&gt; //Create a graph with the vertices and edges
+	scala&gt; val playGraph = Graph(players, matches)&#13;
+playGraph: org.apache.spark.graphx.Graph[Player,Match] = org.apache.spark.graphx.impl.GraphImpl@30d4d6fb&#13;
+    </strong></span>
+</pre><p>The graph containing the tennis tournament has been created, and from now on, all that is going to be done is the processing of this base graph and extracting information from it to fulfill the requirements of the use cases:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; //Print the match details
+	scala&gt; playGraph.triplets.foreach(println)&#13;
+((15,Player(Stan Wawrinka,SUI)),(11,Player(Andy Murray,GBR)),Match(G2,1,1))    &#13;
+((15,Player(Stan Wawrinka,SUI)),(19,Player(David Ferrer,ESP)),Match(G2,1,1))    &#13;
+((7,Player(Kei Nishikori,JPN)),(5,Player(Tomas Berdych,CZE)),Match(G1,1,1))    &#13;
+((1,Player(Novak Djokovic,SRB)),(7,Player(Kei Nishikori,JPN)),Match(G1,1,1))    &#13;
+((3,Player(Roger Federer,SUI)),(1,Player(Novak Djokovic,SRB)),Match(G1,1,1))    &#13;
+((1,Player(Novak Djokovic,SRB)),(3,Player(Roger Federer,SUI)),Match(F,11,1))    &#13;
+((1,Player(Novak Djokovic,SRB)),(17,Player(Rafael Nadal,ESP)),Match(S,5,1))    &#13;
+((3,Player(Roger Federer,SUI)),(5,Player(Tomas Berdych,CZE)),Match(G1,1,1))    &#13;
+((17,Player(Rafael Nadal,ESP)),(11,Player(Andy Murray,GBR)),Match(G2,1,1))    &#13;
+((3,Player(Roger Federer,SUI)),(7,Player(Kei Nishikori,JPN)),Match(G1,1,1))    &#13;
+((1,Player(Novak Djokovic,SRB)),(5,Player(Tomas Berdych,CZE)),Match(G1,1,1))    &#13;
+((17,Player(Rafael Nadal,ESP)),(15,Player(Stan Wawrinka,SUI)),Match(G2,1,1))    &#13;
+((11,Player(Andy Murray,GBR)),(19,Player(David Ferrer,ESP)),Match(G2,1,1))    &#13;
+((3,Player(Roger Federer,SUI)),(15,Player(Stan Wawrinka,SUI)),Match(S,5,1))    &#13;
+((17,Player(Rafael Nadal,ESP)),(19,Player(David Ferrer,ESP)),Match(G2,1,1))&#13;
+    scala&gt; //Print matches with player names and the match type and the resultscala&gt; playGraph.triplets.map(triplet =&gt; triplet.srcAttr.name + " won over " + triplet.dstAttr.name + " in  " + triplet.attr.matchType + " match").foreach(println)&#13;
+      Roger Federer won over Tomas Berdych in  G1 match    &#13;
+      Roger Federer won over Kei Nishikori in  G1 match    &#13;
+      Novak Djokovic won over Roger Federer in  F match    &#13;
+      Novak Djokovic won over Rafael Nadal in  S match    &#13;
+      Roger Federer won over Stan Wawrinka in  S match    &#13;
+      Rafael Nadal won over David Ferrer in  G2 match    &#13;
+      Kei Nishikori won over Tomas Berdych in  G1 match    &#13;
+      Andy Murray won over David Ferrer in  G2 match    &#13;
+      Stan Wawrinka won over Andy Murray in  G2 match    &#13;
+      Stan Wawrinka won over David Ferrer in  G2 match    &#13;
+      Novak Djokovic won over Kei Nishikori in  G1 match    &#13;
+      Roger Federer won over Novak Djokovic in  G1 match    &#13;
+      Rafael Nadal won over Andy Murray in  G2 match    &#13;
+      Rafael Nadal won over Stan Wawrinka in  G2 match    &#13;
+      Novak Djokovic won over Tomas Berdych in  G1 match&#13;
+    </strong></span>
+</pre><p>It is worth noticing here that the usage of triplets in graphs comes in handy for extracting all the required data elements of a given tennis match, including who was playing, who won, and the match type, from a single object. The following implementations of analysis use cases involve filtering the tennis match records of the tournament. Here, only simple filtering logic is used, but in real-world use cases, any complex logic can be implemented in functions, and that can be passed as arguments to the filter transformations:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; //Group 1 winners with their group total points
+scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "G1").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).foreach(println)&#13;
+      (Kei Nishikori,1)    &#13;
+      (Roger Federer,1)    &#13;
+      (Roger Federer,1)    &#13;
+      (Novak Djokovic,1)    &#13;
+      (Novak Djokovic,1)    &#13;
+      (Roger Federer,1)&#13;
+    scala&gt; //Find the group total of the players
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "G1").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).reduceByKey(_+_).foreach(println)&#13;
+      (Roger Federer,3)    &#13;
+      (Novak Djokovic,2)    &#13;
+      (Kei Nishikori,1)&#13;
+    scala&gt; //Group 2 winners with their group total points
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "G2").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).foreach(println)&#13;
+      (Rafael Nadal,1)    &#13;
+      (Rafael Nadal,1)    &#13;
+      (Andy Murray,1)    &#13;
+      (Stan Wawrinka,1)    &#13;
+      (Stan Wawrinka,1)    &#13;
+      (Rafael Nadal,1)&#13;
+    </strong></span>
+</pre><p>The following implementations of analysis use cases involve grouping by key and doing summary calculations. It is not limited to just finding the sum of the tennis match record points, as shown in the following use case implementations; rather, user-defined functions can be used to do the calculations as well:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; //Find the group total of the players
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "G2").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).reduceByKey(_+_).foreach(println)&#13;
+      (Stan Wawrinka,2)    &#13;
+      (Andy Murray,1)    &#13;
+      (Rafael Nadal,3)&#13;
+    scala&gt; //Semi final winners with their group total points
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "S").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).foreach(println)&#13;
+      (Novak Djokovic,5)    &#13;
+      (Roger Federer,5)&#13;
+    scala&gt; //Find the group total of the players
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "S").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).reduceByKey(_+_).foreach(println)&#13;
+      (Novak Djokovic,5)    &#13;
+      (Roger Federer,5)&#13;
+    scala&gt; //Final winner with the group total points
+	scala&gt; playGraph.triplets.filter(triplet =&gt; triplet.attr.matchType == "F").map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).foreach(println)&#13;
+      (Novak Djokovic,11)&#13;
+    scala&gt; //Tournament total point standing
+	scala&gt; playGraph.triplets.map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).reduceByKey(_+_).foreach(println)&#13;
+      (Stan Wawrinka,2)&#13;
+    &#13;
+      (Rafael Nadal,3)    &#13;
+      (Kei Nishikori,1)    &#13;
+      (Andy Murray,1)    &#13;
+      (Roger Federer,8)    &#13;
+      (Novak Djokovic,18)&#13;
+    scala&gt; //Find the winner of the tournament by finding the top scorer of the tournament
+	scala&gt; playGraph.triplets.map(triplet =&gt; (triplet.srcAttr.name, triplet.attr.points)).reduceByKey(_+_).map{ case (k,v) =&gt; (v,k)}.sortByKey(ascending=false).take(1).map{ case (k,v) =&gt; (v,k)}.foreach(println)&#13;
+      (Novak Djokovic,18)&#13;
+    scala&gt; //Find how many head to head matches held for a given set of players in the descending order of head2head count
+	scala&gt; playGraph.triplets.map(triplet =&gt; (Set(triplet.srcAttr.name , triplet.dstAttr.name) , triplet.attr.head2HeadCount)).reduceByKey(_+_).map{case (k,v) =&gt; (k.mkString(" and "), v)}.map{ case (k,v) =&gt; (v,k)}.sortByKey().map{ case (k,v) =&gt; v + " played " + k + " time(s)"}.foreach(println)&#13;
+      Roger Federer and Novak Djokovic played 2 time(s)    &#13;
+      Roger Federer and Tomas Berdych played 1 time(s)    &#13;
+      Kei Nishikori and Tomas Berdych played 1 time(s)    &#13;
+      Novak Djokovic and Tomas Berdych played 1 time(s)    &#13;
+      Rafael Nadal and Andy Murray played 1 time(s)    &#13;
+      Rafael Nadal and Stan Wawrinka played 1 time(s)    &#13;
+      Andy Murray and David Ferrer played 1 time(s)    &#13;
+      Rafael Nadal and David Ferrer played 1 time(s)    &#13;
+      Stan Wawrinka and David Ferrer played 1 time(s)    &#13;
+      Stan Wawrinka and Andy Murray played 1 time(s)    &#13;
+      Roger Federer and Stan Wawrinka played 1 time(s)    &#13;
+      Roger Federer and Kei Nishikori played 1 time(s)    &#13;
+      Novak Djokovic and Kei Nishikori played 1 time(s)    &#13;
+      Novak Djokovic and Rafael Nadal played 1 time(s)&#13;
+    </strong></span>
+</pre><p>The following implementations of analysis use cases involve finding unique records from the query. The Spark distinct transformation does that: </p><pre class="programlisting">
+<span class="strong"><strong>
+	scala&gt; //List of players who have won at least one match
+	scala&gt; val winners = playGraph.triplets.map(triplet =&gt; triplet.srcAttr.name).distinct&#13;
+winners: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[201] at distinct at &lt;console&gt;:65&#13;
+    scala&gt; winners.foreach(println)&#13;
+      Kei Nishikori    &#13;
+      Stan Wawrinka    &#13;
+      Andy Murray    &#13;
+      Roger Federer    &#13;
+      Rafael Nadal    &#13;
+      Novak Djokovic&#13;
+    scala&gt; //List of players who have lost at least one match
+	scala&gt; val loosers = playGraph.triplets.map(triplet =&gt; triplet.dstAttr.name).distinct&#13;
+loosers: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[205] at distinct at &lt;console&gt;:65&#13;
+    scala&gt; loosers.foreach(println)&#13;
+      Novak Djokovic    &#13;
+      Kei Nishikori    &#13;
+      David Ferrer    &#13;
+      Stan Wawrinka    &#13;
+      Andy Murray    &#13;
+      Roger Federer    &#13;
+      Rafael Nadal    &#13;
+      Tomas Berdych&#13;
+    scala&gt; //List of players who have won at least one match and lost at least one match
+	scala&gt; val wonAndLost = winners.intersection(loosers)&#13;
+wonAndLost: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[211] at intersection at &lt;console&gt;:69&#13;
+    scala&gt; wonAndLost.foreach(println)&#13;
+      Novak Djokovic    &#13;
+      Rafael Nadal    &#13;
+      Andy Murray    &#13;
+      Roger Federer    &#13;
+      Kei Nishikori    &#13;
+      Stan Wawrinka &#13;
+    scala&gt; //List of players who have no wins at all
+	scala&gt; val lostAndNoWins = loosers.collect().toSet -- wonAndLost.collect().toSet&#13;
+lostAndNoWins: 
+scala.collection.immutable.Set[String] = Set(David Ferrer, Tomas Berdych)&#13;
+    scala&gt; lostAndNoWins.foreach(println)&#13;
+      David Ferrer    &#13;
+      Tomas Berdych&#13;
+    scala&gt; //List of players who have no loss at all
+	scala&gt; val wonAndNoLosses = winners.collect().toSet -- loosers.collect().toSet</strong></span>
+<span class="strong"><strong>&#13;
+      wonAndNoLosses: 
+	  scala.collection.immutable.Set[String] = Set()&#13;
+</strong></span>
+<span class="strong"><strong>scala&gt; //The val wonAndNoLosses returned an empty set which means that there is no single player in this tournament who have only wins
+scala&gt; wonAndNoLosses.foreach(println)</strong></span>
+</pre><p>In this use case, not much effort has been made to make the results pretty because they are reduced to simple RDD-based structures that can be manipulated however required using the RDD programming techniques that were already covered in the initial chapters of the book. </p><p>The highly succinct and uniform programming model of Spark, in conjunction with the Spark GraphX library, helps developers build real-world use cases with very few lines of code. This also demonstrates that once the right graph structure is built with the relevant data, with the supported graph operations, lots of truth that is hidden in the underlying data can be brought to light.</p></div>
+<div class="section" title="Applying the PageRank algorithm"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec68"/>Applying the PageRank algorithm</h1></div></div></div><p>A research paper, titled <span class="emphasis"><em>The Anatomy of a Large-Scale Hypertextual Web Search Engine, </em></span>by Sergey Brin and Lawrence Page, revolutionized web searching, and Google based its search engine on this concept of PageRank and came to dominate other web search engines. </p><p>When searching the web using Google, pages that are ranked highly by its algorithm are displayed. In the context of graphs, instead of web pages, if vertices are ranked based on the same algorithm, lots of new inferences can be made. From the outside, it may sound like this PageRank algorithm is useful only for web searches. But it has immense potential to be applied to many other areas.</p><p>In graph parlance, if there is an edge, E, connecting two vertices, from V1 to V2, according to the PageRank algorithm, V2 is more important than V1. In a huge graph of vertices and edges, it is possible to calculate the PageRank of each and every vertex. </p><p>The PageRank algorithm can be applied very well to the tennis tournament analysis use case covered in the preceding section. In the graph representation that is adopted here, each match is represented as an edge. The source vertex has the winner's details and the destination vertex has the loser's details. In the game of tennis, if this can be termed as some fictitious importance ranking, then in a given match the winner has higher importance ranking than the loser. </p><p>If the graph in the previous use case is taken to demonstrate the PageRank algorithm, then that graph has to be reversed so that the winner of each match becomes the destination vertex of each and every edge. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>scala&gt; import org.apache.spark._&#13;
+  import org.apache.spark._ 
+  scala&gt; import org.apache.spark.graphx._&#13;
+  import org.apache.spark.graphx._    
+  scala&gt; import org.apache.spark.rdd.RDD&#13;
+  import org.apache.spark.rdd.RDD&#13;
+    scala&gt; //Define a property class that is going to hold all the properties of the vertex which is nothing but player informationscala&gt; case class Player(name: String, country: String)&#13;
+      defined class Player&#13;
+    scala&gt; // Create the player verticesscala&gt; val players: RDD[(Long, Player)] = sc.parallelize(Array((1L, Player("Novak Djokovic", "SRB")), (3L, Player("Roger Federer", "SUI")),(5L, Player("Tomas Berdych", "CZE")), (7L, Player("Kei Nishikori", "JPN")), (11L, Player("Andy Murray", "GBR")),(15L, Player("Stan Wawrinka", "SUI")),(17L, Player("Rafael Nadal", "ESP")),(19L, Player("David Ferrer", "ESP"))))&#13;
+players: org.apache.spark.rdd.RDD[(Long, Player)] = ParallelCollectionRDD[212] at parallelize at &lt;console&gt;:64&#13;
+    scala&gt; //Define a property class that is going to hold all the properties of the edge which is nothing but match informationscala&gt; case class Match(matchType: String, points: Int, head2HeadCount: Int)&#13;
+      defined class Match&#13;
+    scala&gt; // Create the match edgesscala&gt; val matches: RDD[Edge[Match]] = sc.parallelize(Array(Edge(1L, 5L, Match("G1", 1,1)), Edge(1L, 7L, Match("G1", 1,1)), Edge(3L, 1L, Match("G1", 1,1)), Edge(3L, 5L, Match("G1", 1,1)), Edge(3L, 7L, Match("G1", 1,1)), Edge(7L, 5L, Match("G1", 1,1)), Edge(11L, 19L, Match("G2", 1,1)), Edge(15L, 11L, Match("G2", 1, 1)), Edge(15L, 19L, Match("G2", 1, 1)), Edge(17L, 11L, Match("G2", 1, 1)), Edge(17L, 15L, Match("G2", 1, 1)), Edge(17L, 19L, Match("G2", 1, 1)), Edge(3L, 15L, Match("S", 5, 1)), Edge(1L, 17L, Match("S", 5, 1)), Edge(1L, 3L, Match("F", 11, 1))))&#13;
+matches: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[Match]] = ParallelCollectionRDD[213] at parallelize at &lt;console&gt;:64&#13;
+    scala&gt; //Create a graph with the vertices and edgesscala&gt; val playGraph = Graph(players, matches)&#13;
+playGraph: org.apache.spark.graphx.Graph[Player,Match] = org.apache.spark.graphx.impl.GraphImpl@263cd0e2&#13;
+    scala&gt; //Reverse this graph to have the winning player coming in the destination vertex
+	scala&gt; val rankGraph = playGraph.reverse&#13;
+rankGraph: org.apache.spark.graphx.Graph[Player,Match] = org.apache.spark.graphx.impl.GraphImpl@7bb131fb&#13;
+    scala&gt; //Run the PageRank algorithm to calculate the rank of each vertex
+	scala&gt; val rankedVertices = rankGraph.pageRank(0.0001).vertices&#13;
+rankedVertices: org.apache.spark.graphx.VertexRDD[Double] = VertexRDDImpl[1184] at RDD at VertexRDD.scala:57&#13;
+    scala&gt; //Extract the vertices sorted by the rank
+	scala&gt; val rankedPlayers = rankedVertices.join(players).map{case 
+	(id,(importanceRank,Player(name,country))) =&gt; (importanceRank,
+	name)}.sortByKey(ascending=false)
+	&#13;
+	rankedPlayers: org.apache.spark.rdd.RDD[(Double, String)] = ShuffledRDD[1193] at sortByKey at &lt;console&gt;:76&#13;
+    
+	scala&gt; rankedPlayers.collect().foreach(println)&#13;
+      (3.382662570589846,Novak Djokovic)    &#13;
+      (3.266079758089846,Roger Federer)    &#13;
+      (0.3908953124999999,Rafael Nadal)    &#13;
+      (0.27431249999999996,Stan Wawrinka)    &#13;
+      (0.1925,Andy Murray)    &#13;
+      (0.1925,Kei Nishikori)    &#13;
+      (0.15,David Ferrer)    &#13;
+      (0.15,Tomas Berdych)&#13;
+    </strong></span>
+</pre><p>If the preceding code is scrutinized carefully, it can be seen that the highest ranked players have won the highest number of matches.</p></div>
+<div class="section" title="Connected component algorithm"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec69"/>Connected component algorithm</h1></div></div></div><p>In a graph, finding a subgraph consisting of connected vertices is a very common requirement with tremendous applications. In any graph, two vertices are that connected to each other by paths consisting of one or more edges, and are not connected to any other vertex in the same graph, are called a connected component. For example, in a graph, G, vertex V1 is connected to V2 by an edge and V2 is connected to V3 by another edge. In the same graph, G, vertex V4 is connected to V5 by another edge. In this case V1 and V3 are connected, V4 and V5 are connected and V1 and V5 are not connected. In graph G, there are two connected components. The Spark GraphX library has an implementation of the connected components algorithm. </p><p>In a social networking application, if the connections between the users are modeled as a graph, finding whether a given user is connected to another user is achieved by checking whether there is a connected component with these two vertices. In computer games, maze traversing from point A to point B can be done using a connected components algorithm by modeling the maze junctions as vertices and the paths connecting the junctions as edges in a graph. </p><p>In computer networks, checking whether packets can be sent from one IP address to another IP address is achieved by using a connected components algorithm. In logistics applications, such as a courier service, checking whether a packet can be sent from point A to point B is achieved by using a connected components algorithm. <span class="emphasis"><em>Figure 6</em></span> shows a graph with three connected components:</p><p>
+</p><div class="mediaobject"><img alt="Connected component algorithm" src="graphics/image_08_006.jpg"/><div class="caption"><p>Figure 6</p></div></div><p>
+</p><p>
+<span class="emphasis"><em>Figure 6</em></span> is the pictorial representation of a graph. In it, there are three <span class="emphasis"><em>clusters</em></span> of vertices connected by edges. In other words, there are three connected components in this graph. </p><p>The use case of users in a social networking application in which they follow each other is taken up here again for elucidation purposes. By extracting the connected components of the graph, it is possible to see whether any two users are connected or not. <span class="emphasis"><em>Figure 7</em></span> shows the user graph:</p><p>
+</p><div class="mediaobject"><img alt="Connected component algorithm" src="graphics/image_08_007.jpg"/><div class="caption"><p>Figure 7</p></div></div><p>
+</p><p>In the graph depicted in <span class="emphasis"><em>Figure 7</em></span>, it is clearly evident that there are two connected components. It is easy to say that Thomas and Mathew are connected and at the same time Thomas and Martin are not connected. If the connected component graph is extracted, it can be seen that Thomas and Martin will have the same connected component identifier, and at the same time, Thomas and Martin will have a different connected component identifiers. At the Scala REPL prompt, try the following statements:</p><pre class="programlisting">
+	<span class="strong"><strong>
+	scala&gt; import org.apache.spark._
+	&#13;
+  import org.apache.spark._    
+  scala&gt; import org.apache.spark.graphx._
+  &#13;
+  import org.apache.spark.graphx._    
+  scala&gt; import org.apache.spark.rdd.RDD
+  &#13;
+  import org.apache.spark.rdd.RDD    
+  
+  scala&gt; // Create the RDD with users as the vertices
+  scala&gt; val users: RDD[(Long, String)] = sc.parallelize(Array((1L, "Thomas"), (2L, "Krish"),(3L, "Mathew"), (4L, "Martin"), (5L, "George"), (6L, "James")))
+  &#13;
+users: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[1194] at parallelize at &lt;console&gt;:69&#13;
+    
+	scala&gt; // Create the edges connecting the users
+	scala&gt; val userRelationships: RDD[Edge[String]] = sc.parallelize(Array(Edge(1L, 2L, "Follows"),Edge(2L, 3L, "Follows"), Edge(4L, 5L, "Follows"), Edge(5L, 6L, "Follows")))
+	&#13;
+userRelationships: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[String]] = ParallelCollectionRDD[1195] at parallelize at &lt;console&gt;:69&#13;
+    
+	scala&gt; // Create a graph
+	scala&gt; val userGraph = Graph(users, userRelationships)
+	&#13;
+userGraph: org.apache.spark.graphx.Graph[String,String] = org.apache.spark.graphx.impl.GraphImpl@805e363&#13;
+    
+	scala&gt; // Find the connected components of the graph
+	scala&gt; val cc = userGraph.connectedComponents()
+	&#13;
+cc: org.apache.spark.graphx.Graph[org.apache.spark.graphx.VertexId,String] = org.apache.spark.graphx.impl.GraphImpl@13f4a9a9&#13;
+    
+	scala&gt; // Extract the triplets of the connected components
+	scala&gt; val ccTriplets = cc.triplets
+	&#13;
+ccTriplets: org.apache.spark.rdd.RDD[org.apache.spark.graphx.EdgeTriplet[org.apache.spark.graphx.VertexId,String]] = MapPartitionsRDD[1263] at mapPartitions at GraphImpl.scala:48&#13;
+    
+	scala&gt; // Print the structure of the tripletsscala&gt; ccTriplets.foreach(println)&#13;
+      ((1,1),(2,1),Follows)    
+	  &#13;
+      ((4,4),(5,4),Follows)    
+	  &#13;
+      ((5,4),(6,4),Follows)    
+	  &#13;
+      ((2,1),(3,1),Follows)&#13;
+    
+	scala&gt; //Print the vertex numbers and the corresponding connected component id. The connected component id is generated by the system and it is to be taken only as a unique identifier for the connected component
+	scala&gt; val ccProperties = ccTriplets.map(triplet =&gt; "Vertex " + triplet.srcId + " and " + triplet.dstId + " are part of the CC with id " + triplet.srcAttr)
+	&#13;
+ccProperties: org.apache.spark.rdd.RDD[String] = MapPartitionsRDD[1264] at map at &lt;console&gt;:79&#13;
+    
+	scala&gt; ccProperties.foreach(println)
+	&#13;
+      Vertex 1 and 2 are part of the CC with id 1    
+	  &#13;
+      Vertex 5 and 6 are part of the CC with id 4    
+	  &#13;
+      Vertex 2 and 3 are part of the CC with id 1    
+	  &#13;
+      Vertex 4 and 5 are part of the CC with id 4&#13;
+    
+	scala&gt; //Find the users in the source vertex with their CC id
+	scala&gt; val srcUsersAndTheirCC = ccTriplets.map(triplet =&gt; (triplet.srcId, triplet.srcAttr))
+	&#13;
+srcUsersAndTheirCC: org.apache.spark.rdd.RDD[(org.apache.spark.graphx.VertexId, org.apache.spark.graphx.VertexId)] = MapPartitionsRDD[1265] at map at &lt;console&gt;:79&#13;
+    
+	scala&gt; //Find the users in the destination vertex with their CC id
+	scala&gt; val dstUsersAndTheirCC = ccTriplets.map(triplet =&gt; (triplet.dstId, triplet.dstAttr))
+	&#13;
+dstUsersAndTheirCC: org.apache.spark.rdd.RDD[(org.apache.spark.graphx.VertexId, org.apache.spark.graphx.VertexId)] = MapPartitionsRDD[1266] at map at &lt;console&gt;:79&#13;
+    
+	scala&gt; //Find the union
+	scala&gt; val usersAndTheirCC = srcUsersAndTheirCC.union(dstUsersAndTheirCC)
+	&#13;
+usersAndTheirCC: org.apache.spark.rdd.RDD[(org.apache.spark.graphx.VertexId, org.apache.spark.graphx.VertexId)] = UnionRDD[1267] at union at &lt;console&gt;:83&#13;
+    
+	scala&gt; //Join with the name of the users
+	scala&gt; val usersAndTheirCCWithName = usersAndTheirCC.join(users).map{case (userId,(ccId,userName)) =&gt; (ccId, userName)}.distinct.sortByKey()
+	&#13;
+usersAndTheirCCWithName: org.apache.spark.rdd.RDD[(org.apache.spark.graphx.VertexId, String)] = ShuffledRDD[1277] at sortByKey at &lt;console&gt;:85&#13;
+    
+	scala&gt; //Print the user names with their CC component id. If two users share the same CC id, then they are connected
+	scala&gt; usersAndTheirCCWithName.collect().foreach(println)
+	&#13;
+      (1,Thomas)    
+	  &#13;
+      (1,Mathew)    
+	  &#13;
+      (1,Krish)    
+	  &#13;
+      (4,Martin)    
+	  &#13;
+      (4,James)    
+	  &#13;
+      (4,George)&#13;
+    </strong></span>
+</pre><p>There are some more graph processing algorithms available in the Spark GraphX library, and a detailed treatment of the complete set of algorithms deserves book on its own. The point here is that the Spark GraphX library provides very easy-to-use graph algorithms that fit very well into Spark's uniform programming model.</p></div>
+<div class="section" title="Understanding GraphFrames"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec70"/>Understanding GraphFrames</h1></div></div></div><p>The Spark GraphX library is the graph processing library that has the least programming language support. Scala is the only programming language supported by the Spark GraphX library. GraphFrames is a new graph processing library available as an external Spark package developed by Databricks, University of California, Berkley, and Massachusetts Institute of Technology, built on top of Spark DataFrames. Since it is built on top of DataFrames, all the operations that can be done on DataFrames are potentially possible on GraphFrames, with support for programming languages such as Scala, Java, Python, and R with a uniform API. Since GraphFrames is built on top of DataFrames, the persistence of data, support for numerous data sources, and powerful graph queries in Spark SQL are additional benefits users get for free.</p><p>Just like the Spark GraphX library, in GraphFrames the data is stored in vertices and edges. The vertices and edges use DataFrames as the data structure. The first use case covered in the beginning of this chapter is used again to elucidate GraphFrames-based graph processing.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note62"/>Note</h3><p>
+<span class="strong"><strong>CAUTION</strong></span>: GraphFrames is an external Spark package. It has some incompatibility with Spark 2.0. Because of that, the following code snippets will not work with Spark 2.0. They work with Spark 1.6. Refer to their website to check Spark 2.0 support.</p></div></div><p>At the Scala REPL prompt of Spark 1.6, try the following statements. Since GraphFrames is an external Spark package, while bringing up the appropriate REPL, the library has to be imported and the following command is used in the terminal prompt to fire up the REPL and make sure that the library is loaded without any error messages:</p><pre class="programlisting">
+	<span class="strong"><strong>
+	$ cd $SPARK_1.6__HOME &#13;
+	$ ./bin/spark-shell --packages graphframes:graphframes:0.1.0-spark1.6 &#13;
+	Ivy Default Cache set to: /Users/RajT/.ivy2/cache &#13;
+	The jars for the packages stored in: /Users/RajT/.ivy2/jars &#13;
+	:: loading settings :: url = jar:file:/Users/RajT/source-code/spark-source/spark-1.6.1
+	/assembly/target/scala-2.10/spark-assembly-1.6.2-SNAPSHOT-hadoop2.2.0.jar!
+	/org/apache/ivy/core/settings/ivysettings.xml &#13;
+	graphframes#graphframes added as a dependency &#13;
+	:: resolving dependencies :: org.apache.spark#spark-submit-parent;1.0 &#13;
+	confs: [default] &#13;
+	found graphframes#graphframes;0.1.0-spark1.6 in list &#13;
+	:: resolution report :: resolve 153ms :: artifacts dl 2ms &#13;
+	:: modules in use: &#13;
+	graphframes#graphframes;0.1.0-spark1.6 from list in [default] &#13;
+   --------------------------------------------------------------------- &#13;
+   |                  |            modules            ||   artifacts   | &#13;
+   |       conf       | number| search|dwnlded|evicted|| number|dwnlded| &#13;
+   --------------------------------------------------------------------- &#13;
+   |      default     |   1   |   0   |   0   |   0   ||   1   |   0   | &#13;
+   --------------------------------------------------------------------- &#13;
+   :: retrieving :: org.apache.spark#spark-submit-parent &#13;
+   confs: [default] &#13;
+   0 artifacts copied, 1 already retrieved (0kB/5ms) &#13;
+   16/07/31 09:22:11 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable &#13;
+   Welcome to &#13;
+      ____              __ &#13;
+     / __/__  ___ _____/ /__ &#13;
+    _\ \/ _ \/ _ `/ __/  '_/ &#13;
+   /___/ .__/\_,_/_/ /_/\_\   version 1.6.1 &#13;
+       /_/ &#13;
+	  &#13;
+	  Using Scala version 2.10.5 (Java HotSpot(TM) 64-Bit Server VM, Java 1.8.0_66) &#13;
+	  Type in expressions to have them evaluated. &#13;
+	  Type :help for more information. &#13;
+	  Spark context available as sc. &#13;
+	  SQL context available as sqlContext. &#13;
+	  scala&gt; import org.graphframes._ &#13;
+	  import org.graphframes._ &#13;
+	  scala&gt; import org.apache.spark.rdd.RDD &#13;
+	  import org.apache.spark.rdd.RDD &#13;
+	  scala&gt; import org.apache.spark.sql.Row &#13;
+	  import org.apache.spark.sql.Row &#13;
+	  scala&gt; import org.apache.spark.graphx._ &#13;
+	  import org.apache.spark.graphx._ &#13;
+	  scala&gt; //Create a DataFrame of users containing tuple values with a mandatory Long and another String type as the property of the vertex &#13;
+	  scala&gt; val users = sqlContext.createDataFrame(List((1L, "Thomas"),(2L, "Krish"),(3L, "Mathew"))).toDF("id", "name") &#13;
+	  users: org.apache.spark.sql.DataFrame = [id: bigint, name: string] &#13;
+	  scala&gt; //Created a DataFrame for Edge with String type as the property of the edge &#13;
+	  scala&gt; val userRelationships = sqlContext.createDataFrame(List((1L, 2L, "Follows"),(1L, 2L, "Son"),(2L, 3L, "Follows"))).toDF("src", "dst", "relationship") &#13;
+	  userRelationships: org.apache.spark.sql.DataFrame = [src: bigint, dst: bigint, relationship: string] &#13;
+	  scala&gt; val userGraph = GraphFrame(users, userRelationships) &#13;
+	  userGraph: org.graphframes.GraphFrame = GraphFrame(v:[id: bigint, name: string], e:[src: bigint, dst: bigint, relationship: string]) &#13;
+	  scala&gt; // Vertices in the graph &#13;
+	  scala&gt; userGraph.vertices.show() &#13;
+	  +---+------+ &#13;
+	  | id|  name| &#13;
+	  +---+------+ &#13;
+	  |  1|Thomas| &#13;
+	  |  2| Krish| &#13;
+	  |  3|Mathew| &#13;
+	  +---+------+ &#13;
+	  scala&gt; // Edges in the graph &#13;
+	  scala&gt; userGraph.edges.show() &#13;
+	  +---+---+------------+ &#13;
+	  |src|dst|relationship| &#13;
+	  +---+---+------------+ &#13;
+	  |  1|  2|     Follows| &#13;
+	  |  1|  2|         Son| &#13;
+	  |  2|  3|     Follows| &#13;
+	  +---+---+------------+ &#13;
+	  scala&gt; //Number of edges in the graph &#13;
+	  scala&gt; val edgeCount = userGraph.edges.count() &#13;
+	  edgeCount: Long = 3 &#13;
+	  scala&gt; //Number of vertices in the graph &#13;
+	  scala&gt; val vertexCount = userGraph.vertices.count() &#13;
+	  vertexCount: Long = 3 &#13;
+	  scala&gt; //Number of edges coming to each of the vertex.  &#13;
+	  scala&gt; userGraph.inDegrees.show() &#13;
+	  +---+--------+ &#13;
+	  | id|inDegree| &#13;
+	  +---+--------+ &#13;
+	  |  2|       2| &#13;
+	  |  3|       1| &#13;
+	  +---+--------+ &#13;
+	  scala&gt; //Number of edges going out of each of the vertex.  &#13;
+	  scala&gt; userGraph.outDegrees.show() &#13;
+	  +---+---------+ &#13;
+	  | id|outDegree| &#13;
+	  +---+---------+ &#13;
+	  |  1|        2| &#13;
+	  |  2|        1| &#13;
+	  +---+---------+ &#13;
+	  scala&gt; //Total number of edges coming in and going out of each vertex.  &#13;
+	  scala&gt; userGraph.degrees.show() &#13;
+	  +---+------+ &#13;
+	  | id|degree| &#13;
+	  +---+------+ &#13;
+	  |  1|     2| &#13;
+	  |  2|     3| &#13;
+	  |  3|     1| &#13;
+	  +---+------+ &#13;
+	  scala&gt; //Get the triplets of the graph &#13;
+	  scala&gt; userGraph.triplets.show() &#13;
+	  +-------------+----------+----------+ &#13;
+	  |         edge|       src|       dst| &#13;
+	  +-------------+----------+----------+ &#13;
+	  |[1,2,Follows]|[1,Thomas]| [2,Krish]| &#13;
+	  |    [1,2,Son]|[1,Thomas]| [2,Krish]| &#13;
+	  |[2,3,Follows]| [2,Krish]|[3,Mathew]| &#13;
+	  +-------------+----------+----------+ &#13;
+	  scala&gt; //Using the DataFrame API, apply filter and select only the needed edges &#13;
+	  scala&gt; val numFollows = userGraph.edges.filter("relationship = 'Follows'").count() &#13;
+	  numFollows: Long = 2 &#13;
+	  scala&gt; //Create an RDD of users containing tuple values with a mandatory Long and another String type as the property of the vertex &#13;
+	  scala&gt; val usersRDD: RDD[(Long, String)] = sc.parallelize(Array((1L, "Thomas"), (2L, "Krish"),(3L, "Mathew"))) &#13;
+	  usersRDD: org.apache.spark.rdd.RDD[(Long, String)] = ParallelCollectionRDD[54] at parallelize at &lt;console&gt;:35 &#13;
+	  scala&gt; //Created an RDD of Edge type with String type as the property of the edge &#13;
+	  scala&gt; val userRelationshipsRDD: RDD[Edge[String]] = sc.parallelize(Array(Edge(1L, 2L, "Follows"),    Edge(1L, 2L, "Son"),Edge(2L, 3L, "Follows"))) &#13;
+	  userRelationshipsRDD: org.apache.spark.rdd.RDD[org.apache.spark.graphx.Edge[String]] = ParallelCollectionRDD[55] at parallelize at &lt;console&gt;:35 &#13;
+	  scala&gt; //Create a graph containing the vertex and edge RDDs as created before &#13;
+	  scala&gt; val userGraphXFromRDD = Graph(usersRDD, userRelationshipsRDD) &#13;
+	  userGraphXFromRDD: org.apache.spark.graphx.Graph[String,String] = 
+	  org.apache.spark.graphx.impl.GraphImpl@77a3c614 &#13;
+	  scala&gt; //Create the GraphFrame based graph from Spark GraphX based graph &#13;
+	  scala&gt; val userGraphFrameFromGraphX: GraphFrame = GraphFrame.fromGraphX(userGraphXFromRDD) &#13;
+	  userGraphFrameFromGraphX: org.graphframes.GraphFrame = GraphFrame(v:[id: bigint, attr: string], e:[src: bigint, dst: bigint, attr: string]) &#13;
+	  scala&gt; userGraphFrameFromGraphX.triplets.show() &#13;
+	  +-------------+----------+----------+&#13;
+	  |         edge|       src|       dst| &#13;
+	  +-------------+----------+----------+ &#13;
+	  |[1,2,Follows]|[1,Thomas]| [2,Krish]| &#13;
+	  |    [1,2,Son]|[1,Thomas]| [2,Krish]| &#13;
+	  |[2,3,Follows]| [2,Krish]|[3,Mathew]| &#13;
+	  +-------------+----------+----------+ &#13;
+	  scala&gt; // Convert the GraphFrame based graph to a Spark GraphX based graph &#13;
+	  scala&gt; val userGraphXFromGraphFrame: Graph[Row, Row] = userGraphFrameFromGraphX.toGraphX &#13;
+	  userGraphXFromGraphFrame: org.apache.spark.graphx.Graph[org.apache.spark.sql.Row,org.apache.spark.sql.Row] = org.apache.spark.graphx.impl.GraphImpl@238d6aa2 &#13;
+	  </strong></span>
+</pre><p>When creating DataFrames for the GraphFrame, the only thing to keep in mind is that there are some mandatory columns for the vertices and the edges. In the DataFrame for vertices, the id column is mandatory. In the DataFrame for edges, the src and dst columns are mandatory. Apart from that, any number of arbitrary columns can be stored with both the vertices and the edges of a GraphFrame. In the Spark GraphX library, the vertex identifier must be a long integer, but the GraphFrame doesn't have any such limitations and any type is supported as the vertex identifier. Readers should already be familiar with DataFrames; any operation that can be done on a DataFrame can be done on the vertices and edges of a GraphFrame.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="tip63"/>Tip</h3><p>All the graph processing algorithms supported by Spark GraphX are supported by GraphFrames as well.</p></div></div><p>The Python version of GraphFrames has fewer features. Since Python is not a supported programming language for the Spark GraphX library, GraphFrame to GraphX and GraphX to GraphFrame conversions are not supported in Python. Since readers are familiar with the creation of DataFrames in Spark using Python, the Python example is omitted here. Moreover, there are some pending defects in the GraphFrames API for Python and not all the features demonstrated previously using Scala function properly in Python at the time of writing.</p></div>
+<div class="section" title="Understanding GraphFrames queries"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec71"/>Understanding GraphFrames queries</h1></div></div></div><p>The Spark GraphX library is the RDD-based graph processing library, but GraphFrames is a Spark DataFrame-based graph processing library that is available as an external package. Spark GraphX supports many graph processing algorithms, but GraphFrames supports not only graph processing algorithms, but also graph queries. The major difference between graph processing algorithms and graph queries is that graph processing algorithms are used to process the data hidden in a graph data structure, while graph queries are used to search for patterns in the data hidden in a graph data structure. In GraphFrame parlance, graph queries are also known as motif finding. This has tremendous applications in genetics and other biological sciences that deal with sequence motifs.</p><p>From a use case perspective, take the use case of users following each other in a social media application. Users have relationships between them. In the previous sections, these relationships were modeled as graphs. In real-world use cases, such graphs can become really huge, and if there is a need to find users with relationships between them in both directions, it can be expressed as a pattern in graph query, and such relationships can be found using easy programmatic constructs. The following demonstration models the relationship between the users in a GraphFrame, and a pattern search is done using that.</p><p>At the Scala REPL prompt of Spark 1.6, try the following statements:</p><pre class="programlisting">
+<span class="strong"><strong>
+	  $ cd $SPARK_1.6_HOME &#13;
+	  $ ./bin/spark-shell --packages graphframes:graphframes:0.1.0-spark1.6 &#13;
+	  Ivy Default Cache set to: /Users/RajT/.ivy2/cache &#13;
+	  The jars for the packages stored in: /Users/RajT/.ivy2/jars &#13;
+	  :: loading settings :: url = jar:file:/Users/RajT/source-code/spark-source/spark-1.6.1/assembly/target/scala-2.10/spark-assembly-1.6.2-SNAPSHOT-hadoop2.2.0.jar!/org/apache/ivy/core/settings/ivysettings.xml &#13;
+	  graphframes#graphframes added as a dependency &#13;
+	  :: resolving dependencies :: org.apache.spark#spark-submit-parent;1.0 &#13;
+	  confs: [default] &#13;
+	  found graphframes#graphframes;0.1.0-spark1.6 in list &#13;
+	  :: resolution report :: resolve 145ms :: artifacts dl 2ms &#13;
+	  :: modules in use: &#13;
+	  graphframes#graphframes;0.1.0-spark1.6 from list in [default] &#13;
+	  --------------------------------------------------------------------- &#13;
+	  |                  |            modules            ||   artifacts   | &#13;
+	  |       conf       | number| search|dwnlded|evicted|| number|dwnlded| &#13;
+	  --------------------------------------------------------------------- &#13;
+	  |      default     |   1   |   0   |   0   |   0   ||   1   |   0   | &#13;
+	  --------------------------------------------------------------------- &#13;
+	  :: retrieving :: org.apache.spark#spark-submit-parent &#13;
+	  confs: [default] &#13;
+	  0 artifacts copied, 1 already retrieved (0kB/5ms) &#13;
+	  16/07/29 07:09:08 WARN NativeCodeLoader: 
+	  Unable to load native-hadoop library for your platform... using builtin-java classes where applicable &#13;
+	  Welcome to &#13;
+      ____              __ &#13;
+     / __/__  ___ _____/ /__ &#13;
+    _\ \/ _ \/ _ `/ __/  '_/ &#13;
+   /___/ .__/\_,_/_/ /_/\_\   version 1.6.1 &#13;
+      /_/ &#13;
+	  &#13;
+	  Using Scala version 2.10.5 (Java HotSpot(TM) 64-Bit Server VM, Java 1.8.0_66) &#13;
+	  Type in expressions to have them evaluated. &#13;
+	  Type :help for more information. &#13;
+	  Spark context available as sc. &#13;
+	  SQL context available as sqlContext. &#13;
+	  scala&gt; import org.graphframes._ &#13;
+	  import org.graphframes._ &#13;
+	  scala&gt; import org.apache.spark.rdd.RDD &#13;
+	  import org.apache.spark.rdd.RDD &#13;
+	  scala&gt; import org.apache.spark.sql.Row &#13;
+	  import org.apache.spark.sql.Row &#13;
+	  scala&gt; import org.apache.spark.graphx._ &#13;
+	  import org.apache.spark.graphx._ &#13;
+	  scala&gt; //Create a DataFrame of users containing tuple values with a mandatory String field as id and another String type as the property of the vertex. Here it can be seen that the vertex identifier is no longer a long integer. &#13;
+	  scala&gt; val users = sqlContext.createDataFrame(List(("1", "Thomas"),("2", "Krish"),("3", "Mathew"))).toDF("id", "name") &#13;
+	  users: org.apache.spark.sql.DataFrame = [id: string, name: string] &#13;
+	  scala&gt; //Create a DataFrame for Edge with String type as the property of the edge &#13;
+	  scala&gt; val userRelationships = sqlContext.createDataFrame(List(("1", "2", "Follows"),("2", "1", "Follows"),("2", "3", "Follows"))).toDF("src", "dst", "relationship") &#13;
+	  userRelationships: org.apache.spark.sql.DataFrame = [src: string, dst: string, relationship: string] &#13;
+	  scala&gt; //Create the GraphFrame &#13;
+	  scala&gt; val userGraph = GraphFrame(users, userRelationships) &#13;
+	  userGraph: org.graphframes.GraphFrame = GraphFrame(v:[id: string, name: string], e:[src: string, dst: string, relationship: string]) &#13;
+	  scala&gt; // Search for pairs of users who are following each other &#13;
+	  scala&gt; // In other words the query can be read like this. Find the list of users having a pattern such that user u1 is related to user u2 using the edge e1 and user u2 is related to the user u1 using the edge e2. When a query is formed like this, the result will list with columns u1, u2, e1 and e2. When modelling real-world use cases, more meaningful variables can be used suitable for the use case. &#13;
+	  scala&gt; val graphQuery = userGraph.find("(u1)-[e1]-&gt;(u2); (u2)-[e2]-&gt;(u1)") &#13;
+	  graphQuery: org.apache.spark.sql.DataFrame = [e1: struct&lt;src:string,dst:string,relationship:string&gt;, u1: struct&lt;
+	  d:string,name:string&gt;, u2: struct&lt;id:string,name:string&gt;, e2: struct&lt;src:string,dst:string,relationship:string&gt;] &#13;
+	  scala&gt; graphQuery.show() &#13;
+	  +-------------+----------+----------+-------------+
+	  &#13;
+	  |           e1|        u1|        u2|           e2| &#13;
+	  +-------------+----------+----------+-------------+ &#13;
+	  |[1,2,Follows]|[1,Thomas]| [2,Krish]|[2,1,Follows]| &#13;
+	  |[2,1,Follows]| [2,Krish]|[1,Thomas]|[1,2,Follows]| &#13;
+	  +-------------+----------+----------+-------------+</strong></span>
+</pre><p>Note that the columns in the graph query result are formed with the elements given in the search pattern. There is no limit to the way the patterns can be formed.</p><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="note64"/>Note</h3><p>Note the data type of the graph query result. It is a DataFrame object. That brings a great flexibility in processing the query results using the familiar Spark SQL library.</p></div></div><p>The biggest limitation of the Spark GraphX library is that its API is not currently supported with programming languages such as Python and R. Since GraphFrames is a DataFrame-based library, once it has matured, it will enable graph processing in all the programming languages supported by DataFrames. This Spark external package is definitely a potential candidate to be included as part of the Spark.</p></div>
+<div class="section" title="References"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec72"/>References </h1></div></div></div><p>For more information please visit the following links:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><a class="ulink" href="https://spark.apache.org/docs/1.5.2/graphx-programming-guide.html">https://spark.apache.org/docs/1.5.2/graphx-programming-guide.html</a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="https://en.wikipedia.org/wiki/2015_ATP_World_Tour_Finals_%E2%80%93_Singles">https://en.wikipedia.org/wiki/2015_ATP_World_Tour_Finals_%E2%80%93_Singles </a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="http://www.protennislive.com/posting/2015/605/mds.pdf">http://www.protennislive.com/posting/2015/605/mds.pdf</a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="http://infolab.stanford.edu/~backrub/google.html">http://infolab.stanford.edu/~backrub/google.html</a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="http://graphframes.github.io/index.html">http://graphframes.github.io/index.html</a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="https://github.com/graphframes/graphframes">https://github.com/graphframes/graphframes</a></li><li class="listitem" style="list-style-type: disc"><a class="ulink" href="https://spark-packages.org/package/graphframes/graphframes">https://spark-packages.org/package/graphframes/graphframes</a></li></ul></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec73"/>Summary</h1></div></div></div><p>A Graph is a very useful data structure that has great application potential. Even though it is not very commonly used in most applications, there are some unique application use cases where using a Graph as a data structure is essential. A data structure is effectively used only when it is used in conjunction with well tested and highly optimized algorithms. Mathematicians and computer scientists have come up with many algorithms to process data that is part of a graph data structure. The Spark GraphX library has a large number of such algorithms implemented on top of the Spark core. This chapter provided a whirlwind tour of the Spark GraphX library and covered some of the basics through use cases at an introductory level.</p><p>The DataFrame-based graph abstraction named GraphFrames, which comes in an external Spark package available separately from Spark, has tremendous potential in graph processing as well as graph queries. A brief introduction to this external Spark package has been provided in order to do graph queries to find patterns in graphs.</p><p>Any book teaching a new technology has to conclude with an application covering its salient features. Spark is no different. So far in this book, Spark as a next generation data processing platform has been covered. Now it is the time to tie up all the loose ends and build an end-to-end application. The next chapter is going to cover the design and development of a data processing application using Spark and the family of libraries built on top of it.</p></div></body></html>

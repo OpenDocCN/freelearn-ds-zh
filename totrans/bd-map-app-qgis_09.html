@@ -1,0 +1,548 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;9.&#xA0;Completing the ForestTrails Application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09" class="calibre1"/>Chapter 9. Completing the ForestTrails Application</h1></div></div></div><p class="calibre8">In this chapter, we will <a id="id606" class="calibre1"/>complete our implementation of the ForestTrails application that we started building in the preceding chapter. So far, our application displays the basemap and lets the user zoom and pan across the map. We've also implemented the track editing mode, though the user can't enter or edit track data yet.</p><p class="calibre8">In this chapter, we will add the following features to the ForestTrails application:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Map tools that let the user add, edit, and delete tracks</li><li class="listitem">A toolbar action that lets the user view and edit the attributes for a track</li><li class="listitem">The <span class="strong"><strong class="calibre9">Set Start Point</strong></span> and <span class="strong"><strong class="calibre9">Set End Point</strong></span> actions</li><li class="listitem">Calculating and displaying the shortest available path between the two selected points using a memory-based map layer</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;9.&#xA0;Completing the ForestTrails Application">
+<div class="book" title="The Add Track map tool"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch09lvl1sec66" class="calibre1"/>The Add Track map tool</h1></div></div></div><p class="calibre8">Our first task is<a id="id607" class="calibre1"/> to let the user add a new track <a id="id608" class="calibre1"/>while in the track editing mode. This involves defining a new map tool, which we will call <code class="email">AddTrackTool</code>. Before we start implementing the <a id="id609" class="calibre1"/>
+<code class="email">AddTrackTool</code> class, however, we're going to create a mixin class that provides various helper methods for our map tools. We'll call this mixin class <code class="email">MapToolMixin</code>.</p><p class="calibre8">Here is our initial implementation of the <code class="email">MapToolMixin</code> class, which should be placed near the top of your <code class="email">mapTools.py</code> module:</p><div class="informalexample"><pre class="programlisting">class MapToolMixin
+    def setLayer(self, layer):
+        self.layer = layer
+
+    def transformCoordinates(self, screenPt):
+        return (self.toMapCoordinates(screenPt),
+                self.toLayerCoordinates(self.layer, screenPt))
+
+    def calcTolerance(self, pos):
+        pt1 = QPoint(pos.x(), pos.y())
+        pt2 = QPoint(pos.x() + 10, pos.y())
+
+        mapPt1,layerPt1 = self.transformCoordinates(pt1)
+        mapPt2,layerPt2 = self.transformCoordinates(pt2)
+        tolerance = layerPt2.x() - layerPt1.x()
+
+        return tolerance</pre></div><p class="calibre8">We've seen <a id="id610" class="calibre1"/>both the <code class="email">transformCoordinates()</code> and <code class="email">calcTolerance()</code> methods before when we created the geometry editing map tools in <a class="calibre1" title="Chapter 7. Selecting and Editing Features in a PyQGIS Application" href="part0055_split_000.html#page">Chapter 7</a>, <span class="strong"><em class="calibre10">Selecting and Editing Features in a PyQGIS Application</em></span>. The only difference is that we're storing a reference to the edited map layer so that we don't have to supply it as a parameter each time we want to calculate the tolerance or transform coordinates.</p><p class="calibre8">We can now start<a id="id611" class="calibre1"/> implementing the <code class="email">AddTrackTool</code> class. This is very similar to <code class="email">CaptureTool</code> we defined in <a class="calibre1" title="Chapter 7. Selecting and Editing Features in a PyQGIS Application" href="part0055_split_000.html#page">Chapter 7</a>, <span class="strong"><em class="calibre10">Selecting and Editing Features in a PyQGIS Application</em></span>, except that it only captures LineString geometries and it creates a new track feature with default attributes when the user finishes defining the track. Here is the class definition with the <code class="email">__init__()</code> method for our new map tool, which should be placed in the <code class="email">mapTools.py</code> module:</p><div class="informalexample"><pre class="programlisting">class AddTrackTool(QgsMapTool, MapToolMixin):
+    def __init__(self, canvas, layer, onTrackAdded):
+        QgsMapTool.__init__(self, canvas)
+        self.canvas         = canvas
+        self.onTrackAdded   = onTrackAdded
+        self.rubberBand     = None
+        self.tempRubberBand = None
+        self.capturedPoints = []
+        self.capturing      = False
+        self.setLayer(layer)
+        self.setCursor(Qt.CrossCursor)</pre></div><p class="calibre8">As you can see, our class inherits from both <code class="email">QgsMapTool</code> and <code class="email">MapToolMixin</code>. We also call the <code class="email">setLayer()</code> method so that our mixin knows which layer to work with. This also makes the currently edited layer available via <code class="email">self.layer</code>.</p><p class="calibre8">We next define the various event handling methods for our map tool:</p><div class="informalexample"><pre class="programlisting">    def canvasReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if not self.capturing:
+                self.startCapturing()
+            self.addVertex(event.pos())
+        elif event.button() == Qt.RightButton:
+            points = self.getCapturedPoints()
+            self.stopCapturing()
+            if points != None:
+                self.pointsCaptured(points)
+
+    def canvasMoveEvent(self, event):
+        if self.tempRubberBand != None and self.capturing:
+            mapPt,layerPt = self.transformCoordinates(event.pos())
+            self.tempRubberBand.movePoint(mapPt)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Backspace or \
+           event.key() == Qt.Key_Delete:
+            self.removeLastVertex()
+            event.ignore()
+        if event.key() == Qt.Key_Return or \
+           event.key() == Qt.Key_Enter:
+            points = self.getCapturedPoints()
+            self.stopCapturing()
+            if points != None:
+                self.pointsCaptured(points)</pre></div><p class="calibre8">Once again, we've <a id="id612" class="calibre1"/>seen this logic before in <a id="id613" class="calibre1"/>the <code class="email">CaptureTool</code> class. The only difference is that we're only capturing LineString geometries, so we don't need to worry about the capture mode.</p><p class="calibre8">We now get to the <code class="email">startCapturing()</code> and <code class="email">stopCapturing()</code> methods. These create and release the rubber bands used by our map tool:</p><div class="informalexample"><pre class="programlisting">    def startCapturing(self):
+        color = QColor("red")
+        color.setAlphaF(0.78)
+
+        self.rubberBand = QgsRubberBand(self.canvas, QGis.Line)
+        self.rubberBand.setWidth(2)
+        self.rubberBand.setColor(color)
+        self.rubberBand.show()
+
+        self.tempRubberBand = QgsRubberBand(self.canvas, QGis.Line)
+        self.tempRubberBand.setWidth(2)
+        self.tempRubberBand.setColor(color)
+        self.tempRubberBand.setLineStyle(Qt.DotLine)
+        self.tempRubberBand.show()
+
+        self.capturing = True
+
+    def stopCapturing(self):
+        if self.rubberBand:
+            self.canvas.scene().removeItem(self.rubberBand)
+            self.rubberBand = None
+        if self.tempRubberBand:
+            self.canvas.scene().removeItem(self.tempRubberBand)
+            self.tempRubberBand = None
+        self.capturing = False
+        self.capturedPoints = []
+        self.canvas.refresh()</pre></div><p class="calibre8">Next, we have the <code class="email">addVertex()</code> method, which adds a new vertex to the track:</p><div class="informalexample"><pre class="programlisting">    def addVertex(self, canvasPoint):
+        mapPt,layerPt = self.transformCoordinates(canvasPoint)
+
+        self.rubberBand.addPoint(mapPt)
+        self.capturedPoints.append(layerPt)
+
+        self.tempRubberBand.reset(QGis.Line)
+        self.tempRubberBand.addPoint(mapPt)</pre></div><p class="calibre8">Note that<a id="id614" class="calibre1"/> we<a id="id615" class="calibre1"/> call <code class="email">self.transformCoordinates()</code>, which is a method defined by our mixin class.</p><p class="calibre8">Our next method is <code class="email">removeLastVertex()</code>. This deletes the last added vertex when the user presses the <span class="strong"><em class="calibre10">Delete</em></span> key:</p><div class="informalexample"><pre class="programlisting">    def removeLastVertex(self):
+        if not self.capturing: return
+
+        bandSize     = self.rubberBand.numberOfVertices()
+        tempBandSize = self.tempRubberBand.numberOfVertices()
+        numPoints    = len(self.capturedPoints)
+
+        if bandSize &lt; 1 or numPoints &lt; 1:
+            return
+
+        self.rubberBand.removePoint(-1)
+
+        if bandSize &gt; 1:
+            if tempBandSize &gt; 1:
+                point = self.rubberBand.getPoint(0, bandSize-2)
+                self.tempRubberBand.movePoint(tempBandSize-2,
+                                              point)
+        else:
+            self.tempRubberBand.reset(QGis.Line)
+
+        del self.capturedPoints[-1]</pre></div><p class="calibre8">We now define<a id="id616" class="calibre1"/> the <code class="email">getCapturedPoints()</code> method, which returns either the set of points the user clicked on or <code class="email">None</code> if the user didn't click on enough points to make a LineString:</p><div class="informalexample"><pre class="programlisting">    def getCapturedPoints(self):
+        points = self.capturedPoints
+        if len(points) &lt; 2:
+            return None
+        else:
+            return points</pre></div><p class="calibre8">Our final method <a id="id617" class="calibre1"/>is <code class="email">pointsCaptured()</code>, which responds when the user finishes clicking on the points for a new track. Unlike the equivalent method in <code class="email">CaptureTool</code>, we have to set the various attributes for the new track:</p><div class="informalexample"><pre class="programlisting">    def pointsCaptured(self, points):
+        fields = self.layer.dataProvider().fields()
+
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPolyline(points))
+        feature.setFields(fields)
+        feature.setAttribute("type",      TRACK_TYPE_ROAD)
+        feature.setAttribute("status",    TRACK_STATUS_OPEN)
+        feature.setAttribute("direction", TRACK_DIRECTION_BOTH)
+
+        self.layer.addFeature(feature)
+        self.layer.updateExtents()
+        self.onTrackAdded()</pre></div><p class="calibre8">Now that we've defined our map tool, let's update our application to use this tool. Back in the <code class="email">forestTrails.py</code> module, add the following to the end of the <code class="email">setupMapTools()</code> method:</p><div class="informalexample"><pre class="programlisting">        self.addTrackTool = AddTrackTool(self.mapCanvas,
+                                         self.trackLayer,
+                                         self.onTrackAdded)
+        self.addTrackTool.setAction(self.actionAddTrack)</pre></div><p class="calibre8">We can now define our <code class="email">addTrack()</code> method as follows:</p><div class="informalexample"><pre class="programlisting">    def addTrack(self):
+        if self.actionAddTrack.isChecked():
+            self.mapCanvas.setMapTool(self.addTrackTool)
+        else:
+            self.setPanMode()</pre></div><p class="calibre8">If the user<a id="id618" class="calibre1"/> checks the <span class="strong"><strong class="calibre9">Add Track</strong></span> action, we activate <a id="id619" class="calibre1"/>the Add Track tool. If the user unchecks the action by clicking on it again, we will switch back to the pan mode.</p><p class="calibre8">Finally, we have to define a helper method called <code class="email">onTrackAdded()</code>. This method responds when the user adds a new track to our track layer. Here is the implementation of this method:</p><div class="informalexample"><pre class="programlisting">    def onTrackAdded(self):
+        self.modified = True
+        self.mapCanvas.refresh()
+        self.actionAddTrack.setChecked(False)
+        self.setPanMode()</pre></div></div></div>
+<div class="book" title="Testing the application"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec67" class="calibre1"/>Testing the application</h1></div></div></div><p class="calibre8">With all of this <a id="id620" class="calibre1"/>code implemented, it's time to test out our application. Run the appropriate startup script, and zoom in slightly on the map. Then click on the <span class="strong"><strong class="calibre9">Edit</strong></span> action, followed by the <span class="strong"><strong class="calibre9">Add Track</strong></span> action. All going well, you should be able to click on the map to define the vertices of a new track. When you're done, press the <span class="strong"><em class="calibre10">Return</em></span> key to create the new track. The result should look something like the following screenshot:</p><div class="mediaobject"><img src="../images/00099.jpeg" alt="Testing the application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">If you then click on the Edit Tracks icon again, you'll be asked if you want to save your changes. Go ahead, and your new track should be made permanent.</p><p class="calibre8">Now go back to the track editing mode and try creating a second track that connects with the first. For example:</p><div class="mediaobject"><img src="../images/00100.jpeg" alt="Testing the application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">If you then<a id="id621" class="calibre1"/> zoom in, you'll quickly discover a major flaw in the design of our application, as shown in the next screenshot:</p><div class="mediaobject"><img src="../images/00101.jpeg" alt="Testing the application" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">The tracks aren't connected together. Since the user can click anywhere on the map, there's no way of ensuring that the tracks are connected—and if the tracks aren't connected, the <a id="id622" class="calibre1"/>
+<span class="strong"><strong class="calibre9">Find Shortest Path</strong></span> command won't work.</p><p class="calibre8">There are a few ways we can solve this problem, but the easiest one in this case is to implement <span class="strong"><strong class="calibre9">vertex snapping</strong></span>, that is, if <a id="id623" class="calibre1"/>the user clicks close to an existing vertex, we snap the click location onto the vertex so that the various tracks are connected.</p></div>
+<div class="book" title="Vertex snapping"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec68" class="calibre1"/>Vertex snapping</h1></div></div></div><p class="calibre8">To<a id="id624" class="calibre1"/> implement vertex snapping, we're <a id="id625" class="calibre1"/>going to add some new methods to <code class="email">MapToolMixin</code>. We'll start with the <code class="email">findFeatureAt()</code> method. This method finds a feature close to the click location. Here is the implementation of this method:</p><div class="informalexample"><pre class="programlisting">    def findFeatureAt(self, pos, excludeFeature=None):
+        mapPt,layerPt = self.transformCoordinates(pos)
+        tolerance = self.calcTolerance(pos)
+        searchRect = QgsRectangle(layerPt.x() - tolerance,
+                                  layerPt.y() - tolerance,
+                                  layerPt.x() + tolerance,
+                                  layerPt.y() + tolerance)
+
+        request = QgsFeatureRequest()
+        request.setFilterRect(searchRect)
+        request.setFlags(QgsFeatureRequest.ExactIntersect)
+
+        for feature in self.layer.getFeatures(request):
+            if excludeFeature != None:
+                if feature.id() == excludeFeature.id():
+                    continue
+            return feature
+
+        return None</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="note33" class="calibre1"/>Note</h3><p class="calibre8">As you can see, this method takes an optional <code class="email">excludeFeature</code> parameter. This lets us exclude a given feature from the search, which will be important later on.</p></div><p class="calibre8">Next up, we'll define the <code class="email">findVertexAt()</code> method, which identifies the vertex close to the given click location (if any). Here is the implementation of this method:</p><div class="informalexample"><pre class="programlisting">    def findVertexAt(self, feature, pos):
+        mapPt,layerPt = self.transformCoordinates(pos)
+        tolerance     = self.calcTolerance(pos)
+
+        vertexCoord,vertex,prevVertex,nextVertex,distSquared = \
+            feature.geometry().closestVertex(layerPt)
+
+        distance = math.sqrt(distSquared)
+        if distance &gt; tolerance:
+            return None
+        else:
+            return vertex</pre></div><p class="calibre8">As you can see, we use the <code class="email">QgsGeometry.closestVertex()</code> method to find the vertex closest to the given <a id="id626" class="calibre1"/>position and then see if that vertex is within the tolerance distance. If so, we return the vertex index for the clicked-on vertex; otherwise, we return <code class="email">None</code>.</p><p class="calibre8">Notice that<a id="id627" class="calibre1"/> this method uses the <code class="email">math.sqrt()</code> function. To be able to use this function, you'll need to add the following near the top of the module:</p><div class="informalexample"><pre class="programlisting">import math</pre></div><p class="calibre8">With these two new methods defined, we're ready to start implementing vertex snapping. Here is the signature for the method we are going to write:</p><div class="informalexample"><pre class="programlisting">snapToNearestVertex(pos, trackLayer, excludeFeature=None)</pre></div><p class="calibre8">In this method, <code class="email">pos</code> is the click position (in canvas coordinates), <code class="email">trackLayer</code> is a reference to our track layer (which contains the features and vertices we need to check), and <code class="email">excludeFeature</code> is an optional feature to exclude when looking for nearby vertices.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note34" class="calibre1"/>Note</h3><p class="calibre8">The <code class="email">excludeFeature</code> parameter will be useful when we start editing tracks. We'll use it to stop a track from snapping to itself.</p></div><p class="calibre8">Upon completion, our method will return the coordinate of the clicked-on vertex. If the user didn't click anywhere near a feature, or close to a vertex, then this method will return the click position instead, converted to layer coordinates. This lets the user click on the map canvas, away from any vertices, to draw new features, while still snapping to an existing vertex when the user clicks on it.</p><p class="calibre8">Here is the implementation of our <code class="email">snapToNearestVertex()</code> method:</p><div class="informalexample"><pre class="programlisting">    def snapToNearestVertex(self, pos, trackLayer,
+                            excludeFeature=None):
+        mapPt,layerPt = self.transformCoordinates(pos)
+        feature = self.findFeatureAt(pos, excludeFeature)
+        if feature == None: return layerPt
+
+        vertex = self.findVertexAt(feature, pos)
+        if vertex == None: return layerPt
+
+        return feature.geometry().vertexAt(vertex)</pre></div><p class="calibre8">As you can see, we use our <code class="email">findFeatureAt()</code> method to search for features that are close to the given click point. If we find a feature, we then call <code class="email">self.findVertexAt()</code> to find the vertex close to where the user clicked. Finally, if we find a vertex, we return the coordinates of that vertex. Otherwise, we return the original click position converted to layer coordinates.</p><p class="calibre8">With these <a id="id628" class="calibre1"/>extensions to our mixin class, we can easily add snapping to our <code class="email">AddTrack</code> tool. All we have to do is replace our <code class="email">addVertex()</code> method with the following:</p><div class="informalexample"><pre class="programlisting">    def addVertex(self, canvasPoint):
+        snapPt = self.snapToNearestVertex(canvasPoint, self.layer)
+        mapPt = self.toMapCoordinates(self.layer, snapPt)
+
+        self.rubberBand.addPoint(mapPt)
+        self.capturedPoints.append(snapPt)
+
+        self.tempRubberBand.reset(QGis.Line)
+        self.tempRubberBand.addPoint(mapPt)</pre></div><p class="calibre8">Now that we have <a id="id629" class="calibre1"/>vertex snapping enabled, it'll be easy to ensure that our tracks are connected. Note that we'll also use vertex snapping when we edit a track and when the user selects the start and end points for the Shortest Available Path calculation. This is why we've added these methods to our mixin rather than to the <code class="email">AddTrack</code> tool.</p></div>
+<div class="book" title="The Edit Track map tool"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec69" class="calibre1"/>The Edit Track map tool</h1></div></div></div><p class="calibre8">Our <a id="id630" class="calibre1"/>next <a id="id631" class="calibre1"/>task is to implement the Edit Track action. To do this, we'll take <code class="email">EditTool</code> we defined in <a class="calibre1" title="Chapter 7. Selecting and Editing Features in a PyQGIS Application" href="part0055_split_000.html#page">Chapter 7</a>, <span class="strong"><em class="calibre10">Selecting and Editing Features in a PyQGIS Application</em></span>, and modify it to work specifically with tracks. Fortunately, we <a id="id632" class="calibre1"/>only need to support LineString geometries and can make use of our mixin class, which will simplify the implementation of this new map tool.</p><p class="calibre8">Let's start by adding our new class definition to the <code class="email">mapTools.py</code> module, along with the <code class="email">__init__()</code> method:</p><div class="informalexample"><pre class="programlisting">class EditTrackTool(QgsMapTool, MapToolMixin):
+    def __init__(self, canvas, layer, onTrackEdited):
+        QgsMapTool.__init__(self, canvas)
+        self.onTrackEdited = onTrackEdited
+        self.dragging      = False
+        self.feature       = None
+        self.vertex        = None
+        self.setLayer(layer)
+        self.setCursor(Qt.CrossCursor)</pre></div><p class="calibre8">We now define our <code class="email">canvasPressEvent()</code> method to respond when the user presses the mouse button <a id="id633" class="calibre1"/>over our map canvas:</p><div class="informalexample"><pre class="programlisting">    def canvasPressEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return
+
+        vertex = self.findVertexAt(feature, event.pos())
+        if vertex == None: return
+
+        if event.button() == Qt.LeftButton:
+            # Left click -&gt; move vertex.
+            self.dragging = True
+            self.feature  = feature
+            self.vertex   = vertex
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()
+        elif event.button() == Qt.RightButton:
+            # Right click -&gt; delete vertex.
+            self.deleteVertex(feature, vertex)
+            self.canvas().refresh()</pre></div><p class="calibre8">As you <a id="id634" class="calibre1"/>can see, we're using our mixin's methods to find the clicked-on feature and vertex. This simplifies the implementation of the <code class="email">canvasPressedEvent()</code> method.</p><p class="calibre8">We now come to the <code class="email">canvasMoveEvent()</code> and <code class="email">canvasReleaseEvent()</code> methods, which are basically identical to the methods defined in <code class="email">EditTool</code> from <a class="calibre1" title="Chapter 7. Selecting and Editing Features in a PyQGIS Application" href="part0055_split_000.html#page">Chapter 7</a>, <span class="strong"><em class="calibre10">Selecting and Editing Features in a PyQGIS Application</em></span>:</p><div class="informalexample"><pre class="programlisting">    def canvasMoveEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()
+
+    def canvasReleaseEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.layer.updateExtents()
+            self.canvas().refresh()
+            self.dragging = False
+            self.feature  = None
+            self.vertex   = None</pre></div><p class="calibre8">Our <code class="email">canvasDoubleClickEvent()</code> method is also very similar, the only difference being that we can use the <code class="email">findFeatureAt()</code> method defined by our mixin class:</p><div class="informalexample"><pre class="programlisting">    def canvasDoubleClickEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return
+
+        mapPt,layerPt = self.transformCoordinates(event.pos())
+        geometry      = feature.geometry()
+
+        distSquared,closestPt,beforeVertex = \
+            geometry.closestSegmentWithContext(layerPt)
+
+        distance = math.sqrt(distSquared)
+        tolerance = self.calcTolerance(event.pos())
+        if distance &gt; tolerance: return
+
+        geometry.insertVertex(closestPt.x(), closestPt.y(),
+                              beforeVertex)
+        self.layer.changeGeometry(feature.id(), geometry)
+        self.onTrackEdited()
+        self.canvas().refresh()</pre></div><p class="calibre8">We now<a id="id635" class="calibre1"/> have the <code class="email">moveVertexTo()</code> method, which <a id="id636" class="calibre1"/>moves the clicked-on vertex to the current mouse location. While the logic is very similar to the method with the same name in our <code class="email">EditTool</code>, we also want to support vertex snapping so that the user can click on an existing vertex to connect two tracks together. Here is the implementation of this method:</p><div class="informalexample"><pre class="programlisting">    def moveVertexTo(self, pos):
+        snappedPt = self.snapToNearestVertex(pos, self.layer,
+                                             self.feature)
+
+        geometry = self.feature.geometry()
+        layerPt = self.toLayerCoordinates(self.layer, pos)
+        geometry.moveVertex(snappedPt.x(), snappedPt.y(),
+                            self.vertex)
+        self.layer.changeGeometry(self.feature.id(), geometry)
+        self.onTrackEdited()</pre></div><p class="calibre8">Notice that our call to <code class="email">snapToNearestVertex()</code> makes use of the <code class="email">excludeFeature</code> parameter to exclude the clicked-on feature when finding a vertex to snap to. This ensures that we don't snap a feature to itself.</p><p class="calibre8">Finally, we have the <code class="email">deleteVertex()</code> method, which is copied almost verbatim from the <code class="email">EditTool</code> class:</p><div class="informalexample"><pre class="programlisting">    def deleteVertex(self, feature, vertex):
+        geometry = feature.geometry()
+
+        lineString = geometry.asPolyline()
+        if len(lineString) &lt;= 2:
+            return
+
+        if geometry.deleteVertex(vertex):
+            self.layer.changeGeometry(feature.id(), geometry)
+            self.onTrackEdited()</pre></div><p class="calibre8">With this<a id="id637" class="calibre1"/> complex map tool implemented, we can <a id="id638" class="calibre1"/>now use it to let the user edit a track. Back in the <code class="email">forestTrails.py</code> module, add the following to the end of the <code class="email">setupMapTools()</code> method:</p><div class="informalexample"><pre class="programlisting">        self.editTrackTool = EditTrackTool(self.mapCanvas,
+                                           self.trackLayer,
+                                           self.onTrackEdited)
+        self.editTrackTool.setAction(self.actionEditTrack)</pre></div><p class="calibre8">We now want to replace our placeholder for the <code class="email">editTrack()</code> method with the following:</p><div class="informalexample"><pre class="programlisting">    def editTrack(self):
+        if self.actionEditTrack.isChecked():
+            self.mapCanvas.setMapTool(self.editTrackTool)
+        else:
+            self.setPanMode()</pre></div><p class="calibre8">As with the <code class="email">addTrack()</code> method, we switch to the edit tool when the user clicks on our action, and switch back to panning mode if the user clicks on the action a second time.</p><p class="calibre8">The last thing we need to do is implement the <code class="email">ForestTrailsWindow.onTrackEdited()</code> method to respond when the user makes a change to a track. Here is this new method:</p><div class="informalexample"><pre class="programlisting">    def onTrackEdited(self):
+        self.modified = True
+        self.mapCanvas.refresh()</pre></div><p class="calibre8">We simply need to remember that the track layer has been modified and redraw the map canvas to show the change. Note that we don't switch back to the panning mode, as the user will continue to make changes to the track vertices until he or she explicitly switches off the edit tool by clicking on the toolbar icon a second time, or by choosing a different action from the toolbar.</p><p class="calibre8">With this <a id="id639" class="calibre1"/>implemented, you <a id="id640" class="calibre1"/>can rerun your program, switch to track editing mode, and click on the <span class="strong"><strong class="calibre9">Edit Track</strong></span> action to add, move, or delete vertices. If you look carefully, you'll see that the vertex you're dragging will snap to the vertex of another feature when you move the mouse close to it. As with the <code class="email">EditTool</code>, you can double-click on a segment to add a new vertex, or press the <span class="strong"><em class="calibre10">Ctrl</em></span> key and click on a vertex to delete it.</p></div>
+<div class="book" title="The Delete Track map tool"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec70" class="calibre1"/>The Delete Track map tool</h1></div></div></div><p class="calibre8">We <a id="id641" class="calibre1"/>now want to implement the <span class="strong"><strong class="calibre9">Delete Track</strong></span> <a id="id642" class="calibre1"/>action. Fortunately, the <a id="id643" class="calibre1"/>map tool for doing is very simple, thanks to our mixin class. Add the following class definition to the <code class="email">mapTools.py</code> module:</p><div class="informalexample"><pre class="programlisting">class DeleteTrackTool(QgsMapTool, MapToolMixin):
+    def __init__(self, canvas, layer, onTrackDeleted):
+        QgsMapTool.__init__(self, canvas)
+        self.onTrackDeleted = onTrackDeleted
+        self.feature        = None
+        self.setLayer(layer)
+        self.setCursor(Qt.CrossCursor)
+
+    def canvasPressEvent(self, event):
+        self.feature = self.findFeatureAt(event.pos())
+
+    def canvasReleaseEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature != None and feature.id() == self.feature.id():
+            self.layer.deleteFeature(self.feature.id())
+            self.onTrackDeleted()</pre></div><p class="calibre8">Then, back in the <code class="email">forestTrails.py</code> module, add the following to the end of the <code class="email">setupMapTools()</code> method:</p><div class="informalexample"><pre class="programlisting">        self.deleteTrackTool = DeleteTrackTool(
+            self.mapCanvas, self.trackLayer, self.onTrackDeleted)
+        self.deleteTrackTool.setAction(self.actionDeleteTrack)</pre></div><p class="calibre8">Then replace the dummy <code class="email">deleteTrack()</code> method with the following:</p><div class="informalexample"><pre class="programlisting">    def deleteTrack(self):
+        if self.actionDeleteTrack.isChecked():
+            self.mapCanvas.setMapTool(self.deleteTrackTool)
+        else:
+            self.setPanMode()</pre></div><p class="calibre8">Finally, add a new <code class="email">onTrackDeleted()</code> method to respond when the user deletes a track:</p><div class="informalexample"><pre class="programlisting">    def onTrackDeleted(self):
+        self.modified = True
+        self.mapCanvas.refresh()
+        self.actionDeleteTrack.setChecked(False)
+        self.setPanMode()</pre></div><p class="calibre8">With this map tool, we now have all of the necessary logic for adding, editing, and deleting tracks. We now have a complete mapping application for maintaining a database of forest trails, and you can use this program to enter as many tracks as you want.</p><div class="mediaobject"><img src="../images/00102.jpeg" alt="The Delete Track map tool" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">Of course, we're not <a id="id644" class="calibre1"/>finished yet. In particular, we <a id="id645" class="calibre1"/>can't yet specify the type of track; every track is a road at the moment. To get around this, our next task is to implement the <span class="strong"><strong class="calibre9">Get Info</strong></span> action.</p></div>
+<div class="book" title="The Get Info map tool"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec71" class="calibre1"/>The Get Info map tool</h1></div></div></div><p class="calibre8">When <a id="id646" class="calibre1"/>the <a id="id647" class="calibre1"/>user clicks on the <span class="strong"><strong class="calibre9">Get Info</strong></span> item in the toolbar, we will activate a custom map tool that lets the user click on a track to display and edit the attributes for that track. Let's walk through this<a id="id648" class="calibre1"/> implementation one step at a time, starting with the <code class="email">GetInfoTool</code> class itself. Add the following to your <code class="email">mapTools.py</code> module:</p><div class="informalexample"><pre class="programlisting">class GetInfoTool(QgsMapTool, MapToolMixin):
+    def __init__(self, canvas, layer, onGetInfo):
+        QgsMapTool.__init__(self, canvas)
+        self.onGetInfo = onGetInfo
+        self.setLayer(layer)
+        self.setCursor(Qt.WhatsThisCursor)
+
+    def canvasReleaseEvent(self, event):
+        if event.button() != Qt.LeftButton: return
+        feature = self.findFeatureAt(event.pos())
+        if feature != None:
+            self.onGetInfo(feature)</pre></div><p class="calibre8">This map tool calls the <code class="email">onGetInfo()</code> method (which is passed as a parameter to the map tool's initializer) when the user clicks on a track. Let's now use this map tool within our program by adding the following code to the end of our <code class="email">setupMapTools()</code> method in the <code class="email">forestTrails.py</code> module:</p><div class="informalexample"><pre class="programlisting">        self.getInfoTool = GetInfoTool(self.mapCanvas,
+                                       self.trackLayer,
+                                       self.onGetInfo)
+        self.getInfoTool.setAction(self.actionGetInfo)</pre></div><p class="calibre8">We can <a id="id649" class="calibre1"/>then replace our placeholder <code class="email">getInfo()</code> method with the following:</p><div class="informalexample"><pre class="programlisting">    def getInfo(self):
+        self.mapCanvas.setMapTool(self.getInfoTool)</pre></div><p class="calibre8">This activates the map tool when the user clicks on the toolbar icon. The last step is to implement the <code class="email">onGetInfo()</code> method, which is called when the user selects the map tool and clicks on a track.</p><p class="calibre8">When <code class="email">onGetInfo()</code> is called, we want to display to the user the various attributes of the clicked-on track. These attributes will be displayed in a dialog window, where the user can make changes if he/she wishes. When the user submits his/her changes, we will have to update the feature with the new attribute values and indicate that the track has been changed.</p><p class="calibre8">The bulk of our work will be setting up the dialog window so that the attributes can be displayed and edited by the user. To do this, we'll create a new class named <code class="email">TrackInfoDialog</code>, which will be a subclass of <code class="email">QDialog</code>.</p><p class="calibre8">Add the following code to the <code class="email">forestTrails.py</code> module, immediately before the <code class="email">main()</code> function definition:</p><div class="informalexample"><pre class="programlisting">class TrackInfoDialog(QDialog):
+    def __init__(self, parent=None):
+        QDialog.__init__(self, parent)
+        self.setWindowTitle("Track Info")</pre></div><p class="calibre8">The <code class="email">__init__()</code> method will set up the contents of the dialog window. So far, we've initialized the dialog object<a id="id650" class="calibre1"/> itself, and given the window a title. Let's now define a list of the available track types the user can choose from:</p><div class="informalexample"><pre class="programlisting">        self.trackTypes = ["Road",
+                           "Walking Trail",
+                           "Bike Trail",
+                           "Horse Trail"]</pre></div><p class="calibre8">Similarly, we'll want a list of the available direction options:</p><div class="informalexample"><pre class="programlisting">        self.directions = ["Both",
+                           "Forward",
+                           "Backward"]</pre></div><p class="calibre8">We'll also want a list of the available track status options:</p><div class="informalexample"><pre class="programlisting">        self.statuses = ["Open",
+                         "Closed"]</pre></div><p class="calibre8">With the preceding sets of options defined, we can now start to lay out the contents of our dialog window. We'll start by using a <code class="email">QFormLayout</code> object that lets us lay out form labels and widgets side by side:</p><div class="informalexample"><pre class="programlisting">        self.form = QFormLayout()</pre></div><p class="calibre8">We next<a id="id651" class="calibre1"/> want to define the various input widgets we'll use to display and change the track attributes:</p><div class="informalexample"><pre class="programlisting">        self.trackType = QComboBox(self)
+        self.trackType.addItems(self.trackTypes)
+
+        self.trackName = QLineEdit(self)
+
+        self.trackDirection = QComboBox(self)
+        self.trackDirection.addItems(self.directions)
+
+        self.trackStatus = QComboBox(self)
+        self.trackStatus.addItems(self.statuses)</pre></div><p class="calibre8">Now that we have the widgets themselves, let's add them to the form:</p><div class="informalexample"><pre class="programlisting">        self.form.addRow("Type",      self.trackType)
+        self.form.addRow("Name",      self.trackName)
+        self.form.addRow("Direction", self.trackDirection)
+        self.form.addRow("Status",    self.trackStatus)</pre></div><p class="calibre8">Next, we <a id="id652" class="calibre1"/>want to define the buttons at the bottom of our dialog window:</p><div class="informalexample"><pre class="programlisting">        self.buttons = QHBoxLayout()
+
+        self.okButton = QPushButton("OK", self)
+        self.connect(self.okButton, SIGNAL("clicked()"),
+                     self.accept)
+
+        self.cancelButton = QPushButton("Cancel", self)
+        self.connect(self.cancelButton, SIGNAL("clicked()"),
+                     self.reject)
+
+        self.buttons.addStretch(1)
+        self.buttons.addWidget(self.okButton)
+        self.buttons.addWidget(self.cancelButton)</pre></div><p class="calibre8">Finally, we can place the form and our buttons within the dialog box, and lay everything out:</p><div class="informalexample"><pre class="programlisting">        self.layout = QVBoxLayout(self)
+        self.layout.addLayout(self.form)
+        self.layout.addSpacing(10)
+
+        self.layout.addLayout(self.buttons)
+        self.setLayout(self.layout)
+        self.resize(self.sizeHint())</pre></div><p class="calibre8">So much <a id="id653" class="calibre1"/>for the <code class="email">__init__()</code> method. With the dialog box set up, we next want to define a method to copy the feature's attributes in the dialog window:</p><div class="informalexample"><pre class="programlisting">    def loadAttributes(self, feature):
+        type_attr      = feature.attribute("type")
+        name_attr      = feature.attribute("name")
+        direction_attr = feature.attribute("direction")
+        status_attr    = feature.attribute("status")
+
+        if   type_attr == TRACK_TYPE_ROAD:    index = 0
+        elif type_attr == TRACK_TYPE_WALKING: index = 1
+        elif type_attr == TRACK_TYPE_BIKE:    index = 2
+        elif type_attr == TRACK_TYPE_HORSE:   index = 3
+        else:                                 index = 0
+        self.trackType.setCurrentIndex(index)
+
+        if name_attr != None:
+            self.trackName.setText(name_attr)
+        else:
+            self.trackName.setText("")
+
+        if   direction_attr == TRACK_DIRECTION_BOTH:     index = 0
+        elif direction_attr == TRACK_DIRECTION_FORWARD:  index = 1
+        elif direction_attr == TRACK_DIRECTION_BACKWARD: index = 2
+        else:                                            index = 0
+        self.trackDirection.setCurrentIndex(index)
+
+        if   status_attr == TRACK_STATUS_OPEN:   index = 0
+        elif status_attr == TRACK_STATUS_CLOSED: index = 1
+        else:                                    index = 0
+        self.trackStatus.setCurrentIndex(index)</pre></div><p class="calibre8">The last method <a id="id654" class="calibre1"/>we need to define here is <code class="email">saveAttributes()</code>, which stores the updated values from the dialog window back in the feature's attributes:</p><div class="informalexample"><pre class="programlisting">    def saveAttributes(self, feature):
+        index = self.trackType.currentIndex()
+        if   index == 0: type_attr = TRACK_TYPE_ROAD
+        elif index == 1: type_attr = TRACK_TYPE_WALKING
+        elif index == 2: type_attr = TRACK_TYPE_BIKE
+        elif index == 3: type_attr = TRACK_TYPE_HORSE
+        else:            type_attr = TRACK_TYPE_ROAD
+
+        name_attr = self.trackName.text()
+
+        index = self.trackDirection.currentIndex()
+        if   index == 0: direction_attr = TRACK_DIRECTION_BOTH
+        elif index == 1: direction_attr = TRACK_DIRECTION_FORWARD
+        elif index == 2: direction_attr = TRACK_DIRECTION_BACKWARD
+        else:            direction_attr = TRACK_DIRECTION_BOTH
+
+        index = self.trackStatus.currentIndex()
+        if   index == 0: status_attr = TRACK_STATUS_OPEN
+        elif index == 1: status_attr = TRACK_STATUS_CLOSED
+        else:            status_attr = TRACK_STATUS_OPEN
+
+        feature.setAttribute("type",      type_attr)
+        feature.setAttribute("name",      name_attr)
+        feature.setAttribute("direction", direction_attr)
+        feature.setAttribute("status",    status_attr)</pre></div><p class="calibre8">With<a id="id655" class="calibre1"/> the <code class="email">TrackInfoDialog</code> class defined, we can finally implement the <code class="email">onGetInfo()</code> method (in our <code class="email">ForestTrailsWindow</code> class) to display the clicked-on track's attributes in the dialog box, and save the changes if the user clicks on the <span class="strong"><strong class="calibre9">OK</strong></span> button:</p><div class="informalexample"><pre class="programlisting">    def onGetInfo(self, feature):
+        dialog = TrackInfoDialog(self)
+        dialog.loadAttributes(feature)
+        if dialog.exec_():
+            dialog.saveAttributes(feature)
+            self.trackLayer.updateFeature(feature)
+            self.modified = True
+            self.mapCanvas.refresh()</pre></div><p class="calibre8">You should now be<a id="id656" class="calibre1"/> able to run the program, switch to the editing mode, click on the <span class="strong"><strong class="calibre9">Get Info</strong></span> toolbar icon, and then click on a feature to display the attributes for that feature. The resulting dialog window should look like this:</p><div class="mediaobject"><img src="../images/00103.jpeg" alt="The Get Info map tool" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">You should be able to change any of these attributes and click on the <span class="strong"><strong class="calibre9">OK</strong></span> button to save the changes. As <a id="id657" class="calibre1"/>you change the track type, status and direction, you should see the change reflected in the way the track is displayed on the map.</p></div>
+<div class="book" title="The Set Start Point and Set End Point actions"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec72" class="calibre1"/>The Set Start Point and Set End Point actions</h1></div></div></div><p class="calibre8">The <a id="id658" class="calibre1"/>
+<span class="strong"><strong class="calibre9">Set Start Point</strong></span> and <span class="strong"><strong class="calibre9">Set End Point</strong></span> toolbar actions <a id="id659" class="calibre1"/>allow the user<a id="id660" class="calibre1"/> to set the start and end points in order to calculate <a id="id661" class="calibre1"/>the shortest path between these two points. To implement these actions, we're going to need a new map tool that lets the user click on a track vertex to select the starting or ending points.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note35" class="calibre1"/>Note</h3><p class="calibre8">By positioning the start point and the end point on vertices, we guarantee that the points lie on a track's LineString. We could theoretically be more sophisticated and snap the starting and ending points to anywhere along a track segment, but that's more work, and we're trying to keep the implementation simple.</p></div><p class="calibre8">Go back to the <code class="email">mapTools.py</code> module and add the following class definition to this file:</p><div class="informalexample"><pre class="programlisting">class SelectVertexTool(QgsMapTool, MapToolMixin):
+    def __init__(self, canvas, trackLayer, onVertexSelected):
+        QgsMapTool.__init__(self, canvas)
+        self.onVertexSelected = onVertexSelected
+        self.setLayer(trackLayer)
+        self.setCursor(Qt.CrossCursor)
+
+    def canvasReleaseEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature != None:
+            vertex = self.findVertexAt(feature, event.pos())
+            if vertex != None:
+                self.onVertexSelected(feature, vertex)</pre></div><p class="calibre8">This map tool <a id="id662" class="calibre1"/>uses the mixin's methods to <a id="id663" class="calibre1"/>identify which feature and vertex the user <a id="id664" class="calibre1"/>clicked on, and then calls the <code class="email">onVertexSelected()</code> callback to allow the application to respond to the selection.</p><p class="calibre8">Let's use this map tool <a id="id665" class="calibre1"/>to implement the <span class="strong"><strong class="calibre9">Set Start Point</strong></span> and <span class="strong"><strong class="calibre9">Set End Point</strong></span> actions. Back in the <code class="email">forestTrails.py</code> module, add the following to the end of the <code class="email">setupMapTools()</code> method:</p><div class="informalexample"><pre class="programlisting">        self.selectStartPointTool = SelectVertexTool(
+            self.mapCanvas, self.trackLayer,
+            self.onStartPointSelected)
+
+        self.selectEndPointTool = SelectVertexTool(
+            self.mapCanvas, self.trackLayer,
+            self.onEndPointSelected)</pre></div><p class="calibre8">These two instances of <code class="email">SelectVertexTool</code> use different callback methods to respond when the user clicks on a track vertex. Using these tools, we can now implement the <code class="email">setStartPoint()</code> and <code class="email">setEndPoint()</code> methods, which were just placeholders until now:</p><div class="informalexample"><pre class="programlisting">    def setStartPoint(self):
+        if self.actionSetStartPoint.isChecked():
+            self.mapCanvas.setMapTool(self.selectStartPointTool)
+        else:
+            self.setPanMode()
+
+    def setEndPoint(self):
+        if self.actionSetEndPoint.isChecked():
+            self.mapCanvas.setMapTool(self.selectEndPointTool)
+        else:
+            self.setPanMode()</pre></div><p class="calibre8">As usual, we activate <a id="id666" class="calibre1"/>the map tool when the user clicks on the toolbar action, and switch back to the pan mode if the user clicks on the action a second time.</p><p class="calibre8">All that's left now are the <a id="id667" class="calibre1"/>two callback methods, <code class="email">onStartPointSelected()</code> and <code class="email">onEndPointSelected()</code>. Let's start with the implementation of <code class="email">onStartPointSelected()</code>. This method will start by asking the feature's geometry to return the coordinates of the clicked-on vertex, which we store into <code class="email">self.curStartPt</code>:</p><div class="informalexample"><pre class="programlisting">    def onStartPointSelected(self, feature, vertex):
+        self.curStartPt = feature.geometry().vertexAt(vertex)</pre></div><p class="calibre8">Now that we know where the start point will be, we want to show this start point on the map. If you remember, we previously created a memory-based map layer called <code class="email">startPointLayer</code>, to display this point. We'll need to first clear the contents of this memory layer, deleting any existing features, and then create a new feature at the given coordinate:</p><div class="informalexample"><pre class="programlisting">        self.clearMemoryLayer(self.startPointLayer)
+
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPoint(
+                                            self.curStartPt))
+        self.startPointLayer.dataProvider().addFeatures([feature])
+        self.startPointLayer.updateExtents()</pre></div><p class="calibre8">Finally, we'll redraw <a id="id668" class="calibre1"/>the map canvas to show the newly added point, and switch back to pan mode:</p><div class="informalexample"><pre class="programlisting">        self.mapCanvas.refresh()
+        self.setPanMode()
+        self.adjustActions()</pre></div><p class="calibre8">We'll need to <a id="id669" class="calibre1"/>implement the <code class="email">clearMemoryLayer()</code> method, but before we do, let's also define the <code class="email">onEndPointSelected()</code> callback method so that we can respond when the user clicks on the end point. The code for this is almost identical to the code for <code class="email">onStartPointSelected()</code>:</p><div class="informalexample"><pre class="programlisting">    def onEndPointSelected(self, feature, vertex):
+        self.curEndPt = feature.geometry().vertexAt(vertex)
+
+        self.clearMemoryLayer(self.endPointLayer)
+
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPoint(self.curEndPt))
+        self.endPointLayer.dataProvider().addFeatures([feature])
+        self.endPointLayer.updateExtents()
+        self.mapCanvas.refresh()
+        self.setPanMode()
+        self.adjustActions()</pre></div><p class="calibre8">To finish off <a id="id670" class="calibre1"/>these <a id="id671" class="calibre1"/>two actions, we'll need to implement the <code class="email">clearMemoryLayer()</code> method and initialize the <code class="email">curStartPt</code> and <code class="email">curEndPt</code> instance variables so that the program knows when these variables are set for the first time.</p><p class="calibre8">Here is the implementation for the <code class="email">clearMemoryLayer()</code> method:</p><div class="informalexample"><pre class="programlisting">    def clearMemoryLayer(self, layer):
+        featureIDs = []
+        provider = layer.dataProvider()
+        for feature in provider.getFeatures(QgsFeatureRequest()):
+            featureIDs.append(feature.id())
+        provider.deleteFeatures(featureIDs)</pre></div><p class="calibre8">We simply obtain <a id="id672" class="calibre1"/>a list of all the features in the given memory layer, and then ask the data provider to delete them. Since this data is <a id="id673" class="calibre1"/>transient and held in memory, deleting all the features is no big deal.</p><p class="calibre8">Finally, let's initialize those two instance variables. Add the following to the end of your <code class="email">ForestTrailsWindow.__init__()</code> method:</p><div class="informalexample"><pre class="programlisting">        self.curStartPt = None
+        self.curEndPt   = None</pre></div><p class="calibre8">With all this implemented, the user can now click on a vertex to set the starting or ending point, as shown in the following screenshot:</p><div class="mediaobject"><img src="../images/00104.jpeg" alt="The Set Start Point and Set End Point actions" class="calibre11"/></div><p class="calibre12"> </p></div>
+<div class="book" title="The Find Shortest Path action"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec73" class="calibre1"/>The Find Shortest Path action</h1></div></div></div><p class="calibre8">This is the <a id="id674" class="calibre1"/>last feature of the ForestTrails that <a id="id675" class="calibre1"/>we will have to implement. When the user clicks on this toolbar icon, we want to calculate the shortest available path between the given start and end points. Fortunately, the QGIS <span class="strong"><strong class="calibre9">network analysis library</strong></span> will do the actual calculation for us. All we have to do is run the shortest path calculation on the track layer, build the LineString that corresponds to this shortest path, and display that LineString geometry in our memory-based map layer.</p><p class="calibre8">All of this logic will be implemented within the <code class="email">findShortestPath()</code> method. We'll start our implementation with a bit of housekeeping: if the user unchecks the <span class="strong"><strong class="calibre9">Find Shortest Path</strong></span> toolbar icon, we clear the shortest path memory layer, switch back to the panning mode, and redraw the map canvas to show the map without the previous path:</p><div class="informalexample"><pre class="programlisting">    def findShortestPath(self):
+        if not self.actionFindShortestPath.isChecked():
+            self.clearMemoryLayer(self.shortestPathLayer)
+            self.setPanMode()
+            self.mapCanvas.refresh()
+            return</pre></div><p class="calibre8">The rest of the method will be executed when the user clicks on the <span class="strong"><strong class="calibre9">Find Shortest Path</strong></span> toolbar action to check it. Add the following code to your method:</p><div class="informalexample"><pre class="programlisting">        directionField = self.trackLayer.fieldNameIndex(
+            "direction")
+        director = QgsLineVectorLayerDirector(
+                       self.trackLayer, directionField,
+                       TRACK_DIRECTION_FORWARD,
+                       TRACK_DIRECTION_BACKWARD,
+                       TRACK_DIRECTION_BOTH, 3)
+
+        properter = QgsDistanceArcProperter()
+        director.addProperter(properter)
+
+        crs = self.mapCanvas.mapRenderer().destinationCrs()
+        builder = QgsGraphBuilder(crs)
+
+        tiedPoints = director.makeGraph(builder, [self.curStartPt,
+                                                  self.curEndPt])
+        graph = builder.graph()
+
+        startPt = tiedPoints[0]
+        endPt   = tiedPoints[1]
+
+        startVertex = graph.findVertex(startPt)
+        tree = QgsGraphAnalyzer.shortestTree(graph,
+                                             startVertex, 0)
+
+        startVertex = tree.findVertex(startPt)
+        endVertex   = tree.findVertex(endPt)
+
+        if endVertex == -1:
+            QMessageBox.information(self.window,
+                                    "Not Found",
+                                    "No path found.")
+            return
+
+        points = []
+        while startVertex != endVertex:
+            incomingEdges = tree.vertex(endVertex).inArc()
+            if len(incomingEdges) == 0:
+                break
+            edge = tree.arc(incomingEdges[0])
+            points.insert(0, tree.vertex(edge.inVertex()).point())
+            endVertex = edge.outVertex()
+
+        points.insert(0, startPt)</pre></div><p class="calibre8">The preceding code <a id="id676" class="calibre1"/>was copied from the PyQGIS cookbook with some changes in variable names to make the meaning clearer. At the end, <code class="email">points</code> will be a list of <code class="email">QgsPoint</code> objects defining the LineString geometry that connects the starting point to the ending point. The most interesting part of this method is the following:</p><div class="informalexample"><pre class="programlisting">director = QgsLineVectorLayerDirector(
+                       self.trackLayer, directionField,
+                       TRACK_DIRECTION_FORWARD,
+                       TRACK_DIRECTION_BACKWARD,
+                       TRACK_DIRECTION_BOTH, 3)</pre></div><p class="calibre8">This piece of code creates an object which converts a set of LineString features into an abstract <span class="strong"><strong class="calibre9">graph</strong></span>
+<a id="id677" class="calibre1"/> of the layer's features. The various parameters specify which of the track's attributes will be used to define the<a id="id678" class="calibre1"/> various directions in which a track can be followed. Bidirectional tracks can be followed in either direction, while forward and reverse directional tracks can be followed in only one direction.</p><div class="informalexample" title="Note"><h3 class="title2"><a id="note36" class="calibre1"/>Note</h3><p class="calibre8">The final parameter, with the value <code class="email">3</code>, tells the director to treat any track without a valid direction value as bidirectional.</p></div><p class="calibre8">Once we have <a id="id679" class="calibre1"/>the set of points that define the shortest path, it's easy to display those points as a LineString in the memory layer and make the resulting path visible on the map:</p><div class="informalexample"><pre class="programlisting">        self.clearMemoryLayer(self.shortestPathLayer)
+
+        provider = self.shortestPathLayer.dataProvider()
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPolyline(points))
+        provider.addFeatures([feature])
+        self.shortestPathLayer.updateExtents()
+        self.mapCanvas.refresh()</pre></div><p class="calibre8">If you define the starting and ending points, and then click on the <span class="strong"><strong class="calibre9">Find Shortest Path</strong></span> toolbar action, the resulting path will be displayed as a blue line on the map, as shown in the following screenshot:</p><div class="mediaobject"><img src="../images/00105.jpeg" alt="The Find Shortest Path action" class="calibre11"/></div><p class="calibre12"> </p><p class="calibre8">If you look carefully at the preceding screenshot, you'll see that the path taken wasn't the shortest one; the starting<a id="id680" class="calibre1"/> point was at the bottom and the ending point was near the end of a one-way bike track, so the shortest available path<a id="id681" class="calibre1"/> involved taking the road back to the start of the one-way track, and then following it through to the endpoint. This is exactly the behavior that we would expect, and it is correct given the one-way nature of the tracks.</p></div>
+<div class="book" title="Adjusting the toolbar actions"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec74" class="calibre1"/>Adjusting the toolbar actions</h1></div></div></div><p class="calibre8">Now<a id="id682" class="calibre1"/> that we've finished creating all the<a id="id683" class="calibre1"/> necessary map tools and instance variables, we can finally implement the rest of the <code class="email">adjustActions()</code> method to adjust the toolbar and menu items to reflect the current state of the system. Firstly, we want to change the final line of this method so that the <span class="strong"><strong class="calibre9">Find Shortest Path</strong></span> action is only enabled if the start and end points have both been set:</p><div class="informalexample"><pre class="programlisting">self.actionFindShortestPath.setEnabled(
+     self.curStartPt != None andself.curEndPt != None)</pre></div><p class="calibre8">In the final part of this method, we'll want to find the action that is associated with the current map tool and check that action, while unchecking all the others. To do this, add the following code to the end of your <code class="email">adjustActions()</code> method:</p><div class="informalexample"><pre class="programlisting">        curTool = self.mapCanvas.mapTool()
+
+        self.actionPan.setChecked(curTool == self.panTool)
+        self.actionEdit.setChecked(self.editing)
+        self.actionAddTrack.setChecked(
+                        curTool == self.addTrackTool)
+        self.actionEditTrack.setChecked(
+                        curTool == self.editTrackTool)
+        self.actionDeleteTrack.setChecked(
+                        curTool == self.deleteTrackTool)
+        self.actionGetInfo.setChecked(curTool == self.getInfoTool)
+        self.actionSetStartPoint.setChecked(
+                        curTool == self.selectStartPointTool)
+        self.actionSetEndPoint.setChecked(
+                        curTool == self.selectEndPointTool)
+        self.actionFindShortestPath.setChecked(False)</pre></div><div class="informalexample" title="Note"><h3 class="title2"><a id="tip21" class="calibre1"/>Tip</h3><p class="calibre8">Note that this code should go outside the <code class="email">if...else</code> statement that you've already entered in this method.</p></div><p class="calibre8">This completes <a id="id684" class="calibre1"/>our implementation of the <code class="email">adjustActions()</code> method, and in fact it also completes our implementation of the <a id="id685" class="calibre1"/>entire ForestTrails system. Congratulations! We now have a complete working mapping application, with all the features implemented and working.</p></div>
+<div class="book" title="Suggested improvements"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec75" class="calibre1"/>Suggested improvements</h1></div></div></div><p class="calibre8">Of course, no<a id="id686" class="calibre1"/> application is ever completely finished, and there are always things that could be improved upon. Here are a few ideas for things you could do to make the ForestTrails application even better:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Adding labels to the trail layer, using the <code class="email">QgsPalLabeling</code> engine to only show only the track names when the map is zoomed in sufficiently so that the names can be read.</li><li class="listitem">Changing the color used for the track based on the track type. For example, you might draw all bike trails in red, all walking trails in green, and all horse trails in yellow.</li><li class="listitem">Adding a <span class="strong"><strong class="calibre9">View</strong></span> menu where the user can select the types of tracks to be displayed. For example, the user might choose to hide all the horse trails, or show only the walking trails.</li><li class="listitem">Extending the logic of the shortest path calculation to exclude any tracks that are currently closed.</li><li class="listitem">Adding another map layer to display various obstacles on the map. An obstacle would be something that is blocking a track, and could be represented by a Point geometry. Typical <a id="id687" class="calibre1"/>obstacles might be things like fallen trees, landslides, and ongoing track maintenance. Depending on the obstacle, the trail might be closed until the obstacle is cleared.</li><li class="listitem">Using <span class="strong"><strong class="calibre9">Print Composer</strong></span> to generate a printable version of the map. This could be used to print maps based on the current state of the forest trails.</li></ul></div></div>
+<div class="book" title="Summary"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch09lvl1sec76" class="calibre1"/>Summary</h1></div></div></div><p class="calibre8">In this chapter, we finished implementing the ForestTrails mapping application. Our application now lets the user add, edit, and delete tracks; view and enter track attributes; set the start and end points; and display the shortest available path between those two points. As we implemented the application, we discovered an issue with tracks not connecting, and solved that problem by adding support for vertex snapping. We also learned how to write a custom <code class="email">QDialog</code> to let the user view and edit attributes, and how to use the QGIS Network Analysis library to calculate the shortest available path between two points.</p><p class="calibre8">While the ForestTrails application is only one example of a specialized mapping application, it provides a good example of how to implement standalone mapping applications using PyQGIS. You should be able to use much of the code for your own mapping applications, as well as build on the techniques covered in previous chapters when you write your own mapping applications using Python and QGIS.</p><p class="calibre8">I hope you've enjoyed the journey, and learned much about using QGIS as a mapping toolkit within your Python programs. Map on!</p></div></body></html>
