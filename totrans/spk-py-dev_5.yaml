@@ -1,62 +1,88 @@
 - en: Chapter 5. Streaming Live Data with Spark
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第5章：使用Spark处理实时数据
 - en: In this chapter, we will focus on live streaming data flowing into Spark and
     processing it. So far, we have discussed machine learning and data mining with
     batch processing. We are now looking at processing continuously flowing data and
     detecting facts and patterns on the fly. We are navigating from a lake to a river.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将专注于流入Spark的实时数据流以及对其进行处理。到目前为止，我们已经讨论了使用批量处理进行机器学习和数据挖掘。我们现在正在查看处理持续流动的数据并在飞行中检测事实和模式。我们正在从湖泊导航到河流。
 - en: We will first investigate the challenges arising from such a dynamic and ever
     changing environment. After laying the grounds on the prerequisite of a streaming
     application, we will investigate various implementations using live sources of
     data such as TCP sockets to the Twitter firehose and put in place a low latency,
     high throughput, and scalable data pipeline combining Spark, Kafka and Flume.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将首先调查由此动态且不断变化的环境产生的挑战。在为流式应用程序奠定基础之后，我们将调查使用实时数据源（如TCP套接字到Twitter的firehose）的各种实现，并建立一个低延迟、高吞吐量和可扩展的数据管道，结合Spark、Kafka和Flume。
 - en: 'In this chapter, we will cover the following points:'
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下内容：
 - en: Analyzing a streaming application's architectural challenges, constraints, and
     requirements
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 分析流式应用程序的架构挑战、约束和需求
 - en: Processing live data from a TCP socket with Spark Streaming
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Spark Streaming从TCP套接字处理实时数据
 - en: Connecting to the Twitter firehose directly to parse tweets in quasi real time
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 直接连接到Twitter的firehose以解析近似实时的推文
 - en: Establishing a reliable, fault tolerant, scalable, high throughput, low latency
     integrated application using Spark, Kafka, and Flume
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Spark、Kafka和Flume建立一个可靠、容错、可扩展、高吞吐量、低延迟的集成应用程序
 - en: Closing remarks on Lambda and Kappa architecture paradigms
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 关于Lambda和Kappa架构范式的结束语
 - en: Laying the foundations of streaming architecture
+  id: totrans-9
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 建立流式架构的基础
 - en: As customary, let's first go back to our original drawing of the data-intensive
     apps architecture blueprint and highlight the Spark Streaming module that will
     be the topic of interest.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 按照惯例，我们首先回到我们原始的数据密集型应用架构蓝图，并突出显示将成为关注焦点的Spark Streaming模块。
 - en: The following diagram sets the context by highlighting the Spark Streaming module
     and interactions with Spark SQL and Spark MLlib within the overall data-intensive
     apps framework.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图通过突出显示Spark Streaming模块以及与Spark SQL和Spark MLlib在整体数据密集型应用框架中的交互，为上下文设定了背景。
 - en: '![Laying the foundations of streaming architecture](img/B03968_05_01.jpg)'
+  id: totrans-12
   prefs: []
   type: TYPE_IMG
+  zh: '![建立流式架构的基础](img/B03968_05_01.jpg)'
 - en: Data flows from stock market time series, enterprise transactions, interactions,
     events, web traffic, click streams, and sensors. All events are time-stamped data
     and urgent. This is the case for fraud detection and prevention, mobile cross-sell
@@ -66,56 +92,77 @@
     In some cases, the summarized aggregated information is sufficient to be stored
     for later usage. From an architecture paradigm perspective, we are moving from
     a service-oriented architecture to an event-driven architecture.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据来自股市时间序列、企业交易、交互、事件、网络流量、点击流和传感器。所有事件都是带时间戳的数据且紧急。这是欺诈检测和预防、移动交叉销售和升级、或交通警报的情况。这些数据流需要立即处理以进行监控，例如检测异常、离群值、垃圾邮件、欺诈和入侵；同时也为提供基本统计、洞察、趋势和建议。在某些情况下，汇总的聚合信息足以存储以供以后使用。从架构范式角度来看，我们正从面向服务的架构转向事件驱动架构。
 - en: 'Two models emerge for processing streams of data:'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 出现了两种处理数据流模型：
 - en: Processing one record at a time as they come in. We do not buffer the incoming
     records in a container before processing them. This is the case of Twitter's Storm,
     Yahoo's S4, and Google's MillWheel.
+  id: totrans-15
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 按照接收到的顺序逐条处理记录。在处理之前，我们不会在容器中缓冲传入的记录。这是Twitter的Storm、Yahoo的S4和Google的MillWheel的情况。
 - en: Micro-batching or batch computations on small intervals as performed by Spark
     Streaming and Storm Trident. In this case, we buffer the incoming records in a
     container according to the time window prescribed in the micro-batching settings.
+  id: totrans-16
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 微批处理或Spark Streaming和Storm Trident执行的小间隔批计算。在这种情况下，我们根据微批处理设置中规定的时间窗口在容器中缓冲传入的记录。
 - en: Spark Streaming has often been compared against Storm. They are two different
     models of streaming data. Spark Streaming is based on micro-batching. Storm is
     based on processing records as they come in. Storm also offers a micro-batching
     option, with its Storm Trident option.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: Spark Streaming经常被与Storm进行比较。它们是两种不同的流数据处理模型。Spark Streaming基于微批处理。Storm基于处理实时到达的记录。Storm还提供了微批处理选项，即其Storm
+    Trident选项。
 - en: The driving factor in a streaming application is latency. Latency varies from
     the milliseconds range in the case of **RPC** (short for **Remote Procedure Call**)
     to several seconds or minutes for micro batching solution such as Spark Streaming.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 流式应用程序的驱动因素是延迟。延迟从**RPC**（远程过程调用简称）的毫秒级范围到微批处理解决方案如Spark Streaming的几秒或几分钟不等。
 - en: RPC allows synchronous operations between the requesting programs waiting for
     the results from the remote server's procedure. Threads allow concurrency of multiple
     RPC calls to the server.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: RPC允许请求程序在等待远程服务器程序的响应时进行同步操作。线程允许多个RPC调用到服务器的并发。
 - en: An example of software implementing a distributed RPC model is Apache Storm.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 实现分布式RPC模型的软件示例是Apache Storm。
 - en: Storm implements stateless sub millisecond latency processing of unbounded tuples
     using topologies or directed acyclic graphs combining spouts as source of data
     streams and bolts for operations such as filter, join, aggregation, and transformation.
     Storm also implements a higher level abstraction called **Trident** which, similarly
     to Spark, processes data streams in micro batches.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: Storm通过使用拓扑或有向无环图（DAG）实现无界元组的无状态亚毫秒延迟处理，其中将spouts作为数据流源，bolts用于过滤、连接、聚合和转换等操作。Storm还实现了一个更高层次的抽象，称为**Trident**，类似于Spark，它以微批量的方式处理数据流。
 - en: So, looking at the latency continuum, from sub millisecond to second, Storm
     is a good candidate. For seconds to minutes scale, Spark Streaming and Storm Trident
     are excellent fits. For several minutes onward, Spark and a NoSQL database such
     as Cassandra or HBase are adequate solutions. For ranges beyond the hour and with
     high volume of data, Hadoop is the ideal contender.
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，从亚毫秒到秒的延迟连续体来看，Storm是一个很好的候选者。对于秒到分钟的规模，Spark Streaming和Storm Trident是极佳的匹配。对于几分钟以上的情况，Spark和如Cassandra或HBase这样的NoSQL数据库是足够的解决方案。对于超过小时的范围和高数据量，Hadoop是理想的竞争者。
 - en: Although throughput is correlated to latency, it is not a simple inversely linear
     relationship. If processing a message takes 2 ms, which determines the latency,
     then one would assume the throughput is limited to 500 messages per sec. Batching
@@ -123,12 +170,17 @@
     for 8 ms more. With a latency of 10 ms, the system can buffer up to 10,000 messages.
     For a bearable increase in latency, we have substantially increased throughput.
     This is the magic of micro-batching that Spark Streaming exploits.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然吞吐量与延迟相关，但它们之间不是简单的线性关系。如果处理一个消息需要2毫秒，这决定了延迟，那么人们会假设吞吐量限制在每秒500条消息。如果我们允许消息额外缓冲8毫秒，批处理消息可以允许更高的吞吐量。在10毫秒的延迟下，系统可以缓冲高达10,000条消息。为了在可接受的延迟增加范围内，我们显著提高了吞吐量。这是Spark
+    Streaming利用的微批处理的魔力。
 - en: Spark Streaming inner working
+  id: totrans-24
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: Spark Streaming的内部工作原理
 - en: The Spark Streaming architecture leverages the Spark core architecture. It overlays
     on the **SparkContext** a **StreamingContext** as the entry point to the Stream
     functionality. The Cluster Manager will dedicate at least one worker node as Receiver,
@@ -137,62 +189,89 @@
     by default, the DStream to the cache of another worker. One receiver serves one
     input data stream. Multiple receivers improve parallelism and generate multiple
     DStreams that Spark can unite or join Resilient Distributed Datasets (RDD).
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: Spark Streaming架构利用了Spark核心架构。它通过在**SparkContext**上叠加一个**StreamingContext**作为流功能入口点。集群管理器将至少分配一个工作节点作为接收器，该节点将是一个具有*长任务*的执行器，用于处理传入的流。执行器从输入数据流创建离散流或DStream，并默认将其复制到另一个工作节点的缓存中。一个接收器服务一个输入数据流。多个接收器提高了并行性，并生成多个Spark可以联合或连接的弹性分布式数据集（RDD）。
 - en: The following diagram gives an overview of the inner working of Spark Streaming.
     The client interacts with the Spark Cluster via the cluster manager, while Spark
     Streaming has a dedicated worker with a long running task ingesting the input
     data stream and transforming it into discretized streams or DStreams. The data
     is collected, buffered and replicated by a receiver and then pushed to a stream
     of RDDs.
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图概述了Spark Streaming的内部工作原理。客户端通过集群管理器与Spark集群交互，而Spark Streaming有一个专门的工人，它有一个长期运行的任务，用于摄取输入数据流并将其转换为离散流或DStream。数据由接收器收集、缓冲和复制，然后推送到RDD流。
 - en: '![Spark Streaming inner working](img/B03968_05_02.jpg)'
+  id: totrans-27
   prefs: []
   type: TYPE_IMG
+  zh: '![Spark Streaming 内部工作原理](img/B03968_05_02.jpg)'
 - en: Spark receivers can ingest data from many sources. Core input sources range
     from TCP socket and HDFS/Amazon S3 to Akka Actors. Additional sources include
     Apache Kafka, Apache Flume, Amazon Kinesis, ZeroMQ, Twitter, and custom or user-defined
     receivers.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: Spark接收器可以从许多来源摄取数据。核心输入源包括TCP套接字和HDFS/Amazon S3到Akka Actors。其他来源包括Apache Kafka、Apache
+    Flume、Amazon Kinesis、ZeroMQ、Twitter以及自定义或用户定义的接收器。
 - en: We distinguish between reliable resources that acknowledges receipt of data
     to the source and replication for possible resend, versus unreliable receivers
     who do not acknowledge receipt of the message. Spark scales out in terms of the
     number of workers, partition and receivers.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们区分了可靠资源，这些资源确认已从源接收数据，并可能进行重发以进行复制，以及不可靠的接收器，这些接收器不确认消息的接收。Spark在工作者数量、分区和接收器方面进行扩展。
 - en: 'The following diagram gives an overview of Spark Streaming with the possible
     sources and the persistence options:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图概述了Spark Streaming，包括可能的来源和持久化选项：
 - en: '![Spark Streaming inner working](img/B03968_05_03.jpg)'
+  id: totrans-31
   prefs: []
   type: TYPE_IMG
+  zh: '![Spark Streaming 内部工作原理](img/B03968_05_03.jpg)'
 - en: Going under the hood of Spark Streaming
+  id: totrans-32
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 深入Spark Streaming内部
 - en: Spark Streaming is composed of Receivers and powered by Discretized Streams
     and Spark Connectors for persistence.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: Spark Streaming由接收器和由离散流和Spark连接器提供持久化的Discretized Streams组成。
 - en: As for Spark Core, the essential data structure is the RDD, the fundamental
     programming abstraction for Spark Streaming is the Discretized Stream or DStream.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于Spark Core来说，基本的数据结构是RDD，Spark Streaming的基本编程抽象是离散流或DStream。
 - en: The following diagram illustrates the Discretized Streams as continuous sequences
     of RDDs. The batch intervals of DStream are configurable.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图说明了离散流作为RDD的连续序列。DStream的批处理间隔是可配置的。
 - en: '![Going under the hood of Spark Streaming](img/B03968_05_04.jpg)'
+  id: totrans-36
   prefs: []
   type: TYPE_IMG
+  zh: '![深入Spark Streaming内部](img/B03968_05_04.jpg)'
 - en: DStreams snapshots the incoming data in batch intervals. Those time steps typically
     range from 500 ms to several seconds. The underlying structure of a DStream is
     an RDD.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: DStream在批处理间隔内快照传入的数据。这些时间步通常从500毫秒到几秒不等。DStream的底层结构是一个RDD。
 - en: A DStream is essentially a continuous sequence of RDDs. This is powerful as
     it allows us to leverage from Spark Streaming all the traditional functions, transformations
     and actions available in Spark Core and allows us to dialogue with Spark SQL,
@@ -201,127 +280,177 @@
     benefit from the inner RDDs lineage and fault tolerance. Additional transformation
     and output operations exist for discretized stream operations. Most generic operations
     on DStream are **transform** and **foreachRDD**.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: DStream本质上是一系列连续的RDD。这很强大，因为它允许我们利用Spark Streaming中所有传统的函数、转换和操作，并允许我们与Spark
+    SQL对话，对传入的数据流执行SQL查询，以及Spark MLlib。类似于通用和键值对RDD上的转换是适用的。DStreams受益于内部RDD的 lineage
+    和容错性。存在额外的转换和输出操作用于离散流操作。大多数DStream上的通用操作是**转换**和**foreachRDD**。
 - en: 'The following diagram gives an overview of the lifecycle of DStreams. From
     creation of the micro-batches of messages materialized to RDDs on which `transformation`
     function and actions that trigger Spark jobs are applied. Breaking down the steps
     illustrated in the diagram, we read the diagram top down:'
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图概述了DStream的生命周期。从创建消息的微批到在RDD上应用`转换`函数和触发Spark作业的操作。分解图中展示的步骤，我们自上而下地读取图：
 - en: In the Input Stream, the incoming messages are buffered in a container according
     to the time window allocated for the micro-batching.
+  id: totrans-40
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在输入流中，根据为微批处理分配的时间窗口，传入的消息被缓冲在一个容器中。
 - en: In the discretized stream step, the buffered micro-batches are transformed as
     DStream RDDs.
+  id: totrans-41
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在离散流步骤中，缓冲的微批次被转换为DStream RDDs。
 - en: The Mapped DStream step is obtained by applying a transformation function to
     the original DStream. These first three steps constitute the transformation of
     the original data received in predefined time windows. As the underlying data
     structure is the RDD, we conserve the data lineage of the transformations.
+  id: totrans-42
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 通过应用转换函数到原始DStream，获得映射DStream步骤。这三个步骤构成了在预定义时间窗口中接收的原始数据的转换。由于底层数据结构是RDD，我们保留了转换的数据血缘。
 - en: The final step is an action on the RDD. It triggers the Spark job.
+  id: totrans-43
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后一步是对RDD执行的操作。它触发Spark作业。
 - en: '![Going under the hood of Spark Streaming](img/B03968_05_05.jpg)'
+  id: totrans-44
   prefs: []
   type: TYPE_IMG
+  zh: '![Spark Streaming内部结构](img/B03968_05_05.jpg)'
 - en: Transformation can be stateless or stateful. *Stateless* means that no state
     is maintained by the program, while *stateful* means the program keeps a state,
     in which case previous transactions are remembered and may affect the current
     transaction. A stateful operation modifies or requires some state of the system,
     and a stateless operation does not.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 转换可以是无状态的或状态性的。*无状态*意味着程序不维护任何状态，而*状态性*意味着程序保持状态，在这种情况下，之前的交易会被记住并可能影响当前交易。状态性操作修改或需要系统的某些状态，而无状态操作则不需要。
 - en: Stateless transformations process each batch in a DStream at a time. Stateful
     transformations process multiple batches to obtain results. Stateful transformations
     require the checkpoint directory to be configured. Check pointing is the main
     mechanism for fault tolerance in Spark Streaming to periodically save data and
     metadata about an application.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 无状态转换一次处理DStream中的每个批次。状态性转换处理多个批次以获得结果。状态性转换需要配置检查点目录。检查点是Spark Streaming中容错的主要机制，定期保存应用程序的数据和元数据。
 - en: 'There are two types of stateful transformations for Spark Streaming: `updateStateByKey`
     and windowed transformations.'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于Spark Streaming，有两种状态转换类型：`updateStateByKey` 和窗口转换。
 - en: '`updateStateByKey` are transformations that maintain state for each key in
     a stream of Pair RDDs. It returns a new *state* DStream where the state for each
     key is updated by applying the given function on the previous state of the key
     and the new values of each key. An example would be a running count of given hashtags
     in a stream of tweets.'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: '`updateStateByKey` 是维护流中每个键的Pair RDD状态的转换。它返回一个新的*状态* DStream，其中每个键的状态通过在键的先前状态和每个键的新值上应用给定的函数来更新。一个例子是对推文流中给定标签的运行计数。'
 - en: Windowed transformations are carried over multiple batches in a sliding window.
     A window has a defined length or duration specified in time units. It must be
     a multiple of a DStream batch interval. It defines how many batches are included
     in a windowed transformation.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 窗口转换在滑动窗口中跨越多个批次进行。窗口具有一个定义的长度或持续时间，以时间单位指定。它必须是DStream批次间隔的倍数。它定义了窗口转换中包含多少个批次。
 - en: A window has a sliding interval or sliding duration specified in time units.
     It must be a multiple of a DStream batch interval. It defines how many batches
     to slide a window or how frequently to compute a windowed transformation.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 窗口具有一个以时间单位指定的滑动间隔或滑动持续时间。它必须是DStream批次间隔的倍数。它定义了滑动窗口的滑动次数或窗口转换计算的频率。
 - en: 'The following schema depicts the windowing operation on DStreams to derive
     window DStreams with a given length and sliding interval:'
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面的模式图描述了在DStreams上执行窗口操作，以获得具有给定长度和滑动间隔的窗口DStreams：
 - en: '![Going under the hood of Spark Streaming](img/B03968_05_06.jpg)'
+  id: totrans-52
   prefs: []
   type: TYPE_IMG
+  zh: '![Spark Streaming内部结构](img/B03968_05_06.jpg)'
 - en: A sample function is `countByWindow` (`windowLength`, `slideInterval`). It returns
     a new DStream in which each RDD has a single element generated by counting the
     number of elements in a sliding window over this DStream. An illustration in this
     case would be a running count of given hashtags in a stream of tweets every 60
     seconds. The window time frame is specified.
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个示例函数是 `countByWindow` (`windowLength`, `slideInterval`)。它返回一个新的DStream，其中每个RDD通过在此DStream上对滑动窗口中的元素数量进行计数来生成一个单一元素。在这种情况下，一个例子是每60秒对推文流中给定标签的运行计数。窗口时间范围被指定。
 - en: Minute scale window length is reasonable. Hour scale window length is not recommended
     as it is compute and memory intensive. It would be more convenient to aggregate
     the data in a database such as Cassandra or HBase.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 分分钟级的窗口长度是合理的。小时级的窗口长度不建议使用，因为它计算和内存密集。在Cassandra或HBase等数据库中聚合数据会更方便。
 - en: Windowed transformations compute results based on window length and window slide
     interval. Spark performance is primarily affected by on window length, window
     slide interval, and persistence.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 窗口转换根据窗口长度和窗口滑动间隔计算结果。Spark 的性能主要受窗口长度、窗口滑动间隔和持久性的影响。
 - en: Building in fault tolerance
+  id: totrans-56
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 构建容错性
 - en: Real-time stream processing systems must be operational 24/7\. They need to
     be resilient to all sorts of failures in the system. Spark and its RDD abstraction
     are designed to seamlessly handle failures of any worker nodes in the cluster.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 实时流处理系统必须全天候运行。它们需要能够抵御系统中的各种故障。Spark 及其 RDD 抽象设计用于无缝处理集群中任何工作节点的故障。
 - en: Main Spark Streaming fault tolerance mechanisms are check pointing, automatic
     driver restart, and automatic failover. Spark enables recovery from driver failure
     using check pointing, which preserves the application state.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 主 Spark Streaming 容错机制包括检查点、自动驱动程序重启和自动故障转移。Spark 通过检查点启用从驱动程序故障的恢复，从而保留应用程序状态。
 - en: Write ahead logs, reliable receivers, and file streams guarantees zero data
     loss as of Spark Version 1.2\. Write ahead logs represent a fault tolerant storage
     for received data.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 写入前日志、可靠的接收器和文件流确保自 Spark 版本 1.2 起零数据丢失。写入前日志代表接收数据的容错存储。
 - en: Failures require recomputing results. DStream operations have exactly-one semantics.
     Transformations can be recomputed multiple times but will yield the same result.
     DStream output operations have at least once semantics. Output operations may
     be executed multiple times.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 故障需要重新计算结果。DStream 操作具有精确一次语义。转换可以多次重新计算，但将产生相同的结果。DStream 输出操作至少一次语义。输出操作可能被多次执行。
 - en: Processing live data with TCP sockets
+  id: totrans-61
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用 TCP 套接字处理实时数据
 - en: As a stepping stone to the overall understanding of streaming operations, we
     will first experiment with TCP socket. TCP socket establishes two-way communication
     between client and server, and it can exchange data through the established connection.
@@ -332,172 +461,257 @@
     standardized and implemented in HTML5, are moving beyond web browsers and are
     becoming a cross-platform standard for real-time communication between client
     and server.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 作为对流操作整体理解的垫脚石，我们首先将实验 TCP 套接字。TCP 套接字在客户端和服务器之间建立双向通信，并且可以通过建立的连接交换数据。WebSocket
+    连接是长连接，与典型的 HTTP 连接不同。HTTP 不旨在从服务器保持一个打开的连接以连续地向网络浏览器推送数据。因此，大多数网络应用都通过频繁的 **异步
+    JavaScript** (**AJAX**) 和 XML 请求进行长轮询。WebSocket，标准化并在 HTML5 中实现，正超越网络浏览器，成为客户端和服务器之间实时通信的跨平台标准。
 - en: Setting up TCP sockets
+  id: totrans-63
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 设置 TCP 套接字
 - en: 'We create a TCP Socket Server by running `netcat`, a small utility found in
     most Linux systems, as a data server with the command `> nc -lk 9999`, where `9999`
     is the port where we are sending data:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们通过运行 `netcat`，一个在大多数 Linux 系统中找到的小工具，作为数据服务器，使用命令 `> nc -lk 9999` 来创建一个 TCP
+    Socket 服务器，其中 `9999` 是我们发送数据的端口：
 - en: '[PRE0]'
+  id: totrans-65
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Once netcat is running, we will open a second console with our Spark Streaming
     client to receive the data and process. As soon as the Spark Streaming client
     console is listening, we start typing the words to be processed, that is, `hello
     world`.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦 netcat 运行，我们将打开第二个控制台，使用我们的 Spark Streaming 客户端接收数据并处理。一旦 Spark Streaming
+    客户端控制台开始监听，我们就开始输入要处理的内容，即 `hello world`。
 - en: Processing live data
+  id: totrans-67
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 处理实时数据
 - en: 'We will be using the example program provided in the Spark bundle for Spark
     Streaming called `network_wordcount.py`. It can be found on the GitHub repository
     under [https://github.com/apache/spark/blob/master/examples/src/main/python/streaming/network_wordcount.py](https://github.com/apache/spark/blob/master/examples/src/main/python/streaming/network_wordcount.py).
     The code is as follows:'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用 Spark Streaming 中的示例程序 `network_wordcount.py`，该程序包含在 Spark 包中。它可以在 GitHub
+    仓库 [https://github.com/apache/spark/blob/master/examples/src/main/python/streaming/network_wordcount.py](https://github.com/apache/spark/blob/master/examples/src/main/python/streaming/network_wordcount.py)
+    中找到。代码如下：
 - en: '[PRE1]'
+  id: totrans-69
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Here, we explain the steps of the program:'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们解释程序的步骤：
 - en: 'The code first initializes a Spark Streaming Context with the command:'
+  id: totrans-71
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 代码首先使用以下命令初始化 Spark Streaming Context：
 - en: '[PRE2]'
+  id: totrans-72
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Next, the streaming computation is set up.
+  id: totrans-73
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，设置流计算。
 - en: 'One or more DStream objects that receive data are defined to connect to localhost
     or `127.0.0.1` on `port 9999`:'
+  id: totrans-74
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义了一个或多个接收数据的DStream对象，以连接到`localhost`或`127.0.0.1`上的`port 9999`：
 - en: '[PRE3]'
+  id: totrans-75
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'The DStream computation is defined: transformations and output operations:'
+  id: totrans-76
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: DStream计算被定义：转换和输出操作：
 - en: '[PRE4]'
+  id: totrans-77
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Computation is started:'
+  id: totrans-78
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 计算已经开始：
 - en: '[PRE5]'
+  id: totrans-79
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'Program termination is pending manual or error processing completion:'
+  id: totrans-80
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 程序终止等待手动或错误处理完成：
 - en: '[PRE6]'
+  id: totrans-81
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Manual completion is an option when a completion condition is known:'
+  id: totrans-82
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 当已知完成条件时，手动完成是一个选项：
 - en: '[PRE7]'
+  id: totrans-83
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: We can monitor the Spark Streaming application by visiting the Spark monitoring
     home page at `localhost:4040`.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以通过访问`localhost:4040`上的Spark监控主页来监控Spark Streaming应用程序。
 - en: 'Here''s the result of running the program and feeding the words on the `netcat`
     4server console:'
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是运行程序并从`netcat` 4服务器控制台输入单词的结果：
 - en: '[PRE8]'
+  id: totrans-86
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'Run the Spark Streaming `network_count` program by connecting to the socket
     localhost on `port 9999`:'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过连接到`port 9999`上的本地socket来运行Spark Streaming的`network_count`程序：
 - en: '[PRE9]'
+  id: totrans-88
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: Thus, we have established connection through the socket on `port 9999`, streamed
     the data sent by the `netcat` server, and performed a word count on the messages
     sent.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，我们已经通过`port 9999`上的socket建立了连接，流式传输了`netcat`服务器发送的数据，并对发送的消息进行了词频统计。
 - en: Manipulating Twitter data in real time
+  id: totrans-90
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 实时操作Twitter数据
 - en: Twitter offers two APIs. One search API that essentially allows us to retrieve
     past tweets based on search terms. This is how we have been collecting our data
     from Twitter in the previous chapters of the book. Interestingly, for our current
     purpose, Twitter offers a live streaming API which allows to ingest tweets as
     they are emitted in the blogosphere.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: Twitter提供了两个API。一个是搜索API，它本质上允许我们根据搜索词检索过去的推文。这就是我们在本书的前几章中从Twitter收集数据的方式。有趣的是，为了我们当前的目的，Twitter提供了一个实时流API，它允许我们实时获取博客圈中发出的推文。
 - en: Processing Tweets in real time from the Twitter firehose
+  id: totrans-92
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实时从Twitter的firehose处理推文
 - en: 'The following program connects to the Twitter firehose and processes the incoming
     tweets to exclude deleted or invalid tweets and parses on the fly only the relevant
     ones to extract `screen name`, the actual tweet, or `tweet text`, `retweet` count,
     `geo-location` information. The processed tweets are gathered into an RDD Queue
     by Spark Streaming and then displayed on the console at a one-second interval:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下程序连接到Twitter的firehose，处理传入的推文以排除已删除或无效的推文，并即时解析相关的推文以提取`screen name`、实际的推文或`tweet
+    text`、`retweet`计数、`geo-location`信息。处理后的推文被Spark Streaming收集到RDD队列中，然后以一秒的间隔在控制台上显示：
 - en: '[PRE10]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'When we run this program, it delivers the following output:'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们运行这个程序时，它会产生以下输出：
 - en: '[PRE11]'
+  id: totrans-96
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: So, we got an example of streaming tweets with Spark and processing them on
     the fly.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，我们得到了一个使用Spark进行流推文并即时处理它们的例子。
 - en: Building a reliable and scalable streaming app
+  id: totrans-98
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 构建一个可靠且可扩展的流应用程序
 - en: Ingesting data is the process of acquiring data from various sources and storing
     it for processing immediately or at a later stage. Data consuming systems are
     dispersed and can be physically and architecturally far from the sources. Data
     ingestion is often implemented manually with scripts and rudimentary automation.
     It actually calls for higher level frameworks like Flume and Kafka.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据摄取是获取来自各种来源的数据并将其存储以供立即处理或稍后阶段处理的过程。数据消费系统分散，可能在物理和架构上远离来源。数据摄取通常通过脚本和基本的自动化手动实现。它实际上需要更高级别的框架，如Flume和Kafka。
 - en: The challenges of data ingestion arise from the fact that the sources are physically
     spread out and are transient which makes the integration brittle. Data production
     is continuous for weather, traffic, social media, network activity, shop floor
     sensors, security, and surveillance. Ever increasing data volumes and rates coupled
     with ever changing data structure and semantics makes data ingestion ad hoc and
     error prone.
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 数据摄取的挑战源于来源在物理上分散且是瞬时的，这使得集成脆弱。数据生产对于天气、交通、社交媒体、网络活动、生产线传感器、安全和监控是持续的。数据量和速率的不断增长，以及数据结构和语义的不断变化，使得数据摄取变得临时和容易出错。
 - en: The aim is to become more agile, reliable, and scalable. Agility, reliability,
     and scalability of the data ingestion determine the overall health of the pipeline.
     Agility means integrating new sources as they arise and incorporating changes
@@ -505,34 +719,43 @@
     to protect the infrastructure against data loss and downstream applications from
     silent data corruption at ingress. Scalability avoids ingest bottlenecks while
     keeping cost tractable.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
 - en: '| Ingest Mode | Description | Example |'
+  id: totrans-102
   prefs: []
   type: TYPE_TB
 - en: '| --- | --- | --- |'
+  id: totrans-103
   prefs: []
   type: TYPE_TB
 - en: '| Manual or Scripted | File copy using command line interface or GUI interface
     | HDFS Client, Cloudera Hue |'
+  id: totrans-104
   prefs: []
   type: TYPE_TB
 - en: '| Batch Data Transport | Bulk data transport using tools | DistCp, Sqoop |'
+  id: totrans-105
   prefs: []
   type: TYPE_TB
 - en: '| Micro Batch | Transport of small batches of data | Sqoop, Sqoop2Storm |'
+  id: totrans-106
   prefs: []
   type: TYPE_TB
 - en: '| Pipelining | Flow like transport of event streams | Flume Scribe |'
+  id: totrans-107
   prefs: []
   type: TYPE_TB
 - en: '| Message Queue | Publish Subscribe message bus of events | Kafka, Kinesis
     |'
+  id: totrans-108
   prefs: []
   type: TYPE_TB
 - en: In order to enable an event-driven business that is able to ingest multiple
     streams of data, process it in flight, and make sense of it all to get to rapid
     decisions, the key driver is the Unified Log.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
 - en: A Unified Log is a centralized enterprise structured log available for real-time
@@ -540,33 +763,41 @@
     Records are numbered beginning with zero in the order that they are written. It
     is also known as a commit log or journal. The concept of the *Unified Log* is
     the central tenet of the Kappa architecture.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
 - en: 'The properties of the Unified Log are as follows:'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
 - en: '**Unified**: There is a single deployment for the entire organization'
+  id: totrans-112
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '**Append only**: Events are immutable and are appended'
+  id: totrans-113
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '**Ordered**: Each event has a unique offset within a shard'
+  id: totrans-114
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '**Distributed**: For fault tolerance purpose, the Unified Log is distributed
     redundantly on a cluster of computers'
+  id: totrans-115
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: '**Fast**: The systems ingests thousands of messages per second'
+  id: totrans-116
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Setting up Kafka
+  id: totrans-117
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -574,320 +805,468 @@
     of upstream emission of data, we need to decouple the providers of data from the
     receivers or consumers of data. As they are living in two different worlds with
     different cycles and constraints, Kafka decouples the data pipelines.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
 - en: Apache Kafka is a distributed publish subscribe messaging system rethought as
     a distributed commit log. The messages are stored by topic.
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
 - en: 'Apache Kafka has the following properties. It supports:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
 - en: High throughput for high volume of events feeds
+  id: totrans-121
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Real-time processing of new and derived feeds
+  id: totrans-122
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Large data backlogs and persistence for offline consumption
+  id: totrans-123
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Low latency as enterprise wide messaging system
+  id: totrans-124
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Fault tolerance thanks to its distributed nature
+  id: totrans-125
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Messages are stored in partition with a unique sequential ID called `offset`.
     Consumers track their pointers via tuple of (`offset`, `partition`, `topic`).
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
 - en: Let's dive deeper in the anatomy of Kafka.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
 - en: 'Kafka has essentially three components: *producers*, *consumers* and *brokers*.
     Producers push and write data to brokers. Consumers pull and read data from brokers.
     Brokers do not push messages to consumers. Consumers pull message from brokers.
     The setup is distributed and coordinated by Apache Zookeeper.'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: Kafka 实质上有三个组件：*生产者*、*消费者*和*代理*。生产者将数据推送到代理并写入。消费者从代理中拉取并读取数据。代理不会将消息推送到消费者。消费者从代理中拉取消息。该设置由
+    Apache Zookeeper 分布式和协调。
 - en: The brokers manage and store the data in topics. Topics are split in replicated
     partitions. The data is persisted in the broker, but not removed upon consumption,
     but until retention period. If a consumer fails, it can always go back to the
     broker to fetch the data.
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: 代理管理并存储主题中的数据。主题分为复制的分区。数据在代理中持久化，但在消费后不会删除，直到保留期。如果消费者失败，它总是可以回到代理去获取数据。
 - en: Kafka requires Apache ZooKeeper. ZooKeeper is a high-performance coordination
     service for distributed applications. It centrally manages configuration, registry
     or naming service, group membership, lock, and synchronization for coordination
     between servers. It provides a hierarchical namespace with metadata, monitoring
     statistics, and state of the cluster. ZooKeeper can introduce brokers and consumers
     on the fly and then rebalances the cluster.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: Kafka 需要 Apache ZooKeeper。ZooKeeper 是一个高性能的分布式应用程序协调服务。它集中管理配置、注册或命名服务、组成员资格、锁和同步，以协调服务器之间的协调。它提供了一个具有元数据、监控统计信息和集群状态的分层命名空间。ZooKeeper
+    可以动态引入代理和消费者，然后重新平衡集群。
 - en: Kafka producers do not need ZooKeeper. Kafka brokers use ZooKeeper to provide
     general state information as well elect leader in case of failure. Kafka consumers
     use ZooKeeper to track message offset. Newer versions of Kafka will save the consumers
     to go through ZooKeeper and can retrieve the Kafka special topics information.
     Kafka provides automatic load balancing for producers.
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: Kafka 生产者不需要 ZooKeeper。Kafka 代理使用 ZooKeeper 提供通用状态信息，并在发生故障时选举领导者。Kafka 消费者使用
+    ZooKeeper 跟踪消息偏移量。Kafka 的较新版本将保存消费者不通过 ZooKeeper，并可以检索 Kafka 特殊主题信息。Kafka 为生产者提供自动负载均衡。
 - en: 'The following diagram gives an overview of the Kafka setup:'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下图表概述了 Kafka 的设置：
 - en: '![Setting up Kafka](img/B03968_05_07.jpg)'
+  id: totrans-133
   prefs: []
   type: TYPE_IMG
+  zh: '![设置 Kafka](img/B03968_05_07.jpg)'
 - en: Installing and testing Kafka
+  id: totrans-134
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 安装和测试 Kafka
 - en: 'We will download the Apache Kafka binaries from the dedicated web page at [http://kafka.apache.org/downloads.html](http://kafka.apache.org/downloads.html)
     and install the software in our machine using the following steps:'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从[http://kafka.apache.org/downloads.html](http://kafka.apache.org/downloads.html)的专用网页下载
+    Apache Kafka 二进制文件，并按照以下步骤在我们的机器上安装软件：
 - en: Download the code.
+  id: totrans-136
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 下载代码。
 - en: 'Download the 0.8.2.0 release and `un-tar` it:'
+  id: totrans-137
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 下载 0.8.2.0 版本并 `un-tar` 它：
 - en: '[PRE12]'
+  id: totrans-138
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Start `zooeeper`. Kafka uses ZooKeeper so we need to first start a ZooKeeper
     server. We will use the convenience script packaged with Kafka to get a single-node
     ZooKeeper instance.
+  id: totrans-139
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 启动 `zooeper`。Kafka 使用 ZooKeeper，因此我们需要首先启动一个 ZooKeeper 服务器。我们将使用 Kafka 包含的便利脚本来获取单个节点的
+    ZooKeeper 实例。
 - en: '[PRE13]'
+  id: totrans-140
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'Now launch the Kafka server:'
+  id: totrans-141
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 现在启动 Kafka 服务器：
 - en: '[PRE14]'
+  id: totrans-142
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'Create a topic. Let''s create a topic named test with a single partition and
     only one replica:'
+  id: totrans-143
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个主题。让我们创建一个名为 test 的主题，它只有一个分区和一个副本：
 - en: '[PRE15]'
+  id: totrans-144
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'We can now see that topic if we run the `list` topic command:'
+  id: totrans-145
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 如果我们运行 `list` 主题命令，现在我们可以看到该主题：
 - en: '[PRE16]'
+  id: totrans-146
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'Check the Kafka installation by creating a producer and consumer. We first
     launch a `producer` and type a message in the console:'
+  id: totrans-147
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 通过创建生产者和消费者来检查 Kafka 的安装。我们首先启动一个 `producer` 并在控制台输入一条消息：
 - en: '[PRE17]'
+  id: totrans-148
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'We then launch a consumer to check that we receive the message:'
+  id: totrans-149
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后我们启动一个消费者来检查我们是否接收到了消息：
 - en: '[PRE18]'
+  id: totrans-150
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'The messages were appropriately received by the consumer:'
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 消费者适当地接收了消息：
 - en: 'Check Kafka and Spark Streaming consumer. We will be using the Spark Streaming
     Kafka word count example provided in the Spark bundle. A word of caution: we have
     to bind the Kafka packages, `--packages org.apache.spark:spark-streaming-kafka_2.10:1.5.0`,
     when we submit the Spark job. The command is as follows:'
+  id: totrans-152
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 检查 Kafka 和 Spark Streaming 消费者。我们将使用 Spark 包中提供的 Spark Streaming Kafka 单词计数示例。提醒一下：当我们提交
+    Spark 作业时，我们必须绑定 Kafka 包，`--packages org.apache.spark:spark-streaming-kafka_2.10:1.5.0`。命令如下：
 - en: '[PRE19]'
+  id: totrans-153
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: 'When we launch the Spark Streaming word count program with Kafka, we get the
     following output:'
+  id: totrans-154
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 当我们使用 Kafka 启动 Spark Streaming 单词计数程序时，我们得到以下输出：
 - en: '[PRE20]'
+  id: totrans-155
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'Install the Kafka Python driver in order to be able to programmatically develop
     Producers and Consumers and interact with Kafka and Spark using Python. We will
     use the road-tested library from David Arthur, aka, Mumrah on GitHub ([https://github.com/mumrah](https://github.com/mumrah)).
     We can pip install it as follows:'
+  id: totrans-156
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 为了能够以编程方式开发生产者和消费者，并与 Kafka 和 Spark 交互，请安装 Kafka Python 驱动程序。我们将使用 David Arthur（GitHub
+    上的 Mumrah）提供的经过实战检验的库。我们可以按照以下方式使用 pip 安装它：
 - en: '[PRE21]'
+  id: totrans-157
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: Developing producers
+  id: totrans-158
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 开发生产者
 - en: 'The following program creates a Simple Kafka Producer that will emit the message
     *this is a message sent from the Kafka producer:* five times, followed by a time
     stamp every second:'
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下程序创建了一个简单的 Kafka 生产者，该生产者将发送消息 *this is a message sent from the Kafka producer:*
+    五次，然后每秒跟一个时间戳：
 - en: '[PRE22]'
+  id: totrans-160
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'When we run this program, the following output is generated:'
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们运行此程序时，将生成以下输出：
 - en: '[PRE23]'
+  id: totrans-162
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: It tells us there were no errors and gives the offset of the messages given
     by the Kafka broker.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 它告诉我们没有错误，并给出了 Kafka 代理提供的消息偏移量。
 - en: Developing consumers
+  id: totrans-164
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 开发消费者
 - en: 'To fetch the messages from the Kafka brokers, we develop a Kafka consumer:'
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了从 Kafka 代理中获取消息，我们开发了一个 Kafka 消费者：
 - en: '[PRE24]'
+  id: totrans-166
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: 'When we run this program, we effectively confirm that the consumer received
     all the messages:'
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们运行此程序时，我们实际上确认了消费者接收到了所有消息：
 - en: '[PRE25]'
+  id: totrans-168
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: Developing a Spark Streaming consumer for Kafka
+  id: totrans-169
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 开发 Kafka Spark Streaming 消费者
 - en: 'Based on the example code provided in the Spark Streaming bundle, we will create
     a Spark Streaming consumer for Kafka and perform a word count on the messages
     stored with the brokers:'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据 Spark Streaming 包中提供的示例代码，我们将创建一个 Kafka 消费者用于 Spark Streaming 并对存储在代理中的消息进行词频统计：
 - en: '[PRE26]'
+  id: totrans-171
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'Run this program with the following Spark submit command:'
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用以下 Spark 提交命令运行此程序：
 - en: '[PRE27]'
+  id: totrans-173
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: 'We get the following output:'
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们得到以下输出：
 - en: '[PRE28]'
+  id: totrans-175
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: Exploring flume
+  id: totrans-176
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 探索 Flume
 - en: Flume is a continuous ingestion system. It was originally designed to be a log
     aggregation system, but it evolved to handle any type of streaming event data.
+  id: totrans-177
   prefs: []
   type: TYPE_NORMAL
+  zh: Flume 是一个持续摄取系统。它最初被设计为一个日志聚合系统，但它已经发展成可以处理任何类型的流式事件数据。
 - en: Flume is a distributed, reliable, scalable, and available pipeline system for
     efficient collection, aggregation, and transport of large volumes of data. It
     has built-in support for contextual routing, filtering replication, and multiplexing.
     It is robust and fault tolerant, with tunable reliability mechanisms and many
     failover and recovery mechanisms. It uses a simple extensible data model that
     allows for real time analytic application.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: Flume 是一个分布式、可靠、可扩展和可用的管道系统，用于高效地收集、聚合和传输大量数据。它内置了对上下文路由、过滤复制和复用的支持。它具有鲁棒性和容错性，具有可调的可靠性机制和许多故障转移和恢复机制。它使用一个简单的可扩展数据模型，允许实时分析应用。
 - en: 'Flume offers the following:'
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: Flume 提供以下功能：
 - en: Guaranteed delivery semantics
+  id: totrans-180
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 保证交付语义
 - en: Low latency reliable data transfer
+  id: totrans-181
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 低延迟可靠的数据传输
 - en: Declarative configuration with no coding required
+  id: totrans-182
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 无需编码的声明性配置
 - en: Extendable and customizable settings
+  id: totrans-183
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 可扩展和可定制的设置
 - en: Integration with most commonly used end-points
+  id: totrans-184
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 与大多数常用端点的集成
 - en: 'The anatomy of Flume contains the following elements:'
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: Flume 的结构包含以下元素：
 - en: '**Event**: An event is the fundamental unit of data that is transported by
     Flume from source to destination. It is like a message with a byte array payload
     opaque to Flume and optional headers used for contextual routing.'
+  id: totrans-186
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Event**：事件是 Flume 从源传输到目的地的基本数据单元。它就像一个带有字节序列有效载荷的消息，对 Flume 来说是不可见的，并且可选的头部用于上下文路由。'
 - en: '**Client**: A client produces and transmits events. A client decouples Flume
     from the data consumers. It is an entity that generates events and sends them
     to one or more agents. Custom client or Flume log4J append program or embedded
     application agent can be client.'
+  id: totrans-187
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Client**：客户端产生并传输事件。客户端将 Flume 与数据消费者解耦。它是一个生成事件并将它们发送到一个或多个代理的实体。自定义客户端或
+    Flume log4J 追加程序或嵌入式应用程序代理可以是客户端。'
 - en: '**Agent**: An agent is a container hosting sources, channels, sinks, and other
     elements that enable the transportation of events from one place to the other.
     It provides configuration, life cycle management and monitoring for hosted components.
     An agent is a physical Java virtual machine running Flume.'
+  id: totrans-188
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Agent**：代理是一个容器，它托管源、通道、接收器和其它元素，这些元素能够使事件从一个地方传输到另一个地方。它为托管组件提供配置、生命周期管理和监控。代理是一个运行
+    Flume 的物理 Java 虚拟机。'
 - en: '**Source**: Source is the entity through which Flume receives events. Sources
     require at least one channel to function in order to either actively poll data
     or passively wait for data to be delivered to them. A variety of sources allow
     data to be collected, such as log4j logs and syslogs.'
+  id: totrans-189
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Source**: Source 是 Flume 接收事件的实体。为了主动轮询数据或被动等待数据被传递给它们，源至少需要一个通道。各种源允许收集数据，例如
+    log4j 日志和 syslogs。'
 - en: '**Sink**: Sink is the entity that drains data from the channel and delivers
     it to the next destination. A variety of sinks allow data to be streamed to a
     range of destinations. Sinks support serialization to user''s format. One example
     is the HDFS sink that writes events to HDFS.'
+  id: totrans-190
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Sink**: Sink 是从通道中提取数据并将其传递到下一个目的地的实体。各种 sink 允许数据流到各种目的地。Sinks 支持将数据序列化到用户格式。一个例子是
+    HDFS sink，它将事件写入 HDFS。'
 - en: '**Channel**: Channel is the conduit between the source and the sink that buffers
     incoming events until drained by sinks. Sources feed events into the channel and
     the sinks drain the channel. Channels decouple the impedance of upstream and downstream
@@ -897,90 +1276,133 @@
     of persistence: either memory channel, which is volatile if the JVM crashes, or
     File channel backed by Write Ahead Log that stores the information to disk. Channels
     are fully transactional.'
+  id: totrans-191
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**Channel**: Channel 是源和 sink 之间的通道，它缓冲传入的事件，直到被 sink 清空。源将事件喂入通道，sink 清空通道。通道解耦了上游和下游系统的阻抗。上游的数据突发通过通道得到抑制。下游的故障被通道透明地吸收。根据这些事件调整通道容量是实现这些关键的关键。通道提供两种持久化级别：一种是内存通道，如果
+    JVM 崩溃则不可靠；另一种是支持写入前日志的文件通道，它将信息存储到磁盘上。通道是完全事务性的。'
 - en: 'Let''s illustrate all these concepts:'
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们通过以下示例说明所有这些概念：
 - en: '![Exploring flume](img/B03968_05_08.jpg)'
+  id: totrans-193
   prefs: []
   type: TYPE_IMG
+  zh: '![探索 Flume](img/B03968_05_08.jpg)'
 - en: Developing data pipelines with Flume, Kafka, and Spark
+  id: totrans-194
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用 Flume、Kafka 和 Spark 开发数据管道
 - en: Building resilient data pipeline leverages the learnings from the previous sections.
     We are plumbing together data ingestion and transport with Flume, data brokerage
     with a reliable and sophisticated publish and subscribe messaging system such
     as Kafka, and finally process computation on the fly using Spark Streaming.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 构建弹性的数据管道利用了前几节中学到的知识。我们使用 Flume 进行数据摄取和传输，使用可靠且复杂的发布/订阅消息系统（如 Kafka）进行数据经纪，最后使用
+    Spark Streaming 在线处理计算。
 - en: 'The following diagram illustrates the composition of streaming data pipelines
     as sequence of *connect*, *collect*, *conduct*, *compose*, *consume*, *consign*,
     and *control* activities. These activities are configurable based on the use case:'
+  id: totrans-196
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下图示说明了流式数据管道的组成，即一系列 *connect*、*collect*、*conduct*、*compose*、*consume*、*consign*
+    和 *control* 活动。这些活动可以根据用例进行配置：
 - en: Connect establishes the binding with the streaming API.
+  id: totrans-197
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Connect 建立与流式 API 的绑定。
 - en: Collect creates collection threads.
+  id: totrans-198
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Collect 创建收集线程。
 - en: Conduct decouples the data producers from the consumers by creating a buffer
     queue or publish-subscribe mechanism.
+  id: totrans-199
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Conduct 通过创建缓冲队列或发布/订阅机制将数据生产者与消费者解耦。
 - en: Compose is focused on processing the data.
+  id: totrans-200
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Compose 专注于数据处理。
 - en: Consume provisions the processed data for the consuming systems. Consign takes
     care of the data persistence.
+  id: totrans-201
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Consume 为消费系统提供处理后的数据。Consign 负责数据持久化。
 - en: Control caters to governance and monitoring of the systems, data, and applications.
+  id: totrans-202
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Control 负责系统、数据和应用的治理和监控。
 - en: '![Developing data pipelines with Flume, Kafka, and Spark](img/B03968_05_09.jpg)'
+  id: totrans-203
   prefs: []
   type: TYPE_IMG
+  zh: '![使用 Flume、Kafka 和 Spark 开发数据管道](img/B03968_05_09.jpg)'
 - en: 'The following diagram illustrates the concepts of the streaming data pipelines
     with its key components: Spark Streaming, Kafka, Flume, and low latency databases.
     In the consuming or controlling applications, we are monitoring our systems in
     real time (depicted by a monitor) or sending real-time alerts (depicted by red
     lights) in case certain thresholds are crossed.'
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下图示说明了流式数据管道的概念及其关键组件：Spark Streaming、Kafka、Flume 和低延迟数据库。在消费或控制应用程序中，我们实时监控我们的系统（由监控器表示）或发送实时警报（由红灯表示），以防某些阈值被跨越。
 - en: '![Developing data pipelines with Flume, Kafka, and Spark](img/B03968_05_10.jpg)'
+  id: totrans-205
   prefs: []
   type: TYPE_IMG
+  zh: '![使用 Flume、Kafka 和 Spark 开发数据管道](img/B03968_05_10.jpg)'
 - en: The following diagram illustrates Spark's unique ability to process in a single
     platform data in motion and data at rest while seamlessly interfacing with multiple
     persistence data stores as per the use case requirement.
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下图表展示了Spark在单一平台上处理动态数据和静态数据的能力，同时根据用例需求无缝地与多个持久化数据存储进行接口交互。
 - en: This diagram brings in one unified whole all the concepts discussed up to now.
     The top part describes the streaming processing pipeline. The bottom part describes
     the batch processing pipeline. They both share a common persistence layer in the
     middle of the diagram depicting the various modes of persistence and serialization.
+  id: totrans-207
   prefs: []
   type: TYPE_NORMAL
+  zh: 此图表将到目前为止讨论的所有概念整合为一个统一整体。图表的上半部分描述了流处理管道。下半部分描述了批处理管道。它们在图表中间共享一个共同的持久化层，展示了各种持久化和序列化的模式。
 - en: '![Developing data pipelines with Flume, Kafka, and Spark](img/B03968_05_11.jpg)'
+  id: totrans-208
   prefs: []
   type: TYPE_IMG
+  zh: '![使用Flume、Kafka和Spark开发数据管道](img/B03968_05_11.jpg)'
 - en: Closing remarks on the Lambda and Kappa architecture
+  id: totrans-209
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 对Lambda和Kappa架构的总结评论
 - en: 'Two architecture paradigms are currently in vogue: the Lambda and Kappa architectures.'
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 目前有两种架构范式流行：Lambda和Kappa架构。
 - en: Lambda is the brainchild of the Storm creator and main committer, Nathan Marz.
     It essentially advocates building a functional architecture on all data. The architecture
     has two branches. The first is a batch arm envisioned to be powered by Hadoop,
@@ -988,87 +1410,123 @@
     ready for consumption. The real-time arm is envisioned to be powered by Storm,
     and it processes incrementally streaming data, derives insights on the fly, and
     feeds aggregated information back to the batch storage.
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: Lambda架构是Storm的创造者和主要贡献者Nathan Marz的杰作。它本质上主张在所有数据上构建功能架构。该架构有两个分支。第一个是批处理分支，设想由Hadoop提供动力，用于预处理历史、高延迟、高吞吐量的数据，并使其准备好消费。实时分支设想由Storm提供动力，它处理增量流数据，实时提取洞察，并将汇总信息反馈到批存储。
 - en: Kappa is the brainchild of one the main committer of Kafka, Jay Kreps, and his
     colleagues at Confluent (previously at LinkedIn). It is advocating a full streaming
     pipeline, effectively implementing, at the enterprise level, the unified log enounced
     in the previous pages.
+  id: totrans-212
   prefs: []
   type: TYPE_NORMAL
+  zh: Kappa架构是Kafka的主要贡献者Jay Kreps及其在Confluent（之前在LinkedIn）的同事的杰作。它倡导全流式管道，在企业级别有效地实现了之前页面中宣布的统一日志。
 - en: Understanding Lambda architecture
+  id: totrans-213
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 理解Lambda架构
 - en: 'Lambda architecture combines batch and streaming data to provide a unified
     query mechanism on all available data. Lambda architecture envisions three layers:
     a batch layer where precomputed information are stored, a speed layer where real-time
     incremental information is processed as data streams, and finally the serving
     layer that merges batch and real-time views for ad hoc queries. The following
     diagram gives an overview of the Lambda architecture:'
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: Lambda架构结合批处理和流数据，为所有可用数据提供统一的查询机制。Lambda架构设想了三层：一个存储预计算信息的批处理层，一个处理实时增量信息的速度层，以及最终合并批处理和实时视图以进行即席查询的服务层。以下图表给出了Lambda架构的概述：
 - en: '![Understanding Lambda architecture](img/B03968_05_12.jpg)'
+  id: totrans-215
   prefs: []
   type: TYPE_IMG
+  zh: '![理解Lambda架构](img/B03968_05_12.jpg)'
 - en: Understanding Kappa architecture
+  id: totrans-216
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 理解Kappa架构
 - en: The Kappa architecture proposes to drive the full enterprise in streaming mode.
     The Kappa architecture arose from a critique from Jay Kreps and his colleagues
     at LinkedIn at the time. Since then, they moved and created Confluent with Apache
     Kafka as the main enabler of the Kappa architecture vision. The basic tenet is
     to move in all streaming mode with a Unified Log as the main backbone of the enterprise
     information architecture.
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: Kappa架构提出以流模式驱动整个企业。Kappa架构起源于LinkedIn的Jay Kreps及其同事的批评。从那时起，他们搬到了Confluent，并以Apache
+    Kafka作为Kappa架构愿景的主要推动者。其基本原理是在所有流模式下移动，以统一日志作为企业信息架构的主要骨干。
 - en: A Unified Log is a centralized enterprise structured log available for real-time
     subscription. All the organization's data is put in a central log for subscription.
     Records are numbered beginning with zero so that they are written. It is also
     known as a commit log or journal. The concept of the Unified Log is the central
     tenet of the Kappa architecture.
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 统一日志是一种可供实时订阅的集中式企业结构化日志。所有组织的数据都放入一个中央日志中进行订阅。记录从零开始编号，以便写入。它也被称为提交日志或日志。统一日志的概念是Kappa架构的核心原则。
 - en: 'The properties of the unified log are as follows:'
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 统一日志的特性如下：
 - en: '**Unified**: There is a single deployment for the entire organization'
+  id: totrans-220
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**统一**: 整个组织只有一个部署'
 - en: '**Append only**: Events are immutable and are appended'
+  id: totrans-221
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**只追加**: 事件是不可变的，并且是追加的'
 - en: '**Ordered**: Each event has a unique offset within a shard'
+  id: totrans-222
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**有序**: 每个事件在分片中都有一个唯一的偏移量'
 - en: '**Distributed**: For fault tolerance purpose, the unified log is distributed
     redundantly on a cluster of computers'
+  id: totrans-223
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**分布式**: 为了容错目的，统一的日志在计算机集群上冗余分布'
 - en: '**Fast**: The systems ingests thousands of messages per second'
+  id: totrans-224
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**快速**: 系统能够每秒处理数千条消息'
 - en: The following screenshot captures the moment Jay Kreps announced his reservations
     about the Lambda architecture. His main reservation about the Lambda architecture
     is implementing the same job in two different systems, Hadoop and Storm, with
     each of their specific idiosyncrasies, and with all the complexities that come
     along with it. Kappa architecture processes the real-time data and reprocesses
     historical data in the same framework powered by Apache Kafka.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下截图捕捉了Jay Kreps宣布他对Lambda架构保留意见的时刻。他对Lambda架构的主要保留意见是在两个不同的系统中实现相同的作业，即Hadoop和Storm，每个系统都有其特定的特性，以及随之而来的所有复杂性。Kappa架构在Apache
+    Kafka驱动的相同框架中处理实时数据并重新处理历史数据。
 - en: '![Understanding Kappa architecture](img/B03968_05_13.jpg)'
+  id: totrans-226
   prefs: []
   type: TYPE_IMG
+  zh: '![理解Kappa架构](img/B03968_05_13.jpg)'
 - en: Summary
+  id: totrans-227
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we laid out the foundations of streaming architecture apps
     and described their challenges, constraints, and benefits. We went under the hood
     and examined the inner working of Spark Streaming and how it fits with Spark Core
@@ -1082,21 +1540,30 @@
     and agility in an ever changing landscape. We closed the chapter with some remarks
     and observations on two streaming architectural paradigms, the Lambda and Kappa
     architectures.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们概述了流式架构应用的基础，并描述了它们的挑战、约束和优势。我们深入内部，检查了Spark Streaming的内部工作原理以及它与Spark
+    Core的兼容性，并与Spark SQL和Spark MLlib进行了对话。我们使用TCP套接字说明了流式概念，随后直接从Twitter的firehose中实时摄取和处理推文。我们讨论了使用Kafka解耦上游数据发布与下游数据订阅和消费的概念，以最大限度地提高整体流式架构的弹性。我们还讨论了Flume——一个可靠、灵活且可扩展的数据摄取和传输管道系统。Flume、Kafka和Spark的组合在不断变化的环境中提供了无与伦比的鲁棒性、速度和敏捷性。我们以对两种流式架构范式——Lambda和Kappa架构的一些评论和观察结束本章。
 - en: The Lambda architecture combines batch and streaming data in a common query
     front-end. It was envisioned with Hadoop and Storm in mind initially. Spark has
     its own batch and streaming paradigms, and it offers a single environment with
     common code base to effectively bring this architecture paradigm to life.
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: Lambda架构在公共查询前端结合了批量和流数据。最初是考虑到Hadoop和Storm而设计的。Spark有其自己的批量和流处理范式，并且提供了一个具有共同代码库的单个环境，有效地将这种架构范式付诸实践。
 - en: The Kappa architecture promulgates the concept of the unified log, which creates
     an event-oriented architecture where all events in the enterprise are channeled
     in a centralized commit log that is available to all consuming systems in real
     time.
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: Kappa架构推广了统一日志的概念，它创建了一个面向事件的架构，其中企业中的所有事件都通过一个集中提交日志进行通道，该日志对所有消费系统实时可用。
 - en: We are now ready for the visualization of the data collected and processed so
     far.
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在已准备好可视化迄今为止收集和处理的数据。
