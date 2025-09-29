@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Python 地理空间开发精要
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/d1ae42ada99dbaf6b9dca5cf97abc0de`](https://zh.annas-archive.org/md5/d1ae42ada99dbaf6b9dca5cf97abc0de)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# R 编程示例
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/720c3079084c51fa0922dbc1f6de2cfc`](https://zh.annas-archive.org/md5/720c3079084c51fa0922dbc1f6de2cfc)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

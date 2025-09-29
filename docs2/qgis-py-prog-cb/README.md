@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# QGIS Python 编程秘籍
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/7bd6d5082b84bf4b8abfdb02d6ba84cc`](https://zh.annas-archive.org/md5/7bd6d5082b84bf4b8abfdb02d6ba84cc)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

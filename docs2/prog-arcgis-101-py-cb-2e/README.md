@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# ArcGIS 10.1 Python 编程秘籍
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/2d89f21f24acbf4b6fbaaa544942ae71`](https://zh.annas-archive.org/md5/2d89f21f24acbf4b6fbaaa544942ae71)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

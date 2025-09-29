@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# 精通 JavaScript ArcGIS 服务器开发
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/c997927188810ea905d8285a4c85d23a`](https://zh.annas-archive.org/md5/c997927188810ea905d8285a4c85d23a)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

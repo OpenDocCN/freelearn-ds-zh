@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Tableau 研讨会
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/c8a6548a9f5e67213c529b37db6eb787`](https://zh.annas-archive.org/md5/c8a6548a9f5e67213c529b37db6eb787)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

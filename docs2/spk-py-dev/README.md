@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Python 开发者的 Spark 指南
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/1f2af128a0828f73ee5ea24057c01070`](https://zh.annas-archive.org/md5/1f2af128a0828f73ee5ea24057c01070)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
