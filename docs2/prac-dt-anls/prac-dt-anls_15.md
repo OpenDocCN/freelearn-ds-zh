@@ -12,7 +12,7 @@
 
 让我们开始吧！
 
-# 技术要求
+# 第十六章：技术要求
 
 本书对应的 GitHub 仓库地址为[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter12`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter12)。
 

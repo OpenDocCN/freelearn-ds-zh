@@ -16,7 +16,7 @@
 
 +   概述统计和异常值
 
-# 技术要求
+# 第十一章：技术要求
 
 这是本书的 GitHub 仓库链接：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter08`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter08)。
 

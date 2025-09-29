@@ -12,7 +12,7 @@ Python 和安装 Jupyter Notebook 概述
 
 +   探索 Python 包
 
-# 技术要求
+# 第四章：技术要求
 
 这是本书的 GitHub 仓库链接：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter02`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter02).
 

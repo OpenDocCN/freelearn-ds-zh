@@ -16,7 +16,7 @@
 
 让我们开始吧。
 
-# 技术要求
+# 第九章：技术要求
 
 你可以在[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter06`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter06)找到这本书的 GitHub 仓库。
 

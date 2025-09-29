@@ -1,4 +1,4 @@
-# 第六章 SciPy 数据挖掘
+# 第六章：SciPy 数据挖掘
 
 本章涵盖了数学和统计学中处理数据收集、组织、分析和解释的分支。这些应用和操作分布在多个模块和子模块中：`scipy.stats`（纯统计工具）、`scipy.ndimage.measurements`（数据分析和组织）、`scipy.spatial`（空间算法和数据结构），以及最终的聚类包`scipy.cluster`。`scipy.cluster`聚类包包括两个子模块：`scipy.cluster.vq`（矢量量化）和`scipy.cluster.hierarchy`（用于层次和**聚合**聚类）。
 

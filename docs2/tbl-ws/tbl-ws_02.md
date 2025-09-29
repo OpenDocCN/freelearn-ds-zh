@@ -1,4 +1,4 @@
-# 2. 数据准备：使用 Tableau Desktop
+# 第二章：2. 数据准备：使用 Tableau Desktop
 
 概述
 

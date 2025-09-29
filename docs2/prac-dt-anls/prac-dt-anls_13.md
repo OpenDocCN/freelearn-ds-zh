@@ -14,7 +14,7 @@
 
 +   排除分析中的词汇
 
-# 技术要求
+# 第十四章：技术要求
 
 本书在 GitHub 上的仓库地址为[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter10`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter10)。
 

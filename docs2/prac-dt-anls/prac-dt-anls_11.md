@@ -12,7 +12,7 @@
 
 +   在数据中寻找模式
 
-# 技术要求
+# 第十二章：技术要求
 
 本书 GitHub 仓库地址为[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter09`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter09)。
 

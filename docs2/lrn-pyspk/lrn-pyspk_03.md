@@ -1,4 +1,4 @@
-# 第三章 数据帧
+# 第三章：数据帧
 
 DataFrame 是一个不可变的分布式数据集合，它组织成命名的列，类似于关系数据库中的表。作为 Apache Spark 1.0 中的实验性功能 `SchemaRDD` 的一部分引入，它们在 Apache Spark 1.3 发布中更名为 `DataFrames`。对于熟悉 Python Pandas `DataFrame` 或 R `DataFrame` 的读者，Spark DataFrame 是一个类似的概念，它允许用户轻松地处理结构化数据（例如，数据表）；也有一些差异，所以请调整您的期望。
 

@@ -1,4 +1,4 @@
-# 第三章 学习 QGIS Python API
+# 第三章：学习 QGIS Python API
 
 在本章中，我们将更深入地了解 QGIS Python 开发者可用的 Python 库，并探讨我们可以使用这些库在 QGIS 中执行有用任务的多种方式。
 

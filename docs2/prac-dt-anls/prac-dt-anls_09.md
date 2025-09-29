@@ -18,7 +18,7 @@
 
 +   合并和分箱数据
 
-# 技术要求
+# 第十章：技术要求
 
 这是本书的 GitHub 仓库链接：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter07`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter07)。
 

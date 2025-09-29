@@ -12,7 +12,7 @@
 
 +   NumPy 和数组的实际应用案例
 
-# 技术要求
+# 第五章：技术要求
 
 这是本书的 GitHub 仓库：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter03`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter03)。
 

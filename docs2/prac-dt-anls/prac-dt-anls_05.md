@@ -14,7 +14,7 @@
 
 +   创建您的第一个 DataFrame
 
-# 技术要求
+# 第六章：技术要求
 
 这是本书的 GitHub 仓库链接：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter04`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter04)。
 

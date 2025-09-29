@@ -12,7 +12,7 @@
 
 +   数据血缘的重要性
 
-# 技术要求
+# 第七章：技术要求
 
 这是本书的 GitHub 仓库：[`github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter05`](https://github.com/PacktPublishing/Practical-Data-Analysis-using-Jupyter-Notebook/tree/master/Chapter05)。
 
