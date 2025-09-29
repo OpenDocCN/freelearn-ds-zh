@@ -1,43 +1,61 @@
 - en: Chapter 8. Developing the Sparse Matrix Vector Multiplication in OpenCL
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第8章 开发 OpenCL 中的稀疏矩阵向量乘法
 - en: 'In this chapter, we are going to cover the following recipes:'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将介绍以下内容：
 - en: Solving the **SpMV** (**Sparse Matrix Vector Multiplication**) using the conjugate
     gradient method
+  id: totrans-2
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用共轭梯度法解决 **SpMV**（**稀疏矩阵向量乘法**）
 - en: Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解包括 ELLPACK、ELLPACK-R、COO 和 CSR 在内的各种 SpMV 数据存储格式
 - en: Understanding how to solve SpMV using the ELLPACK-R format
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解如何使用 ELLPACK-R 格式解决 SpMV
 - en: Understanding how to solve SpMV using the CSR format
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解如何使用 CSR 格式解决 SpMV
 - en: Understanding how to solve SpMV using VexCL
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解如何使用 VexCL 解决 SpMV
 - en: Introduction
+  id: totrans-7
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 简介
 - en: In the previous chapter on matrix multiplication, we developed an appreciation
     of the problem space as well as its domain of application, but what we didn't
     tell you earlier was that there are dense matrices as well as sparse matrices
     in addition to their dense and sparse vectors. When we say dense or sparse matrix/vector,
     we mean that there are a lot of non-zero or zero values, respectively.
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一章关于矩阵乘法的章节中，我们欣赏了问题空间及其应用领域，但我们之前没有告诉你的是，除了它们的密集和稀疏向量之外，还有密集矩阵和稀疏矩阵。当我们说密集或稀疏矩阵/向量时，我们指的是有很多非零或零值。
 - en: The fact that a matrix is dense or sparse matters from a computational point
     of view, since it doesn't really make sense to multiply any value with zero as
     the result is evidently zero; if you were to apply the naïve method of solving
@@ -50,8 +68,11 @@
     part of this issue is to investigate how to store the sparse matrices efficiently,
     since allocating a ![Introduction](img/4520OT_08_07.jpg) matrix to store a matrix
     that is populated with mostly zeroes is wasteful of memory space.
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 从计算角度来看，矩阵是密集的还是稀疏的很重要，因为将任何值与零相乘实际上是没有意义的，结果显然是零；如果你要应用解决这个问题的天真方法，即使用你在矩阵乘法中开发的方法来解决矩阵或向量稀疏的问题，但你不会利用你刚刚购买的全新
+    OpenCL CPU/GPU，你只是在浪费处理器周期，也在浪费大量的带宽。问题在于以高效的方式解决这个问题，这需要理解如何高效地计算，这解决了问题的一部分。问题的另一部分是要研究如何高效地存储稀疏矩阵，因为为存储主要由零填充的矩阵分配内存空间是浪费内存空间。
 - en: We are going to take a whirlwind tour of this subject, however it will not be
     exhaustive. There is a lot of literature already published on this subject. However,
     we will spend some time to formulate a basic and general idea by recognizing that
@@ -61,78 +82,114 @@
     As far as matrices go, we won't look into the possibilities of dynamic matrices
     (via insertion or deletion), and instead we will focus on static sparse matrix
     formats.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将快速浏览这个主题，但不会详尽无遗。关于这个主题已经有很多文献发表了。然而，我们将花一些时间通过认识到过去和当前的大部分工作都集中在创建既高效又紧凑的数据结构来表示稀疏结构来形成一个基本和一般的概念。我们还将花一些时间设计那些数据结构上的高效计算方法。至于矩阵而言，我们不会探讨动态矩阵（通过插入或删除）的可能性，而是将重点放在静态稀疏矩阵格式上。
 - en: Next, we are going to present the theory behind solving SpMV efficiently through
     building up our knowledge to the conjugate gradient (via steepest descent and
     Gram-Schmidt), and before applying that algorithm we'll look into some of the
     common data storage schemes. We'll present an implementation using the VexCL using
     the **Conjugate Gradient** (**CG**) method which is an OpenCL framework build
     using C++.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们将通过构建我们的知识到共轭梯度（通过最速下降和格拉姆-施密特正交化）来展示解决 SpMV 高效的理论，在应用该算法之前，我们将探讨一些常见的数据存储方案。我们将使用
+    VexCL 和 **共轭梯度**（**CG**）方法，这是一个使用 C++ 构建的 OpenCL 框架，来展示一个实现。
 - en: 'The following are some of the examples of sparse matrices:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下是一些稀疏矩阵的例子：
 - en: '![Introduction](img/4520OT_08_01.jpg)'
+  id: totrans-13
   prefs: []
   type: TYPE_IMG
+  zh: '![介绍](img/4520OT_08_01.jpg)'
 - en: Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient
     Method
+  id: totrans-14
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用共轭梯度法解决稀疏矩阵向量乘法（SpMV）
 - en: The conjugate gradient method is the most popular iterative method for solving
     sparse linear systems, and I will attempt to make you understand how it works.
     Along this journey, we will look into steepest descent, conjugate gradient convergence,
     and so on.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 共轭梯度法是解决稀疏线性系统最流行的迭代方法，我将尝试让您理解它是如何工作的。在这个过程中，我们将探讨最速下降、共轭梯度收敛等问题。
 - en: Tip
+  id: totrans-16
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: I wanted to say a big thank you to *Jonathan Richard Shewchuk* (AP of University
     of California), without whom I might not have understood why conjugate gradients
     matter You can learn more about him at [http://www.cs.cmu.edu/~jrs/](http://www.cs.cmu.edu/~jrs/).
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 我想对 *Jonathan Richard Shewchuk*（加州大学助理教授）表示衷心的感谢，没有他，我可能无法理解为什么共轭梯度很重要。您可以在
+    [http://www.cs.cmu.edu/~jrs/](http://www.cs.cmu.edu/~jrs/) 了解更多关于他的信息。
 - en: A reason why the CG method is popular in solving sparse systems is that it not
     only handles really large sparse matrices well but it is also very efficient.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 共轭梯度法在解决稀疏系统问题中受欢迎的原因之一是它不仅很好地处理了非常大的稀疏矩阵，而且效率也非常高。
 - en: In the previous chapter on matrix multiplication, we have seen what it means
     to multiply two matrices, and this time round, we are focusing on the problem
     of ![Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient
     Method](img/4520OT_08_13a.jpg) where *A* is a known square and positive definite
     matrix, *x* is an unknown vector, and *b* is a known vector.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一章关于矩阵乘法的章节中，我们已经看到了两个矩阵相乘的含义，这次我们将关注的问题是如何 ![使用共轭梯度法解决稀疏矩阵向量乘法](img/4520OT_08_13a.jpg)，其中
+    *A* 是已知的正定方阵，*x* 是未知向量，*b* 是已知向量。
 - en: Getting ready
+  id: totrans-20
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备就绪
 - en: The inner product of two vectors is written as *x^Ty*, and it represents the
     scalar sum ![Getting ready](img/4520OT_08_08.jpg). *xTy* is equivalent to *yTx*,
     and if *x* and *y* are orthogonal (at right angles to one another, and this will
     be important to realize when we study steepest descent), then *xTy = 0*.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 两个向量的内积表示为 *x^Ty*，它代表标量之和 ![准备就绪](img/4520OT_08_08.jpg)。 *xTy* 等价于 *yTx*，如果
+    *x* 和 *y* 正交（彼此成直角，这在研究最速下降时将非常重要），那么 *xTy = 0*。
 - en: Tip
+  id: totrans-22
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: A positive-definite matrix *A* is such that for every non-zero vector *x*, *xTAx
     > 0*.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 正定矩阵 *A* 满足对于每个非零向量 *x*，*xTAx > 0*。
 - en: 'A quadratic form is actually a scalar and quadratic function of a vector of
     the form as:'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 二次型实际上是一个向量的标量和二次函数，其形式如下：
 - en: '![Getting ready](img/4520OT_08_09.jpg)'
+  id: totrans-25
   prefs: []
   type: TYPE_IMG
+  zh: '![准备就绪](img/4520OT_08_09.jpg)'
 - en: 'Just like any linear function, we would know its gradient that can be expressed
     in this derived form as ![Getting ready](img/4520OT_08_38.jpg) (yep, it''s not
     a typo, and we mean the transpose of matrix *A*), and when we know that matrix
@@ -145,24 +202,36 @@
     Diagrammatically, it can be imagined as a parabola like the one in the following
     diagram, which is what ![Getting ready](img/4520OT_08_14.jpg) evaluates to be
     exactly:'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如任何线性函数一样，我们会知道它的梯度，可以用以下导出形式表示 ![准备就绪](img/4520OT_08_38.jpg)（是的，这不是打字错误，我们指的是矩阵
+    *A* 的转置），当我们知道矩阵 *A* 是对称的，即 ![准备就绪](img/4520OT_08_11.jpg) 变为 *A* 因为 *AT=A*，那么这个方程就简化为
+    ![准备就绪](img/4520OT_08_12.jpg)。像任何线性方程的导数一样，我们知道当它等于 *0* 时，可以通过求解 ![准备就绪](img/4520OT_08_13a.jpg)
+    来找到 ![准备就绪](img/4520OT_08_13.jpg) 的数学解。目标是找到一个特定的 *x* 值，使其最小化 ![准备就绪](img/4520OT_08_14.jpg)。从图解上看，可以想象成一个像下面图中那样的抛物线，这就是
+    ![准备就绪](img/4520OT_08_14.jpg) 评估出的确切值：
 - en: '![Getting ready](img/4520OT_08_02.jpg)'
+  id: totrans-27
   prefs: []
   type: TYPE_IMG
+  zh: '![准备就绪](img/4520OT_08_02.jpg)'
 - en: This forms our foundation to study the steepest descent and its cousin method—the
     conjugate gradient method. In the following sections, let us first explore the
     concepts behind steepest descent and then head over to conjugate gradient.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 这为我们研究最速下降及其相关方法——共轭梯度法奠定了基础。在接下来的章节中，让我们首先探讨最速下降背后的概念，然后转向共轭梯度法。
 - en: In the steepest descent method, we start at an arbitrary point *x[(0)]* and
     slide down to the bottom of the paraboloid. We keep taking steps *x(1)*, *x(2)*,
     and so on until we are pretty confident in saying that we have come to the solution
     *x*. That's basically how it works. Generally speaking, we haven't said anything
     about how to choose the next point to slide to though, as always the devil is
     in the details. Solder on!
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 在最速下降法中，我们从任意点*x[(0)]*开始，滑向抛物面的底部。我们继续采取步骤*x(1)*，*x(2)*，等等，直到我们相当有信心地说我们已经到达了解*x*。基本上就是这样工作的。一般来说，我们还没有说如何选择下一个滑动到的点，因为像往常一样，魔鬼在细节中。继续前进！
 - en: When we take a step, we choose the direction in which ![Getting ready](img/4520OT_08_14.jpg)
     decreases most quickly, and now it's appropriate to introduce two vectors, which
     we will use to gauge for ourselves whether or not we're dropping in the right
@@ -174,8 +243,10 @@
     that we can be closer to the actual solution, *x*, we are actually choosing a
     point ![Getting ready](img/4520OT_08_17.jpg), and you will notice that another
     variable has been chosen which is alpha, ![Getting ready](img/4520OT_08_18.jpg).
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们迈出一步时，我们选择![准备中](img/4520OT_08_14.jpg)减少最快的方向，现在适当地介绍两个向量，我们将使用这两个向量来判断我们是否朝着正确的方向下降（也就是说，如果我们是朝着抛物线的底部移动）。误差向量![准备中](img/4520OT_08_15.jpg)衡量我们从当前步骤的解有多远。残差向量![准备中](img/4520OT_08_16.jpg)衡量我们离*b*的正确值有多远，这个向量可以被认为是下降最快的方向。当我们迈出下一步以便我们更接近实际解*x*时，我们实际上是在选择一个点![准备中](img/4520OT_08_17.jpg)，你会注意到另一个变量已经被选择，那就是alpha，![准备中](img/4520OT_08_18.jpg)。
 - en: This variable ![Getting ready](img/4520OT_08_18.jpg) of whichever value will
     tell us whether we have reached the bottom of the parabola. To put this another
     way, imagine yourself falling into a salad bowl (closest thing I could think of)
@@ -185,40 +256,56 @@
     we have to set the derivative of that point to be equal to zero and we already
     have seen the equation ![Getting ready](img/4520OT_08_20.jpg), and we know now
     that ![Getting ready](img/4520OT_08_21.jpg).
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个变量![准备中](img/4520OT_08_18.jpg)无论其值如何，都会告诉我们我们是否到达了抛物线的底部。换一种说法，想象你自己掉进一个沙拉碗（我能想到的最接近的东西）中，你唯一停止下落的方法就是坐在碗底。我们知道从微积分中，你落点![准备中](img/4520OT_08_19.jpg)的导数是零，也就是说，它的梯度也是*0*。为了确定这个值，我们必须将这个点的导数设为零，我们已经看到了方程![准备中](img/4520OT_08_20.jpg)，现在我们知道![准备中](img/4520OT_08_21.jpg)。
 - en: How to do it...
+  id: totrans-32
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做...
 - en: 'Let''s now calculate the directional derivative of ![How to do it...](img/4520OT_08_22.jpg)
     when it is equal to zero because ![How to do it...](img/4520OT_08_18.jpg) minimizes
     *f*. Using the chain rule, we know that ![How to do it...](img/4520OT_08_23.jpg)and
     plugging in what we know of ![How to do it...](img/4520OT_08_13.jpg), we have
     the following sequence of derivations by which we derive the value of ![How to
     do it...](img/4520OT_08_18.jpg):'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们来计算当![如何做...](img/4520OT_08_22.jpg)等于零时的方向导数，因为![如何做...](img/4520OT_08_18.jpg)最小化*f*。使用链式法则，我们知道![如何做...](img/4520OT_08_23.jpg)，并将我们知道的![如何做...](img/4520OT_08_13.jpg)代入，我们得到以下推导序列，通过这些推导我们得到![如何做...](img/4520OT_08_18.jpg)的值：
 - en: '![How to do it...](img/4520OT_08_a.jpg)'
+  id: totrans-34
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/4520OT_08_a.jpg)'
 - en: 'In summary, the steepest descent comprises the following equations:'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 总结来说，最速下降法包括以下方程：
 - en: '![How to do it...](img/4520OT_08_b.jpg)'
+  id: totrans-36
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/4520OT_08_b.jpg)'
 - en: Using the steepest descent means is that I take a step down the rabbit hole
     and before I take the next step I'm going to guess what its going to be and take
     it; if I'm right, hooray!
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用最速下降法意味着我沿着兔子洞走下去，在迈出下一步之前，我会猜测它将会是什么，然后采取行动；如果我猜对了，那就太好了！
 - en: The conjugate gradient method builds on steepest descent, and the two share
     a lot of similarities such that the conjugate gradient makes guesses which will
     eventually lead to the solution in *x*. Both methods use the residual vector to
     judge how far the guesses are from the correct answer.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 共轭梯度法建立在最速下降法的基础上，两者有很多相似之处，即共轭梯度法会做出猜测，最终将导致在*x*中的解。两种方法都使用残差向量来判断猜测与正确答案的距离。
 - en: 'The idea is to pick a set of orthogonal search directions, and in each direction
     we''ll take exactly one step (pretty much the same as what we have seen before)
     ![How to do it...](img/4520OT_08_24.jpg). It turns out that we need to make the
@@ -229,27 +316,37 @@
     which we search, and for this we would need *linear independent vectors* ![How
     to do it...](img/4520OT_08_28.jpg). From there, we can use the Gram-Schmidt process
     to generate them and we would have the following:'
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 策略是选择一组正交搜索方向，在每个方向上我们正好走一步（这与我们之前看到的大致相同）![如何做...](img/4520OT_08_24.jpg)。结果是我们需要使搜索方向*A-正交*而不是正交。我们说两个向量![如何做...](img/4520OT_08_25.jpg)和![如何做...](img/4520OT_08_26.jpg)是A-正交的，如果![如何做...](img/4520OT_08_27.jpg)。当我们使用搜索方向时，我们想要最小化的是搜索空间的大小，为此我们需要*线性无关的向量*![如何做...](img/4520OT_08_28.jpg)。从那里，我们可以使用Gram-Schmidt过程来生成它们，并且我们会得到以下：
 - en: '![How to do it...](img/4520OT_08_29.jpg)'
+  id: totrans-40
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/4520OT_08_29.jpg)'
 - en: 'As we did in the steepest descent method, let''s use the same trick to determine
     what ![How to do it...](img/4520OT_08_30.jpg) is since it looks really familiar
     like ![How to do it...](img/4520OT_08_18.jpg), and we derive it using the following:'
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们在最速下降法中所做的那样，让我们使用同样的技巧来确定![如何做...](img/4520OT_08_30.jpg)是什么，因为它看起来非常熟悉，就像![如何做...](img/4520OT_08_18.jpg)一样，我们使用以下方法推导它：
 - en: '![How to do it...](img/4520OT_08_d.jpg)'
+  id: totrans-42
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/4520OT_08_d.jpg)'
 - en: From the previous equation, we plug in the fact that two vectors are A-orthogonal,
     that is, the left-hand side of the equation is *0*, and we solve for the right-hand
     side which resulted in ![How to do it...](img/4520OT_08_30.jpg). When we compare
     this value with ![How to do it...](img/4520OT_08_18.jpg), we would discover that
     they are pretty much the same except for the fact that the CG method uses linear
     independent vectors instead of the residual vector, as found in steepest descent.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 从前面的方程中，我们插入两个向量是A-正交的事实，即方程的左边是*0*，然后我们解右边的方程，结果是![如何做...](img/4520OT_08_30.jpg)。当我们比较这个值与![如何做...](img/4520OT_08_18.jpg)时，我们会发现它们几乎相同，除了CG方法使用的是线性无关的向量而不是最速下降法中发现的残差向量。
 - en: The CG method builds on the Gram-Schimdt process/conjugation and steepest descent,
     whereby it removes the presence of search vectors. It favors the use of residual
     vectors instead, and this is important from a computational point of view, otherwise
@@ -257,34 +354,49 @@
     space it would probably be a very bad idea. There is a fair bit of math that we
     skipped, but feel free to download the original paper from *Jonathan Shewchuk*
     from the following link
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: CG方法建立在Gram-Schimdt过程/共轭和最速下降法的基础上，通过消除搜索向量的存在。它更倾向于使用残差向量，这在计算上很重要，否则你的程序需要存储所有的搜索向量，对于一个大的领域空间，这可能是一个非常糟糕的主意。我们跳过了一部分数学，但你可以从以下链接下载*Jonathan
+    Shewchuk*的原始论文：
 - en: '[http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf](http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf)'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: '[http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf](http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf)'
 - en: 'In the method of conjugate gradient, we have the following equations:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 在共轭梯度法中，我们有以下方程：
 - en: '![How to do it...](img/4520OT_08_31.jpg)'
+  id: totrans-47
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做...](img/4520OT_08_31.jpg)'
 - en: We're going to see how we can translate this into OpenCL. But first, it's time
     for a cup of coffee!
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将看看如何将其转换为OpenCL。但首先，是时候来一杯咖啡了！
 - en: Now that we have established a basic idea of what the CG method is like, its
     time to take a look at how a simple SpMV kernel can be implemented. However, recall
     that I mentioned that we have to understand how the data in the sparse matrix
     can be stored. That turns out to be crucial in the implementation, and it's justifiable
     to spend the next couple of sections illustrating to you the well-known data storage
     formats.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 既然我们已经对CG方法的基本概念有了基本的了解，那么现在是时候看看一个简单的SpMV核是如何实现的了。然而，请记住我提到过我们必须理解稀疏矩阵中的数据是如何存储的。这实际上在实现中是至关重要的，因此花上接下来的几节来向您介绍这些众所周知的数据存储格式是合理的。
 - en: Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR
+  id: totrans-50
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解包括ELLPACK、ELLPACK-R、COO和CSR在内的各种SpMV数据存储格式
 - en: There are a wide variety of sparse matrix representations, each with a different
     storage requirement, even computational characteristics, and with those come the
     varieties in which you can access and manipulate elements of the matrix. I made
@@ -293,28 +405,40 @@
     not only because of the decent performance but also because they were also some
     of the earliest formats which have been popular among scalar and vector architectures,
     and quite recently, in GPGPUs.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 存储稀疏矩阵的方法有很多种，每种方法都有不同的存储需求，甚至计算特性，而且随着这些特性的不同，你可以以不同的方式访问和操作矩阵的元素。我之前提到过，我们将重点关注静态稀疏矩阵格式，并且在这里我展示了四种已被证明相当流行的存储格式，这不仅因为它们有不错的性能，还因为它们也是一些最早在标量和向量架构中流行的格式，而且最近在GPGPUs中也非常流行。
 - en: 'In the following paragraphs, we are going to introduce you to the following
     sparse matrix representations in the following order:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 在接下来的段落中，我们将按照以下顺序向您介绍以下稀疏矩阵表示：
 - en: ELLPACK format
+  id: totrans-53
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: ELLPACK格式
 - en: ELLPACK-R format
+  id: totrans-54
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: ELLPACK-R格式
 - en: Coordinate format
+  id: totrans-55
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 坐标格式
 - en: Compressed sparse row format
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 压缩稀疏行格式
 - en: 'Let''s start with the ELLPACK format. This format is also known as ELL. For
     an *M x N* matrix with a maximum of *K* non-zero values per row, the ELLPACK format
     stores the non-zero values into a dense *M x K* array which we''ll name `data`,
@@ -322,46 +446,65 @@
     corresponding column indices are stored in another array, which we''ll name `indices`.
     Again, a zero or some sentinel value is used for padding this array. The following
     representation of matrices illustrates what it looks like:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从ELLPACK格式开始。这个格式也被称为ELL。对于一个最大每行有*K*个非零值的*M x N*矩阵，ELLPACK格式将非零值存储到一个名为`data`的密集*M
+    x K*数组中，其中每行小于*K*个非零值的行用零填充。同样，相应的列索引存储在另一个数组中，我们将其命名为`indices`。再次，使用零或某些哨兵值来填充这个数组。以下矩阵的表示说明了它的样子：
 - en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR](img/4520OT_08_03.jpg)'
+  id: totrans-58
   prefs: []
   type: TYPE_IMG
+  zh: '![理解各种SpMV数据存储格式，包括ELLPACK、ELLPACK-R、COO和CSR](img/4520OT_08_03.jpg)'
 - en: A quick analysis on this format means that if the maximum number of non-zero
     values in each row does not differ too much from the average, the ELL format is
     rather appealing because it is intuitive, at least to me.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 对这个格式的快速分析表明，如果每行中非零值的最大数量与平均值相差不大，那么ELLPACK格式相当吸引人，因为它至少对我来说是直观的。
 - en: 'Next, we examine the ELLPACK-R format. This format is a variant of the ELLPACK
     format, and in addition to the data arrays that you have seen earlier, we have
     a new array `rl`, which is used to store the actual length of each row. The following
     representation illustrates what it looks like:'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们检查ELLPACK-R格式。这个格式是ELLPACK格式的变体，除了之前看到的数组之外，我们还有一个名为`rl`的新数组，用于存储每行的实际长度。以下表示说明了它的样子：
 - en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR](img/4520OT_08_04.jpg)'
+  id: totrans-61
   prefs: []
   type: TYPE_IMG
+  zh: '![理解各种SpMV数据存储格式，包括ELLPACK、ELLPACK-R、COO和CSR](img/4520OT_08_04.jpg)'
 - en: It's not obvious now how this differs from ELLPACK, but the serial and parallel
     kernel which we will see later will make use of this new array to make the code
     and data transfers tighter.
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在还不明显这与ELLPACK有什么不同，但我们在后面将要看到的串行和并行核将利用这个新数组来使代码和数据传输更加紧密。
 - en: 'We proceed with the coordinate format. The coordinate format is a simple storage
     scheme. The arrays `row`, `col`, and `data` store the row indices, column indices,
     and values, respectively of the non-zero matrix entries. COO is a general sparse
     matrix representation since the required storage is always proportional to the
     number of non-zero values. The following is what the COO format looks like:'
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们继续使用坐标格式。坐标格式是一种简单的存储方案。数组`row`、`col`和`data`分别存储非零矩阵条目的行索引、列索引和值。COO是一种通用的稀疏矩阵表示，因为所需的存储总是与非零值的数量成比例。以下是COO格式的外观：
 - en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR](img/4520OT_08_05.jpg)'
+  id: totrans-64
   prefs: []
   type: TYPE_IMG
+  zh: '![理解各种SpMV数据存储格式，包括ELLPACK、ELLPACK-R、COO和CSR](img/4520OT_08_05.jpg)'
 - en: In this format, there are three one-dimensional arrays—`row`, `col`, and `data`.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种格式中，有三个一维数组——`row`、`col`和`data`。
 - en: 'Last one on this list is the **Compressed Sparse Ro**w (**CSR**) format. The
     CSR format is a popular, general-purpose sparse matrix representation. Like the
     COO Format, CSR explicitly stores column indices and non-zero values in the arrays
@@ -370,68 +513,98 @@
     *i*th row in `ptr[i]`. The last entry in `ptr`, which would otherwise correspond
     to the *M + 1*^(th) row, stores the number of non-zero values in the matrix. The
     following representation illustrates what it looks like:'
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 列表中的最后一个格式是**压缩稀疏行（CSR**）格式。CSR格式是一种流行的通用稀疏矩阵表示。与COO格式类似，CSR格式明确地在数组`indices`和`data`中存储列索引和非零值。第三个数组`ptr`用于行指针，它表示CSR表示。对于一个*M
+    x N*矩阵，`ptr`的长度为*M + 1*，在`ptr[i]`中存储第*i*行的偏移量。`ptr`中的最后一个条目，通常对应于*M + 1*^(th)行，存储矩阵中的非零值数量。以下表示展示了其外观：
 - en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
     COO, and CSR](img/4520OT_08_06.jpg)'
+  id: totrans-67
   prefs: []
   type: TYPE_IMG
+  zh: '![理解各种SpMV数据存储格式，包括ELLPACK、ELLPACK-R、COO和CSR](img/4520OT_08_06.jpg)'
 - en: At this point, this is all I want to discuss about data representations for
     sparse matrices.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一点上，这就是我想讨论关于稀疏矩阵数据表示的所有内容。
 - en: Tip
+  id: totrans-69
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: You should be aware that there are other formats like **DIA**, also known as,
     **diagonal format**, Hybrid/HYB for ELL/COO, and packet (for processors that resemble
     vector architectures).
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 你应该知道还有其他格式，如**DIA**，也称为**对角格式**，混合/混合的ELL/COO，以及数据包（用于类似向量架构的处理器）。
 - en: How to do it...
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点...
 - en: 'Now that we have examined three data storage formats, let''s go on a little
     further and check out how we would solve the SpMV problem using the ELLPACK format.
     As before, we would like to start this section by kicking off with a code presentation
     on how the SpMV CPU kernel would look:'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经检查了三种数据存储格式，让我们进一步探讨如何使用ELLPACK格式解决SpMV问题。像之前一样，我们希望从这个部分开始，通过展示SpMV CPU内核的代码来启动：
 - en: '[PRE0]'
+  id: totrans-73
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Take a few moments to convince yourself that we are indeed using the ELLPACK
     format to solve SpMV, and the data when stored in the low-level memory, is in
     row-major order. Putting on your parallel developer hat again, one strategy is
     to have one thread / work item process one row of the matrix data, and this implies
     that you can remove the outer loop structure thus giving you this possible SpMV
     ELL kernel.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 花点时间让自己相信我们确实在使用ELLPACK格式来解决SpMV，并且当数据存储在低级内存中时，是以行主序存储的。再次戴上并行开发者的帽子，一种策略是让一个线程/工作项处理矩阵数据的一行，这意味着你可以移除外层循环结构，从而得到可能的SpMV
+    ELL内核。
 - en: '[PRE1]'
+  id: totrans-75
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: The first thing you would probably notice is that the outer loop structure has
     been removed, and that is intuitive when you consider the fact that that structure
     was present initially so that we can iterate over the inner loop which contains
     the actual work of the dot product between a row of the matrix and vector.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可能会首先注意到外层循环结构已经被移除，当你考虑到这个结构最初存在是为了我们可以迭代包含矩阵行和向量点积实际工作的内层循环时，这是直观的。
 - en: 'Now, when we examine its memory access patterns using our strategy of fine-grained
     parallelism, we would have something like the following representation and it
     would exhibit similar problems when we look at the SpMV CSR kernel in a later
     section:'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，当我们使用我们的细粒度并行策略检查其内存访问模式时，我们会得到以下表示，并且当我们稍后在SpMV CSR内核部分查看时，它将表现出类似的问题：
 - en: '![How to do it...](img/4520OT_08_07a.jpg)'
+  id: totrans-78
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做到这一点...](img/4520OT_08_07a.jpg)'
 - en: Understanding how to solve SpMV using the ELLPACK-R format
+  id: totrans-79
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 了解如何使用ELLPACK-R格式解决SpMV
 - en: ELLPACK-R is a variant of the ELLPACK format, and apparently it is rather popular
     for implementing SpMV on GPUs. ELLPACK-R should be used if no regular substructures
     such as off-diagonals or dense blocks can be exploited. The basic idea is to compress
@@ -439,12 +612,16 @@
     ![Understanding how to solve SpMV using the ELLPACK-R format](img/4520OT_08_32.jpg)
     matrix column by column consecutively in main host memory, where *N* is the maximum
     number of non-zero entries per row.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: ELLPACK-R是ELLPACK格式的变体，显然它对于在GPU上实现SpMV相当流行。如果没有可以利用的常规子结构，如非对角线或稠密块，则应使用ELLPACK-R。基本思想是通过将所有非零条目左移来压缩行，并将结果矩阵列按列连续存储在主主机内存中，其中*N*是每行非零条目的最大数量。
 - en: How to do it
+  id: totrans-81
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点
 - en: 'The SpMV ELLPACK-R scalar kernel is called scalar because of the fact that
     we have not taken advantage of a particular aspects unique to GPUs when it comes
     to parallel program development in OpenCL. This aspect is known as **wavefront-/warp-level
@@ -454,77 +631,110 @@
     process a row of the matrix data, and this time, we have the help of another array,
     `rowLengths`, which records the actual length of each row in the matrix where
     it contains non-zero values:'
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: SpMV ELLPACK-R标量内核被称为标量，是因为在OpenCL中开发并行程序时，我们没有利用到GPU特有的一个特定方面。这个方面被称为**波前/
+    warp级编程**。我们将在下一节的SpMV CSR内核介绍中更多地讨论这一点。因此，在这一部分，我们将展示我们的OpenCL内核，如下面的代码所示，它采用了使用一个线程处理矩阵数据一行的策略，这次，我们得到了另一个数组`rowLengths`的帮助，该数组记录了矩阵中每行包含非零值的实际长度：
 - en: '[PRE2]'
+  id: totrans-83
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Examining the previous code, we noticed that once again we have reduced two
     `for` loops into one by recognizing the fact that each thread or work item (in
     OpenCL parlance, if you recall) can perform the work in the inner loop independently.
+  id: totrans-84
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查前面的代码，我们注意到我们再次通过认识到每个线程或工作项（如果你记得的话，在OpenCL术语中）可以在内循环中独立执行工作的事实，将两个`for`循环减少为一个。
 - en: In the following code we present our kernel that has been "vectorized", we recognized
     that our SpMV ELLPACK-R kernel could be improved by taking advantage of the hardware's
     inbuilt feature to run a bunch of threads executing the code and in lock step.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下面的代码中，我们展示了我们的“向量化”内核，我们认识到我们的SpMV ELLPACK-R内核可以通过利用硬件内置的运行多个线程执行代码并同步执行的功能来得到改进。
 - en: Tip
+  id: totrans-86
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: This vectorization will not work if you were to execute it on your OpenCL x86
     compliant CPU unless it has the vectorization hardware available to the GPUs.
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你在你的OpenCL x86兼容CPU上执行此向量化操作，除非GPU有可用的向量化硬件，否则它将不起作用。
 - en: 'This is incredibly useful when the occasions call for it, and this situation
     calls for it. This resulted in our SpMV ELLPACK-R vector kernel shown in the following
     code. Our strategy is to have a warp processed at each row of the matrix, and
     we break each row so that data can be processed by the threads in a warp or wavefront:'
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 当需要这种情况时，这非常有用，而且这种情况正是需要的。这导致了我们下面代码中显示的SpMV ELLPACK-R向量内核。我们的策略是在矩阵的每一行处理一个warp，我们将每一行拆分，以便线程可以在warp或波前中处理数据：
 - en: '[PRE3]'
+  id: totrans-89
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: How it works
+  id: totrans-90
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的
 - en: 'This vector kernel takes advantage of two facts:'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个向量内核利用了两个事实：
 - en: The kernel is executed by groups of threads and those threads execute in lock
     step
+  id: totrans-92
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 内核由线程组执行，并且这些线程同步执行
 - en: '**Parallel reduction**: Parallel reduction is rightfully a topic by itself
     and the variant technique we are using is known as **segmented reduction**'
+  id: totrans-93
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**并行归约**：并行归约是正当其时的一个主题，而我们使用的变体技术被称为**分段归约**'
 - en: To help you understand how parallel reduction works, let's assume and imagine
     we have a one-dimensional array filled with 16 elements and each array element
     is given a number. Now, I like to ask you how you would go about calculating the
     sum of all elements in this given array? There are definitely more than two ways
     in which you can do this, but let's say you are giving the fact that eight work
     items can execute in lock step. how can you take advantage of that?
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了帮助你理解并行归约的工作原理，让我们假设并想象我们有一个包含16个元素的二维数组，每个数组元素都有一个数字。现在，我想问你如何计算这个给定数组中所有元素的总和？肯定有不止两种方法可以做到这一点，但假设你有八个工作项可以同步执行。你如何利用这一点？
 - en: 'One way is to have each work item add two array elements and that would give
     you the partial sums, but how would you be able to add all of these partial sums
     to produce one single sum that represents the summation of the array? Without
     going into too much detail, let''s use the following diagram and see if you can
     figure out how it would have worked:'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 一种方法是将每个工作项添加两个数组元素，这样就会得到部分和，但你是如何将这些部分和相加以产生一个单一的数，这个数代表了数组的求和呢？不深入细节，让我们使用以下图表，看看你是否能弄清楚它是如何工作的：
 - en: '![How it works](img/4520OT_08_08a.jpg)'
+  id: totrans-96
   prefs: []
   type: TYPE_IMG
+  zh: '![工作原理](img/4520OT_08_08a.jpg)'
 - en: Understanding how to solve SpMV using the CSR format
+  id: totrans-97
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解如何使用CSR格式解决SpMV问题
 - en: After viewing all these different data representations for sparse matrices,
     you will probably realize there's more to the picture than we earlier imagined,
     and this serves to highlight the fact that researchers and engineers have spent
@@ -532,20 +742,28 @@
     in an efficient manner. Hence in this section, we are going to take a look at
     how to solve the SpMV problem using the CSR format looking at various recipes
     from sequential, scalar, and finally vector kernels in that order.
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 在查看所有这些稀疏矩阵的不同数据表示后，你可能会意识到这幅图比我们之前想象的要复杂得多，这有助于强调研究人员和工程师已经花费了大量时间和精力以高效的方式解决看似简单的问题。因此，在本节中，我们将探讨如何使用CSR格式解决SpMV问题，并按顺序查看从顺序、标量到最终向量核的各种配方。
 - en: Getting ready
+  id: totrans-99
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: 'Now, let us take a look at what SpMV code would look like in its sequential
     form, that is, when executed on a modern CPU, using the CSR format, and then let''s
     take a look at a naïve implementation of the SpMV:'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们看看SpMV代码在顺序形式下的样子，即在现代CPU上执行时，使用CSR格式，然后让我们看看SpMV的一个简单实现：
 - en: '[PRE4]'
+  id: totrans-101
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: Examining the preceding code, you will notice that the array `ptr` is being
     used to pick the non-zero elements in the array—`data`—which is desirable, and
     `ptr` is also being used to index into the `indices` array to retrieve the correct
@@ -555,41 +773,57 @@
     we will never use; from another perspective, this representation also means that
     the caches are always filled with values we will need and not stored with values
     that are inherently zero valued.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 检查前面的代码，你会注意到数组`ptr`被用来选择数组`data`中的非零元素——这是所希望的，同时`ptr`也被用来索引`indices`数组以检索向量`vec`中的正确元素，这样我们永远不会执行乘以零值的操作。这一点从计算角度来看非常重要，因为它意味着我们不会浪费宝贵的处理器周期去执行我们永远不会使用的工作；从另一个角度来看，这种表示也意味着缓存总是填充着我们需要的值，而不是存储那些本质上为零值的值。
 - en: 'As promised, let us take a look at another solution that focuses on matrix-vector
     multiplication executing on a modern desktop CPU, and in both these examples,
     the only difference is the fact that the previous code took into account the matrix
     is sparse while the following code assumes the matrix is dense:'
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如承诺的那样，让我们看看另一种解决方案，它专注于在现代桌面CPU上执行的矩阵-向量乘法，在这两个例子中，唯一的区别是前面的代码考虑了矩阵是稀疏的，而下面的代码假设矩阵是密集的：
 - en: '[PRE5]'
+  id: totrans-104
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: Take a few moments and examine both code bases, and you will realize the amount
     of computational cycles and memory bandwidth that was saved and wasted needlessly.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 花点时间检查这两个代码库，你会发现节省了多少计算周期和内存带宽，以及无谓地浪费了多少。
 - en: Tip
+  id: totrans-106
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: It is always recommended to compare the sequential form against the parallel
     form so that you can derive basic metrics about your transformed algorithm.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 始终建议将顺序形式与并行形式进行比较，以便您可以推导出关于转换算法的基本指标。
 - en: How to do it
+  id: totrans-108
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作
 - en: Now that we have made done some basic comparisons, we need to figure out what
     our parallelization strategy is going to be. For this, we need to put on our parallel
     developer hat again and scrutinize the code for the SpMV CSR serial kernel shown
     earlier and look for parallelizable portions. One of the things you might have
     already recognized is the fact that the dot product between a row of the matrix
     and the vector `vec`, may be computed independently of all other rows.
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经做了一些基本的比较，我们需要确定我们的并行化策略。为此，我们需要再次戴上并行开发者的帽子，仔细审查前面显示的SpMV CSR串行内核的代码，寻找可并行化的部分。你可能已经注意到的一件事是，矩阵一行与向量`vec`的点积可以独立于所有其他行来计算。
 - en: The following code demonstrates the implementation where we have one work item
     process a row of the matrix, and some literature would call this the scalar kernel.
     In this kernel, as before, our strategy focuses on looking at the two loop structures,
@@ -598,15 +832,21 @@
     inner loop structure which is essentially what one work item /thread is executing
     on, we find that we can retain all of its execution flow and mimic that in the
     OpenCL kernel.
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下代码演示了实现方式，其中有一个工作项处理矩阵的一行，有些文献会称这为标量内核。在这个内核中，和之前一样，我们的策略集中在查看两个循环结构，我们发现外层循环结构可以被展平并用工作项/线程替换，我们知道如何实现这一点；回到内层循环结构，这是每个工作项/线程实际上正在执行的内容，我们发现我们可以保留其所有执行流程，并在OpenCL内核中模拟它。
 - en: 'Next, let''s take a look at how the SpMV kernel is written with the CSR format
     in mind:'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，让我们看看SpMV内核是如何用CSR格式编写的：
 - en: '[PRE6]'
+  id: totrans-112
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: If you can recall, in the previous chapter we noted that such an execution model
     uses really fine-grained parallelism, and such a kernel will probably not perform
     very well. The issue does not lie within the CSR representation, it lies within
@@ -618,59 +858,83 @@
     non-zero entries in the matrix *A*), and memory loads will be latched on the caches
     (which contain memory banks and memory lanes/lines) and finally the hardware registers
     will execute upon them.
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你能回忆起来，在上一章中我们提到，这种执行模型使用非常细粒度的并行性，这样的内核可能表现不会很好。问题并不在于CSR表示法本身，而在于工作项/线程并没有同时访问CSR中的那些值。实际上，每个线程在处理矩阵的每一行时，都会在以下图中产生一个内存访问模式。在追踪了SpMV
+    CSR内核的四个工作项/线程的执行后，你会发现每个线程都会引用数组`val`（其中包含矩阵*A*中的所有非零项）的不同部分，并且内存加载会在缓存（包含内存银行和内存通道/行）上锁定，最后硬件寄存器会执行它们。
 - en: Note
+  id: totrans-114
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: From this point onwards, you should be thinking in terms of how GPUs work on
     a low-level basis.
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: 从现在开始，你应该从底层工作的角度来思考GPU的工作方式。
 - en: Let's use the matrix found in the CSR format earlier as an example to illustrate
     how this SpMV CSR is not really working too well. Each cache is actually implemented
     by lanes/lines such that each line can hold a number of bytes, and in our example,
     it assumes each line can hold 16 elements (assuming each element is of the size
     4 bytes which translates to 64 bytes).
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们以前面找到的CSR格式的矩阵为例，来说明SpMV CSR实际上并不工作得很好。每个缓存实际上是通过通道/行实现的，这样每行可以容纳一定数量的字节，在我们的例子中，它假设每行可以容纳16个元素（假设每个元素的大小为4字节，相当于64字节）。
 - en: It should be obvious to you by now that there's a lot of wastage of cache bandwidth.
     Since our kernel is parallel, we could conceptually have four different lines
     holding various parts of the input array. What would have been desirable is to
     allow all the data in at once and keeping the cache hot while processing it.
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 到现在为止，你应该很明显地看出，有很多缓存带宽的浪费。由于我们的内核是并行的，从理论上讲，我们可以有四条不同的行来持有输入数组的各个部分。我们希望的是一次将所有数据放入，并在处理过程中保持缓存活跃。
 - en: One way of achieving this is to apply the previous techniques you've learned.
     Kudos for thinking about that. However, let's learn another technique and in some
     literature it is known as warp-/wavefront-level programming. We saw it in action
     in the previous section.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 实现这一目标的一种方法就是应用你之前学到的技术。恭喜你想到这一点。然而，让我们学习另一种技术，在一些文献中它被称为warp-/wavefront级编程。我们在上一节中看到了它的实际应用。
 - en: 'Recall in another chapter, where we introduced the fact that threads of some
     of the OpenCL devices, GPUs notably execute a bunch of threads in lock step in
     the processor. The following figure illustrates the memory access pattern for
     a SpMV CSR kernel when building and executing on a CPU in a serial fashion:'
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 回想一下，在另一章中，我们介绍了某些OpenCL设备（特别是GPU）的线程在处理器中以lock step方式执行的事实。以下图示了在CPU上以串行方式构建和执行SpMV
+    CSR内核时的内存访问模式：
 - en: '![How to do it](img/4520OT_08_09a.jpg)'
+  id: totrans-120
   prefs: []
   type: TYPE_IMG
+  zh: '![如何做到这一点](img/4520OT_08_09a.jpg)'
 - en: Tip
+  id: totrans-121
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: To optimize your algorithm with respect to memory access, have your work items
     in a single wavefront/warp access the memory locations from the same cache line.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了优化你的算法以适应内存访问，让单个wavefront/warp中的工作项访问同一缓存行的内存位置。
 - en: Next, you would want to ask yourself the question on how you go about working
     out a kernel that is able to load the elements you need into the same cache line
     and take advantage of the fact that threads in a warp or wavefront execute in
     the lock step. This fact also implies that you need coordination, but don't worry,
     we won't have to use the atomic functions found in OpenCL for this.
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，你可能想知道如何设计一个内核，能够将所需的元素加载到相同的缓存行中，并利用warp或wavefront中的线程以lock step方式执行的事实。这一事实也意味着你需要协调，但不用担心，我们不需要使用OpenCL中找到的原子函数来做这件事。
 - en: When I see the term *lock step*, I immediately conjure the image of 10 runners,
     akin to executing threads in a warp/wavefront, lined up for a 100 meter dash,
     and the exception here as compared to the warp-/wavefront-level programming is
@@ -678,123 +942,179 @@
     but that's how it works. Coordinating this batch of runners is like strapping
     leashes on eight horses dragging a wagon and the cowboy driving the carriage using
     his whip to accelerate or decelerate.
+  id: totrans-124
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我看到“lock step”这个术语时，我立刻会联想到10名跑者，就像在warp/wavefront中执行线程一样，排成一排进行100米赛跑，而与warp-/wavefront级编程相比的例外是，所有这些跑者都需要一起到达终点线。我知道这听起来很奇怪，但这就是它的工作方式。协调这批跑者就像给八匹马套上缰绳，用鞭子驱赶马车来加速或减速。
 - en: Note
+  id: totrans-125
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: At this point, I like to digress a little and point out to you that **Intel
     Math Kernel Library** (**Intel MKL**) 11.0 implements sparse solvers using data
     storage formats based on the CSR formats and has good performance for running
     on Intel CPUs as they not only optimize memory management but also take advantage
     of **Instruction Level Parallelism** (**ILP**).
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一点上，我想要稍微偏离一下主题，并指出**英特尔数学内核库**（**Intel MKL**）11.0使用基于CSR格式的数据存储格式来实现稀疏求解器，并且它们在Intel
+    CPU上运行时性能良好，因为它们不仅优化了内存管理，还利用了**指令级并行性**（**ILP**）。
 - en: Now, you have to recognize and imagine your kernel to be executed by a bunch
     of threads and for starters, let's imagine 32 or 64 of them running at once. Each
     of these threads have an ID and that's the primary method in which you identify
     and control them, that is, placing the control-flow constructs that allows or
     restrict threads from running. To illustrate the point, let us take a look at
     the following improved SpMV CSR vector kernel.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，你必须识别并想象你的内核将由一组线程执行，作为入门，让我们想象有32或64个线程同时运行。每个线程都有一个ID，这是你识别和控制它们的主要方法，即放置允许或限制线程运行的流程控制结构。为了说明这一点，让我们看一下以下改进的SpMV
+    CSR向量内核。
 - en: 'The SpMV CSR OpenCL kernel is found in `Ch8/SpMV/spmv.cl`:'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: SpMV CSR OpenCL内核位于`Ch8/SpMV/spmv.cl`：
 - en: '[PRE7]'
+  id: totrans-129
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Now that we have taken a good look at the OpenCL kernel, we need to build an
     executable form on which to execute. As before, the compilation will look familiar
     to you. On my setup with an Intel Core i7 CPU and AMD HD6870x2 GPU running Ubuntu
     12.04 LTS, the compilation looks like the following and it''ll create an executable
     called `SpMV` into the working directory:'
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经仔细研究了OpenCL内核，我们需要构建一个可执行的形式来执行。和以前一样，编译过程对你来说应该是熟悉的。在我的配置中，有一个Intel Core
+    i7 CPU和AMD HD6870x2 GPU运行Ubuntu 12.04 LTS，编译过程如下，它会在工作目录中创建一个名为`SpMV`的可执行文件：
 - en: '[PRE8]'
+  id: totrans-131
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'At this point, the executable should be available to you on the directory.
     To run the program, simply execute the program `SpMV` in the directory, and you
     should notice an output that resembles the following:'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，可执行文件应该已经在你所在的目录中可用。要运行程序，只需在目录中执行程序 `SpMV`，你应该会注意到一个类似于以下输出的结果：
 - en: '[PRE9]'
+  id: totrans-133
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: How it works
+  id: totrans-134
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的
 - en: The way this works deserves a significant number of explanations, but first
     of all is the fact that we have adapted our parallel reduction into another form,
     which is otherwise known as segmented reduction. By this time, you should be relatively
     familiar with the rest of the code, so I won't walk you through that as you may
     doze off.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种工作方式值得大量的解释，但首先，我们必须认识到我们已经将我们的并行归约转换成了另一种形式，这通常被称为分段归约。到这个时候，你应该对代码的其余部分相对熟悉了，所以我不打算带你走一遍，因为你可能会打瞌睡。
 - en: Parallel reduction, in all its forms, is a very effective way to conduct reduction
     across processors and even architectures. The famous Hadoop framework is an example
     of parallel reduction across architectures, and the form we are seeing now is
     that confined to the processor residing on the OpenCL GPU.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 在所有形式中，并行归约都是进行跨处理器甚至架构的归约的有效方法。著名的 Hadoop 框架是跨架构并行归约的一个例子，而我们现在看到的形式是局限于 OpenCL
+    GPU 上的处理器。
 - en: 'Let me walk you through what happened here in our segmented reduction example
     for the SpMV CSR vector kernel. Initially, we set up a shared memory space in
     our kernel to hold 128 elements of the type `float`:'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我带你看看在我们的 SpMV CSR 矩阵核的分段归约示例中发生了什么。最初，我们在内核中设置了一个共享内存空间来存储 128 个 `float` 类型的元素：
 - en: '[PRE10]'
+  id: totrans-138
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: Tip
+  id: totrans-139
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 小贴士
 - en: You might be curious as to why we need the keyword `volatile` when defining
     the array `partialSums`. The main reason is because on the level of warp/wavefront-level
     programming, OpenCL does not have synchronization functions like the memory fences
     we have encountered so far, and when you do not place the `volatile` keyword when
     declaring shared memory, the compiler is free to replace the store to and load
     from `__local` memory with register storage, and execution errors will arise.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可能好奇为什么在定义数组 `partialSums` 时需要使用关键字 `volatile`。主要原因是在 warp/波前级别的编程中，OpenCL
+    没有我们之前遇到的内存栅栏之类的同步函数，当你没有在声明共享内存时放置 `volatile` 关键字，编译器可以自由地将存储到和从 `__local` 内存中的加载替换为寄存器存储，从而引发执行错误。
 - en: The intention was for each thread in the warp/wavefront to store its own computation
     into its own slot marked by its thread ID.
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 目的是让 warp/波前中的每个线程将其自己的计算存储到由其线程 ID 标记的自己的槽位中。
 - en: 'Next, we see the following bunch of code:'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们看到以下这堆代码：
 - en: '[PRE11]'
+  id: totrans-143
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: This code does two things—first is that it only allows threads with certain
     IDs to execute and the second thing it does is to only allow the thread with ID
     `0`, that is, zero to write out the total sum into the appropriate element of
     the output array, `out`.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 这段代码做了两件事——第一是它只允许具有特定 ID 的线程执行，第二件事是它只允许 ID 为 `0` 的线程，即零，将总和写入输出数组 `out` 的适当元素中。
 - en: 'Let''s get into the details. When an executing thread / work item attempts
     to execute the following piece of code, the kernel will first determine if its
     ID is allowed, and the threads with IDs ranging from 0 to 15 will get to execute,
     while those in the following code will not execute, and we will have **thread
     divergence**:'
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们深入了解细节。当一个正在执行的线程/工作项尝试执行以下代码片段时，内核首先会确定其 ID 是否允许，ID 在 0 到 15 范围内的线程将得到执行，而以下代码中的线程将不会执行，我们将有
+    **线程发散**：
 - en: '[PRE12]'
+  id: totrans-146
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: Note
+  id: totrans-147
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: Recall that thread divergence occurs at branches, that is, `if-then-else`, switches,
     and so on, which basically partition`s a warp/wavefront into two, where one part
     of the group executes code while the other part doesn't.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 回想一下，线程发散发生在分支处，即 `if-then-else`、switch 等等，这基本上将 warp/波前分成两部分，其中一组的一部分执行代码，而另一部分则不执行。
 - en: 'At this point, you should convince yourself that pair-wise reduction takes
     place for the entire shared-memory array, `partialSums`, and I find it helpful
     when I trace it on paper or the computer (whatever is your preference). When the
@@ -804,83 +1124,120 @@
     This memory fence is important, otherwise bad things will happen. Next, the parallel
     reduction occurs again, but this time we only need to process half of the array,
     and we restrict the number of threads to `8`:'
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一点上，您应该确信整个共享内存数组`partialSums`进行了成对减少，我在纸上或电脑上追踪它时发现这很有帮助（无论您更喜欢哪种方式）。当执行线程完成并行减少后，请注意没有重叠的写入（这是故意的），我们只需要在那个点放置一个内存栅栏，以确保在继续之前每个线程都已经到达那个点。这个内存栅栏很重要，否则会发生不好的事情。接下来，再次进行并行减少，但这次我们只需要处理数组的一半，并将线程数量限制为`8`：
 - en: '[PRE13]'
+  id: totrans-150
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: We repeat this cycle by dropping the number of executable threads by the power
     of two till it reaches `1`, and at that point, the final aggregated value will
     be in the zeroth position in the array, `partialSums`.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们通过将可执行线程的数量减半重复这个循环，直到它达到`1`，此时最终的聚合值将位于数组`partialSums`的零位置。
 - en: 'Once we have our final aggregated value in the zeroth position of the array
     `partialSums`, we can write it out to its appropriate position in the array `out`
     indexed by the row we''ve processed. This segmented reduction is drawn out in
     the following diagram:'
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦我们在数组`partialSums`的零位置得到最终的聚合值，我们就可以将其写入到数组`out`中相应的位置，该位置由我们处理的行索引。这种分段减少在以下图中展示：
 - en: '![How it works](img/4520OT_08_10.jpg)'
+  id: totrans-153
   prefs: []
   type: TYPE_IMG
+  zh: '![如何工作](img/4520OT_08_10.jpg)'
 - en: Understanding how to solve SpMV using VexCL
+  id: totrans-154
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解如何使用VexCL解决SpMV
 - en: 'Finally, I would like to present solving the SpMV CSR kernel using the conjugate
     gradient method. We have studied this method in the beginning of this chapter
     and hopefully, we still remember what it is. Let me help you by refreshing your
     memory of the core equations on the CG method:'
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我想展示如何使用共轭梯度法解决SpMV CSR内核。我们在本章的开头研究了这种方法，希望我们仍然记得它是什么。让我通过刷新您对CG方法核心方程的记忆来帮助您：
 - en: '![Understanding how to solve SpMV using VexCL](img/4520OT_08_31.jpg)'
+  id: totrans-156
   prefs: []
   type: TYPE_IMG
+  zh: '![理解如何使用VexCL解决SpMV](img/4520OT_08_31.jpg)'
 - en: 'So far, we have developed a pretty good idea about how to solve SpMV problems
     using various ways through the SpMV ELLPACK, ELLPACK-R, and CSR formats in both
     scalar and vector forms, but it took us a while to get there for sure. In this
     section, you will be introduced to an OpenCL framework for solving problems, and
     its called VexCL. It can be downloaded from:'
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们已经通过SpMV ELLPACK、ELLPACK-R和CSR格式在标量和向量形式中，使用各种方法对SpMV问题有了相当好的理解，但确实花费了我们一些时间才达到这个目标。在本节中，您将了解到一个用于解决问题的OpenCL框架，它被称为VexCL。可以从以下地址下载：
 - en: 'VexCL main page: [https://github.com/ddemidov/vexcl](https://github.com/ddemidov/vexcl)'
+  id: totrans-158
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: VexCL 主页：[https://github.com/ddemidov/vexcl](https://github.com/ddemidov/vexcl)
 - en: 'VexCL Wiki: [https://github.com/ddemidov/vexcl/wiki](https://github.com/ddemidov/vexcl/wiki)'
+  id: totrans-159
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: VexCL 维基：[https://github.com/ddemidov/vexcl/wiki](https://github.com/ddemidov/vexcl/wiki)
 - en: OpenCL has suffered, in the author's opinion, on the lack of tooling support,
     and VexCL is again, in the author's opinion, one of the better wrappers around
     OpenCL C++ and I like to take this section to briefly introduce you to it and
     you can go download it.
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 按照作者的观点，OpenCL在工具支持方面存在不足，而VexCL在作者看来是围绕OpenCL C++的更好封装之一，我喜欢在这一节中简要向您介绍它，您可以去下载它。
 - en: Getting ready
+  id: totrans-161
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: For VexCL to work with you, you will need a C++11 compliant compiler, and GNU
     GCC 4.6 and the Boost Libs fit the bill. On my setup, I've got the GCC 4.7 compiled
     with Boost List Version 1.53 without much trouble. That means I won't list the
     installation instructions as the installation process is relatively straightforward.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了让VexCL与您协同工作，您需要一个符合C++11规范的编译器，GNU GCC 4.6和Boost库是合适的选择。在我的设置中，我已经成功编译了GCC
+    4.7，并使用了Boost List版本1.53，没有遇到太多麻烦。这意味着我不会列出安装说明，因为安装过程相对直接。
 - en: How to do it
+  id: totrans-163
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作
 - en: 'The following OpenCL kernel is found in `Ch8/SpMV_VexCL/SpMV.cpp`:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下OpenCL内核位于`Ch8/SpMV_VexCL/SpMV.cpp`：
 - en: '[PRE14]'
+  id: totrans-165
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: How it works
+  id: totrans-166
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何工作
 - en: The host code basically fills the one-dimensional arrays with the required values
     so that they can conform to the CSR format. After this, the device vectors are
     declared with their appropriate data types and linked with their appropriate host
@@ -889,18 +1246,24 @@
     the reductor will only execute in the OpenCL device using a single thread of execution,
     so it isn't quite the same as the parallel reduction we have seen back then; its
     reduction is alright, but it is carried out in a sequential fashion.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 主代码基本上用所需的值填充一维数组，以便它们可以符合CSR格式。之后，声明设备向量并使用适当的数据类型与相应的宿主向量（复制将会发生，但这是在幕后进行的）相连接，并定义了两个归约器（它们基本上是我们之前见过的归约核）；归约器将仅在OpenCL设备上使用单个执行线程执行，所以它并不完全像我们之前看到的并行归约；它的归约是好的，但它是以顺序方式执行的。
 - en: Next, we initialized an ADT known as `SpMAT` which holds the representation
     of a sparse matrix, and this ADT has the capability to span multiple devices,
     which is very desirable property since the written code is transparent to its
     actual underlying computing devices.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们初始化了一个名为`SpMAT`的ADT（抽象数据类型），它持有稀疏矩阵的表示，并且这个ADT具有跨越多个设备的能力，这是一个非常理想化的属性，因为编写的代码对其实际底层计算设备是透明的。
 - en: In the background, the C++ code you have been shown will cause code generation
     to occur, and that is the code that will be used, compiled, and executed again;
     if you like to see the generated kernel code, simply place the C macro `VEXCL_SHOW_KERNELS`.
     We finally transfer the processed data from the device memory to the host memory
     using the `copy` function from the `vex` namespace.
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 在后台，你看到的C++代码将导致代码生成发生，并且这就是将被使用、编译和再次执行的那个代码；如果你想看到生成的内核代码，只需放置C宏`VEXCL_SHOW_KERNELS`。我们最后使用`vex`命名空间中的`copy`函数将处理过的数据从设备内存传输到宿主内存。
