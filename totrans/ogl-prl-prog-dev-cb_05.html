@@ -1,0 +1,223 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;5.&#xA0;Developing a Histogram OpenCL program"><div class="titlepage"><div><div><h1 class="title"><a id="ch05"/>Chapter 5. Developing a Histogram OpenCL program</h1></div></div></div><p>In this chapter, we'll cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Implementing a histogram in C/C++</li><li class="listitem" style="list-style-type: disc">OpenCL implementation of the histogram</li><li class="listitem" style="list-style-type: disc">Work-item synchronization</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec41"/>Introduction</h1></div></div></div><p>Anyone who has taken elementary math in school would know what a histogram is. It's one of the<a id="id412" class="indexterm"/> myriad of ways by which one can visualize the relationship between two sets of data. These two sets of data are arranged on two axes such that one axis would represent the distinct values in the dataset and the other axis would represent the frequency at which each value occurred.</p><p>The histogram is an interesting topic to study because its practical applications are found in computational image processing, quantitative/qualitative finance, computational fluid dynamics, and so on. It is one of the earliest examples of OpenCL usage when running on CPUs or GPUs, where several implementations have been made and each implementation has its pros and cons.</p></div></div>
+<div class="section" title="Implementing a Histogram in C/C++"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec42"/>Implementing a Histogram in C/C++</h1></div></div></div><p>Before we look at how we <a id="id413" class="indexterm"/>can implement this in OpenCL and run the<a id="id414" class="indexterm"/> application on the desktop GPU, let's take a look at how we can implement it using a single thread of execution.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec96"/>Getting ready</h2></div></div></div><p>This study of the sequential code is important because we need a way to make sure our sequential code and parallel code produce the same result, which is quite often referred to as the <a id="id415" class="indexterm"/>
+<span class="strong"><strong>golden reference</strong></span> implementation.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note20"/>Note</h3><p>In your role as an OpenCL engineer, one of the items on your to-do list would probably be to translate sequential algorithms to parallel algorithms, and it's important for you to be able to understand how to do so. We attempt to impart some of these skills which may not be exhaustive in all sense. One of the foremost important skills to have is the ability to identify<a id="id416" class="indexterm"/> <span class="strong"><strong>parallelizable routines</strong></span>.</p></div></div><p>Examining the code that follows, we can begin to understand how the histogram program works.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec97"/>How to do it…</h2></div></div></div><p>Here, we present the<a id="id417" class="indexterm"/> sequential code in its entirety, where it uses exactly one <a id="id418" class="indexterm"/>executing thread to create the memory structures of a histogram. At this point, you can copy the following code and paste it in a directory of your choice and call this program <code class="literal">Ch5/histogram_cpu/histogram.c</code>:</p><div class="informalexample"><pre class="programlisting">#define DATA_SIZE 1024
+#define BIN_SIZE 256
+
+int main(int argc, char** argv) {
+    unsigned int* data = (unsigned int*) malloc( DATA_SIZE *
+                         sizeof(unsigned int));
+    unsigned int* bin  = (unsigned int*) malloc( BIN_SIZE *
+                         sizeof(unsigned int));
+    memset(data, 0x0, DATA_SIZE * sizeof(unsigned int));
+    memset(bin, 0x0, BIN_SIZE * sizeof(unsigned int));
+
+    for( int i = 0; i &lt; DATA_SIZE; i++) {
+        int indx = rand() % BIN_SIZE;
+        data[i] = indx;
+    }
+
+    for( int i = 0; i &lt; DATA_SIZE; ++i) {
+       bin[data[i]]++;
+    }
+
+}</pre></div><p>To build the program, we are assuming that you have a GNU GCC compiler. Type the following command to into a terminal:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>/usr/bin/gcc –o histogram Ch5/histogram_c/histogram.c</strong></span>
+</pre></div><p>Alternatively, run <code class="literal">make</code> at the directory <code class="literal">Ch5/histogram_c</code>, and an executable named <code class="literal">histogram</code> will be <a id="id419" class="indexterm"/>deposited in your directory where you issued that command.</p><p>To run the program, simply <a id="id420" class="indexterm"/>execute the program <code class="literal">histogram</code> deposited on the folder <code class="literal">Ch5/histogram_c</code>, and it should output nothing. However, feel free to inject C's output function <code class="literal">printf</code>, <code class="literal">sprintf</code> into the previous code and convince yourself that the histogram is working as it should.</p></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec98"/>How it works…</h2></div></div></div><p>To make a histogram, we need to have an initial dataset where it contains values. The values in a histogram are computed by scanning through the dataset and recording how many times a scanned value has appeared in the dataset. Hence, the concept of <span class="strong"><strong>data binning</strong></span>. The<a id="id421" class="indexterm"/> following diagram illustrates this concept:</p><div class="mediaobject"><img src="graphics/4520OT_05_01.jpg" alt="How it works…"/></div><p>In the following code, we see that the first <code class="literal">for</code> loop fills up the array <code class="literal">data</code> with values ranging from <code class="literal">0</code> to <code class="literal">255</code>:</p><div class="informalexample"><pre class="programlisting">for( int i = 0; i &lt; DATA_SIZE; i++) {
+        int indx = rand() % BIN_SIZE;
+        data[i] = indx;
+}</pre></div><p>The second <code class="literal">for</code> loop walks the <code class="literal">data</code> array and records the occurrence of each value, and the final <code class="literal">for</code> loop serves to <a id="id422" class="indexterm"/>print out the occurrence of each value. That is the essence of data binning.</p><div class="informalexample"><pre class="programlisting">for( int i = 0; i &lt; DATA_SIZE; ++i) {
+       bin[data[i]]++;
+}</pre></div><p>Finally, you would<a id="id423" class="indexterm"/> iterate the binned data and print out what you've found:</p><div class="informalexample"><pre class="programlisting">for( int i = 0; i &lt; BIN_SIZE; i ++) {
+        if (bin[i] == 0) continue; 
+        else printf("bin[%d] = %d\n", i, bin[i]);
+}</pre></div><p>Next, we are going to look at how OpenCL can apply data binning into its implementation.</p></div></div>
+<div class="section" title="OpenCL implementation of the Histogram"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec43"/>OpenCL implementation of the Histogram</h1></div></div></div><p>In this section, we<a id="id424" class="indexterm"/> will attempt to develop your intuition to be able to <a id="id425" class="indexterm"/>identify possible areas of parallelization and how you can use those techniques to parallelize sequential algorithms.</p><p>Not wanting to delve into too much theory about parallelization, one of the key insights about whether a routine/algorithm can be parallelized is to examine whether the algorithm allows work to be split among different processing elements. Processing elements from the OpenCL's perspective would be the processors, that is, CPU/GPU.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note21"/>Note</h3><p>Recall that OpenCL's work items are execution elements that act on a set of data and execute on the processing element. They are often found in a work group where all work items can coordinate data reads/writes to a certain degree and they share the same kernel and work-group barriers.</p></div></div><p>Examining the code, you will notice that the first thing that is probably able to fulfill the description:</p><div class="blockquote"><blockquote class="blockquote"><p><span class="emphasis"><em>"...allows work to be split among different processing elements"</em></span></p></blockquote></div><p> This would be to look for <code class="literal">for</code> loops. This is because loops mean that the code is executing the same block of instructions to achieve some outcome, and if we play our cards right, we should be able to split the work in the loop and assign several threads to execute a portion of the code along with the data.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec99"/>Getting ready</h2></div></div></div><p>In many algorithms, you will see that splitting the work sometimes does not necessarily imply that the data needs to be cleanly partitioned, and that's because the data is read-only; however, when the algorithm needs to conduct both reads and writes to the data, then you need to figure out a way to partition them cleanly. That last sentence deserves some explanation. Recall in <a class="link" href="ch02.html" title="Chapter 2. Understanding OpenCL Data Transfer and Partitioning">Chapter 2</a>, <span class="emphasis"><em>Understanding OpenCL Data Transfer and Partitioning</em></span>, where we discussed work items and data partitioning, and by now you should have understood that OpenCL does not prevent you, the developer, from creating race conditions for your data if you miscalculated the data indexing or even introduced data dependencies.</p><p>With great power, comes great responsibility.</p><p>In building a data parallel algorithm, it's important to be able to understand a couple of things, and from the perspective of implementing an<a id="id426" class="indexterm"/> OpenCL histogram program, here <a id="id427" class="indexterm"/>are some suggestions:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Understand your data structure</strong></span>: In the<a id="id428" class="indexterm"/> previous chapters, we have seen how we can allow user-defined structures and regular 1D or 2D arrays to be fed into the kernel for execution. You should always search for an appropriate structure to use and make sure you watch for the off-by-one errors (in my experience, they are more common than anything else).</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Decide how many work items should execute in a work-group</strong></span>: If the kernel only has one work item executing a large dataset, it's often not efficient to do so because of the way the hardware works. It makes sense to configure a sizeable number of work items to execute in the kernel so that they take advantage of the hardware's resources and this often increases the temporal and spatial locality of data, which means your algorithm runs faster.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Decide how to write the eventual result</strong></span>: In the histogram implementation we've chosen, this is important because each kernel will process a portion of the data and we need to merge them back. We have not seen examples of that before, so here's our chance!</li></ul></div><p>Let's see how those suggestions could apply. The basic idea is to split a large array among several work groups. Each work group will process its own data (with proper indexing) and store/bin that data in the scratchpad memory provided by the hardware, and when the work group has finished its processing, its local memory will be stored back to the global memory.</p><p>We have chosen the 1D array to contain the initial set of data and this data can potentially be infinite, but the author's machine configuration doesn't have limitless memory, so there's a real limit. Next, we will split this 1D array into several chunks, and this is where it gets interesting.</p><p>Each chunk of data will be cleanly partitioned and executed by a work group. This work group has chosen to house 128 work items and each work item will produce a bin of size 256 elements or a 256 bin.</p><p>Each work group will store these into the local memory also known as s<span class="strong"><strong>cratchpad memory</strong></span><a id="id429" class="indexterm"/> because we don't want to keep going back and forth global and device memory. This is a real performance hit.</p><p>In the code presented in the following section, one of the techniques you will learn is to use the scratchpad memory or local memory in aiding your algorithm to execute faster.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note22"/>Note</h3><p>Local memory<a id="id430" class="indexterm"/> is a software controlled scratchpad memory, and hence its name. The scratchpad allows the kernel to explicitly load items into that memory space, and they exist in local memory until the kernel replaces them, or until the work group ends its execution. To declare a block of local memory, the <code class="literal">__local</code> keyword is used and you can declare them in the parameters to the kernel call or in the body of the kernel. This memory allocation is shared by all work items in the work group.</p></div></div><p>The host <a id="id431" class="indexterm"/>code cannot read from or write to local memory. Only the kernel <a id="id432" class="indexterm"/>can access local memory.</p><p>So far you have seen how to obtain memory allocation from the OpenCL device and fire the kernel to consume the input data and reading from that processed data subsequently for verification. What you are going to experience in the following paragraphs might hurt your head a little, but have faith in yourself, and I'm sure we can get this through.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec100"/>How to do it…</h2></div></div></div><p>The complete working kernel is presented as follows from <code class="literal">Ch5/histogram/histogram.cl</code>, and we have littered comments in the code so as to aid you in understanding the motivation behind the constructs:</p><div class="informalexample"><pre class="programlisting">#define MEMORY_BANKS 5U // 32-memory banks.
+
+__kernel
+
+void histogram256(__global const unsigned int4* data,
+                               __local uchar* sharedArray,
+                               __global uint* binResult) {
+
+// these 4 statements are meant to obtain the ids for the first
+// dimension since our data is a 1-d array
+size_t localId = get_local_id(0);
+size_t globalId = get_global_id(0);
+size_t groupId = get_group_id(0);
+size_t groupSize = get_local_size(0);
+
+int offSet1 = localId &amp; 31;
+int offSet2 = 4 * offSet1;
+int bankNumber = localId &gt;&gt; MEMORY_BANKS;
+
+__local uchar4* input = (__local uchar4*) sharedArray;
+
+// In a work-group, each work-item would have an id ranging from
+// [0..127]
+// since our localThreads in 'main.c' is defined as 128
+// Each work-item in the work-group would execute the following
+// sequence:
+// work-item id = 0, input[128 * [0..63]] = 0
+// Not forgetting that input is a vector of 4 unsigned char type,
+// that effectively means
+// that each work-group would execute this loop 8192 times and each
+// time it would set
+// 4 bytes to zero =&gt; 8192 * 4 bytes = 32-KB and this completes the
+// initialization of the
+// local shared memory array.
+
+for(int i = 0; i &lt; 64; ++i )
+  input[groupSize * i + locald] = 0;
+
+// OpenCL uses a relaxed consistency memory model which means to say
+// that the state of
+// memory visible to a work-item is not guaranteed to be consistent
+// across the collection
+// of work-items at all times.
+// Within a work-item memory has load/store consistency. Local memory
+// is consistent
+// across work-items in a single work-group at a work-group barrier.
+// The statement below
+// is to perform exactly that function.
+// However, there are no guarantees of memory consistency between
+// different
+// work-groups executing a kernel
+
+// This statement means that all work-items in a single work-group
+// would have to reach
+// this point in execution before ANY of them are allowed to continue
+// beyond this point.
+
+barrier(CLK_LOCAL_MEM_FENCE);
+
+// The group of statements next fetch the global memory data and
+// creates a binned
+// content in the local memory.
+// Next, the global memory is divided into 4 chunks where the
+// row_size = 64 and'
+// column_size = 128. The access pattern for all work-items in the
+// work-group is
+// to sweep across this block by accessing all elements in each
+// column 64-bytes at a time.
+// Once that data is extracted, we need to fill up the 32-KB local
+// shared memory so we
+// next extract the vector values from the local variable "value" and
+// fill them up. The
+// pattern we used to store those values is as follows:
+// value.s0 can only range from [0..255] and value.s0 * 128 would
+// indicate which row
+// and column you like to store the value. Now we land in a
+// particular row but we need
+// to decide which 4-byte chunk its going to store this value since
+// value.s0 is a int and
+// sharedArray is a uchar-array so we use offSet2 which produces an
+// array [0,4,8...124]
+// and now we need which chunk its going to land in. At this point,
+// you need to remember
+// that value.s0 is a value [0..255] or [0x00..0xFF] so we need to
+// decide which element in
+// this 4-byte sub-array are we going to store the value.
+// Finally, we use the value of bankNumber to decide since its range
+// is [0..3]
+for(int i = 0; i &lt; 64; ++i) {
+  uint4 value = data[groupId * groupSize * BIN_SIZE / 4 + i * groupSize + localId];
+  sharedArray[value.s0 * 128 + offSet2 + bankNumber]++;
+  sharedArray[value.s1 * 128 + offSet2 + bankNumber]++;
+  sharedArray[value.s2 * 128 + offSet2 + bankNumber]++;
+  sharedArray[value.s3 * 128 + offSet2 + bankNumber]++;
+}
+
+// At this point, you should have figured it out that the 128 * 256
+// resembles a hashtable
+// where the row indices are the keys of the 256-bin i.e. [0..255]
+// and the "list" of values
+// following each key is what it looks like
+// [0]   -&gt; [1,3,5,6 ...]
+// [1]   -&gt; [5,6,2,1... ]
+// ...
+// [255] -&gt; [0,1,5,..]
+// Next, we go through this pseudo-hashtable and aggregate the values
+// for each key
+// and store this result back to the global memory.
+// Apply the barrier again to make sure every work-item has completed
+// the population of
+// values into the local shared memory.
+
+barrier(CLK_LOCAL_MEM_FENCE);
+
+// Now, we merge the histograms
+// The merging process is such that it makes a pass over the local
+// shared array
+// and aggregates the data into 'binCount' where it will make its way
+// to the
+// global data referenced by 'binResult'
+
+if(localId == 0) { // each work-group only has 1 work-item executing this code block
+  for(int i = 0; i &lt; BIN_SIZE; ++i) {
+    uint result = 0;
+    for(int j = 0; j &lt; groupSize; ++j) {
+      result += sharedArray[i * groupSize + j];
+    }
+    binResult[groupId * BIN_SIZE  + i] = result;
+  }
+}</pre></div><p>To compile it on the <a id="id433" class="indexterm"/>OSX platform, you would run a compile command<a id="id434" class="indexterm"/> similar to the following:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>gcc –std=c99 –Wall –DUNIX –g –DDEBUG –DAPPLE –arch i386 –o Histogram main.c –framework OpenCL</strong></span>
+</pre></div><p>Alternatively, you can run <code class="literal">make</code> at the directory <code class="literal">Ch5/histogram</code>, and you would have a binary executable named <code class="literal">Histogram</code>.</p><p>To run the program, simply execute the program, <code class="literal">Histogram</code>. A sample output on my machine, which is an OS X, is:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Passed!</strong></span>
+</pre></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec101"/>How it works…</h2></div></div></div><p>In the host code, we<a id="id435" class="indexterm"/> first assign the necessary data structures that we <a id="id436" class="indexterm"/>need to implement the histogram. An excerpt from the source <code class="literal">Ch5/histogram/main.c</code> demonstrates the code that creates a single device queue, with the kernel and your usual suspects. The variables <code class="literal">inputBuffer</code> and <code class="literal">intermediateBinBuffer</code> refer to the unbinned array and intermediate bins:</p><div class="informalexample"><pre class="programlisting">queue = clCreateCommandQueue(context, device, 0, &amp;error);
+
+cl_kernel kernel = clCreateKernel(program, "histogram256", &amp;error);
+
+inputBuffer = clCreateBuffer(context,
+                             CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,
+                             width * height * sizeof(cl_uint),
+                             data,
+                             &amp;error);
+
+intermediateBinBuffer = clCreateBuffer(context,
+                                       CL_MEM_WRITE_ONLY,
+                                       BIN_SIZE * subHistogramCount * sizeof(cl_uint),
+                                       NULL,
+                                       &amp;error);
+
+clSetKernelArg(kernel, 0, sizeof(cl_mem),(void*)&amp; inputBuffer);
+        
+// the importance of uchar being that its unsigned char i.e. value //range[0x00..0xff]
+clSetKernelArg(kernel, 1, BIN_SIZE * GROUP_SIZE * sizeof(cl_uchar), NULL); // bounded by LOCAL MEM SIZE in GPU
+clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&amp; intermediateBinBuffer);</pre></div><p>So conceptually, the code splits the input data into chunks of 256 elements and each such chunk would be loaded into <a id="id437" class="indexterm"/>device's local memory, which would be processed by the <a id="id438" class="indexterm"/>work items in the work group. The following is an illustration of how it looks like:</p><div class="mediaobject"><img src="graphics/4520OT_05_02.jpg" alt="How it works…"/></div><p>Now, imagine the kernel is going to execute the code and it needs to know how to fetch the data from the global memory, process it, and store it back to some data store. Since we have chosen to use the local memory as a temporary data store, let's take a look at how local memory can be used to help our algorithm, and finally examine how it's processed.</p><p>Local memory resembles a lot to any other memory in C, hence you need to initialize it to a proper state before you can use it. After this, you need to make sure that proper array indexing rules are obeyed since those one-off errors can crash your program and might hang your OpenCL device.</p><p>The initialization of the local memory is carried out by the following program statements:</p><div class="informalexample"><pre class="programlisting">__local uchar* input = (__local uchar4*) sharedArray;
+
+for(int i = 0; i &lt; 64; ++i)
+  input[groupSize * i + localId] = 0;
+
+barrier(CLK_LOCAL_MEM_FENCE);</pre></div><p>At this point, I should caution you to put on your many-core hat now and imagine that 128 threads are executing this kernel. With this understanding, you will realize that the entire local memory is set to zero by simple arithmetic. The important thing to realize by now, if you haven't, is that each work item should not perform any repeated action.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note23"/>Note</h3><p>The initialization could have been written in a sequential fashion and it would still work, but it means each work item's initialization would overlap with some other work item's execution. This is, in general, bad since in our case, it would be harmless, but in other cases it means that you could be spending a large amount of time debugging your algorithm. This synchronization applies to all work items in a work group, but doesn't help in synchronizing between work groups.</p></div></div><p>Next, we see a <a id="id439" class="indexterm"/>statement that we probably have not seen before. This<a id="id440" class="indexterm"/> is a form of synchronization or memory barrier. The interesting observation about barriers is that all the work items must reach this statement before being allowed to proceed any further. It's like a starting line for runners in a 100 meter race.</p><p>Reason for this is that our algorithm's correctness depends on the fact that each element in the local memory must be <code class="literal">0</code> prior to any work-item wishing to read and write to it.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note24"/>Note</h3><p>You should be aware that you cannot set a value for the local memory greater than what is available on the OpenCL device. In order to determine what is the maximum configured scratchpad memory on your device, you need to employ the API <code class="literal">clGetDeviceInfo</code> passing in the parameter <code class="literal">CL_DEVICE_LOCAL_MEM_SIZE</code>.</p></div></div><p>Conceptually, here's what the previous piece of code is doing—each work item sets all elements to zero in a column-wise fashion and sets the elements collectively as a work group with <span class="strong"><strong>128</strong></span> work items executing it, sweeping from left to right. As each item is a <code class="literal">uchar4</code> data type, you see that the number of rows is <span class="strong"><strong>64</strong></span> instead of <span class="strong"><strong>256</strong></span>:</p><div class="mediaobject"><img src="graphics/4520OT_05_03.jpg" alt="How it works…"/></div><p>Finally, let's attempt to understand how the values are fetched from global memory and stored in the scratchpad.</p><p>When a work group<a id="id441" class="indexterm"/> begins executing, it will reach into global<a id="id442" class="indexterm"/> memory and fetch the contents of four values and stores them into a local variable and once that's done, the next four statements are executed by each work item to process each retrieved value using the component selection syntax, that is, <code class="literal">value.s0, value.s1, value.s2, value.s3</code>.</p><p>The following illustration, provides how a work item can potentially access four rows of data on the scratchpad and update four elements in those rows by incrementing them. The important point to remember is that all elements in the scratchpad must be written before they can be processed, and hence this is the barrier.</p><p>This type of programming technique where we build intermediate data structures so that we can obtain the eventual data structure is often called <span class="strong"><strong>thread-based histograms</strong></span><a id="id443" class="indexterm"/> in some circles. The technique is often employed when we know what the final data structure looks like and we use the same ADT to solve for smaller portions of data so that we can merge them in the end.</p><div class="informalexample"><pre class="programlisting">for(int i = 0; i &lt; 64; i++)
+{
+       uint4 value =  data[groupId * groupSize * BIN_SIZE/4 + i * groupSize + localId];
+       sharedArray[value.s0 * 128 + offSet2 + bankNumber]++;
+       sharedArray[value.s1 * 128 + offSet2 + bankNumber]++;
+       sharedArray[value.s2 * 128 + offSet2 + bankNumber]++;
+       sharedArray[value.s3 * 128 + offSet2 + bankNumber]++;
+}
+barrier(CLK_LOCAL_MEM_FENCE);</pre></div><div class="mediaobject"><img src="graphics/4520OT_05_04.jpg" alt="How it works…"/></div><p>If you analyze the memory access pattern, you will realize that what we have created an <span class="strong"><strong>Abstract Data Type</strong></span> (<span class="strong"><strong>ADT</strong></span>)<a id="id444" class="indexterm"/> known as the <a id="id445" class="indexterm"/>
+<span class="strong"><strong>hash table</strong></span> where each row of data in the local memory represents the list of frequencies of the occurrence of a value between 0 and 255.</p><p>With that understanding, we<a id="id446" class="indexterm"/> can come to the final part of solving this<a id="id447" class="indexterm"/> problem. Again, imagine that the work group has executed to this point, you have basically a hash table, and you want to merge all those other hash tables held in the local memories of the other work groups.</p><p>To achieve this, we need to basically walk through the hash table, aggregate all the values for each row, and we would have our answer. However, now we only need one thread to perform all this, otherwise all 128 threads executing the <span class="emphasis"><em>walk</em></span> would mean you're overcounting your values by 128 times! Therefore, to achieve this, we make use of the fact that each work item has a local ID in the work group, and we execute this code by selecting one particular work item only. The following code illustrates this:</p><div class="informalexample"><pre class="programlisting">if(localId == 0) {
+    for(int i = 0; i &lt; BIN_SIZE; ++i) {
+        uint result = 0;
+        for(int j = 0; j &lt; 128; ++j)  {
+            result += sharedArray[i * 128 + j];
+        }
+        binResult[groupId * BIN_SIZE + i] = result;
+    }
+}</pre></div><p>There is no particular reason why the first work item is chosen, I guess this is done just by convention, and there's no harm choosing other work items, but the important thing to remember is that there must only be one executing code.</p><p>Now we turn our attention <a id="id448" class="indexterm"/>back to the host code again, since each intermediate <a id="id449" class="indexterm"/>bin has been filled conceptually with its respective value from its respective portions of the large input array.</p><p>The (slightly) interesting part of the host code is simply walking through the returned data held in <code class="literal">intermediateBins</code> and aggregating them to <code class="literal">deviceBin</code>:</p><div class="informalexample"><pre class="programlisting">for(int i = 0; i &lt; subHistogramCount; ++i)
+    for( int j = 0; j &lt; BIN_SIZE; ++j) {
+        deviceBin[j] += intermediateBins[i * BIN_SIZE + j];
+}</pre></div><p>And we are done!</p></div></div>
+<div class="section" title="Work item synchronization"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec44"/>Work item synchronization</h1></div></div></div><p>This section is to introduce you to the concepts of synchronization<a id="id450" class="indexterm"/> in OpenCL. Synchronization<a id="id451" class="indexterm"/> in OpenCL can be classified into two groups:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Command queue barriers</li><li class="listitem" style="list-style-type: disc">Memory barriers</li></ul></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec102"/>Getting ready</h2></div></div></div><p>The command queue barrier ensures that all previously queued commands to a command queue have finished execution before any following commands queued in the command queue can begin execution.</p><p>The work group <a id="id452" class="indexterm"/>barrier performs synchronizations between work<a id="id453" class="indexterm"/> items in a work group executing the kernel. All work items in a work group must execute the barrier construct before any are allowed to continue execution beyond the barrier.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec103"/>How to do it…</h2></div></div></div><p>There are two APIs for the command queue barriers and they are:</p><div class="informalexample"><pre class="programlisting">cl_int clEnqueueBarrierWithWaitList(cl_command_queue command_queue,
+           cl_uint num_events_in_wait_list, 
+           const cl_event *event_wait_list,
+           cl_event *event)
+ 
+cl_int clEnqueueMarkerWithWaitList
+          (cl_command_queue command_queue,
+           cl_uint num_events_in_wait_list, 
+           const cl_event *event_wait_list, 
+           cl_event *event) </pre></div><p>But as of OpenCL 1.2, the following command queue barriers are deprecated:</p><div class="informalexample"><pre class="programlisting">cl_int clEnqueueBarrier(cl_command_queue queue);
+cl_int clEnqueueMarker(cl_command_queue queue, cl_event* event);</pre></div><p>These four/two APIs in OpenCL 1.2/1.1 respectively, allow us to perform synchronization across the various OpenCL commands, but they do not synchronize the work items.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note25"/>Note</h3><p>There is no synchronization facility available to synchronize between work groups.</p></div></div><p>We have not seen any example codes on how to use this, but it is still good to know they exist, if we ever need them.</p><p>Next, you can place barriers to work items in a work group that performs reads and writes to/from local memory or global memory. Previously, you read that all work items executing the kernel must execute this function before any are allowed to continue execution beyond the barrier. This type of barrier must be encountered by all work items in a work group.</p></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec104"/>How it works…</h2></div></div></div><p>The OpenCL API is as follows:</p><div class="informalexample"><pre class="programlisting">void barrier(cl_mem_fence flags);</pre></div><p>where flags can be <code class="literal">CLK_LOCAL_MEM_FENCE</code> or <code class="literal">CLK_GLOBAL_MEM_FENCE</code>. Be careful where you place the barrier in the kernel code. If the barrier is needed in a conditional statement that is like an <code class="literal">if-then-else</code> statement, then you must make sure all execution paths by the work <a id="id454" class="indexterm"/>items <a id="id455" class="indexterm"/>can reach that point in the program.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note26"/>Note</h3><p>The <code class="literal">CLK_LOCAL_MEM_FENCE</code> barrier<a id="id456" class="indexterm"/> will either flush any variables stored in local memory or queue a memory fence to ensure correct ordering of memory operations to local memory.</p><p>The <code class="literal">CLK_GLOBAL_MEM_FENCE</code> barrier<a id="id457" class="indexterm"/> function will queue a memory fence to ensure correct ordering of memory operations to global memory.</p></div></div><p>Another side effect of placing such barriers is that when they're to be placed in loop construct, all work items must execute the barrier for each iteration of the loop before any are allowed to continue execution beyond the barrier. This type of barrier also ensures correct ordering of memory operations to local or global memory.</p></div></div></body></html>

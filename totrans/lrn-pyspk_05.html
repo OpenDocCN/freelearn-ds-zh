@@ -1,0 +1,237 @@
+<html><head></head><body>
+  <div id="sbo-rt-content"><div class="chapter" title="Chapter 5. Introducing MLlib"><div class="titlepage"><div><div><h1 class="title"><a id="ch05"/>Chapter 5. Introducing MLlib</h1></div></div></div><p>In the previous chapter, we learned how to prepare the data for modeling. In this chapter, we will actually use some of that learning to build a classification model using the MLlib package of PySpark.</p><p>MLlib stands <a id="id231" class="indexterm"/>for Machine Learning Library. Even though MLlib is now in a maintenance mode, that is, it is not actively being developed (and will most likely be deprecated later), it is warranted that we cover at least some of the features of the library. In addition, MLlib is currently the only library that supports training models for streaming.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note40"/>Note</h3><p>Starting with Spark 2.0, ML is the main machine learning library that operates on DataFrames instead of RDDs as is the case for MLlib.</p><p>The <a id="id232" class="indexterm"/>documentation for <code class="literal">MLlib</code> can be found here: <a class="ulink" href="http://spark.apache.org/docs/latest/api/python/pyspark.mllib.html">http://spark.apache.org/docs/latest/api/python/pyspark.mllib.html</a>.</p></div></div><p>In this chapter, you will learn how to do the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Prepare the data for modeling with MLlib</li><li class="listitem" style="list-style-type: disc">Perform statistical testing</li><li class="listitem" style="list-style-type: disc">Predict survival chances of infants using logistic regression</li><li class="listitem" style="list-style-type: disc">Select the most predictable features and train a random forest model</li></ul></div><div class="section" title="Overview of the package"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec32"/>Overview of the package</h1></div></div></div><p>At the high <a id="id233" class="indexterm"/>level, MLlib exposes three core machine learning functionalities:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Data preparation</strong></span>: Feature<a id="id234" class="indexterm"/> extraction, transformation, selection, hashing of categorical features, and some natural language processing methods</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Machine learning algorithms</strong></span>: Some popular and advanced regression, classification, and<a id="id235" class="indexterm"/> clustering algorithms are implemented</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Utilities</strong></span>: Statistical<a id="id236" class="indexterm"/> methods such as descriptive statistics, chi-square testing, linear algebra (sparse and dense matrices and vectors), and model evaluation methods</li></ul></div><p>As you can see, the <a id="id237" class="indexterm"/>palette of available functionalities allows you to perform almost all of the fundamental data science tasks.</p><p>In this chapter, we will build two classification models: a linear regression and a random forest. We will use a<a id="id238" class="indexterm"/> portion of the US 2014 and 2015 birth data we downloaded from <a class="ulink" href="http://www.cdc.gov/nchs/data_access/vitalstatsonline.htm">http://www.cdc.gov/nchs/data_access/vitalstatsonline.htm</a>; from the total of 300 variables we selected 85 features that we will use to build our models. Also, out of the total of almost 7.99 million records, we selected a balanced sample of 45,429 records: 22,080 records where infants were reported dead and 23,349 records with infants alive.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip23"/>Tip</h3><p>The dataset we will use in this chapter can be downloaded from <a class="ulink" href="http://www.tomdrabas.com/data/LearningPySpark/births_train.csv.gz">http://www.tomdrabas.com/data/LearningPySpark/births_train.csv.gz</a>.</p></div></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Loading and transforming the data"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec33"/>Loading and transforming the data</h1></div></div></div><p>Even though MLlib is designed with RDDs and DStreams in focus, for ease of transforming the<a id="id239" class="indexterm"/> data <a id="id240" class="indexterm"/>we will read the data and convert it to a DataFrame.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note41"/>Note</h3><p>The DStreams <a id="id241" class="indexterm"/>are the<a id="id242" class="indexterm"/> basic data abstraction for Spark Streaming (see <a class="ulink" href="http://bit.ly/2jIDT2A">http://bit.ly/2jIDT2A</a>)</p></div></div><p>Just like in the previous chapter, we first specify the schema of our dataset.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note42"/>Note</h3><p>Note that here (for brevity), we only present a handful of features. You should always check our GitHub account for this book for the latest version of the code: <a class="ulink" href="https://github.com/drabastomek/learningPySpark">https://github.com/drabastomek/learningPySpark</a>.</p></div></div><p>Here's the<a id="id243" class="indexterm"/> code:</p><div class="informalexample"><pre class="programlisting">import pyspark.sql.types as typ
+labels = [
+    ('INFANT_ALIVE_AT_REPORT', typ.StringType()),
+    ('BIRTH_YEAR', typ.IntegerType()),
+    ('BIRTH_MONTH', typ.IntegerType()),
+    ('BIRTH_PLACE', typ.StringType()),
+    ('MOTHER_AGE_YEARS', typ.IntegerType()),
+    ('MOTHER_RACE_6CODE', typ.StringType()),
+    ('MOTHER_EDUCATION', typ.StringType()),
+    ('FATHER_COMBINED_AGE', typ.IntegerType()),
+    ('FATHER_EDUCATION', typ.StringType()),
+    ('MONTH_PRECARE_RECODE', typ.StringType()),
+    ...
+    ('INFANT_BREASTFED', typ.StringType())
+]
+schema = typ.StructType([
+        typ.StructField(e[0], e[1], False) for e in labels
+    ])</pre></div><p>Next, we load <a id="id244" class="indexterm"/>the data. The <code class="literal">.read.csv(...)</code> method can read either uncompressed or (as in our case) GZipped comma-separated values. The <code class="literal">header</code> parameter set to <code class="literal">True</code> indicates that the first row contains the header, and we use the <code class="literal">schema</code> to specify the correct data types:</p><div class="informalexample"><pre class="programlisting">births = spark.read.csv('births_train.csv.gz', 
+                        header=True, 
+                        schema=schema)</pre></div><p>There are plenty of features in our dataset that are strings. These are mostly categorical variables that we need to somehow convert to a numeric form.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip24"/>Tip</h3><p>You can glimpse over the original file schema specification here: <a class="ulink" href="ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Dataset_Documentation/DVS/natality/UserGuide2015.pdf">ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Dataset_Documentation/DVS/natality/UserGuide2015.pdf</a>.</p></div></div><p>We will first specify our recode dictionary:</p><div class="informalexample"><pre class="programlisting">recode_dictionary = {
+    'YNU': {
+        'Y': 1,
+        'N': 0,
+        'U': 0
+    }
+}</pre></div><p>Our goal in <a id="id245" class="indexterm"/>this chapter is to predict whether the <code class="literal">'INFANT_ALIVE_AT_REPORT'</code> is either <code class="literal">1</code> or <code class="literal">0</code>. Thus, we will drop all of the features that relate to the<a id="id246" class="indexterm"/> infant and will try to predict the infant's chances of surviving only based on the features related to its mother, father, and the place of birth:</p><div class="informalexample"><pre class="programlisting">selected_features = [
+    'INFANT_ALIVE_AT_REPORT', 
+    'BIRTH_PLACE', 
+    'MOTHER_AGE_YEARS', 
+    'FATHER_COMBINED_AGE', 
+    'CIG_BEFORE', 
+    'CIG_1_TRI', 
+    'CIG_2_TRI', 
+    'CIG_3_TRI', 
+    'MOTHER_HEIGHT_IN', 
+    'MOTHER_PRE_WEIGHT', 
+    'MOTHER_DELIVERY_WEIGHT', 
+    'MOTHER_WEIGHT_GAIN', 
+    'DIABETES_PRE', 
+    'DIABETES_GEST', 
+    'HYP_TENS_PRE', 
+    'HYP_TENS_GEST', 
+    'PREV_BIRTH_PRETERM'
+]
+births_trimmed = births.select(selected_features)</pre></div><p>In our dataset, there are plenty of features with Yes/No/Unknown values; we will only code <code class="literal">Yes</code> to <code class="literal">1</code>; everything else will be set to <code class="literal">0</code>.</p><p>There is also a small problem with how the number of cigarettes smoked by the mother was coded: as 0 means the mother smoked no cigarettes before or during the pregnancy, between 1-97 states the actual number of cigarette smoked, 98 indicates either 98 or more, whereas 99 identifies the unknown; we will assume the unknown is 0 and recode accordingly.</p><p>So next we will specify our recoding methods:</p><div class="informalexample"><pre class="programlisting">import pyspark.sql.functions as func
+def recode(col, key):
+    return recode_dictionary[key][col] 
+def correct_cig(feat):
+    return func \
+        .when(func.col(feat) != 99, func.col(feat))\
+        .otherwise(0)
+rec_integer = func.udf(recode, typ.IntegerType())</pre></div><p>The <code class="literal">recode</code> method looks up the correct key from the <code class="literal">recode_dictionary</code> (given the <code class="literal">key</code>) and returns<a id="id247" class="indexterm"/> the corrected value. The <code class="literal">correct_cig</code> method checks <a id="id248" class="indexterm"/>when the value of the feature <code class="literal">feat</code> is not equal to 99 and (for that situation) returns the value of the feature; if the value is equal to 99, we get 0 otherwise.</p><p>We cannot use the <code class="literal">recode</code> function directly on a <code class="literal">DataFrame</code>; it needs to be converted to a UDF that Spark will understand. The <code class="literal">rec_integer</code> is such a function: by passing our specified <code class="literal">recode</code> function and specifying the return value data type, we can use it then to encode our Yes/No/Unknown features.</p><p>So, let's get to it. First, we'll correct the features related to the number of cigarettes smoked:</p><div class="informalexample"><pre class="programlisting">births_transformed = births_trimmed \
+    .withColumn('CIG_BEFORE', correct_cig('CIG_BEFORE'))\
+    .withColumn('CIG_1_TRI', correct_cig('CIG_1_TRI'))\
+    .withColumn('CIG_2_TRI', correct_cig('CIG_2_TRI'))\
+    .withColumn('CIG_3_TRI', correct_cig('CIG_3_TRI'))</pre></div><p>The <code class="literal">.withColumn(...)</code> method takes the name of the column as its first parameter and the transformation as the second one. In the previous cases, we do not create new columns, but reuse the same ones instead.</p><p>Now we will focus on correcting the Yes/No/Unknown features. First, we will figure out which these are with the following snippet:</p><div class="informalexample"><pre class="programlisting">cols = [(col.name, col.dataType) for col in births_trimmed.schema]
+YNU_cols = []
+for i, s in enumerate(cols):
+    if s[1] == typ.StringType():
+        dis = births.select(s[0]) \
+            .distinct() \
+            .rdd \
+            .map(lambda row: row[0]) \
+            .collect() 
+        if 'Y' in dis:
+            YNU_cols.append(s[0])</pre></div><p>First, we<a id="id249" class="indexterm"/> created a list of tuples (<code class="literal">cols</code>) that hold column names and<a id="id250" class="indexterm"/> corresponding data types. Next, we loop through all of these and calculate distinct values of all string columns; if a <code class="literal">'Y'</code> is within the returned list, we append the column name to the <code class="literal">YNU_cols</code> list.</p><p>DataFrames can transform the features in bulk while selecting features. To present the idea, consider the following example:</p><div class="informalexample"><pre class="programlisting">births.select([
+        'INFANT_NICU_ADMISSION', 
+        rec_integer(
+            'INFANT_NICU_ADMISSION', func.lit('YNU')
+        ) \
+        .alias('INFANT_NICU_ADMISSION_RECODE')]
+     ).take(5)</pre></div><p>Here's what we get in return:</p><div class="mediaobject"><img src="images/B05793_05_01.jpg" alt="Loading and transforming the data"/></div><p>We select the <code class="literal">'INFANT_NICU_ADMISSION'</code> column and we pass the name of the feature to the <code class="literal">rec_integer</code> method. We also alias the newly transformed column as <code class="literal">'INFANT_NICU_ADMISSION_RECODE'</code>. This way we will also confirm that our UDF works as intended.</p><p>So, to transform all the <code class="literal">YNU_cols</code> in one go, we will create a list of such transformations, as shown here:</p><div class="informalexample"><pre class="programlisting">exprs_YNU = [
+    rec_integer(x, func.lit('YNU')).alias(x) 
+    if x in YNU_cols 
+    else x 
+    for x in births_transformed.columns
+]
+births_transformed = births_transformed.select(exprs_YNU)</pre></div><p>Let's check if we got it correctly:</p><div class="informalexample"><pre class="programlisting">births_transformed.select(YNU_cols[-5:]).show(5)</pre></div><p>Here's what we get:</p><div class="mediaobject"><img src="images/B05793_05_02.jpg" alt="Loading and transforming the data"/></div><p>Looks <a id="id251" class="indexterm"/>like everything worked as we wanted it to work, so let's get to<a id="id252" class="indexterm"/> know our data better.</p></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Getting to know your data"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec34"/>Getting to know your data</h1></div></div></div><p>In order to build a statistical model in an informed way, an intimate knowledge of the dataset is necessary. Without knowing the data it is possible to build a successful model, but it is then a <a id="id253" class="indexterm"/>much more arduous task, or it would require more technical resources to test all the possible combinations of features. Therefore, after spending the required 80% of the time cleaning the data, we spend the next 15% getting to know it!</p><div class="section" title="Descriptive statistics"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec54"/>Descriptive statistics</h2></div></div></div><p>I normally start<a id="id254" class="indexterm"/> with descriptive statistics. Even though the DataFrames expose the <code class="literal">.describe()</code> method, since we are working with <code class="literal">MLlib</code>, we will use the <code class="literal">.colStats(...)</code> method.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note43"/>Note</h3><p>A word of warning: the <code class="literal">.colStats(...)</code> calculates the descriptive statistics based on a sample. For real world datasets this should not really matter but if your dataset has less than 100 observations you might get some strange results.</p></div></div><p>The method takes<a id="id255" class="indexterm"/> an <code class="literal">RDD</code> of data to calculate the descriptive statistics of and return a <code class="literal">MultivariateStatisticalSummary</code> object that contains the following descriptive statistics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><code class="literal">count()</code>: This holds a row count</li><li class="listitem" style="list-style-type: disc"><code class="literal">max()</code>: This holds maximum value in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">mean():</code> This holds the value of the mean for the values in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">min()</code>: This holds the minimum value in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">normL1()</code>: This holds the value of the L1-Norm for the values in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">normL2()</code>: This holds the value of the L2-Norm for the values in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">numNonzeros()</code>: This holds the number of nonzero values in the column</li><li class="listitem" style="list-style-type: disc"><code class="literal">variance()</code>: This holds the value of the variance for the values in the column</li></ul></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note44"/>Note</h3><p>You can <a id="id256" class="indexterm"/>read <a id="id257" class="indexterm"/>more about the L1- and L2-norms here <a class="ulink" href="http://bit.ly/2jJJPJ0">http://bit.ly/2jJJPJ0</a>
+</p></div></div><p>We recommend checking the documentation of Spark to learn more about these. The following is a snippet that calculates the descriptive statistics of the numeric features:</p><div class="informalexample"><pre class="programlisting">import pyspark.mllib.stat as st
+import numpy as np
+numeric_cols = ['MOTHER_AGE_YEARS','FATHER_COMBINED_AGE',
+                'CIG_BEFORE','CIG_1_TRI','CIG_2_TRI','CIG_3_TRI',
+                'MOTHER_HEIGHT_IN','MOTHER_PRE_WEIGHT',
+                'MOTHER_DELIVERY_WEIGHT','MOTHER_WEIGHT_GAIN'
+               ]
+numeric_rdd = births_transformed\
+                       .select(numeric_cols)\
+                       .rdd \
+                       .map(lambda row: [e for e in row])
+mllib_stats = st.Statistics.colStats(numeric_rdd)
+for col, m, v in zip(numeric_cols, 
+                     mllib_stats.mean(), 
+                     mllib_stats.variance()):
+    print('{0}: \t{1:.2f} \t {2:.2f}'.format(col, m, np.sqrt(v)))</pre></div><p>The preceding <a id="id258" class="indexterm"/>code produces the following result:</p><div class="mediaobject"><img src="images/B05793_05_03.jpg" alt="Descriptive statistics"/></div><p>As you can see, mothers, compared to fathers, are younger: the average age of mothers was 28 versus over 44 for fathers. A good indication (at least for some of the infants) was that many mothers quit smoking while being pregnant; it is horrifying, though, that there still were some that continued smoking.</p><p>For the categorical variables, we will calculate the frequencies of their values:</p><div class="informalexample"><pre class="programlisting">categorical_cols = [e for e in births_transformed.columns 
+                    if e not in numeric_cols]
+categorical_rdd = births_transformed\
+                       .select(categorical_cols)\
+                       .rdd \
+                       .map(lambda row: [e for e in row])
+for i, col in enumerate(categorical_cols):
+    agg = categorical_rdd \
+        .groupBy(lambda row: row[i]) \
+        .map(lambda row: (row[0], len(row[1])))
+    print(col, sorted(agg.collect(), 
+                      key=lambda el: el[1], 
+                      reverse=True))</pre></div><p>Here is what the results look like:</p><div class="mediaobject"><img src="images/B05793_05_04.jpg" alt="Descriptive statistics"/></div><p>Most of the <a id="id259" class="indexterm"/>deliveries happened in hospital (<code class="literal">BIRTH_PLACE</code> equal to <code class="literal">1</code>). Around 550 deliveries happened at home: some intentionally (<code class="literal">'BIRTH_PLACE'</code> equal to <code class="literal">3</code>), and some not (<code class="literal">'BIRTH_PLACE'</code> equal to <code class="literal">4</code>).</p></div><div class="section" title="Correlations"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec55"/>Correlations</h2></div></div></div><p>Correlations<a id="id260" class="indexterm"/> help to identify collinear numeric features and handle them appropriately. Let's check the correlations between our features:</p><div class="informalexample"><pre class="programlisting">corrs = st.Statistics.corr(numeric_rdd)
+for i, el in enumerate(corrs &gt; 0.5):
+    correlated = [
+        (numeric_cols[j], corrs[i][j]) 
+        for j, e in enumerate(el) 
+        if e == 1.0 and j != i]
+    if len(correlated) &gt; 0:
+        for e in correlated:
+            print('{0}-to-{1}: {2:.2f}' \
+                  .format(numeric_cols[i], e[0], e[1]))</pre></div><p>The preceding code will calculate the correlation matrix and will print only those features that have a correlation coefficient greater than <code class="literal">0.5</code>: the <code class="literal">corrs &gt; 0.5</code> part takes care of that.</p><p>Here's what we get:</p><div class="mediaobject"><img src="images/B05793_05_05.jpg" alt="Correlations"/></div><p>As you can see, the <code class="literal">'CIG_...'</code> features are highly correlated, so we can drop most of them. Since we<a id="id261" class="indexterm"/> want to predict the survival chances of an infant as soon as possible, we will keep only the <code class="literal">'CIG_1_TRI'</code>. Also, as expected, the weight features are also highly correlated and we will only keep the <code class="literal">'MOTHER_PRE_WEIGHT'</code>:</p><div class="informalexample"><pre class="programlisting">features_to_keep = [
+    'INFANT_ALIVE_AT_REPORT', 
+    'BIRTH_PLACE', 
+    'MOTHER_AGE_YEARS', 
+    'FATHER_COMBINED_AGE', 
+    'CIG_1_TRI', 
+    'MOTHER_HEIGHT_IN', 
+    'MOTHER_PRE_WEIGHT', 
+    'DIABETES_PRE', 
+    'DIABETES_GEST', 
+    'HYP_TENS_PRE', 
+    'HYP_TENS_GEST', 
+    'PREV_BIRTH_PRETERM'
+]
+births_transformed = births_transformed.select([e for e in features_to_keep])</pre></div></div><div class="section" title="Statistical testing"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec56"/>Statistical testing</h2></div></div></div><p>We cannot calculate correlations for the categorical features. However, we can run a Chi-square test to determine if there are significant differences.</p><p>Here's how <a id="id262" class="indexterm"/>you can do it using the <code class="literal">.chiSqTest(...)</code> method of <code class="literal">MLlib</code>:</p><div class="informalexample"><pre class="programlisting">import pyspark.mllib.linalg as ln
+for cat in categorical_cols[1:]:
+    agg = births_transformed \
+        .groupby('INFANT_ALIVE_AT_REPORT') \
+        .pivot(cat) \
+        .count()    
+    agg_rdd = agg \
+        .rdd \
+        .map(lambda row: (row[1:])) \
+        .flatMap(lambda row: 
+                 [0 if e == None else e for e in row]) \
+        .collect()
+    row_length = len(agg.collect()[0]) - 1
+    agg = ln.Matrices.dense(row_length, 2, agg_rdd)
+    
+    test = st.Statistics.chiSqTest(agg)
+    print(cat, round(test.pValue, 4))</pre></div><p>We loop through all the categorical variables and pivot them by the <code class="literal">'INFANT_ALIVE_AT_REPORT'</code> feature to get the counts. Next, we transform them into an RDD, so we can then convert them into a matrix using the <code class="literal">pyspark.mllib.linalg</code> module. The first parameter to the <code class="literal">.Matrices.dense(...)</code> method specifies the number of rows in the matrix; in our case, it is the length of distinct values of the categorical feature.</p><p>The second parameter specifies the number of columns: we have two as our <code class="literal">'INFANT_ALIVE_AT_REPORT'</code> target variable has only two values.</p><p>The last parameter is a list of values to be transformed into a matrix.</p><p>Here's an example that shows this more clearly:</p><div class="informalexample"><pre class="programlisting">print(ln.Matrices.dense(3,2, [1,2,3,4,5,6]))</pre></div><p>The preceding code produces the following matrix:</p><div class="mediaobject"><img src="images/B05793_05_06.jpg" alt="Statistical testing"/></div><p>Once we have our counts in a matrix form, we can use the <code class="literal">.chiSqTest(...)</code> to calculate our test.</p><p>Here's what <a id="id263" class="indexterm"/>we get in return:</p><div class="mediaobject"><img src="images/B05793_05_07.jpg" alt="Statistical testing"/></div><p>Our tests reveal that all the features should be significantly different and should help us predict the chance of survival of an infant.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Creating the final dataset"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec35"/>Creating the final dataset</h1></div></div></div><p>Therefore, it is time to <a id="id264" class="indexterm"/>create our final dataset that we will use to build our models. We will convert our DataFrame into an RDD of <code class="literal">LabeledPoints</code>.</p><p>A <code class="literal">LabeledPoint</code> is a MLlib structure that is used to train the machine learning models. It consists of two attributes: <code class="literal">label</code> and <code class="literal">features</code>.</p><p>The <code class="literal">label</code> is our target variable and <code class="literal">features</code> can be a NumPy <code class="literal">array</code>, <code class="literal">list</code>, <code class="literal">pyspark.mllib.linalg.SparseVector</code>, <code class="literal">pyspark.mllib.linalg.DenseVector</code>, or <code class="literal">scipy.sparse</code> column matrix.</p><div class="section" title="Creating an RDD of LabeledPoints"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec57"/>Creating an RDD of LabeledPoints</h2></div></div></div><p>Before we <a id="id265" class="indexterm"/>build our final dataset, we first need to deal with one final obstacle: our <code class="literal">'BIRTH_PLACE'</code> feature is still a string. While any of the other categorical variables can be used as is (as they are now dummy variables), we <a id="id266" class="indexterm"/>will use a hashing trick to encode the <code class="literal">'BIRTH_PLACE'</code> feature:</p><div class="informalexample"><pre class="programlisting">import pyspark.mllib.feature as ft
+import pyspark.mllib.regression as reg
+hashing = ft.HashingTF(7)
+births_hashed = births_transformed \
+    .rdd \
+    .map(lambda row: [
+            list(hashing.transform(row[1]).toArray()) 
+                if col == 'BIRTH_PLACE' 
+                else row[i] 
+            for i, col 
+            in enumerate(features_to_keep)]) \
+    .map(lambda row: [[e] if type(e) == int else e 
+                      for e in row]) \
+    .map(lambda row: [item for sublist in row 
+                      for item in sublist]) \
+    .map(lambda row: reg.LabeledPoint(
+            row[0], 
+            ln.Vectors.dense(row[1:]))
+        )</pre></div><p>First, we create the hashing model. Our feature has seven levels, so we use as many features as that for the hashing trick. Next, we actually use the model to convert our <code class="literal">'BIRTH_PLACE'</code> feature into a <code class="literal">SparseVector</code>; such a data structure is preferred if your dataset has many columns but in a row only a few of them have non-zero values. We then combine all the features together and finally create a <code class="literal">LabeledPoint</code>.</p></div><div class="section" title="Splitting into training and testing"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec58"/>Splitting into training and testing</h2></div></div></div><p>Before we <a id="id267" class="indexterm"/>move to the modeling stage, we need to split our dataset into two sets: one we'll use for training and the other for testing. Luckily, RDDs have a handy method to do just that: <code class="literal">.randomSplit(...)</code>. The method takes a list of proportions that are to be used to randomly split the dataset.</p><p>Here is how it is done:</p><div class="informalexample"><pre class="programlisting">births_train, births_test = births_hashed.randomSplit([0.6, 0.4])</pre></div><p>That's it! Nothing more needs to be done.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Predicting infant survival"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec36"/>Predicting infant survival</h1></div></div></div><p>Finally, we can <a id="id268" class="indexterm"/>move to predicting the infants' survival chances. In this section, we will build two models: a linear classifier—the logistic regression, and a non-linear one—a random forest. For the former one, we will use all the features at our disposal, whereas for the latter one, we will employ a <code class="literal">ChiSqSelector(...)</code> method to select the top four features.</p><div class="section" title="Logistic regression in MLlib"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec59"/>Logistic regression in MLlib</h2></div></div></div><p>Logistic regression<a id="id269" class="indexterm"/> is somewhat a benchmark to build any classification model. MLlib used to provide a logistic regression model estimated <a id="id270" class="indexterm"/>using a <span class="strong"><strong>stochastic gradient descent</strong></span> (<span class="strong"><strong>SGD</strong></span>) algorithm. This model has been deprecated in Spark 2.0 in favor<a id="id271" class="indexterm"/> of the <code class="literal">LogisticRegressionWithLBFGS</code> model.</p><p>The <code class="literal">LogisticRegressionWithLBFGS</code> model uses the <span class="strong"><strong>Limited-memory Broyden–Fletcher–Goldfarb–Shanno</strong></span> (<span class="strong"><strong>BFGS</strong></span>) optimization algorithm. It is a quasi-Newton method <a id="id272" class="indexterm"/>that approximates the BFGS algorithm.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note45"/>Note</h3><p>For those <a id="id273" class="indexterm"/>of you who are mathematically adept and interested in this, we suggest perusing this blog post that is a nice walk-through of the optimization algorithms: <a class="ulink" href="http://aria42.com/blog/2014/12/understanding-lbfgs">http://aria42.com/blog/2014/12/understanding-lbfgs</a>.</p></div></div><p>First, we<a id="id274" class="indexterm"/> train the model on our data:</p><div class="informalexample"><pre class="programlisting">from pyspark.mllib.classification \
+    import LogisticRegressionWithLBFGS
+LR_Model = LogisticRegressionWithLBFGS \
+    .train(births_train, iterations=10)</pre></div><p>Training the model is very simple: we just need to call the <code class="literal">.train(...)</code> method. The required parameters are the RDD with <code class="literal">LabeledPoints</code>; we also specified the number of <code class="literal">iterations</code> so it does not take too long to run.</p><p>Having trained the model using the <code class="literal">births_train</code> dataset, let's use the model to predict the classes for our testing set:</p><div class="informalexample"><pre class="programlisting">LR_results = (
+        births_test.map(lambda row: row.label) \
+        .zip(LR_Model \
+             .predict(births_test\
+                      .map(lambda row: row.features)))
+    ).map(lambda row: (row[0], row[1] * 1.0))</pre></div><p>The <a id="id275" class="indexterm"/>preceding snippet<a id="id276" class="indexterm"/> creates an RDD where each<a id="id277" class="indexterm"/> element is a tuple, with the first element being the actual label and the second one, the model's prediction.</p><p>MLlib provides an evaluation metric for classification and regression. Let's check how well or how bad our model performed:</p><div class="informalexample"><pre class="programlisting">import pyspark.mllib.evaluation as ev
+LR_evaluation = ev.BinaryClassificationMetrics(LR_results)
+print('Area under PR: {0:.2f}' \
+      .format(LR_evaluation.areaUnderPR))
+print('Area under ROC: {0:.2f}' \
+      .format(LR_evaluation.areaUnderROC))
+LR_evaluation.unpersist()</pre></div><p>Here's what we got:</p><div class="mediaobject"><img src="images/B05793_05_08.jpg" alt="Logistic regression in MLlib"/></div><p>The model performed reasonably well! The 85% area under the Precision-Recall curve indicates a good fit. In this case, we might be getting slightly more predicted deaths (true and false positives). In this case, this is actually a good thing as it would allow doctors to put the expectant mother and the infant under special care.</p><p>The area under <span class="strong"><strong>Receiver-Operating Characteristic</strong></span> (<span class="strong"><strong>ROC</strong></span>) can be understood as a probability<a id="id278" class="indexterm"/> of the model ranking higher than a randomly chosen positive instance compared to a randomly chosen negative one. A 63% value can be thought of as acceptable.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note46"/>Note</h3><p>For more <a id="id279" class="indexterm"/>on these metrics, we point interested readers to <a class="ulink" href="http://stats.stackexchange.com/questions/7207/roc-vs-precision-and-recall-curves">http://stats.stackexchange.com/questions/7207/roc-vs-precision-and-recall-curves</a> and <a class="ulink" href="http://gim.unmc.edu/dxtests/roc3.htm">http://gim.unmc.edu/dxtests/roc3.htm</a>.</p></div></div></div><div class="section" title="Selecting only the most predictable features"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec60"/>Selecting only the most predictable features</h2></div></div></div><p>Any model that uses less features to predict a class accurately should always be preferred to a <a id="id280" class="indexterm"/>more complex one. MLlib allows us to select the most predictable features using a Chi-Square selector.</p><p>Here's how you do it:</p><div class="informalexample"><pre class="programlisting">selector = ft.ChiSqSelector(4).fit(births_train)
+topFeatures_train = (
+        births_train.map(lambda row: row.label) \
+        .zip(selector \
+             .transform(births_train \
+                        .map(lambda row: row.features)))
+    ).map(lambda row: reg.LabeledPoint(row[0], row[1]))
+topFeatures_test = (
+        births_test.map(lambda row: row.label) \
+        .zip(selector \
+             .transform(births_test \
+                        .map(lambda row: row.features)))
+    ).map(lambda row: reg.LabeledPoint(row[0], row[1]))</pre></div><p>We asked the selector to return the four most predictive features from the dataset and train the selector using the <code class="literal">births_train</code> dataset. We then used the model to extract only those features from our training and testing datasets.</p><p>The <code class="literal">.ChiSqSelector(...) </code>method can only be used for numerical features; categorical variables need to be either hashed or dummy coded before the selector can be used.</p></div><div class="section" title="Random forest in MLlib"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec61"/>Random forest in MLlib</h2></div></div></div><p>We are <a id="id281" class="indexterm"/>now ready to build the<a id="id282" class="indexterm"/> random <a id="id283" class="indexterm"/>forest model.</p><p>The <a id="id284" class="indexterm"/>following code shows you how to do it:</p><div class="informalexample"><pre class="programlisting">from pyspark.mllib.tree import RandomForest
+RF_model = RandomForest \
+    .trainClassifier(data=topFeatures_train, 
+                     numClasses=2, 
+                     categoricalFeaturesInfo={}, 
+                     numTrees=6,  
+                     featureSubsetStrategy='all',
+                     seed=666)</pre></div><p>The first parameter to the <code class="literal">.trainClassifier(...) </code>method specifies the training dataset. The <code class="literal">numClasses</code> one indicates how many classes our target variable has. As the third parameter, you can pass a dictionary where the key is the index of a categorical feature in <a id="id285" class="indexterm"/>our RDD and the value for<a id="id286" class="indexterm"/> the key indicates the number of levels that the categorical feature has. The <code class="literal">numTrees</code> specifies the number of trees to be in the forest. The next parameter tells the model to use all the features in our dataset instead of keeping only the most descriptive ones, while the last one specifies the seed for the stochastic part of the model.</p><p>Let's see how well our model did:</p><div class="informalexample"><pre class="programlisting">RF_results = (
+        topFeatures_test.map(lambda row: row.label) \
+        .zip(RF_model \
+             .predict(topFeatures_test \
+                      .map(lambda row: row.features)))
+    )
+RF_evaluation = ev.BinaryClassificationMetrics(RF_results)
+print('Area under PR: {0:.2f}' \
+      .format(RF_evaluation.areaUnderPR))
+print('Area under ROC: {0:.2f}' \
+      .format(RF_evaluation.areaUnderROC))
+model_evaluation.unpersist()</pre></div><p>Here are the results:</p><div class="mediaobject"><img src="images/B05793_05_09.jpg" alt="Random forest in MLlib"/></div><p>As you can see, the Random Forest model with fewer features performed even better than the logistic regression model. Let's see how the logistic regression would perform with a reduced number of features:</p><div class="informalexample"><pre class="programlisting">LR_Model_2 = LogisticRegressionWithLBFGS \
+    .train(topFeatures_train, iterations=10)
+LR_results_2 = (
+        topFeatures_test.map(lambda row: row.label) \
+        .zip(LR_Model_2 \
+             .predict(topFeatures_test \
+                      .map(lambda row: row.features)))
+    ).map(lambda row: (row[0], row[1] * 1.0))
+LR_evaluation_2 = ev.BinaryClassificationMetrics(LR_results_2)
+print('Area under PR: {0:.2f}' \
+      .format(LR_evaluation_2.areaUnderPR))
+print('Area under ROC: {0:.2f}' \
+      .format(LR_evaluation_2.areaUnderROC))
+LR_evaluation_2.unpersist()</pre></div><p>The results might surprise you:</p><div class="mediaobject"><img src="images/B05793_05_10.jpg" alt="Random forest in MLlib"/></div><p>As you <a id="id287" class="indexterm"/>can see, both models can<a id="id288" class="indexterm"/> be simplified and still attain the <a id="id289" class="indexterm"/>same level of accuracy. Having said that, you should always opt for a model with fewer variables.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec37"/>Summary</h1></div></div></div><p>In this chapter, we looked at the capabilities of the <code class="literal">MLlib</code> package of PySpark. Even though the package is currently in a maintenance mode and is not actively being worked on, it is still good to know how to use it. Also, for now it is the only package available to train models while streaming data. We used <code class="literal">MLlib</code> to clean up, transform, and get familiar with the dataset of infant deaths. Using that knowledge we then successfully built two models that aimed at predicting the chance of infant survival given the information about its mother, father, and place of birth.</p><p>In the next chapter, we will revisit the same problem, but using the newer package that is currently the Spark recommended package for machine learning.</p></div></div>
+</body></html>

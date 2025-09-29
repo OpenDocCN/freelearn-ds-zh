@@ -1,0 +1,315 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;8.&#xA0;Developing the Sparse Matrix Vector Multiplication in OpenCL"><div class="titlepage"><div><div><h1 class="title"><a id="ch08"/>Chapter 8. Developing the Sparse Matrix Vector Multiplication in OpenCL</h1></div></div></div><p>In this chapter, we are going to cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Solving the <span class="strong"><strong>SpMV</strong></span> (<span class="strong"><strong>Sparse Matrix Vector Multiplication</strong></span>) using the conjugate gradient method</li><li class="listitem" style="list-style-type: disc">Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR</li><li class="listitem" style="list-style-type: disc">Understanding how to solve SpMV using the ELLPACK-R format</li><li class="listitem" style="list-style-type: disc">Understanding how to solve SpMV using the CSR format</li><li class="listitem" style="list-style-type: disc">Understanding how to solve SpMV using VexCL</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec57"/>Introduction</h1></div></div></div><p>In the previous chapter on matrix multiplication, we developed an appreciation of the problem space as well as its domain of application, but what we didn't tell you earlier was that there are dense matrices as well as sparse matrices in addition to their dense and sparse vectors. When we say dense or sparse matrix/vector, we mean that there are a lot of non-zero or zero values, respectively.</p><p>The fact that a matrix<a id="id558" class="indexterm"/> is dense or sparse matters from a computational point of view, since it doesn't really make sense to multiply any value with zero as the result is evidently zero; if you were to apply the naïve method of solving this problem, which is to use the methods you developed during the matrix multiplication to solve the problem where the matrix or vector is sparse, but you would not be taking advantage of that brand new OpenCL CPU/GPU you just bought, you are simply wasting processor cycles and also wasting massive amounts of bandwidth. The question lies in solving this problem in an efficient manner and this requires understanding how to compute this efficiently, which solves one part of the issue. The other part of this issue is to investigate how to store the sparse matrices efficiently, since allocating a <span class="inlinemediaobject"><img src="graphics/4520OT_08_07.jpg" alt="Introduction"/></span> matrix to store a matrix that is populated with mostly zeroes is wasteful of memory space.</p><p>We are going to take a whirlwind tour of this subject, however it will not be exhaustive. There is a lot of literature already published on this subject. However, we will spend some time to formulate a basic and general idea by recognizing that most of the past and current work focuses on a combination of creating data structures that are efficient and compact to represent the sparse structures. We will also spend some time devising efficient computational methods on those data structures. As far as matrices go, we won't look into the possibilities of dynamic matrices (via insertion or deletion), and instead we will focus on static sparse matrix formats.</p><p>Next, we are going to present the theory behind solving SpMV efficiently through building up our knowledge to the conjugate gradient (via steepest descent and Gram-Schmidt), and before applying that algorithm we'll look into some of the common data storage schemes. We'll present an implementation using the VexCL using the <span class="strong"><strong>Conjugate Gradient</strong></span> (<span class="strong"><strong>CG</strong></span>)<a id="id559" class="indexterm"/> method which is an OpenCL framework build using C++.</p><p>The following are some of the examples of sparse matrices:</p><div class="mediaobject"><img src="graphics/4520OT_08_01.jpg" alt="Introduction"/></div></div></div>
+<div class="section" title="Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient Method"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec58"/>Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient Method</h1></div></div></div><p>The conjugate gradient method<a id="id560" class="indexterm"/> is the most popular iterative method for solving sparse linear systems, and I will attempt to make you understand how it works. Along this journey, we will look into steepest descent, conjugate gradient convergence, and so on.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip25"/>Tip</h3><p>I wanted to say a big thank you to <span class="emphasis"><em>Jonathan Richard Shewchuk</em></span> (AP of University of California), without whom I might not have understood why conjugate gradients matter You can learn more about him at <a class="ulink" href="http://www.cs.cmu.edu/~jrs/">http://www.cs.cmu.edu/~jrs/</a>.</p></div></div><p>A reason why the CG method is popular in solving sparse systems is that it not only handles really large sparse matrices well but it is also very efficient.</p><p>In the previous chapter on matrix multiplication, we have seen what it means to multiply two matrices, and this time round, we are focusing on the problem of <span class="inlinemediaobject"><img src="graphics/4520OT_08_13a.jpg" alt="Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient Method"/></span> where <span class="emphasis"><em>A</em></span> is a known square and positive definite matrix, <span class="emphasis"><em>x</em></span> is an unknown vector, and <span class="emphasis"><em>b</em></span> is a known vector.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec133"/>Getting ready</h2></div></div></div><p>The inner <a id="id561" class="indexterm"/>product of two vectors is written as <span class="emphasis"><em>x<sup>T</sup>y</em></span>, and it represents the scalar sum <span class="inlinemediaobject"><img src="graphics/4520OT_08_08.jpg" alt="Getting ready"/></span>. <span class="emphasis"><em>xTy</em></span> is equivalent to <span class="emphasis"><em>yTx</em></span>, and if <span class="emphasis"><em>x</em></span> and <span class="emphasis"><em>y</em></span> are orthogonal (at right angles to one another, and this will be <a id="id562" class="indexterm"/>important to realize when we study steepest descent), then <span class="emphasis"><em>xTy = 0</em></span>.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip26"/>Tip</h3><p>A positive-definite matrix <span class="emphasis"><em>A</em></span> is such that for every non-zero vector <span class="emphasis"><em>x</em></span>, <span class="emphasis"><em>xTAx &gt; 0</em></span>.</p></div></div><p>A quadratic form is actually a scalar and quadratic function of a vector of the form as:</p><div class="mediaobject"><img src="graphics/4520OT_08_09.jpg" alt="Getting ready"/></div><p>Just like any linear function, we would know its gradient that can be expressed in this derived form as <span class="inlinemediaobject"><img src="graphics/4520OT_08_38.jpg" alt="Getting ready"/></span> (yep, it's not a typo, and we mean the transpose of matrix <span class="emphasis"><em>A</em></span>), and when we know that matrix <span class="emphasis"><em>A</em></span> is symmetric, that is, <span class="inlinemediaobject"><img src="graphics/4520OT_08_11.jpg" alt="Getting ready"/></span> becomes <span class="emphasis"><em>A</em></span> because <span class="emphasis"><em>AT=A</em></span>, then this equation reduces to <span class="inlinemediaobject"><img src="graphics/4520OT_08_12.jpg" alt="Getting ready"/></span>. Like any derivate of a linear equation, we know that the mathematical solution to <span class="inlinemediaobject"><img src="graphics/4520OT_08_13.jpg" alt="Getting ready"/></span> can be found when it is equal to <span class="emphasis"><em>0</em></span> and by solving <span class="inlinemediaobject"><img src="graphics/4520OT_08_13a.jpg" alt="Getting ready"/></span>. The goal is to find a particular value of <span class="emphasis"><em>x</em></span> which minimizes <span class="inlinemediaobject"><img src="graphics/4520OT_08_14.jpg" alt="Getting ready"/></span>. Diagrammatically, it can be imagined as a parabola like the one in the following diagram, which is what <span class="inlinemediaobject"><img src="graphics/4520OT_08_14.jpg" alt="Getting ready"/></span> evaluates to be exactly:</p><div class="mediaobject"><img src="graphics/4520OT_08_02.jpg" alt="Getting ready"/></div><p>This<a id="id563" class="indexterm"/> forms our foundation to study the steepest descent and its cousin method—the conjugate gradient method. In the following sections, let us first explore the concepts behind steepest descent and then head over to conjugate gradient.</p><p>In the steepest <a id="id564" class="indexterm"/>descent method, we start at an arbitrary point <span class="emphasis"><em>x<sub>(0)</sub></em></span> and slide down to the bottom of the paraboloid. We keep taking steps <span class="emphasis"><em>x(1)</em></span>, <span class="emphasis"><em>x(2)</em></span>, and so on until we are pretty confident in saying that we have come to the solution <span class="emphasis"><em>x</em></span>. That's basically how it works. Generally speaking, we haven't said anything about how to choose the next point to slide to though, as always the devil is in the details. Solder on!</p><p>When we take a step, we choose the direction in which <span class="inlinemediaobject"><img src="graphics/4520OT_08_14.jpg" alt="Getting ready"/></span> decreases most quickly, and now it's appropriate to introduce two vectors, which we will use to gauge for ourselves whether or not we're dropping in the right direction (that is, if we are moving towards the bottom of the parabola). The error vector <span class="inlinemediaobject"><img src="graphics/4520OT_08_15.jpg" alt="Getting ready"/></span> measures how far we are from the solution from the current step. The residual vector <span class="inlinemediaobject"><img src="graphics/4520OT_08_16.jpg" alt="Getting ready"/></span> measures how far we are from the correct value of <span class="emphasis"><em>b</em></span>, and this vector can be thought of as the direction of steepest descent. When we take the next step so that we can be closer to the actual solution, <span class="emphasis"><em>x</em></span>, we are actually choosing a point <span class="inlinemediaobject"><img src="graphics/4520OT_08_17.jpg" alt="Getting ready"/></span>, and you will notice that another variable has been chosen which is alpha, <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="Getting ready"/></span>.</p><p>This variable <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="Getting ready"/></span> of whichever value will tell us whether we have reached the bottom of the parabola. To put this another way, imagine yourself falling into a salad bowl (closest thing I could think of) and the only way you can stop falling is when you sit at the bottom of the bowl. We know from calculus that the derivative of that point <span class="inlinemediaobject"><img src="graphics/4520OT_08_19.jpg" alt="Getting ready"/></span> where you land is zero, that is, its gradient is also <span class="emphasis"><em>0</em></span>. To determine this value, we have to set the derivative of that point to be equal to zero and we already have seen the equation <span class="inlinemediaobject"><img src="graphics/4520OT_08_20.jpg" alt="Getting ready"/></span>, and we know now that <span class="inlinemediaobject"><img src="graphics/4520OT_08_21.jpg" alt="Getting ready"/></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec134"/>How to do it...</h2></div></div></div><p>Let's now <a id="id565" class="indexterm"/>calculate the directional derivative of <span class="inlinemediaobject"><img src="graphics/4520OT_08_22.jpg" alt="How to do it..."/></span> when it is equal to zero because <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="How to do it..."/></span> minimizes <span class="emphasis"><em>f</em></span>. Using the chain rule, we know that <span class="inlinemediaobject"><img src="graphics/4520OT_08_23.jpg" alt="How to do it..."/></span>and plugging in what we know of <span class="inlinemediaobject"><img src="graphics/4520OT_08_13.jpg" alt="How to do it..."/></span>, we have the following sequence of derivations by <a id="id566" class="indexterm"/>which we derive the value of <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="How to do it..."/></span>:</p><div class="mediaobject"><img src="graphics/4520OT_08_a.jpg" alt="How to do it..."/></div><p>In summary, the steepest descent comprises the following equations:</p><div class="mediaobject"><img src="graphics/4520OT_08_b.jpg" alt="How to do it..."/></div><p>Using the<a id="id567" class="indexterm"/> steepest descent means is that I take a step down the rabbit hole and before I take the next step I'm going to guess what its <a id="id568" class="indexterm"/>going to be and take it; if I'm right, hooray!</p><p>The conjugate gradient method builds on steepest descent, and the two share a lot of similarities such that the conjugate gradient makes guesses which will eventually lead to the solution in <span class="emphasis"><em>x</em></span>. Both methods use the residual vector to judge how far the guesses are from the correct answer.</p><p>The idea is to pick a set of orthogonal search directions, and in each direction we'll take exactly one step (pretty much the same as what we have seen before) <span class="inlinemediaobject"><img src="graphics/4520OT_08_24.jpg" alt="How to do it..."/></span>. It turns out that we need to make the search direction <span class="emphasis"><em>A-orthogonal</em></span> instead of orthogonal. We say that two vectors <span class="inlinemediaobject"><img src="graphics/4520OT_08_25.jpg" alt="How to do it..."/></span> and <span class="inlinemediaobject"><img src="graphics/4520OT_08_26.jpg" alt="How to do it..."/></span> are A-orthogonal if <span class="inlinemediaobject"><img src="graphics/4520OT_08_27.jpg" alt="How to do it..."/></span>. When we use a search direction, one of the things that we want to minimize is the amount of space in which we search, and for this we would need <span class="emphasis"><em>linear independent vectors</em></span> <span class="inlinemediaobject"><img src="graphics/4520OT_08_28.jpg" alt="How to do it..."/></span>. From there, we can use the Gram-Schmidt process to generate them and we would have the following:</p><div class="mediaobject"><img src="graphics/4520OT_08_29.jpg" alt="How to do it..."/></div><p>As we did in the steepest descent method, let's use the same trick to determine what <span class="inlinemediaobject"><img src="graphics/4520OT_08_30.jpg" alt="How to do it..."/></span> is since it looks really familiar like <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="How to do it..."/></span>, and we derive it using the following:</p><div class="mediaobject"><img src="graphics/4520OT_08_d.jpg" alt="How to do it..."/></div><p>From the previous equation, we plug in the fact that two vectors are A-orthogonal, that is, the left-hand side of the equation is <span class="emphasis"><em>0</em></span>, and we solve for the right-hand side which resulted in <span class="inlinemediaobject"><img src="graphics/4520OT_08_30.jpg" alt="How to do it..."/></span>. When we compare this value with <span class="inlinemediaobject"><img src="graphics/4520OT_08_18.jpg" alt="How to do it..."/></span>, we would discover that they are pretty much the same except for the fact that the CG method uses linear independent vectors instead of the residual vector, as found in steepest descent.</p><p>The <a id="id569" class="indexterm"/>CG method builds on the Gram-Schimdt process/conjugation<a id="id570" class="indexterm"/> and steepest <a id="id571" class="indexterm"/>descent, whereby it removes the presence of search vectors. It favors the use of residual vectors instead, and this is important from a computational point of view, otherwise your program would need to store all of the search vectors, and for a large domain space it would probably be a very bad idea. There is a fair bit of math that we skipped, but feel free to download the original paper from <span class="emphasis"><em>Jonathan Shewchuk</em></span> from the following link</p><p><a class="ulink" href="http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf">http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf</a></p><p>In the method of conjugate gradient, we have the following equations:</p><div class="mediaobject"><img src="graphics/4520OT_08_31.jpg" alt="How to do it..."/></div><p>We're going to see how we can translate this into OpenCL. But first, it's time for a cup of coffee!</p><p>Now that we have established a basic idea of what the CG method is like, its time to take a look at how a simple SpMV kernel can be implemented. However, recall that I mentioned that we have to understand how the data in the sparse matrix can be stored. That turns out to be<a id="id572" class="indexterm"/> crucial in the implementation, and it's justifiable to spend the next couple of sections illustrating to you the well-known<a id="id573" class="indexterm"/> data storage formats.</p></div></div>
+<div class="section" title="Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec59"/>Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR</h1></div></div></div><p>There are a wide variety of sparse matrix representations, each with a different storage requirement, even computational characteristics, and with those come the varieties in which you can access and manipulate elements of the matrix. I made a remark earlier that we will be focusing on static sparse<a id="id574" class="indexterm"/> matrix formats, and I present here four storage formats that have been proven to be rather popular not only because of the decent performance but also because they were also some of the earliest formats which have been popular among scalar and vector architectures, and quite recently, in GPGPUs.</p><p>In the following paragraphs, we are going to introduce you to the following sparse matrix representations in the following order:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">ELLPACK format</li><li class="listitem" style="list-style-type: disc">ELLPACK-R format</li><li class="listitem" style="list-style-type: disc">Coordinate format</li><li class="listitem" style="list-style-type: disc">Compressed sparse row format</li></ul></div><p>Let's start with the <a id="id575" class="indexterm"/>ELLPACK format. This format is also known as ELL. For an <span class="emphasis"><em>M x N</em></span> matrix with a <a id="id576" class="indexterm"/>maximum of <span class="emphasis"><em>K</em></span> non-zero values per row, the ELLPACK format stores the non-zero values into a dense <span class="emphasis"><em>M x K</em></span> array which we'll name <code class="literal">data</code>, where rows with lesser than <span class="emphasis"><em>K</em></span> non-zero values are zero padded. Similarly, the corresponding column indices are stored in another array, which we'll name <code class="literal">indices</code>. Again, a zero or some sentinel value is used for padding this array. The following representation of matrices illustrates what it looks like:</p><div class="mediaobject"><img src="graphics/4520OT_08_03.jpg" alt="Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR"/></div><p>A quick analysis on this format means that if the maximum number of non-zero values in each row does not differ too much from the average, the ELL format is rather appealing because it is intuitive, at least to me.</p><p>Next, we examine the <a id="id577" class="indexterm"/>ELLPACK-R format. This format is a variant of the ELLPACK <a id="id578" class="indexterm"/>format, and in addition to the data arrays that you have seen earlier, we have a new array <code class="literal">rl</code>, which is used to store the actual length of each row. The following representation illustrates what it looks like:</p><div class="mediaobject"><img src="graphics/4520OT_08_04.jpg" alt="Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR"/></div><p>It's not obvious now how this differs from ELLPACK, but the serial and parallel kernel which we will see later will make use of this new array to make the code and data transfers tighter.</p><p>We proceed with the coordinate format. The coordinate format is a simple storage scheme. The arrays <code class="literal">row</code>, <code class="literal">col</code>, and <code class="literal">data</code> store the row indices, column indices, and values, respectively of the non-zero matrix entries. COO is a general sparse matrix representation since the required storage is always proportional to the number of non-zero values. The following is what the<a id="id579" class="indexterm"/> COO format<a id="id580" class="indexterm"/> looks like:</p><div class="mediaobject"><img src="graphics/4520OT_08_05.jpg" alt="Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR"/></div><p>In this format, there are three one-dimensional arrays—<code class="literal">row</code>, <code class="literal">col</code>, and <code class="literal">data</code>.</p><p>Last one on this list is the<a id="id581" class="indexterm"/> <span class="strong"><strong>Compressed Sparse Ro</strong></span>w (<span class="strong"><strong>CSR</strong></span>) format. The CSR format is a popular, general-purpose sparse matrix<a id="id582" class="indexterm"/> representation. Like the COO Format, CSR explicitly stores column indices and non-zero values in the arrays <code class="literal">indices</code> and <code class="literal">data</code>. A third array of row pointers, <code class="literal">ptr</code>, takes the CSR representation. For an <span class="emphasis"><em>M x N</em></span> matrix, <code class="literal">ptr</code> has length <span class="emphasis"><em>M + 1</em></span>, and stores the offset into the <span class="emphasis"><em>i</em></span>th row in <code class="literal">ptr[i]</code>. The last entry in <code class="literal">ptr</code>, which would otherwise correspond to the <span class="emphasis"><em>M + 1</em></span><sup>th</sup> row, stores the number of non-zero values in the matrix. The following representation illustrates what it looks like:</p><div class="mediaobject"><img src="graphics/4520OT_08_06.jpg" alt="Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R, COO, and CSR"/></div><p>At this point, this is all I want to discuss about data representations for sparse matrices.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip27"/>Tip</h3><p>You should be aware that there are other formats like <span class="strong"><strong>DIA</strong></span><a id="id583" class="indexterm"/>, also known as, <span class="strong"><strong>diagonal format</strong></span>, Hybrid/HYB for ELL/COO, and packet (for processors that resemble vector architectures).</p></div></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec135"/>How to do it...</h2></div></div></div><p>Now that we have <a id="id584" class="indexterm"/>examined three data storage formats, let's go on a little further and check out how we would solve the SpMV problem using the ELLPACK format. As before, we would like to start this section by kicking off with a code presentation on how the SpMV CPU kernel would look:</p><div class="informalexample"><pre class="programlisting">// num_rows  – number of rows in matrix
+// data      – the array that stores the non-zero values
+// indices   – the array that stores the column indices for zero, non-
+//              zero values in the matrix
+// num_cols  – the number of columns.
+// vec       - the dense vector
+// y         - the output 
+void spmv_ell_cpu(const int num_rows,
+                  const int num_cols,
+                  const int * indices;
+                  const float * data,
+                  const float * vec, float * out) {
+for( int row = 0; row &lt; num_rows, row++) {
+    float temp = 0;
+      // row-major order
+    for(int n = 0; n &lt; num_cols; n++) {
+        int col = indices[num_cols * row + n];
+        float value = data[num_cols * row + n];
+        if (value != 0 &amp;&amp; col != 0)
+            temp += value * vec[col];
+    }
+    out[row] += temp;
+}
+}</pre></div><p>Take a few moments to convince yourself that we are indeed using the ELLPACK format to solve SpMV, and the data when stored in the low-level memory, is in row-major order. Putting on your parallel developer hat again, one strategy is to have one thread / work item process one row of the matrix data, and this implies that you can remove the outer loop structure thus giving you<a id="id585" class="indexterm"/> this possible SpMV ELL kernel.</p><div class="informalexample"><pre class="programlisting">// num_rows  – number of rows in matrix
+// data      – the array that stores the non-zero values
+// indices   – the array that stores the column indices for zero, non-
+//              zero values in the matrix
+// num_cols  – the number of columns.
+// vec       - the dense vector
+// y         - the output 
+__kernel void
+spmv_ell_gpu(__global const int num_rows,
+             __global const int num_cols,
+             __global const int * indices;
+             __global const float * data,
+             __global const float * vec, float * out) {
+     int row = get_global_id(0);
+     if (row &lt; num_rows) {
+    float temp = 0;
+	    // row-major order
+    for(int n = 0; n &lt; num_cols; n++) {
+        int col = indices[num_cols * row + n];
+        float value = data[num_cols * row + n];
+        if (value != 0 &amp;&amp; col != 0)
+            temp += value * vec[col];
+    }
+    out[row] += temp;
+}
+}</pre></div><p>The first thing you would probably notice is that the outer loop structure has been removed, and that is intuitive when you consider the fact that that structure was present initially so that we can iterate over the inner loop which contains the actual work of the dot product between a row of the matrix and vector.</p><p>Now, when we examine its memory access patterns using our strategy of fine-grained parallelism, we would have something like the following representation and it would exhibit similar problems when we look at the <a id="id586" class="indexterm"/>SpMV CSR kernel in a later section:</p><div class="mediaobject"><img src="graphics/4520OT_08_07a.jpg" alt="How to do it..."/></div></div></div>
+<div class="section" title="Understanding how to solve SpMV using the ELLPACK-R format"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec60"/>Understanding how to solve SpMV using the ELLPACK-R format</h1></div></div></div><p>ELLPACK-R<a id="id587" class="indexterm"/> is a variant of the ELLPACK format<a id="id588" class="indexterm"/>, and apparently it is rather popular for implementing SpMV on GPUs. ELLPACK-R should be used<a id="id589" class="indexterm"/> if no regular substructures <a id="id590" class="indexterm"/>such as off-diagonals or dense blocks can be exploited. The basic idea is to compress the rows by shifting all non-zero entries to the left and storing the resulting <span class="inlinemediaobject"><img src="graphics/4520OT_08_32.jpg" alt="Understanding how to solve SpMV using the ELLPACK-R format"/></span> matrix column by column consecutively in main host memory, where <span class="emphasis"><em>N</em></span> is the maximum number of non-zero entries per row.</p><div class="section" title="How to do it"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec136"/>How to do it</h2></div></div></div><p>The SpMV ELLPACK-R scalar kernel<a id="id591" class="indexterm"/> is called scalar because of the fact that we have not taken advantage of a particular aspects unique to GPUs when it comes to parallel program development in OpenCL. This aspect is known as<a id="id592" class="indexterm"/> <span class="strong"><strong>wavefront-/warp-level programming</strong></span>. We'll talk more about this in the SpMV CSR kernel presentation in the next section. Hence, in this part we will present our OpenCL kernel, as shown in the following code, that employs the strategy of using one thread to process a row of the matrix data, and this time, we have the help of another array, <code class="literal">rowLengths</code>, which records the actual length of each row in the matrix where it contains non-zero values:</p><div class="informalexample"><pre class="programlisting">// data – the 1-D array containing non-zero values
+// vec – our dense vector
+// cols – column indices indicating where non-zero values are
+// rowLengths – the maximum length of non-zeros in each row
+// dim – dimension of our square matrix
+// out – the 1-D array which our output array will be 
+__kernel void
+spmv_ellpackr_kernel(__global const float * restrict data,
+                     __global const float * restrict vec
+                     __global const int * restrict cols,
+                     __global const int * restrict rowLengths,
+                     const int dim, 
+                     __global float * restrict out) {
+    int t = get_global_id(0);
+
+    if (t &lt; dim)
+    {
+        float result = 0.0;
+        int max = rowLengths[t];
+        for (int i = 0; i &lt; max; i++) {
+            int ind = i * dim + t;
+            result += data [ind] * vec[cols[ind]];
+        }
+        out[t] = result;
+    }
+}</pre></div><p>Examining the<a id="id593" class="indexterm"/> previous code, we noticed that once again we <a id="id594" class="indexterm"/>have reduced two <code class="literal">for</code> loops into one by recognizing the fact that each thread or work item (in OpenCL parlance, if you recall) can perform the work in the inner loop independently.</p><p>In the following code we present our kernel that has been "vectorized", we recognized that our SpMV ELLPACK-R kernel could be improved by taking advantage of the hardware's inbuilt feature to run a bunch of threads executing the code and in lock step.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip28"/>Tip</h3><p>This vectorization will not work if you were to execute it on your OpenCL x86 compliant CPU unless it has the vectorization hardware available to the GPUs.</p></div></div><p>This is incredibly useful when the occasions call for it, and this situation calls for it. This resulted in our SpMV ELLPACK-R vector kernel<a id="id595" class="indexterm"/> shown in the following code. Our strategy is to have a warp processed at each row of the matrix, and we break each row so that data can be processed by the threads in a warp or wavefront:</p><div class="informalexample"><pre class="programlisting">// data – the 1-D array containing non-zero values
+// vec – our dense vector
+// cols – column indices indicating where non-zero values are
+// rowLengths – the maximum length of non-zeros in each row
+// dim – dimension of our square matrix
+// out – the 1-D array which our output array will be 
+#define VECTOR_SIZE 32 // NVIDIA = 32, AMD = 64
+__kernel void
+spmv_ellpackr_vector_kernel(__global const float * restrict val,
+                            __global const float * restrict vec,
+                            __global const int * restrict cols,
+                            __global const int * restrict rowLengths,
+                            const int dim,
+                            __global float * restrict out) {
+
+    // Thread ID in block
+    int t = get_local_id(0);
+    // Thread id within warp/wavefront
+    int id = t &amp; (VECTOR_SIZE-1);
+    // one warp/wavefront per row
+    int threadsPerBlock = get_local_size(0) / VECTOR_SIZE;
+    int row = (get_group_id(0) * threadsPerBlock) + (t / VECTOR_SIZE);
+
+    __local float volatile partialSums[128];
+
+    if (row &lt; dim) {
+        float result = 0.0;
+        int max = ceil(rowLengths[row]/VECTOR_SIZE);
+        // the kernel is vectorized here where simultaneous threads
+        // access data in an adjacent fashion, improves memory
+        // coalescence and increase device bandwidth
+        for (int i = 0; i &lt; max; i ++) {
+            int ind = i * (dim * VECTOR_SIZE) + row * VECTOR_SIZE + id;
+            result += val[ind] * vec[cols[ind]];
+        }
+        partialSums[t] = sum;
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // Reduce partial sums
+        // Needs to be modified if there is a change in vector length
+        if (id &lt; 16) partialSums[t] += partialSums[t +16];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  8) partialSums[t] += partialSums[t + 8];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  4) partialSums[t] += partialSums[t + 4];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  2) partialSums[t] += partialSums[t + 2];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  1) partialSums[t] += partialSums[t + 1];
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // Write result
+        if (tid == 0)
+        {
+            out[row] = partialSums[tid];
+        }
+
+    }
+}</pre></div></div><div class="section" title="How it works"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec137"/>How it works</h2></div></div></div><p>This vector kernel <a id="id596" class="indexterm"/>takes advantage of two facts:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The kernel is executed by groups of threads and those threads execute in lock step</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Parallel reduction</strong></span>: Parallel reduction <a id="id597" class="indexterm"/>is rightfully a topic by itself and the variant technique we are using is known as<a id="id598" class="indexterm"/> <span class="strong"><strong>segmented reduction</strong></span></li></ul></div><p>To help you understand <a id="id599" class="indexterm"/>how parallel reduction works, let's assume <a id="id600" class="indexterm"/>and imagine we have a one-dimensional array filled with 16 elements and each array element is given a number. Now, I like to ask you how you would go about calculating the sum of all elements in this given array? There are definitely more than two ways in which you can do this, but let's say you are giving the fact that eight work items can execute in lock step. how can you take advantage of that?</p><p>One way is to have each work item add two array elements and that would give you the partial sums, but how would you be able to add all of these partial sums to produce one single sum that represents the summation of the array? Without going into too much detail, let's use the following diagram and see if you can figure out how it would have worked:</p><div class="mediaobject"><img src="graphics/4520OT_08_08a.jpg" alt="How it works"/></div></div></div>
+<div class="section" title="Understanding how to solve SpMV using the CSR format"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec61"/>Understanding how to solve SpMV using the CSR format</h1></div></div></div><p>After viewing all these<a id="id601" class="indexterm"/> different data representations for sparse <a id="id602" class="indexterm"/>matrices, you will probably realize there's more to the picture than we earlier imagined, and this serves to highlight the fact that researchers and engineers have spent a lot of time and effort to solve what looks like a deceptively simple problem in an efficient manner. Hence in this section, we are going to take a look at how to solve the SpMV problem using the CSR format looking at various recipes from sequential, scalar, and finally vector kernels in that order.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec138"/>Getting ready</h2></div></div></div><p>Now, let us take a look at what SpMV code would look like in its sequential form, that is, when executed on a modern CPU, using the CSR format, and then let's take a look at a naïve implementation <a id="id603" class="indexterm"/>of the <a id="id604" class="indexterm"/>SpMV:</p><div class="informalexample"><pre class="programlisting">// num_rows – number of rows in matrix
+// ptr – the array that stores the offset to the i-th row in ptr[i]
+// indices – the array that stores the column indices for non-zero
+//           values in the matrix
+// x       - the dense vector
+// y       - the output 
+void spmv_csr_cpu(const int num_rows,
+                  const int * ptr;
+                  const int * indices;
+                  const float * data,
+                  const float * vec, float * out) {
+for( int row = 0; row &lt; num_rows, row++) {
+    float temp = 0;
+    int start_row = ptr[row];
+    int end_row = ptr[row+1];
+    for(int jj = start_row; jj &lt; end_row; jj++)
+        temp += data[jj] * vec [indices[jj]];
+    out[row] += temp;
+}
+}</pre></div><p>Examining the preceding code, you will notice that the array <code class="literal">ptr</code> is being used to pick the non-zero elements in the array—<code class="literal">data</code>—which is desirable, and <code class="literal">ptr</code> is also being used to index into the <code class="literal">indices</code> array to retrieve the correct element in the vector <code class="literal">vec</code> so that we never conduct operations that multiply a zero value. This point is important to note from a computational point of view because it means we are not wasting precious processor cycles performing work we will never use; from another perspective, this representation also means that the caches are always filled with values we will need and not stored with values that are inherently zero valued.</p><p>As promised, let us take a look at another solution that focuses on matrix-vector multiplication executing on a modern desktop CPU, and in both these examples, the only difference is the fact that the previous code took into account the matrix is sparse while the following code assumes the matrix is dense:</p><div class="informalexample"><pre class="programlisting">// M – the matrix with dimensions 'height' x 'width'
+// V – the dense vector of length 'width'
+// W – the output
+void matvec_cpu(const float* M, const float* V, int width, int height, float* W)
+{
+    for (int i = 0; i &lt; height; ++i) {
+        double sum = 0;
+        for (int j = 0; j &lt; width; ++j) {
+            double a = M[i * width + j];
+            double b = V[j];
+            sum += a * b;
+        }
+        W[i] = (float)sum;
+    }
+}</pre></div><p>Take a few moments and <a id="id605" class="indexterm"/>examine both code bases, and you will realize the <a id="id606" class="indexterm"/>amount of computational cycles and memory bandwidth that was saved and wasted needlessly.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip29"/>Tip</h3><p>It is always recommended to compare the sequential form against the parallel form so that you can derive basic metrics about your transformed algorithm.</p></div></div></div><div class="section" title="How to do it"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec139"/>How to do it</h2></div></div></div><p>Now that we have made done some basic comparisons, we need to figure out what our parallelization strategy is going to be. For this, we need to put on our parallel developer hat again and scrutinize the code for the SpMV CSR serial kernel shown earlier and look for parallelizable portions. One of the things you might have already recognized is the fact that the dot product between a row of the matrix and the vector <code class="literal">vec</code>, may be computed independently of all other rows.</p><p>The following code demonstrates the implementation where we have one work item process a row of the matrix, and some literature would call this the scalar kernel. In this kernel, as before, our strategy focuses on looking at the two loop structures, and we discover that the outer loop structure can be flattened out and replaced by work items / threads, and we know how to achieve that; focusing back on the inner loop structure which is essentially what one work item /thread is executing on, we find that we can retain all of its execution flow and mimic that in the OpenCL kernel.</p><p>Next, let's take a look at how the SpMV kernel is written with the CSR format in mind:</p><div class="informalexample"><pre class="programlisting">__kernel void 
+spmv_csr_scalar_kernel( __global const float * restrict val,
+                        __global const float * restrict vec,
+                        __global const int * restrict cols,
+                        __global const int * restrict ptr,
+                        const int dim, __global float * restrict out){
+    int row = get_global_id(0);
+
+    if (row &lt; dim) {
+        float temp=0;
+        int start = ptr[row];
+        int end = ptr[row+1];
+        for (int j = start; j &lt; end; j++) {
+            int col = cols[j];
+            temp += val[j] * vec[col];
+        }
+        out[row] = temp;
+    }
+}</pre></div><p>If you can recall, in the previous chapter we noted that such an execution model uses really fine-grained parallelism, and such a kernel will probably not perform very well. The issue does not lie within the <a id="id607" class="indexterm"/>CSR representation, it lies within the fact<a id="id608" class="indexterm"/> that the work items / threads are not accessing those values in the CSR simultaneously. In fact, each thread that was working on each row of the matrix produces a memory access pattern in the following diagram. After tracing the execution of this SpMV CSR kernel for four work items / threads, you will notice that each thread would refer to a different portion of the array <code class="literal">val</code> (which contains all non-zero entries in the matrix <span class="emphasis"><em>A</em></span>), and memory loads will be latched on the caches (which contain memory banks and memory lanes/lines) and finally the hardware registers will execute upon them.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note37"/>Note</h3><p>From this point onwards, you should be thinking in terms of how GPUs work on a low-level basis.</p></div></div><p>Let's use the matrix found in the CSR format earlier as an example to illustrate how this SpMV CSR is not really working too well. Each cache is actually implemented by lanes/lines such that each line can hold a number of bytes, and in our example, it assumes each line can hold 16 elements (assuming each element is of the size 4 bytes which translates to 64 bytes).</p><p>It should be obvious to you by now that there's a lot of wastage of cache bandwidth. Since our kernel is parallel, we could conceptually have four different lines holding various parts of the input array. What would have been desirable is to allow all the data in at once and keeping the cache hot while processing it.</p><p>One way of achieving this is to apply the previous techniques you've learned. Kudos for thinking about that. However, let's learn another technique and in some literature it is known as warp-/wavefront-level programming. We saw it in action in the previous section.</p><p>Recall in another chapter, where we introduced the fact that threads of some of the OpenCL devices, GPUs notably execute a bunch of threads in lock step in the processor. The following figure illustrates the memory access pattern for a SpMV CSR kernel when building and executing on a <a id="id609" class="indexterm"/>CPU in a serial fashion:</p><div class="mediaobject"><img src="graphics/4520OT_08_09a.jpg" alt="How to do it"/></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip30"/>Tip</h3><p>To optimize your algorithm with respect to memory access, have your work items in a single wavefront/warp access the memory locations from the same cache line.</p></div></div><p>Next, you would want to ask<a id="id610" class="indexterm"/> yourself the question on how you go about working out a kernel that is able to load the elements you need into the same cache line and take advantage of the fact that threads in a warp or wavefront execute in the lock step. This fact also implies that you need coordination, but don't worry, we won't have to use the atomic functions found in OpenCL for this.</p><p>When I see the term <span class="emphasis"><em>lock step</em></span>, I immediately conjure the image of 10 runners, akin to executing threads in a warp/wavefront, lined up for a 100 meter dash, and the exception here as compared to the warp-/wavefront-level programming is that all these runners need to reach the finishing line <a id="id611" class="indexterm"/>together. Weird, I know, but that's how it works. Coordinating<a id="id612" class="indexterm"/> this batch of runners is like strapping leashes on eight horses dragging a wagon and the cowboy driving the carriage using his whip to accelerate or decelerate.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note38"/>Note</h3><p>At this point, I like to digress a little and point out to you that<a id="id613" class="indexterm"/> <span class="strong"><strong>Intel Math Kernel Library</strong></span> (<span class="strong"><strong>Intel MKL</strong></span>) 11.0 implements sparse solvers using data storage formats based on the CSR formats and has good performance for running on Intel CPUs as they not only optimize memory management but also take advantage of <span class="strong"><strong>Instruction Level Parallelism</strong></span> (<span class="strong"><strong>ILP</strong></span>)<a id="id614" class="indexterm"/>.</p></div></div><p>Now, you have to recognize and imagine your kernel to be executed by a bunch of threads and for starters, let's imagine 32 or 64 of them running at once. Each of these threads have an ID and that's the primary method in which you identify and control them, that is, placing the control-flow constructs that allows or restrict threads from running. To illustrate the point, let us take a look at the following improved SpMV CSR vector kernel.</p><p>The SpMV CSR OpenCL kernel is found in <code class="literal">Ch8/SpMV/spmv.cl</code>:</p><div class="informalexample"><pre class="programlisting">#define VECTOR_SIZE 32 
+// Nvidia is 32 threads per warp, ATI is 64 per wavefront
+__kernel void
+spmv_csr_vector_kernel(__global const float * restrict val,
+                       __global const float * restrict vec,
+                       __global const int * restrict cols,
+                       __global const int * restrict ptr,
+                       const int dim, __global float * restrict out){
+    int tid = get_local_id(0);
+    int id = tid &amp; (VECTOR_SIZE-1);
+    // One row per warp
+    int threadsPerBlock = get_local_size(0) / VECTOR_SIZE;
+    int row = (get_group_id(0) * threadsPerBlock) + (tid / VECTOR_SIZE);
+
+    __local volatile float partialSums[128];
+    partialSums[t] = 0;
+
+    if (row &lt; dim)
+    {
+        int vecStart = ptr[row];
+        int vecEnd   = ptr[row+1];
+        float sum = 0;
+        for (int j = vecStart + id; j &lt; vecEnd; j += VECTOR_SIZE) {
+            int col = cols[j];
+            sum += val[j] * vec[col];
+        }
+        partialSums[tid] = sum;
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // Reduce partial sums
+        // Needs to be modified if there is a change in vector length
+        if (id &lt; 16) partialSums[tid] += partialSums[t +16];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  8) partialSums[tid] += partialSums[tid + 8];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  4) partialSums[tid] += partialSums[tid + 4];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  2) partialSums[tid] += partialSums[tid + 2];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        if (id &lt;  1) partialSums[tid] += partialSums[tid + 1];
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // Write result
+        if (id == 0)
+        {
+            out[row] = partialSums[tid];
+        }
+    }
+}</pre></div><p>Now that we have taken a good <a id="id615" class="indexterm"/>look at the OpenCL kernel, we need to build an <a id="id616" class="indexterm"/>executable form on which to execute. As before, the compilation will look familiar to you. On my setup with an Intel Core i7 CPU and AMD HD6870x2 GPU running Ubuntu 12.04 LTS, the compilation looks like the following and it'll create an executable called <code class="literal">SpMV</code> into the working directory:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>gcc -std=c99 -Wall -DUNIX -g -DDEBUG -arch i386 -o SpMV -framework OpenCL</strong></span>
+</pre></div><p>At this point, the executable should be available to you on the directory. To run the program, simply execute the program <code class="literal">SpMV</code> in the directory, and you should notice an output that resembles the following:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Passed!</strong></span>
+</pre></div></div><div class="section" title="How it works"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec140"/>How it works</h2></div></div></div><p>The way this works <a id="id617" class="indexterm"/>deserves a significant number of explanations, but first <a id="id618" class="indexterm"/>of all is the fact that we have adapted our parallel reduction into another form, which is otherwise known as segmented reduction. By this time, you should be relatively familiar with the rest of the code, so I won't walk you through that as you may doze off.</p><p>Parallel reduction, in all its forms, is a very effective way to conduct reduction across processors and even architectures. The famous Hadoop framework is an example of parallel reduction across architectures, and the form we are seeing now is that confined to the processor residing on the OpenCL GPU.</p><p>Let me walk you through what happened here in our segmented reduction example for the SpMV CSR vector kernel. Initially, we set up a shared memory space in our kernel to hold 128 elements of the type <code class="literal">float</code>:</p><div class="informalexample"><pre class="programlisting">__local volatile float partialSums[128];</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip31"/>Tip</h3><p>You might be curious as to why we need the keyword <code class="literal">volatile</code> when defining the array <code class="literal">partialSums</code>. The main reason is because on the level of warp/wavefront-level programming, OpenCL does not have synchronization functions like the memory fences we have encountered so far, and when you do not place the <code class="literal">volatile</code> keyword when declaring shared memory, the compiler is free to replace the store to and load from <code class="literal">__local</code> memory with register storage, and execution errors will arise.</p></div></div><p>The intention was for each thread in the warp/wavefront to store its own computation into its own slot marked by its thread ID.</p><p>Next, we see the following bunch of code:</p><div class="informalexample"><pre class="programlisting">if (id &lt; 16) partialSums[tid] += partialSums[t +16];
+barrier(CLK_LOCAL_MEM_FENCE);
+if (id &lt;  8) partialSums[tid] += partialSums[tid + 8];
+barrier(CLK_LOCAL_MEM_FENCE);
+if (id &lt;  4) partialSums[tid] += partialSums[tid + 4];
+barrier(CLK_LOCAL_MEM_FENCE);
+if (id &lt;  2) partialSums[tid] += partialSums[tid + 2];
+barrier(CLK_LOCAL_MEM_FENCE);
+if (id &lt;  1) partialSums[tid] += partialSums[tid + 1];
+barrier(CLK_LOCAL_MEM_FENCE);
+
+// Write result
+if (id == 0) {
+    out[row] = partialSums[tid];
+}</pre></div><p>This code does two things—first is that it only allows threads with certain IDs to execute and the second thing it does is to only allow the thread with ID <code class="literal">0</code>, that is, zero to write out the total sum into the appropriate element of the output array, <code class="literal">out</code>.</p><p>Let's get into the details. When an <a id="id619" class="indexterm"/>executing thread / work item attempts to<a id="id620" class="indexterm"/> execute the following piece of code, the kernel will first determine if its ID is allowed, and the threads with IDs ranging from 0 to 15 will get to execute, while those in the following code will not execute, and we will have<a id="id621" class="indexterm"/> <span class="strong"><strong>thread divergence</strong></span>:</p><div class="informalexample"><pre class="programlisting">if (id &lt; 16) partialSums[tid] += partialSums[t +16];
+barrier(CLK_LOCAL_MEM_FENCE);</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note39"/>Note</h3><p>Recall that thread divergence occurs at branches, that is, <code class="literal">if-then-else</code>, switches, and so on, which basically partition`s a warp/wavefront into two, where one part of the group executes code while the other part doesn't.</p></div></div><p>At this point, you should convince yourself that pair-wise reduction takes place for the entire shared-memory array, <code class="literal">partialSums</code>, and I find it helpful when I trace it on paper or the computer (whatever is your preference). When the executing threads have finished the parallel reduction, notice that there are no overlapping writes (this is intentional), and we need to place a memory fence at that point just to make sure every thread has reached that point before proceeding. This memory fence is important, otherwise bad things will happen. Next, the parallel reduction occurs again, but this time we only need to process half of the array, and we restrict the number of threads to <code class="literal">8</code>:</p><div class="informalexample"><pre class="programlisting">if (id &lt; 8) partialSums[tid] += partialSums[t +8];
+barrier(CLK_LOCAL_MEM_FENCE);</pre></div><p>We repeat this cycle by dropping the number of executable threads by the power of two till it reaches <code class="literal">1</code>, and at that point, the final aggregated value will be in the zeroth position in the array, <code class="literal">partialSums</code>.</p><p>Once we have our final aggregated value in the zeroth position of the array <code class="literal">partialSums</code>, we can write it out to its appropriate position in the array <code class="literal">out</code> indexed by the row we've processed. This segmented reduction is drawn out in the following diagram:</p><div class="mediaobject"><img src="graphics/4520OT_08_10.jpg" alt="How it works"/></div></div></div>
+<div class="section" title="Understanding how to solve SpMV using VexCL"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec62"/>Understanding how to solve SpMV using VexCL</h1></div></div></div><p>Finally, I would like to present solving the<a id="id622" class="indexterm"/> SpMV CSR kernel using the <a id="id623" class="indexterm"/>conjugate gradient method. We have<a id="id624" class="indexterm"/> studied this method in the beginning of this chapter and hopefully, we still remember what it is. Let me help you by refreshing your memory of the core equations on the CG method:</p><div class="mediaobject"><img src="graphics/4520OT_08_31.jpg" alt="Understanding how to solve SpMV using VexCL"/></div><p>So far, we have developed a <a id="id625" class="indexterm"/>pretty good idea about how to solve SpMV problems using various ways through the SpMV ELLPACK, ELLPACK-R, and CSR formats in both scalar and vector forms, but it took us a while to get there for sure. In this section, you <a id="id626" class="indexterm"/>will be introduced to an OpenCL framework for solving problems, and its called VexCL. It can be downloaded from:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">VexCL main page: <a class="ulink" href="https://github.com/ddemidov/vexcl">https://github.com/ddemidov/vexcl</a></li><li class="listitem" style="list-style-type: disc">VexCL Wiki: <a class="ulink" href="https://github.com/ddemidov/vexcl/wiki">https://github.com/ddemidov/vexcl/wiki</a></li></ul></div><p>OpenCL has suffered, in the author's opinion, on the lack of tooling support, and VexCL is again, in the author's opinion, one of the better wrappers around OpenCL C++ and I like to take this section to briefly introduce you to it and you can go download it.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec141"/>Getting ready</h2></div></div></div><p>For VexCL to work with you, you will need a C++11 compliant compiler, and GNU GCC 4.6 and the Boost Libs fit the bill. On my setup, I've got the GCC 4.7 compiled with Boost List Version 1.53 without much trouble. That means I won't list the installation instructions as the installation process is relatively straightforward.</p></div><div class="section" title="How to do it"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec142"/>How to do it</h2></div></div></div><p>The following OpenCL kernel is found in <code class="literal">Ch8/SpMV_VexCL/SpMV.cpp</code>:</p><div class="informalexample"><pre class="programlisting">#define VEXCL_SHOW_KERNELS 
+// define this macro before VexCL header inclusion to view output   
+// kernels
+
+#include &lt;vexcl/vexcl.hpp&gt;
+typedef double real;
+#include &lt;iostream&gt;
+#include &lt;vector&gt;
+#include &lt;cstdlib&gt;
+
+void gpuConjugateGradient(const std::vector&lt;size_t&gt; &amp;row,
+                          const std::vector&lt;size_t&gt; &amp;col,
+                          const std::vector&lt;real&gt; &amp;val,
+                          const std::vector&lt;real&gt; &amp;rhs,
+                          std::vector&lt;real&gt; &amp;x) {
+    /*
+     Initialize the OpenCL context
+     */
+    vex::Context oclCtx(vex::Filter::Type(CL_DEVICE_TYPE_GPU) &amp;&amp;
+                        vex::Filter::DoublePrecision);
+
+    size_t n = x.size();
+    vex::SpMat&lt;real&gt; A(oclCtx, n, n, row.data(), col.data(), val.data());
+    vex::vector&lt;real&gt; f(oclCtx, rhs);
+    vex::vector&lt;real&gt; u(oclCtx, x);
+    vex::vector&lt;real&gt; r(oclCtx, n);
+    vex::vector&lt;real&gt; p(oclCtx, n);
+    vex::vector&lt;real&gt; q(oclCtx, n);
+
+    vex::Reductor&lt;real,vex::MAX&gt; max(oclCtx);
+    vex::Reductor&lt;real,vex::SUM&gt; sum(oclCtx);
+
+    
+    /*
+     Solve the equation Au = f with the "conjugate gradient" method
+     See http://en.wikipedia.org/wiki/Conjugate_gradient_method
+     */
+    float rho1, rho2;
+    r = f - A * u;
+
+    for(uint iter = 0; max(fabs(r)) &gt; 1e-8 &amp;&amp; iter &lt; n; iter++) {
+        rho1 = sum(r * r);
+        if(iter == 0 ) {
+          p = r;
+        } else {
+          float beta = rho1 / rho2;
+          p = r + beta * p;
+        }
+
+        q = A * p;
+
+        float alpha = rho1 / sum(p * q);
+        u += alpha * p;
+        r -= alpha * q;
+        rho2 = rho1;
+    }
+
+    using namespace vex;
+    vex::copy(u, x); // copy the result back out to the host vector
+}</pre></div></div><div class="section" title="How it works"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec143"/>How it works</h2></div></div></div><p>The host code basically <a id="id627" class="indexterm"/>fills the one-dimensional arrays with the required values so <a id="id628" class="indexterm"/>that they can conform to the CSR format. After this, the device vectors are declared with their appropriate data types and linked with their appropriate host vectors (the copying will take place but it happens behind the scenes), and two reductors are defined (they are basically the reduction kernels we have seen before); the reductor will only execute in the OpenCL device using a single thread of execution, so it isn't quite the same as the parallel reduction we have seen back then; its reduction is alright, but it is carried out in a sequential fashion.</p><p>Next, we initialized an ADT known as <code class="literal">SpMAT</code> which holds the representation of a sparse matrix, and this ADT has the capability to span multiple devices, which is very desirable property since the written code is transparent to its actual underlying computing devices.</p><p>In the background, the C++ code you have been shown will cause code generation to occur, and that is the code that will be used, compiled, and executed again; if you like to see the generated kernel code, simply place the C macro <code class="literal">VEXCL_SHOW_KERNELS</code>. We finally transfer the processed data from the device memory to the host memory using the <code class="literal">copy</code> function from the <code class="literal">vex</code> namespace.</p></div></div></body></html>

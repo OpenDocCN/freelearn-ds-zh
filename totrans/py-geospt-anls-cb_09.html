@@ -1,0 +1,466 @@
+<html><head></head><body>
+  <div id="sbo-rt-content"><div class="chapter" title="Chapter 9. Topology Checking and Data Validation"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Topology Checking and Data Validation</h1></div></div></div><p>In this chapter, we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Creating a rule – only one point inside a polygon</li><li class="listitem" style="list-style-type: disc">A point must be on the starting and ending nodes of a line only</li><li class="listitem" style="list-style-type: disc">LineStrings must not overlap</li><li class="listitem" style="list-style-type: disc">A LineString must not have dangles</li><li class="listitem" style="list-style-type: disc">A polygon centroid must be within a specific distance of a line</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec63"/>Introduction</h1></div></div></div><p>Topology <a id="id416" class="indexterm"/>rules allow you to enforce and test spatial relationships between different geometry sets. This chapter will build an open source set of topology rules that you can run from the command line or integrate in your python programs.</p><p>The spatial relationships described by the DE-9IM (Nine Intersect Model) are Equals, Disjoint, Intersects, Touches, Crosses, Within, Contains, and Overlaps. However, exactly how these are related is something that's unclear for most beginners. We are referring to the interior, boundary, and exterior of our geometry types: Point, LineString, and Polygon, which are used directly to perform the topology checks. These are as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Interior</strong></span>: This<a id="id417" class="indexterm"/> refers to the entire shape except for its boundary. All geometry types have interiors.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Boundary</strong></span>: This<a id="id418" class="indexterm"/> refers to the endpoints of all linear parts of line features or the linear outline of a polygon. Only lines and polygons have boundaries.</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Exterior</strong></span>: This <a id="id419" class="indexterm"/>refers to the outside area a shape. All geometry types have exteriors.<div class="mediaobject"><img src="images/50790OS_09_01.jpg" alt="Introduction"/></div></li></ul></div><p>The following table summarizes the topology geometries in a more formal wording:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Geometric subtypes </p>
+</th><th style="text-align: left" valign="bottom">
+<p>Interior (I)</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Boundary (B)</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Exterior (E)</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p>Point, MultiPoint</p>
+</td><td style="text-align: left" valign="top">
+<p>point or points<a id="id420" class="indexterm"/>
+</p>
+</td><td style="text-align: left" valign="top">
+<p>Empty set</p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>LineString, Line</p>
+</td><td style="text-align: left" valign="top">
+<p>Points that are left when the boundary points are removed</p>
+</td><td style="text-align: left" valign="top">
+<p>Two end Points </p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary </p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>LinearRing</p>
+</td><td style="text-align: left" valign="top">
+<p>All Points along the LinearRing </p>
+</td><td style="text-align: left" valign="top">
+<p>Empty set</p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary </p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>MultiLineString</p>
+</td><td style="text-align: left" valign="top">
+<p>Points that are left when the boundary points are removed </p>
+</td><td style="text-align: left" valign="top">
+<p>Those Points that are in the boundaries of an odd number of its element Curves</p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>Polygon</p>
+</td><td style="text-align: left" valign="top">
+<p>Points within the Rings</p>
+</td><td style="text-align: left" valign="top">
+<p>Set of Rings </p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary</p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p>MultiPolygon</p>
+</td><td style="text-align: left" valign="top">
+<p>Points within the Rings </p>
+</td><td style="text-align: left" valign="top">
+<p>Set of Rings of its Polygons</p>
+</td><td style="text-align: left" valign="top">
+<p>Points not in the interior or boundary</p>
+</td></tr></tbody></table></div><p>The definitions of the interior, boundary, and exterior of the main geometry types are described <a id="id421" class="indexterm"/>by the <span class="strong"><strong>Open Geospatial Consortium</strong></span> (<span class="strong"><strong>OGC</strong></span>).</p><p>In the following recipes, we will explore some custom topology rules that you could apply to any project, laying the groundwork for you to create your own set of rules.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Creating a rule – only one point inside a polygon"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec64"/>Creating a rule – only one point inside a polygon</h1></div></div></div><p>A long <a id="id422" class="indexterm"/>time ago in GIS history, not having more than one point present in a polygon was super important because one point per polygon was the standard way to demonstrate a topologically clean polygon with its associated attribute and ID. Today, it is still important for many other reasons, such as assigning attributes to polygons based on points inside a polygon. We must perform a spatial join between the polygon and point to assign these valuable attributes. If two points are located in one polygon, which attributes do you use? This recipe is about creating a rule to check your data beforehand to ensure that only one point is located in each polygon. If this test fails, you will get a list or errors; if it passes, the test returns <code class="literal">True</code>.</p><div class="mediaobject"><img src="images/50790OS_09_02.jpg" alt="Creating a rule – only one point inside a polygon"/></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec154"/>Getting ready</h2></div></div></div><p>Data again plays the central role here, so check that your <code class="literal">/ch09/geodata/</code> folder is ready with two input Shapefiles containing <code class="literal">topo_polys.shp</code> and <code class="literal">topo_points.shp</code>. The Shapely library performs the geometry topology testing. If you have followed along so far, you have it installed already; if not, install it now by referring to <a class="link" href="ch01.html" title="Chapter 1. Setting Up Your Geospatial Python Environment">Chapter 1</a>, <span class="emphasis"><em>Setting Up Your Geospatial Python Environment</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec155"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">You <a id="id423" class="indexterm"/>will now check to see if each polygon contains a point as follows:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# for every polygon in a polygon layer there can only be
+# one point object located in each polygon
+# the number of points per polygon can be defined by the user
+from utils import shp2_geojson_obj
+from utils import create_shply_multigeom
+import json
+
+in_shp_poly = "../geodata/topo_polys.shp"
+in_shp_point = "../geodata/topo_points.shp"
+
+ply_geojs_obj = shp2_geojson_obj(in_shp_poly)
+pt_geojs_obj = shp2_geojson_obj(in_shp_point)
+
+shply_polys = create_shply_multigeom(ply_geojs_obj, "MultiPolygon")
+shply_points = create_shply_multigeom(pt_geojs_obj, "MultiPoint")
+
+
+def valid_point_in_poly(polys, points):
+    """
+    Determine if every polygon contains max one point and that each
+    point is not located on the EDGE or Vertex of the polygon
+    :param point: Point data set
+    :param poly: Polygon data set
+    :return: True or False if False a dictionary containing polygon ids
+    that contain no or multiple points
+    """
+    pts_in_polys = []
+    pts_touch_plys = []
+
+    pts_plys_geom = []
+    pts_touch_geom = []
+
+    # check each polygon for number of points inside
+    for i, poly in enumerate(polys):
+
+        pts_in_this_ply = []
+        pts_touch_this_ply = []
+
+        for pt in points:
+            if poly.touches(pt):
+                pts_touch_this_ply.append(
+                    {'multipoint_errors_touches': pt.__geo_interface__, 'poly_id': i,
+                     'point_coord': pt.__geo_interface__})
+
+            if poly.contains(pt):
+                pts_in_this_ply.append({'multipoint_contains': pt.__geo_interface__})
+
+        pts_in_polys.append(len(pts_in_this_ply)) 
+        pts_touch_plys.append(len(pts_touch_this_ply))
+
+        # create list of point geometry errors
+        pts_plys_geom.append(pts_in_this_ply)
+        pts_touch_geom.append(pts_touch_this_ply)
+
+    # identify if we have more than one point per polygon or
+    # identify if no points are inside a polygon
+    no_good = dict()
+    all_good = True
+
+    # loop over list containing the number of pts per polygon
+    # each item in list is an integer representing the number
+    # of points located inside a particular polygon [4,1,0]
+    # represents 4 points in polygon 1, 1 point in poly 2, and
+    # 0 points in polygon 3
+    for num, res in enumerate(pts_in_polys):
+
+        if res == 1:
+            # this polygon is good and only has one point inside
+            # no points on the edge or on the vertex of polygon
+            continue
+            # no_good['poly num ' + str(num)] = "excellen only 1 point in poly"
+        elif res &gt; 1:
+            # we have more than one point either inside, on edge
+            # or vertex of a polygon
+            no_good['poly num ' + str(num)] = str(res) + " points in this poly"
+            all_good = False
+        else:
+            # last case no points in this polygon
+            no_good['poly num ' + str(num)] = "No points in this poly"
+            all_good = False
+
+    if all_good:
+        return all_good
+    else:
+        bad_list = []
+        for pt in pts_plys_geom:
+            fgeom = {}
+            for res in pt:
+                if 'multipoint_contains' in res:
+                    hui = res['multipoint_contains']
+                    print hui
+                    fgeom['geom'] = hui
+            bad_list.append(fgeom)
+        return bad_list
+        # return no_good,pts_in_polys2 # [4,0,1]
+
+
+valid_res = valid_point_in_poly(shply_polys, shply_points)
+
+final_list = []
+for res in valid_res:
+    if 'geom' in res:
+        geom = res['geom']
+        final_list.append(geom)
+
+final_gj = {"type": "GeometryCollection", "geometries": final_list}
+print json.dumps(final_gj)</pre></div></li><li class="listitem">This <a id="id424" class="indexterm"/>ends the practical test using two input Shapefiles. Now for your testing pleasure, here is a simple unit test to break things down for a simple point in polygon tests. The following test code is located in the <code class="literal">ch09/code/ch09-01_single_pt_test_in_poly.py</code> file:<div class="informalexample"><pre class="programlisting"># -*- coding: utf-8 -*-
+import unittest
+from shapely.geometry import Point
+from shapely.geometry import Polygon
+
+class TestPointPerPolygon(unittest.TestCase):
+    def test_inside(self):
+
+        ext = [(0, 0), (0, 2), (2, 2), (2, 0), (0, 0)]
+        int = [(1, 1), (1, 1.5), (1.5, 1.5), (1.5, 1)]
+        poly_with_hole = Polygon(ext,[int])
+
+        polygon = Polygon([(0, 0), (0, 10), (10, 10),(0, 10)])
+
+        point_on_edge = Point(5, 10)
+        point_on_vertex = Point(10, 10)
+        point_inside = Point(5, 5)
+        point_outside = Point(20,20)
+        point_in_hole = Point(1.25, 1.25)
+
+        self.assertTrue(polygon.touches(point_on_vertex))
+        self.assertTrue(polygon.touches(point_on_edge))
+        self.assertTrue(polygon.contains(point_inside))
+        self.assertFalse(polygon.contains(point_outside))
+        self.assertFalse(point_in_hole.within(poly_with_hole))
+
+if __name__ == '__main__':
+    unittest.main()</pre></div><p>This simple test should run nicely. If you feel like breaking it to see what happens, change the last call to the following:</p><div class="informalexample"><pre class="programlisting">self.assertTrue(point_in_hole.within(poly_with_hole)</pre></div></li><li class="listitem">This results in the following output:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Failure</strong></span>
+<span class="strong"><strong>Traceback (most recent call last):</strong></span>
+<span class="strong"><strong>  File "/home/mdiener/ch09/code/ch09-01_single_pt_test_in_poly.py", line 26, in test_inside</strong></span>
+<span class="strong"><strong>    self.assertTrue(point_in_hole.within(poly_with_hole))</strong></span>
+<span class="strong"><strong>AssertionError: False is not true</strong></span>
+</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec156"/>How it works...</h2></div></div></div><p>We have lots of things to test to determine whether there's only one point inside the polygon. We'll start with what is defined as inside and not inside. Looking back at the introduction <a id="id425" class="indexterm"/>to this chapter, a polygon interior, exterior, and boundary can be logically defined. The position of our input points is then explicitly defined as a point that lies within a polygon, excluding points that are located on the polygon boundary, edge, or vertex. Plus, our added criterion is that only one point per polygon is allowed, thus giving errors if <code class="literal">0</code> or more points fall inside any given polygon.</p><p>Our spatial predicates include touches to find out whether the point is on the vertex or edge. If touches returns <code class="literal">True</code>, our point is located on the edge or vertex, which means that it is not inside. This is followed by the <code class="literal">contains</code> method that checks whether the point is inside our polygon. Here, we check to see that there's no more than one point inside our polygon.</p><p>The code works through importing and converting a Shapefile for processing performed by the <code class="literal">Shapely</code> module. As we process our polygons, we create a couple of lists to track what kind of relationship is found between them so that we can sum them up at the end, allowing us to count if zero or more than one point is inside a single polygon.</p><p>Our last bit of code then runs through a series of simple function calls, testing out the several scenarios relative to whether a point is inside the polygon or not. The final call runs through the Shapefiles with multiple polygons and points in a more realistic test. This then returns either <code class="literal">True</code> if no errors are found or it returns a GeoJSON printout, showing you where the errors are located.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="A point must be on the starting and ending nodes of a line only"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec65"/>A point must be on the starting and ending nodes of a line only</h1></div></div></div><p>A <a id="id426" class="indexterm"/>routing network of connected edges may contain some routing logic associated with the intersections of roads that are represented as points. These points must, of course, be exactly located at the start or end of a line in order to identify these junctions. Once the junctions are found, various rules can be applied in the attributes to control your routing, for example.</p><p>A typical example would be turn restrictions that could be modeled as points:</p><div class="mediaobject"><img src="images/50790OS_09_03.jpg" alt="A point must be on the starting and ending nodes of a line only"/></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec157"/>How to do it...</h2></div></div></div><p>Our <a id="id427" class="indexterm"/>handy <code class="literal">utils.py</code> module located in the <code class="literal">trunk</code> folder helps us out with the mundane tasks of importing a Shapefile and converting it to a Shapely geometry object for us to work with.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Now let's create our point check code like this:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from utils import shp2_geojson_obj
+from utils import create_shply_multigeom
+from utils import out_geoj
+from shapely.geometry import Point, MultiPoint
+
+in_shp_line = "../geodata/topo_line.shp"
+in_shp_point = "../geodata/topo_points.shp"
+
+# create our geojson like object from a Shapefile
+shp1_data = shp2_geojson_obj(in_shp_line)
+shp2_data = shp2_geojson_obj(in_shp_point)
+
+# convert the geojson like object to shapely geometry
+shp1_lines = create_shply_multigeom(shp1_data, "MultiLineString")
+shp2_points = create_shply_multigeom(shp2_data, "MultiPoint")
+
+
+def create_start_end_pts(lines):
+    '''
+    Generate a list of all start annd end nodes
+    :param lines: a Shapely geometry LineString
+    :return: Shapely multipoint object which includes
+             all the start and end nodes
+    '''
+    list_end_nodes = []
+    list_start_nodes = []
+
+    for line in lines:
+        coords = list(line.coords)
+
+        line_start_point = Point(coords[0])
+        line_end_point = Point(coords[-1])
+
+        list_start_nodes.append(line_start_point)
+        list_end_nodes.append(line_end_point)
+
+    all_nodes = list_end_nodes + list_start_nodes
+
+    return MultiPoint(all_nodes)
+
+
+def check_points_cover_start_end(points, lines):
+    '''
+
+    :param points: Shapely point geometries
+    :param lines:Shapely linestrings
+    :return:
+    '''
+
+    all_start_end_nodes = create_start_end_pts(lines)
+
+    bad_points = []
+    good_points = []
+    if len(points) &gt; 1:
+        for pt in points:
+            if pt.touches(all_start_end_nodes):
+                print "touches"
+            if pt.disjoint(all_start_end_nodes):
+                print "disjoint" # 2 nodes
+                bad_points.append(pt)
+            if pt.equals(all_start_end_nodes):
+                print "equals"
+            if pt.within(all_start_end_nodes):
+                print "within" # all our nodes on start or end
+            if pt.intersects(all_start_end_nodes):
+                print "intersects"
+                good_points.append(pt)
+    else:
+        if points.intersects(all_start_end_nodes):
+            print "intersects"
+            good_points.append(points)
+        if points.disjoint(all_start_end_nodes):
+            print "disjoint"
+            good_points.append(points)
+
+
+    if len(bad_points) &gt; 1:
+        print "oh no 1 or more points are NOT on a start or end node"
+        out_geoj(bad_points, '../geodata/points_bad.geojson')
+        out_geoj(good_points, '../geodata/points_good.geojson')
+       
+    elif len(bad_points) == 1:
+        print "oh no your input single point is NOT on start or end node"
+
+    else:
+        print "super all points are located on a start or end node" \
+              "NOTE point duplicates are NOT checked"
+
+
+check_points_cover_start_end(shp2_points, shp1_lines)</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec158"/>How it works...</h2></div></div></div><p>You <a id="id428" class="indexterm"/>can attack this problem in a number of different ways. This method may not be very efficient but demonstrates how to go about solving a spatial problem.</p><p>Our logic begins with creating a function to find all the true start and end node locations of our input LineString. Shapely helps us out with some simple lists by slicing to get us the first and last coordinate pair for each of our lines. These two sets are then combined into a single list holder for all our nodes to check against.</p><p>The second function actually does the check to see whether our point is located on either the start or end node in our master list. We begin by creating the master list of start and end nodes for comparison by calling our first function. Now, if our input has more than one point, we loop through each point and check several spatial relationships. The only two that are of any real interest are disjoint and intersects. These deliver our answer by showing us which points are good and which are not.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note41"/>Note</h3><p>The within predicate could also be used instead of the intersect, but was not chosen simply because it is not always understood properly by beginners, while intersects seem to be easier to understand.</p></div></div><p>The remaining checks simply export the list of bad and good points to a GeoJSON file that you can open in QGIS to visualize.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="LineStrings must not overlap"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec66"/>LineStrings must not overlap</h1></div></div></div><p>Overlapping <a id="id429" class="indexterm"/>lines are hard to find usually because you cannot see them on a map. They might be deliberate, for example, bus route network lines that might overlap. This exercise sets out to discover these overlapping lines for better or for worse.</p><p>The following diagram shows a set of two input LineStrings and you can see clearly where they overlap, but this is a cartographic visual inspection. We need this to work on many, many lines that you cannot always see as clearly.</p><div class="mediaobject"><img src="images/50790OS_09_04.jpg" alt="LineStrings must not overlap"/></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec159"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's <a id="id430" class="indexterm"/>dive into the code:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from utils import shp2_geojson_obj
+from utils import create_shply_multigeom
+from utils import out_geoj
+
+in_shp_line = "../geodata/topo_line.shp"
+in_shp_overlap = "../geodata/topo_line_overlap.shp"
+
+shp1_data = shp2_geojson_obj(in_shp_line)
+shp2_data = shp2_geojson_obj(in_shp_overlap)
+
+shp1_lines = create_shply_multigeom(shp1_data, "MultiLineString")
+shp2_lines_overlap = create_shply_multigeom(shp2_data, "MultiLineString")
+
+overlap_found = False
+
+for line in shp1_lines:
+    if line.equals(shp2_lines_overlap):
+        print "equals"
+        overlap_found = True
+    if line.within(shp2_lines_overlap):
+        print "within"
+        overlap_found = True
+
+# output the overlapping Linestrings
+if overlap_found:
+    print "now exporting overlaps to GeoJSON"
+    out_int = shp1_lines.intersection(shp2_lines_overlap)
+    out_geoj(out_int, '../geodata/overlapping_lines.geojson')
+
+    # create final Linestring only list of overlapping lines
+    # uses a pyhton list comprehension expression
+    # only export the linestrings Shapely also creates  2 Points
+    # where the linestrings cross and touch
+    final = [feature for feature in out_int if feature.geom_type == "LineString"]
+
+    # code if you do not want to use a list comprehension expresion
+    # final = []
+    # for f in out_int:
+    #     if f.geom_type == "LineString":
+    #         final.append(f)
+
+    # export final list of geometries to GeoJSON
+    out_geoj(final, '../geodata/final_overlaps.geojson')
+else:
+    print "hey no overlapping linestrings"</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec160"/>How it works...</h2></div></div></div><p>Overlapping<a id="id431" class="indexterm"/> LineStrings are sometimes desirable and sometimes not. In this code, you can make some simple adjustments and have them report either situation in the form of GeoJSON. The default case is to output a GeoJSON file showing the overlapping LineStrings.</p><p>We begin the journey with the boilerplate code to convert our Shapefiles to Shapely geometries so that we can use our spatial relation predicates to filter out our overlaps. We only need two predicate equals and within to find what we are looking for. If we use intersects, these <a id="id432" class="indexterm"/>might return a false positive since both <code class="literal">crosses()</code> and <code class="literal">touches()</code> are also checked.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip23"/>Tip</h3><p>We could also use the intersects predicate that is equivalent to the OR-ing of <code class="literal">contains()</code>, <code class="literal">crosses()</code>, <code class="literal">equals()</code>, <code class="literal">touches()</code>, and <code class="literal">within()</code> as stated in<a id="id433" class="indexterm"/> the Shapely online documentation at <a class="ulink" href="http://toblerity.org/shapely/manual.html#object.intersects">http://toblerity.org/shapely/manual.html#object.intersects</a>.</p></div></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="A LineString must not have dangles"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec67"/>A LineString must not have dangles</h1></div></div></div><p>Dangles<a id="id434" class="indexterm"/> are like cul-de-sac (roads). You can find them only in LineStrings where a line ends and does not connect to another line segment. "To dangle in the air" refers to a LineString that is not connected to any other LineString. These <a id="id435" class="indexterm"/>are very important to identify if you are looking to ensure that a road network is connected or to identify where streets come together as they should.</p><p>A more technical description of a dangle could be described as an edge that has one or both ends that are not incidental to another edge endpoint.</p><div class="mediaobject"><img src="images/50790OS_09_05.jpg" alt="A LineString must not have dangles"/></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec161"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">You will now check for dangles on your set of LineStrings as follows:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from utils import shp2_geojson_obj
+from utils import create_shply_multigeom
+from utils import out_geoj
+from shapely.geometry import Point
+
+in_shp_dangles = "../geodata/topo_dangles.shp"
+shp1_data = shp2_geojson_obj(in_shp_dangles)
+shp1_lines = create_shply_multigeom(shp1_data, "MultiLineString")
+
+
+def find_dangles(lines):
+    """
+    Locate all dangles
+    :param lines: list of Shapely LineStrings or MultiLineStrings
+    :return: list of dangles
+    """
+    list_dangles = []
+    for i, line in enumerate(lines):
+        # each line gets a number
+        # go through each line added first to second
+        # then second to third and so on
+        shply_lines = lines[:i] + lines[i+1:]
+        # 0 is start point and -1 is end point
+        # run through
+        for start_end in [0, -1]:
+            # convert line to point
+            node = Point(line.coords[start_end])
+            # Return True if any element of the iterable is true.
+            # https://docs.python.org/2/library/functions.html#any
+            # python boolean evaluation comparison
+            if any(node.touches(next_line) for next_line in shply_lines):
+                continue
+            else:
+                list_dangles.append(node)
+    return list_dangles
+
+# convert our Shapely MultiLineString to list
+list_lines = [line for line in shp1_lines]
+
+# find those dangles
+result_dangles = find_dangles(list_lines)
+
+# return our results
+if len(result_dangles) &gt;= 1:
+    print "yes we found some dangles exporting to GeoJSON"
+    out_geoj(result_dangles, '../geodata/dangles.geojson')
+else:
+    print "no dangles found"</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec162"/>How it works...</h2></div></div></div><p>Finding<a id="id436" class="indexterm"/> dangles is easy at first glance, but this is really a little more involved than one might think. So, for clarity's sake, let's explain some logic in dangle identification as pseudo code.</p><p>These are not a part of Dangle logic:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">If the start nodes of two different lines are equal, it is not a dangle</li><li class="listitem" style="list-style-type: disc">If the end nodes of two different lines are equal, it is not a dangle</li><li class="listitem" style="list-style-type: disc">If the start node of one line is equal to the end node of the other line, it is not a dangle</li><li class="listitem" style="list-style-type: disc">If the end node of one line is equal to the start node of the other line, it is not a dangle</li></ul></div><p>So, we need to loop over each LineString and compare the start and end points from one LineString to the next, checking if they touch each other using <code class="literal">touches()</code> from Shapely. If they do touch, we move on to the next comparison without breaking the use of <code class="literal">continue</code>. It moves to the else section and here we will catch those nice dangles and append them to the dangles list.</p><p>We are then only left with one last fun decision: to print out confirmation that we have no dangles or export the dangles to a GeoJSON fine for some visual inspection.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="A polygon centroid must be within a specific distance of a line"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec68"/>A polygon centroid must be within a specific distance of a line</h1></div></div></div><p>Check<a id="id437" class="indexterm"/> that each polygon centroid is within a distance tolerance to a LineString. An example use case for such a rule could be for a routing network that defines the snap tolerance in meters from a room centroid to the nearest routing networkline. This line must be located within a certain distance; otherwise, no route can be generated, for example. The following screenshot shows the use of some dummy polygons and LineStrings, indicating the centroids that fall within our set tolerance of 20000 m in red. These are polygons that are spread <a id="id438" class="indexterm"/>far apart from Venice to Vienna:</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note42"/>Note</h3><p>If you're<a id="id439" class="indexterm"/> up for some algorithm reading material, this is a nice read by Paul Bourke at <a class="ulink" href="http://paulbourke.net/geometry/pointlineplane/">http://paulbourke.net/geometry/pointlineplane/</a>.</p></div></div><div class="mediaobject"><img src="images/50790OS_09_06.jpg" alt="A polygon centroid must be within a specific distance of a line"/></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec163"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">This code will now automatically find centroids outside your distance tolerance:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from utils import shp2_geojson_obj
+from utils import create_shply_multigeom
+from utils import out_geoj
+
+in_shp_lines = "../geodata/topo_line.shp"
+shp1_data = shp2_geojson_obj(in_shp_lines)
+shp1_lines = create_shply_multigeom(shp1_data, "MultiLineString")
+
+in_shp_poly = "../geodata/topo_polys.shp"
+ply_geojs_obj = shp2_geojson_obj(in_shp_poly)
+shply_polys = create_shply_multigeom(ply_geojs_obj, "MultiPolygon")
+
+
+# nearest point using linear referencing
+# with interpolation and project
+# pt_interpolate = line.interpolate(line.project(point))
+
+# create point centroids from all polygons
+# measure distance from centroid to nearest line segment
+
+def within_tolerance(polygons, lines, tolerance):
+    """
+    Discover if all polygon centroids are within a distance of a linestring
+    data set, if not print out centroids that fall outside tolerance
+    :param polygons: list of polygons
+    :param lines: list of linestrings
+    :param tolerance: value of distance in meters
+    :return: list of all points within tolerance
+    """
+
+    # create our centroids for each polygon
+    list_centroids = [x.centroid for x in polygons]
+
+    # list to store all of our centroids within tolerance
+    good_points = []
+
+    for centroid in list_centroids:
+        for line in lines:
+            # calculate point location on line nearest to centroid
+            pt_interpolate = line.interpolate(line.project(centroid))
+            # determine distance between 2 cartesian points
+            # that are less than the tolerance value in meters
+            if centroid.distance(pt_interpolate) &gt; tolerance:
+                print "to far  " + str(centroid.distance(pt_interpolate))
+            else:
+                print "hey your in  " + str(centroid.distance(pt_interpolate))
+                good_points.append(centroid)
+
+    if len(good_points) &gt; 1:
+        return good_points
+    else:
+        print "sorry no centroids found within your tolerance of " + str(tolerance)
+
+# run our function to get a list of centroids within tolerance
+result_points = within_tolerance(shply_polys, shp1_lines, 20000)
+
+if result_points:
+    out_geoj(result_points, '../geodata/centroids_within_tolerance.geojson')
+else:
+    print "sorry cannot export GeoJSON of Nothing"</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec164"/>How it works...</h2></div></div></div><p>Our<a id="id440" class="indexterm"/> boilerplate starter code brings in a polygon and a LineString Shapefile so that we can calculate our centroids and shortest distances. The main logic here is that we need to first create a list of centroids for each polygon, and then find the nearest point location on a line to this centroid. Of course, the last step is to get the distance between these two points in meters and check if it is less than our specified tolerance value.</p><p>Most of the comments explain the details, but the actual shortest distance to the line is accomplished using the linear referencing feature of Shapely. We have encountered this process in <a class="link" href="ch05.html" title="Chapter 5. Vector Analysis">Chapter 5</a>, <span class="emphasis"><em>Vector Analysis</em></span>, using our snap point to a line. The <code class="literal">interpolate</code> and <code class="literal">project</code> functions do the heavy lifting to find the nearest point on the line.</p><p>This, as usual, is followed up by exporting our results to GeoJSON if any points are found with the specified tolerance value.</p></div></div></div>
+</body></html>

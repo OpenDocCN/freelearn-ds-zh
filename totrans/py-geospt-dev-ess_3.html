@@ -1,0 +1,793 @@
+<html><head></head><body>
+  <div id="sbo-rt-content"><div class="chapter" title="Chapter 3. Designing the Visual Look of Our Application"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Designing the Visual Look of Our Application</h1></div></div></div><p>We have now come to the part where we want to design how our application will look and feel. For this <span class="strong"><strong>graphical user interface</strong></span> (<span class="strong"><strong>GUI</strong></span>), we take the path of least resistance and go with the<a id="id89" class="indexterm"/> <span class="strong"><strong>Tkinter</strong></span> library since this is a standard built-in library in the official Python installations, at least for Windows and Mac. Other reasons for choosing Tkinter is that it is fairly easy to use and is slightly more Pythonic than some of the newer third-party GUI libraries.</p><p>If you have not used<a id="id90" class="indexterm"/> Tkinter before, you should still be able to follow along. The basic idea of Tkinter is that you create widget classes for each graphical element of your GUI, defining their look and placement. Complex elements can be created by nesting widgets within widgets. You can also bind functions to user interaction events.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note12"/>Note</h3><p>To learn more<a id="id91" class="indexterm"/> about Tkinter, I highly recommend using John W. Shipman's reference guide, available from <a class="ulink" href="http://infohost.nmt.edu/tcc/help/pubs/tkinter/tkinter.pdf">http://infohost.nmt.edu/tcc/help/pubs/tkinter/tkinter.pdf</a>.</p></div></div><p>In this chapter you will:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Set up the general code structure to make a themed and highly customizable GIS application</li><li class="listitem" style="list-style-type: disc">Create a toolbox of specialized user interface widgets that can connect to our underlying GIS functionality</li><li class="listitem" style="list-style-type: disc">Use this toolbox of widgets to glue together the visual design and layout of our application</li><li class="listitem" style="list-style-type: disc">Learn how to test run our application</li></ul></div><div class="section" title="Setting up the GUI package"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec17"/>Setting up the GUI package</h1></div></div></div><p>We begin the chapter<a id="id92" class="indexterm"/> by setting up the structural skeleton for our application GUI. This should be logically separate from the rest of our code so we give it a subpackage of its own. Inside the top level <code class="literal">pythongis</code> folder, create a package folder called <code class="literal">app</code> with an <code class="literal">__init__.py</code> file inside it. Have it import the rest of the modules we will be creating:</p><div class="informalexample"><pre class="programlisting">from . import builder
+from . import dialogues
+from . import toolkit
+from . import icons </pre></div><p>To make our <code class="literal">app</code> package accessible from our top level <code class="literal">pythongis</code> package, we similarly need to import it in <code class="literal">pythongis/__init__.py</code> as follows:</p><div class="informalexample"><pre class="programlisting">from . import app</pre></div><p>The purpose of the <code class="literal">app</code> package is that we should be able to define how our GUI looks and behaves, and with a single line of code, <code class="literal">pythongis.app.run()</code>, we should be able to invoke it. The actual definition and layout of our GUI should be contained in a module we call <code class="literal">app/builder.py</code> (which we return to at the end of the chapter). The builder in turn relies on a set of predefined GUI building blocks, which we define in a subpackage folder called <code class="literal">app/toolkit</code>. This toolkit's <code class="literal">__init__.py</code> file imports the building block modules that we are going to create throughout the chapter:</p><div class="informalexample"><pre class="programlisting">from .buttons import *
+from .layers import *
+from .map import *
+from .popups import *
+from .ribbon import *
+from .statusbar import *
+from .toolbars import *
+
+from . import theme
+from . import dispatch</pre></div><p>In addition to our builder and toolkit, we also need an <code class="literal">app/dialogues.py</code> module that defines application-specific dialogue windows.</p><p>Last but not least, an important part of an application structure is how to access icons and images. To make our icons readily available to any widget that may need them, we create an <code class="literal">app/icons</code> package. This <code class="literal">package</code> folder is where we will save all our icons. When an application widget needs an icon, it simply asks the <code class="literal">icons</code> package for the icon name and size via <code class="literal">get()</code> and in return receives a Tkinter compatible <code class="literal">PhotoImage</code> object. Create its <code class="literal">__init__.py</code> file now:</p><div class="informalexample"><pre class="programlisting">import os
+import PIL.Image, PIL.ImageTk
+
+ICONSFOLDER = os.path.split(__file__)[0]
+
+def get(iconname, width=None, height=None):
+    iconpath = os.path.join(ICONSFOLDER, iconname)
+    
+    if os.path.lexists(iconpath):
+        img = PIL.Image.open(iconpath)
+        if width or height:
+            width = width or img.size[0]
+            height = height or img.size[1]
+            img = img.resize((width,height), PIL.Image.ANTIALIAS)
+        tk_img = PIL.ImageTk.PhotoImage(img)
+        return tk_img
+    
+    else:
+        raise Exception("No icon by that name")</pre></div><p>Once you <a id="id93" class="indexterm"/>created all of these, we should be ready to go. Your <code class="literal">app</code> folder structure should look like this:</p><div class="mediaobject"><img src="images/5407OS_03_01.jpg" alt="Setting up the GUI package"/></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Creating the toolkit building blocks"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec18"/>Creating the toolkit building blocks</h1></div></div></div><p>Before we can start <a id="id94" class="indexterm"/>designing our GUI layout, we have to create the <code class="literal">toolkit</code> package containing the underlying building blocks or design elements that we will be using. Tkinter already provides a set of basic GUI element or <span class="strong"><strong>widget</strong></span> classes, such <a id="id95" class="indexterm"/>as <code class="literal">Buttons</code>, <code class="literal">Labels</code>, or <code class="literal">CheckBoxes</code>, with methods for placing them in the application window or nested within each other. To stay consistent with this logic, we subclass these Tkinter widgets and expand on them to make our own specialized building block widgets. This way our GUI code becomes consistent, stable, and reusable.</p><p>In our <code class="literal">toolkit</code> package, we want to have a few widgets readily available: icon buttons, toolbars, a ribbon tab system, a status bar, a panel overview to contain data layers, a map widget, and pop-up window templates. We also need a way for our buttons to connect with and execute<a id="id96" class="indexterm"/> geospatial work tasks from our GIS code library, so we make a command dispatch tool. However, before we start making widgets, let's set up an easy way to style them.</p><div class="section" title="Themed styling"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec13"/>Themed styling</h2></div></div></div><p>To give our application a <a id="id97" class="indexterm"/>sense of style, we have to define things like background color or text font in each and every one of our toolkit widgets. To make this styling more flexible, we centralize the styling instructions into a separate module which we call <code class="literal">app/toolkit/theme.py</code>. The various widgets can then import the styling instructions from this theme module, which can be easily changed and modified as we develop our application, or perhaps even as a customizable feature by the end user.</p><p>When specifying colors in Tkinter, you can either specify hex color strings or names of colors predefined by Tkinter. Let's make the main background color of our application a light grey, with five different shades all the way up until pure white. We also want some more unique colors for highlighting purposes, one with two shades of orange, and an alternative one with two shades of blue:</p><div class="informalexample"><pre class="programlisting">color1 = "Grey69"
+color2 = "Grey79"
+color3 = "Grey89"
+color4 = "Grey99"
+color5 = "white"
+
+strongcolor1 = "gold"
+strongcolor2 = "dark orange"
+
+alterncolor1 = "DodgerBlue"
+alterncolor2 = "Blue3"</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note13"/>Note</h3><p>For the full list <a id="id98" class="indexterm"/>of valid Tkinter color names and their appearance, see <a class="ulink" href="http://wiki.tcl.tk/37701">http://wiki.tcl.tk/37701</a>.</p></div></div><p>The type and size of font one uses is also a crucial part of application design, so we decide to use the trendy Segoe font used in Windows 8. Tkinter fonts can be specified with a tuple containing the font name, size, and optionally the type of emphasis. We create two main shades of text fonts, one normal and one weaker one for less important background text. We also create two types of title/header text fonts for extra emphasis, one normal and one <a id="id99" class="indexterm"/>white, in case we need to display text on darker backgrounds:</p><div class="informalexample"><pre class="programlisting">titlefont1 = {"type": ("Segoe UI", 12, "bold"),
+              "color": "black"}
+titlefont1_contrast = {"type": ("Segoe UI", 12, "bold"),
+              "color": "white"}
+
+font1 = {"type": ("Segoe UI", 10),
+         "color": "black"}
+font2 = {"type": ("Segoe UI", 10),
+         "color": "Grey42"}</pre></div></div><div class="section" title="Basic buttons"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec14"/>Basic buttons</h2></div></div></div><p>Now, we can begin making widgets. Although Tkinter already comes with <span class="strong"><strong>Button</strong></span> widgets, we will create some of our own so that each button we create is already styled in the way that we want, and we can simplify the process of giving them icons. Therefore, we create our first module <a id="id100" class="indexterm"/>which we call <code class="literal">app/toolkit/buttons.py</code> in the <code class="literal">toolkit</code> package. At the top, we import some necessary things:</p><div class="informalexample"><pre class="programlisting"># Import builtins
+import sys, os
+
+# Import GUI libraries
+import Tkinter as tk
+from tkFileDialog import askopenfilenames, asksaveasfilename
+import PIL, PIL.Image, PIL.ImageTk
+
+# Import internals
+from .. import icons</pre></div><p>Next, we import our theme module and define the style we will use for buttons as dictionary entries. Under normal circumstances we want buttons to have a light background color with a flat relief. Once the mouse pointer hovers over the button, it <span class="emphasis"><em>lights up</em></span> with a highlight color that turns into an even stronger color if clicked on:</p><div class="informalexample"><pre class="programlisting"># Import theme
+from . import theme
+style_button_normal = {"fg": theme.font1["color"],
+                  "font": theme.font1["type"],
+                  "bg": theme.color4,
+                   "relief": "flat",
+                   "activebackground": theme.strongcolor2
+                   }
+style_button_mouseover = {"bg": theme.strongcolor1
+                    }</pre></div><p>To implement a Button widget that follows this style, we make a Button widget that subclasses the standard Tkinter button and takes our readily formatted style dictionary as keyword arguments. We<a id="id101" class="indexterm"/> also define that it should light up as defined in our hover-dictionary every time the mouse passes over the button:</p><div class="informalexample"><pre class="programlisting">class Button(tk.Button):
+    def __init__(self, master, **kwargs):
+        # get theme style
+        style = style_button_normal.copy()
+        style.update(kwargs)
+        
+        # initialize
+        tk.Button.__init__(self, master, **style)
+
+        # bind event behavior
+        def mouse_in(event):
+            event.widget.config(style_button_mouseover)
+        def mouse_out(event):
+            event.widget.config(style_button_normal)
+
+        self.bind("&lt;Enter&gt;", mouse_in)
+        self.bind("&lt;Leave&gt;", mouse_out)</pre></div><p>We also add some commonly needed buttons, such as an <span class="strong"><strong>Ok</strong></span> button with an <span class="emphasis"><em>Enter</em></span>/<span class="emphasis"><em>Return</em></span> keyboard shortcut that runs a specified function when activated:</p><div class="informalexample"><pre class="programlisting">class OkButton(Button):
+    def __init__(self, master, **kwargs):
+        # initialize
+        if kwargs.get("text") == None:
+            kwargs["text"] = "OK"
+        okfunc = kwargs.get("command")
+        Button.__init__(self, master, **kwargs)
+
+        # bind enter keypress to command function
+        def runfunc(event):
+            okfunc()
+        self.winfo_toplevel().bind("&lt;Return&gt;", runfunc)</pre></div></div><div class="section" title="Buttons with icons"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec15"/>Buttons with icons</h2></div></div></div><p>In our application, we want to illustrate what our buttons do by using small icon images, but as you will soon see, giving icons to buttons in Tkinter requires several custom steps that can quickly become <a id="id102" class="indexterm"/>a dull task. Therefore, we create a specialized icon button that does these steps for us.</p><p>To create the<a id="id103" class="indexterm"/> <code class="literal">IconButton</code> class, we take our styled button class as the starting point, and all we have to do is add a <a id="id104" class="indexterm"/>
+<code class="literal">set_icon</code> method. This method retrieves the image via the <code class="literal">icons</code> package with a size that fits the button, styles the way the image is placed inside the button, assigns it, and stores it as one of the button's attributes so it doesn't get garbage collected.</p><div class="informalexample"><pre class="programlisting">class IconButton(Button):
+    def __init__(self, master, **kwargs):
+        # initialize
+        Button.__init__(self, master, **kwargs)
+
+    def set_icon(self, iconname, **kwargs):
+        # get icon as tkinter photoimage, with an optional resize
+        tk_img = icons.get(iconname,
+                           width=kwargs.get("width"),
+                           height=kwargs.get("height"))
+        self.config(image=tk_img, **kwargs)
+        # resize button to have room for text if compound type
+        if not kwargs.get("anchor"): kwargs["anchor"] = "center"
+        if kwargs.get("compound"):
+            def expand():
+                self["width"] += tk_img.width()
+                self["height"] += tk_img.height() / 2
+            self.after(100, expand)
+        # store as attribute, so it doesn't get garbage collected
+        self.tk_img = tk_img</pre></div></div><div class="section" title="Toolbars"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec16"/>Toolbars</h2></div></div></div><p>Buttons should not just be <a id="id105" class="indexterm"/>placed randomly around. Instead, we want to group together sets of logically related buttons into areas known as <span class="strong"><strong>toolbars</strong></span>. We create<a id="id106" class="indexterm"/> the <code class="literal">app/toolkit/toolbars.py</code> module and start it off with the necessary imports and style setting:</p><div class="informalexample"><pre class="programlisting"># Import GUI
+import Tkinter as tk
+
+# Import internals
+from .buttons import *
+from .popups import *
+
+# Import style
+from . import theme
+style_toolbar_normal = {"bg": theme.color4}
+style_namelabel_normal = {"bg": theme.color4,
+                          "font": theme.font2["type"],
+                          "fg": theme.font2["color"],
+                          "pady": 0}</pre></div><p>The toolbar area is itself a subclass of the Tkinter frame and will consist of a frame area into which buttons will be packed side by side, and a text area on the bottom specifying the purpose of the<a id="id107" class="indexterm"/> toolbar. For now, we just create the generic <code class="literal">Toolbar</code> class with a convenient <code class="literal">add_button</code> method so we can later build and populate specialized toolbars by subclassing this one:</p><div class="informalexample"><pre class="programlisting">class Toolbar(tk.Frame):
+    """
+    Base class for all toolbars.
+    """
+    def __init__(self, master, toolbarname, **kwargs):
+        # get theme style
+        style = style_toolbar_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Frame and add to it
+        tk.Frame.__init__(self, master, **style)
+
+        # Divide into button area and toolbar name
+        self.buttonframe = tk.Frame(self, **style)
+        self.buttonframe.pack(side="top", fill="y", expand=True)
+        self.name_label = tk.Label(self, **style_namelabel_normal)
+        self.name_label["text"] = toolbarname
+        self.name_label.pack(side="bottom")
+
+    def add_button(self, icon=None, **kwargs):
+        button = IconButton(self.buttonframe)
+        options = {"text":"", "width":48, "height":32, "compound":"top"}
+        options.update(kwargs)
+        if icon:
+            button.set_icon(icon, **options)
+        else:
+            button.config(**options)
+        button.pack(side="left", padx=2, pady=0, anchor="center")
+        return button</pre></div></div><div class="section" title="The Ribbon tab system"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec17"/>The Ribbon tab system</h2></div></div></div><p>Next up is the <a id="id108" class="indexterm"/>
+<span class="strong"><strong>Ribbon</strong></span> widget, which, inspired by newer versions of Microsoft Office, will give our application not only a sleek modern look, but also the level of organization and simplicity that we need, to avoid scaring off the<a id="id109" class="indexterm"/> not-so-technical users of our application. Just like related buttons were grouped together into toolbars in the previous section, toolbars can here be grouped into the Ribbon<a id="id110" class="indexterm"/> tab areas at the top of the window that can be switched and flipped-between, like a notebook, as shown in the following screenshot:</p><div class="mediaobject"><img src="images/5407OS_03_02.jpg" alt="The Ribbon tab system"/></div><p>After creating the <code class="literal">app/toolkit/ribbon.py</code> module in the <code class="literal">toolkit</code> package, we begin with importing and styling, using a subtle grey highlight effect for the tab selectors:</p><div class="informalexample"><pre class="programlisting"># Import GUI
+import Tkinter as tk
+
+# Import internals
+from .toolbars import *
+
+# Import style
+from . import theme
+style_ribbon_normal = {"bg": theme.color3,
+                       "height": 120,
+                       "pady": 0}
+
+style_tabsarea_normal = {"bg": theme.color3,
+                         "height": 20,
+                         "padx": 1,
+                         "pady": 0}
+
+style_tabselector_normal = {"bg": theme.color3,
+                            "activebackground": theme.color4,
+                            "fg": theme.font1["color"],
+                            "font": theme.font1["type"],
+                            "relief": "flat",
+                            "padx":10, "pady":5}
+style_tabselector_mouseover = {"bg": "Grey93" }
+
+style_toolbarsarea_normal = {"bg": theme.color4}</pre></div><p>The <code class="literal">Ribbon</code> class itself is a frame, with a top area for tab selectors, and the bottom area for displaying the currently selected tab area for related toolbars. Tabs are created as separate instances and added with the <code class="literal">add_tab</code> method, which will create a tab selector for that tab, which<a id="id111" class="indexterm"/> also lights up when the mouse hovers over it. A <code class="literal">switch</code> method will be called when a tab selector is pushed, which raises its tab<a id="id112" class="indexterm"/> area into view over all other tabs:</p><div class="informalexample"><pre class="programlisting">class Ribbon(tk.Frame):
+    """
+    Can switch between a series of logically grouped toolbar areas (tabs).
+    """
+    def __init__(self, master, **kwargs):
+        # get theme style
+        style = style_ribbon_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Frame and add to it
+        tk.Frame.__init__(self, master, **style)
+
+        # Make top area for tab selectors
+        self.tabs_area = tk.Frame(self, **style_tabsarea_normal)
+        self.tabs_area.pack(fill="x", side="top")
+
+        # Make bottom area for each tab's toolbars
+        self.toolbars_area = tk.Frame(self, **style_toolbarsarea_normal)
+        self.toolbars_area.pack(fill="both", expand=True, side="top")
+        self.pack_propagate(False)
+
+        # Create tab list
+        self.tabs = dict()
+        
+    def add_tab(self, tabname):
+        tab = Tab(self.toolbars_area, tabname=tabname)
+        self.tabs[tab.name] = tab
+        self.current = tab
+        # add tab to toolbars area
+        tab.place(relwidth=1, relheight=1)
+        # add tabname to tab selector area
+        tab.selector = tk.Label(self.tabs_area, text=tab.name, **style_tabselector_normal)
+        tab.selector.pack(side="left", padx=5)
+        # enable dynamic tab selector styling
+        def mouse_in(event):
+            if event.widget["state"] == "normal":
+                event.widget.config(style_tabselector_mouseover)
+        def mouse_out(event):
+            if event.widget["state"] == "normal":
+                event.widget.config(style_tabselector_normal)
+        tab.selector.bind("&lt;Enter&gt;", mouse_in)
+        tab.selector.bind("&lt;Leave&gt;", mouse_out)
+        # make tab selector selectable
+        tab.selector.bind("&lt;Button-1&gt;", self.switch)
+        return tab
+
+    def switch(self, event=None, tabname=None):
+        if event: tabname = event.widget["text"]
+        # deactivate old tab
+        self.current.selector["state"] = "normal"
+        # activate new tab
+        self.current = self.tabs[tabname]
+        self.current.selector.config(style_tabselector_normal)
+        self.current.selector["state"] = "active"
+        self.current.lift()</pre></div><p>When we use the Ribbon's <code class="literal">add_tab</code> method it returns to us a <code class="literal">Tab</code> class, which it is up to us to populate with <a id="id113" class="indexterm"/>buttons and other content. For<a id="id114" class="indexterm"/> convenience, we give the <code class="literal">Tab</code> class an <code class="literal">add_toolbar</code> method:</p><div class="informalexample"><pre class="programlisting">class Tab(tk.Frame):
+    """
+    Base class for all tabs
+    """
+    def __init__(self, master, tabname, **kwargs):
+        # get theme style
+        style = style_toolbarsarea_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Frame and add to it
+        tk.Frame.__init__(self, master, **style)
+
+        # remember name
+        self.name = tabname
+
+    def add_toolbar(self, toolbarname):
+        toolbar = Toolbar(self, toolbarname=toolbarname)
+        toolbar.pack(side="left", padx=10, pady=0, fill="y")
+        return toolbar</pre></div></div><div class="section" title="The bottom status bar"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec18"/>The bottom status bar</h2></div></div></div><p>Another important GUI element is the status bar, which can contain one or more pieces of information or statuses<a id="id115" class="indexterm"/> and tends to be placed at the bottom of the application window meshed into the background. We create the <code class="literal">app/toolkit/statusbar.py</code> module and do the usual imports and styling in the beginning:</p><div class="informalexample"><pre class="programlisting"># Import GUI
+import Tkinter as tk
+
+# Import style
+from . import theme
+style_statusbar_normal = {"height": 25,
+                          "bg": theme.color3}
+style_status_normal = {"fg": theme.font2["color"],
+                       "font": theme.font2["type"],
+                       "bg": theme.color3}
+style_taskstatus_normal = style_status_normal.copy()
+style_taskstatus_working = {"fg": theme.font1["color"],
+                            "font": theme.font1["type"],
+                            "bg": theme.strongcolor2}</pre></div><p>The StatusBar widget itself is simply a frame that contains one or more status widgets. Here is the code for the <code class="literal">StatusBar</code> class:</p><div class="informalexample"><pre class="programlisting">class StatusBar(tk.Frame):
+    def __init__(self, master, **kwargs):
+        """
+        A container bar that contains one or more status widgets
+        """
+        # get theme style
+        style = style_statusbar_normal.copy()
+        style.update(kwargs)
+
+        # Make this class a subclass of tk.Frame and add to it
+        tk.Frame.__init__(self, master, **style)
+
+        # Insert status items
+        self.task = TaskStatus(self)
+        self.task.place(relx=0.0, rely=0.5, anchor="w") 
+        self.projection = ProjectionStatus(self)
+        self.projection.place(relx=0.20, rely=0.5, anchor="w") 
+        self.zoom = ZoomStatus(self)
+        self.zoom.place(relx=0.40, rely=0.5, anchor="w") 
+        self.mouse = MouseStatus(self)
+        self.mouse.place(relx=0.70, rely=0.5, anchor="w")</pre></div><p>We then make a base class for all status widgets called <code class="literal">Status</code> and some subclasses of it for displaying projection name, zoom level, and mouse pointer coordinates, without any event bindings or behavior since this will be controlled by a parent widget. A special TaskStatus widget can be set to <code class="literal">start()</code> and will turn orange along with a task description provided by the caller. It will return to normal once the <code class="literal">stop</code> method is called, as shown<a id="id116" class="indexterm"/> in the following code:</p><div class="informalexample"><pre class="programlisting">class Status(tk.Label):
+    def __init__(self, master, **kwargs):
+        """
+        The base class used for all status widgets
+        """
+        # get theme style
+        style = style_status_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Label and add to it
+        tk.Label.__init__(self, master, **style)
+        self.prefix = ""
+
+    def set_text(self, text):
+        self["text"] = self.prefix + text
+
+    def clear_text(self):
+        self["text"] = self.prefix
+
+class TaskStatus(Status):
+    def __init__(self, master, **kwargs):
+        # Make this class a subclass of tk.Label and add to it
+        default = {"width":30, "anchor":"w"}
+        default.update(kwargs)
+        Status.__init__(self, master, **default)
+
+        # Set startup status
+        self.set_text("Ready")
+
+    def start(self, taskname):
+        self.config(**style_taskstatus_working)
+        self.set_text(taskname)
+
+    def stop(self):
+        self.set_text("Finished!")
+        self.config(**style_taskstatus_normal)
+        def reset_text():
+            self.set_text("Ready")
+        self.after(1000, reset_text)
+
+class ProjectionStatus(Status):
+    def __init__(self, master, **kwargs):
+        # Make this class a subclass of tk.Label and add to it
+        self.prefix = "Map Projection: "
+        default = {"text":self.prefix, "width":30, "anchor":"w"}
+        default.update(kwargs)
+        Status.__init__(self, master, **default)
+
+class ZoomStatus(Status):
+    def __init__(self, master, **kwargs):
+        # Make this class a subclass of tk.Label and add to it
+        self.prefix = "Horizontal Scale: "
+        default = {"text":self.prefix, "width":30, "anchor":"w"}
+        default.update(kwargs)
+        Status.__init__(self, master, **default)
+
+class MouseStatus(Status):
+    def __init__(self, master, **kwargs):
+        # Make this class a subclass of tk.Label and add to it
+        self.prefix = "Mouse coordinates: "
+        default = {"text":self.prefix, "width":50, "anchor":"w"}
+        default.update(kwargs)
+        Status.__init__(self, master, **default)</pre></div></div><div class="section" title="The layers pane"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec19"/>The layers pane</h2></div></div></div><p>A crucial element in most <a id="id117" class="indexterm"/>GIS applications is the layers pane, which displays and allows access to the loaded data and shows their symbols and in which order they are<a id="id118" class="indexterm"/> rendered to the map. After initiating our new <code class="literal">app/toolkit/layers.py</code> module, we start it with some imports and styling. Note that we also import our top-level <code class="literal">pythongis</code> package and our <code class="literal">dispatch</code> module because this layer's pane needs to be able to load and render data:</p><div class="informalexample"><pre class="programlisting"># Import GUI functionality
+import Tkinter as tk
+from tkFileDialog import askopenfilenames, asksaveasfilename
+
+# Import internals
+from .buttons import *
+from .popups import *
+
+# Import style
+from . import theme
+style_layerspane_normal = {"bg": theme.color4,
+                           "width": 200}
+style_layersheader = {"bg": theme.color2,
+                      "font": theme.titlefont1["type"],
+                      "fg": theme.titlefont1["color"],
+                      "anchor": "w", "padx": 5}
+
+style_layeritem_normal = {"bg": theme.color4,
+                          "width": 200,
+                          "relief": "ridge"}
+style_layercheck = {"bg": theme.color4}
+style_layername_normal = {"bg": theme.color4,
+                   "fg": theme.font1["color"],
+                   "font": theme.font1["type"],
+                   "relief": "flat",
+                   "anchor": "w"}
+
+# Import GIS functionality
+import pythongis as pg
+from . import dispatch</pre></div><p>For now we only create the styled <code class="literal">LayersPane</code> class, with a title header text saying <span class="strong"><strong>Layers</strong></span> and a main list <a id="id119" class="indexterm"/>area where individual loaded layers will show <a id="id120" class="indexterm"/>up. More about these layer items, how to load them, and their appearance and behavior will be dealt with more naturally in <a class="link" href="ch04.html" title="Chapter 4. Rendering Our Geodata">Chapter 4</a>, <span class="emphasis"><em>Rendering Our Geodata</em></span>:</p><div class="informalexample"><pre class="programlisting">class LayersPane(tk.Frame):
+    def __init__(self, master, layer_rightclick=None, **kwargs):
+        # get theme style
+        style = style_layerspane_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Frame and add to it
+        tk.Frame.__init__(self, master, **style)
+        
+        # Make the top header
+        self.header = tk.Label(self, text="Layers:", **style_layersheader)
+        self.header.pack(side="top", fill="x")
+
+        # Then, the layer list view
+        self.layersview = tk.Frame(self, **style)
+        self.layersview.pack(side="top", fill="x")
+        self.pack_propagate(False) # important, this prevents layeritem names from deciding the size of layerspane</pre></div></div><div class="section" title="The Map widget"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec20"/>The Map widget</h2></div></div></div><p>Last but not least, we cannot <a id="id121" class="indexterm"/>have a GIS without a Map widget for interactively viewing geographic data. Create the <code class="literal">app/toolkit/map.py</code> module <a id="id122" class="indexterm"/>and start it off as follows:</p><div class="informalexample"><pre class="programlisting"># Import builtins
+import time
+
+# Import GUI libraries
+import Tkinter as tk
+
+# Import internals
+from .popups import popup_message
+from .. import icons
+
+# Import GIS functionality
+import pythongis as pg
+from . import dispatch
+
+# Import style
+from . import theme
+style_map_normal = {"bg": theme.color1} </pre></div><p>As with the layers pane, we begin developing the Map widget more fully in <a class="link" href="ch04.html" title="Chapter 4. Rendering Our Geodata">Chapter 4</a>, <span class="emphasis"><em>Rendering Our Geodata</em></span>, so for now we only make the initial <code class="literal">MapView</code> class. Eventually, we want our Map widget to be able to hold a rendered map image and let the user pan around and zoom in and out of it, so we make<a id="id123" class="indexterm"/> it a subclass of the Tkinter <span class="strong"><strong>Canvas</strong></span> widget. Since the <code class="literal">MapView</code> class will be calling some potentially heavy rendering operations later on, we also need a way to link it to a status bar in order to report its progress:</p><div class="informalexample"><pre class="programlisting">class MapView(tk.Canvas):
+    def __init__(self, master, **kwargs):
+        # get theme style
+        style = style_map_normal.copy()
+        style.update(kwargs)
+        
+        # Make this class a subclass of tk.Canvas and add to it
+        tk.Canvas.__init__(self, master, **style)
+
+        # Other
+        self.proj = kwargs.get("projection", "WGS84")
+        self.statusbar = None
+        self.mousepressed = False
+        self.mouse_mode = "pan"
+        self.zoomcenter = None
+        self.zoomfactor = 1
+        self.zoomdir = None
+        self.last_zoomed = None 
+
+    def assign_statusbar(self, statusbar):
+        statusbar.mapview = self
+        self.statusbar = statusbar</pre></div></div><div class="section" title="Pop-up windows"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec21"/>Pop-up windows</h2></div></div></div><p>Later in the book, there are<a id="id124" class="indexterm"/> several times we will need to open additional windows on top of our main GUI window, whether it be an error message or an options or tool menu. In our <code class="literal">toolkit</code> package, we therefore want to define some window templates.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note14"/>Note</h3><p>These window templates are not the same as the actual windows specific to our application, which are defined throughout the book as part of the <code class="literal">app/dialogues.py</code> module we created earlier in this chapter.</p></div></div><p>Create a module for window templating as <code class="literal">app/toolkit/popups.py</code> and begin with some imports:</p><div class="informalexample"><pre class="programlisting"># Import GUI helpers
+import Tkinter as tk
+import tkMessageBox
+
+# Import internals
+from .buttons import IconButton, OkButton, CancelButton
+from . import dispatch
+from ... import vector
+
+# Define some styles
+from . import theme
+style_options_helptext = {"font": theme.font1["type"],
+                          "fg": theme.font1["color"]}
+style_options_titles = {"font": theme.titlefont1["type"],
+                        "fg": theme.titlefont1["color"]}
+style_options_labels = {"font": theme.font1["type"],
+                      "fg": theme.font1["color"]}</pre></div><p>First, we create some basic pop-up windows and templates. This includes a simple warning <code class="literal">popup_message</code> function that can be used to raise errors in the GUI, as well as a basic <code class="literal">Window</code> class template<a id="id125" class="indexterm"/> with ideal positioning and size, used as the starting point for any other window:</p><div class="informalexample"><pre class="programlisting">def popup_message(parentwidget, errmsg):
+    tkMessageBox.showwarning("Warning", errmsg) 
+
+class Window(tk.Toplevel):
+    def __init__(self, master=None, **kwargs):
+        # Make this class a subclass of tk.Menu and add to it
+        tk.Toplevel.__init__(self, master, **kwargs)
+        # Set its size to percent of screen size, and place in middle
+        width = self.winfo_screenwidth() * 0.6
+        height = self.winfo_screenheight() * 0.6
+        xleft = self.winfo_screenwidth()/2.0 - width / 2.0
+        ytop = self.winfo_screenheight()/2.0 - height / 2.0
+        self.geometry("%ix%i+%i+%i"%(width, height, xleft, ytop))
+        # Force and lock focus to the window
+        self.grab_set()
+        self.focus_force()</pre></div><p>We also create another template, this time specifically for building tool options input frames. This will not be a window, but a Tkinter frame that can be placed inside any other widget, representing some tool or functionality where the user can customize settings or parameters and decide to run the tool or cancel. Let's create this generic <code class="literal">RunToolFrame</code> class, which consists of an input area where all the options will be built to the left, a help area on the right, and a button for running the tool on the bottom:</p><div class="mediaobject"><img src="images/5407OS_03_03.jpg" alt="Pop-up windows"/></div><p>Here is the code to create<a id="id126" class="indexterm"/> the <code class="literal">RunToolFrame</code> class:</p><div class="informalexample"><pre class="programlisting">class RunToolFrame(tk.Frame): 
+    def __init__(self, master=None, **kwargs):
+        # Make this class a subclass of tk.Toplevel and add to it
+        tk.Frame.__init__(self, master, **kwargs)
+
+        # Create empty option and input data
+        self.hidden_options = dict()
+        self.inputs = list()
+        self.statusbar = None
+        self.method = None
+        self.process_results = None
+
+        # Make helpscreen area to the right
+        self.helpscreen = tk.Frame(self)
+        self.helpscreen.pack(side="right", fill="y")
+        self.helptitle = tk.Label(self.helpscreen, text="Help Screen", **style_options_titles)
+        self.helptitle.pack(fill="x")
+        self.helptext = tk.Text(self.helpscreen, width=30,
+                                wrap=tk.WORD, cursor="arrow",
+                                **style_options_helptext)
+        self.helptext.pack(fill="both", expand=True)
+
+        # Make main screen where input goes to the left
+        self.mainscreen = tk.Frame(self)
+        self.mainscreen.pack(side="left", fill="both", expand=True)
+        self.maintitle = tk.Label(self.mainscreen, text="User Input", **style_options_titles)
+        self.maintitle.pack()
+        self.mainoptions = tk.Frame(self.mainscreen)
+        self.mainoptions.pack(fill="both", expand=True)
+        self.mainbottom = tk.Frame(self.mainscreen)
+        self.mainbottom.pack()
+
+        # Make run button at bottom
+        self.runbut = OkButton(self.mainbottom, command=self.run)
+        self.runbut.pack(side="right")</pre></div><p>To make things easier for us later, we also give it simple methods for defining which options to pass to the<a id="id127" class="indexterm"/> target operation, which it uses to automatically create the appropriate input widgets. The most powerful feature here is <code class="literal">add_option_input()</code> which<a id="id128" class="indexterm"/> adds a customizable option widget and has several arguments that can be tweaked and combined to produce widgets for many different value types. This requires two arguments: <code class="literal">label</code>—the text to display next to the input widget, and <code class="literal">valuetype</code>—a function to convert input values as retrieved from the widget (which is always text) into the type that the target operation expects.</p><p>If no other arguments are specified, this method adds an unnamed list argument to the target function, or by specifying <code class="literal">argname</code> you can make it a keyword argument. When the <code class="literal">multi</code> argument is true, the user is given an entry widget for freely typing in values and adding it to a list of option values, and if the <code class="literal">choices</code> argument is also true then the user is limited to choose one or more items from a list of choices. Setting the <code class="literal">choices</code> argument without the <code class="literal">multi</code> argument lets the user choose only a single value from a drop-down list of choices. The <code class="literal">default</code> argument defines the starting value of the widget, and <code class="literal">minval</code> and <code class="literal">maxval</code> tries to ensure that the final argument is greater than, less than, or between certain limits. Finally, there is also an <code class="literal">add_hidden_option</code> method that sets an option without having it show up as customizable widget. Take a look at the following code:</p><div class="informalexample"><pre class="programlisting">    def add_option_input(self, label, valuetype, argname=None, multi=False, length=None, default=None, minval=None, maxval=None, choices=None):
+        optionrow = tk.Frame(self.mainoptions)
+        optionrow.pack(fill="x", anchor="n", pady=5, padx=5)
+        if multi:
+            # make a list-type widget that user can add to
+            inputlabel = tk.Label(optionrow, text=label, **style_options_labels)
+            inputlabel.pack(side="left", anchor="nw", padx=3)
+            inputwidget = tk.Listbox(optionrow, activestyle="none",
+                                     highlightthickness=0, selectmode="extended",
+                                     **style_options_labels)
+            inputwidget.pack(side="right", anchor="ne", padx=3)
+            
+            if choices:
+                # add a listbox of choices to choose from
+                def addtolist():
+                    for selectindex in fromlist.curselection():
+                        selectvalue = fromlist.get(selectindex)
+                        inputwidget.insert(tk.END, selectvalue)
+                    for selectindex in reversed(fromlist.curselection()):
+                        fromlist.delete(selectindex)
+                def dropfromlist():
+                    for selectindex in inputwidget.curselection():
+                        selectvalue = inputwidget.get(selectindex)
+                        fromlist.insert(tk.END, selectvalue)
+                    for selectindex in reversed(inputwidget.curselection()):
+                        inputwidget.delete(selectindex)
+                # define buttons to send back and forth bw choices and input
+                buttonarea = tk.Frame(optionrow)
+                buttonarea.pack(side="right", anchor="n")
+                addbutton = IconButton(buttonarea, command=addtolist,
+                                       text="--&gt;", **style_options_labels)
+                addbutton.pack(anchor="ne", padx=3, pady=3)
+                dropbutton = IconButton(buttonarea, command=dropfromlist,
+                                       text="&lt;--", **style_options_labels)
+                dropbutton.pack(anchor="ne", padx=3, pady=3)
+                # create and populate the choices listbox
+                fromlist = tk.Listbox(optionrow, activestyle="none",
+                                     highlightthickness=0, selectmode="extended",
+                                     **style_options_labels)
+                for ch in choices:
+                    fromlist.insert(tk.END, ch)
+                fromlist.pack(side="right", anchor="ne", padx=3)
+            else:
+                # add a freeform entry field and button to add to the listbox
+                def addtolist():
+                    entryvalue = addentry.get()
+                    inputwidget.insert(tk.END, entryvalue)
+                    addentry.delete(0, tk.END)
+                def dropfromlist():
+                    for selectindex in reversed(inputwidget.curselection()):
+                        inputwidget.delete(selectindex)
+                buttonarea = tk.Frame(optionrow)
+                buttonarea.pack(side="right", anchor="n")
+                addbutton = IconButton(buttonarea, command=addtolist,
+                                       text="--&gt;", **style_options_labels)
+                addbutton.pack(anchor="ne", padx=3, pady=3)
+                dropbutton = IconButton(buttonarea, command=dropfromlist,
+                                       text="&lt;--", **style_options_labels)
+                dropbutton.pack(anchor="ne", padx=3, pady=3)
+                # place the freeform text entry widget
+                addentry = tk.Entry(optionrow, **style_options_labels)
+                addentry.pack(side="right", anchor="ne", padx=3)
+
+        else:
+            inputlabel = tk.Label(optionrow, text=label, **style_options_labels)
+            inputlabel.pack(side="left", anchor="nw")
+            if choices:
+                # dropdown menu of choices
+                choice = tk.StringVar()
+                if default: choice.set(default)
+                inputwidget = tk.OptionMenu(optionrow, choice, *choices)
+                inputwidget.choice = choice
+                inputwidget.pack(side="right", anchor="ne", padx=3)
+            else:
+                # simple number or string entry widget
+                inputwidget = tk.Entry(optionrow, **style_options_labels)
+                inputwidget.pack(side="right", anchor="ne")
+                if default != None:
+                    inputwidget.insert(tk.END, str(default))
+
+        # remember for later
+        inputwidget.meta = dict(argname=argname, label=label, choices=choices,
+                                valuetype=valuetype, multi=multi, length=length,
+                                default=default, minval=minval, maxval=maxval)            
+        self.inputs.append(inputwidget)
+
+    def add_hidden_option(self, argname, value):
+        self.hidden_options[argname] = value</pre></div><p>We now have ways to build a series of customizable parameter widgets in the window, but we still do not know what action or target operation should be run once the user is ready to run the tool <a id="id129" class="indexterm"/>window. This action must be given as a function able to receive the input widget parameters to <code class="literal">set_target_method()</code>. Doing so remembers the target function for later and retrieves the <code class="literal">doc</code> string from the given function and displays it to the user in the help area of the window. Also, we don't want to lock the GUI while the function is running, so the target function is dispatched in a new thread (more on this shortly). Using <code class="literal">assign_statusbar()</code> lets it inform <a id="id130" class="indexterm"/>a linked status bar while awaiting the results. We must also set a function to be run once processing the results is finished, using <code class="literal">set_finished_method()</code>:</p><div class="informalexample"><pre class="programlisting">    def assign_statusbar(self, statusbar):
+        self.statusbar = statusbar
+        
+    def set_target_method(self, taskname, method):
+        self.taskname = taskname
+        self.method = method
+        # use the method docstring as the help text
+        doc = method.__doc__
+        if doc:
+            # clean away tabs, multispaces, and other junk
+            cleandoc = method.__doc__.strip().replace("\t","").replace("  "," ")
+            # only keep where there are two newlines after each other
+            # because single newlines are likely just in-code formatting
+            cleandoc = "\n\n".join(paragraph.replace("\n","").strip() for paragraph in cleandoc.split("\n\n") )
+            helptext = cleandoc
+        else:
+            helptext = "Sorry, no documentation available..."
+        self.helptext.insert(tk.END, helptext)
+        self.helptext["state"] = tk.DISABLED
+
+    def set_finished_method(self, method):
+        self.process_results = method
+
+    def get_options(self):
+        args = list()
+        kwargs = dict()
+        for key,val in self.hidden_options.items():
+            if key == None: args.extend(val) #list arg
+            else: kwargs[key] = val
+        for inputwidget in self.inputs:
+            argname = inputwidget.meta["argname"]
+            multi = inputwidget.meta["multi"]
+            choices = inputwidget.meta["choices"]
+            valuetype = inputwidget.meta["valuetype"]
+            
+            # ensure within min/max range
+            def validate(value):
+                minval = inputwidget.meta["minval"]
+                if minval and not value &gt;= minval:
+                    return Exception("The input value for %s was smaller than the minimum value %s" %(inputwidget.meta["label"], minval))
+                maxval = inputwidget.meta["maxval"]
+                if maxval and not value &lt;= maxval:
+                    return Exception("The input value for %s was larger than the maximum value %s" %(inputwidget.meta["label"], minval))
+                return value
+                
+            # get value based on the argument type
+            if argname == None:
+                # if argname is None, then it is not a kwarg, but unnamed arg list
+                get = inputwidget.get(0, last=tk.END)
+                if get != "":
+                    args.extend( [validate(valuetype(val)) for val in get] )
+            elif multi:
+                get = inputwidget.get(0, last=tk.END)
+                if get != "":
+                    kwargs[argname] = [ validate(valuetype(val)) for val in get ]
+            elif choices:
+                get = inputwidget.choice.get()
+                if get != "":
+                    kwargs[argname] = validate(valuetype(get))
+            else:
+                get = inputwidget.get()
+                if get != "":
+                    kwargs[argname] = validate(valuetype(get))
+        return args,kwargs
+
+    def run(self):
+        # first ensure the tool has been prepped correctly
+        if not self.statusbar:
+            raise Exception("Internal error: The tool has not been assigned a statusbar")
+        if not self.method:
+            raise Exception("Internal error: The tool has not been assigned a method to be run")
+        if not self.process_results:
+            raise Exception("Internal error: The tool has not been assigned how to process the results")
+        
+        # get options
+        try:
+            args,kwargs = self.get_options()
+        except Exception as err:
+            popup_message(self, "Invalid options: \n" + str(err) )
+            return
+
+        # start statusbar
+        self.statusbar.task.start(self.taskname)
+
+        # run task
+        pending = dispatch.request_results(self.method, args=args, kwargs=kwargs)
+
+        # schedule to process results upon completion
+        def finish(results):
+            # first run user specified processing
+            try:
+                self.process_results(results)
+            except Exception as err:
+                popup_message(self, "Error processing results:" + "\n\n" + str(err) )
+            # then stop the task
+            self.statusbar.task.stop()
+        # note: this window cannot be the one to schedule the listening
+        # ...because this window might be destroyed, so use its master
+        dispatch.after_completion(self.master, pending, finish)</pre></div></div><div class="section" title="Dispatching heavy tasks to thread workers"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec22"/>Dispatching heavy tasks to thread workers</h2></div></div></div><p>In later chapters, we will begin adding a specific GIS code to be run whenever we click on different buttons. Many<a id="id131" class="indexterm"/> GIS tasks can be quite heavy duty and take some time to finish. If we just run this lengthy code from within our Tkinter main event handling loop, then we will end up freezing our application while waiting for it to finish. To avoid such freezing, the long-running thread must be run in a thread other than our GUI, while our GUI checks at regular intervals to see if the results are in.</p><p>Since we expect to call on such heavy tasks quite frequently via button clicks, we simplify the threading procedure by creating an <code class="literal">app/toolkit/dispatch.py</code> module to do the work for us. Whenever a GUI tool or button needs to run any type of geospatial task or workload, we simply send the function and arguments over to the dispatch's <code class="literal">request_results</code> method. That method will immediately return <a id="id132" class="indexterm"/>a <span class="strong"><strong>Queue communications object</strong></span>, which we must then send to <code class="literal">after_completion()</code> to check for the results at regular intervals without blocking any new GUI events or interaction, and run the specified function for processing the results once completed. If an exception is raised during the threaded processing, it will be returned to the application for proper handling.</p><p>Here is the code:</p><div class="informalexample"><pre class="programlisting">import threading
+import Queue
+import traceback
+
+def request_results(func, args=(), kwargs={}):
+    # prepare request
+    results = Queue.Queue()
+    func_args = (args, kwargs)
+    instruct = func, func_args, results
+
+    # ask the thread
+    worker = threading.Thread(target=_compute_results_, args=instruct)
+    worker.daemon = True
+    worker.start()
+
+    # return the empty results, it is up to the GUI to wait for it
+    return results
+
+def after_completion(window, queue, func):
+    
+    def check():
+        try:
+            result = queue.get(block=False)
+        except:
+            window.after(1000, check)
+        else:
+            func(result)
+                
+    window.after(100, check)
+
+def _compute_results_(func, func_args, results):
+    """
+    This is where the actual work is done,
+    and is run entirely in the new worker thread.
+    """
+    args, kwargs = func_args
+    try: _results = func(*args, **kwargs)
+    except Exception as errmsg:
+        _results = Exception(traceback.format_exc() )
+    results.put( _results )</pre></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Using the toolkit to build the GUI"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec19"/>Using the toolkit to build the GUI</h1></div></div></div><p>Now that we<a id="id133" class="indexterm"/> have created the fundamental GUI building blocks, we just need to put them<a id="id134" class="indexterm"/> all together to create our first application:</p><div class="mediaobject"><img src="images/5407OS_03_04.jpg" alt="Using the toolkit to build the GUI"/></div><p>To do so, reopen the empty <code class="literal">app/builder.py</code> module we created at the beginning of this chapter. Let's create a basic GUI widget that represents the entirety of our application, populated with <a id="id135" class="indexterm"/>our widgets in a traditional layout:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Our Ribbon <a id="id136" class="indexterm"/>widget at the top</li><li class="listitem" style="list-style-type: disc">Our LayersPane on the left</li><li class="listitem" style="list-style-type: disc">The MapView on the right</li><li class="listitem" style="list-style-type: disc">The StatusBar container at the bottom</li></ul></div><p>Here is the code:</p><div class="informalexample"><pre class="programlisting"># Import builtins
+import sys, os
+import time
+
+# Import GUI library
+import Tkinter as tk
+
+# Import internals
+from .toolkit import *
+from .dialogues import *
+
+# Import GIS functionality
+import pythongis as pg
+
+
+class GUI(tk.Frame):
+    def __init__(self, master, **kwargs):
+        tk.Frame.__init__(self, master, **kwargs)
+
+        # Place top ribbon area
+        self.ribbon = Ribbon(self)
+        self.ribbon.pack(side="top", fill="x")
+        # Add tabs
+        hometab = self.ribbon.add_tab("Home")
+        # Set starting tab
+        self.ribbon.switch(tabname="Home")
+
+        # Place main middle area
+        middle_area = tk.Frame(self)
+        middle_area.pack(side="top", expand=True, fill="both")
+        
+        # Layers pane on left
+        self.layerspane = LayersPane(middle_area)
+        self.layerspane.pack(side="left", fill="y")
+        
+        # Mapwidget on right
+        self.mapview = MapView(middle_area)
+        self.mapview.pack(side="left", fill="both", expand=True)
+        
+        # Place bottom info and mouse coords bar at bottom
+        self.statusbar = StatusBar(self, height=20, width=100)
+        self.statusbar.pack(side="bottom", fill="x")
+
+        # Assign statusbar to widgets that perform actions
+        self.mapview.assign_statusbar(self.statusbar)
+        self.layerspane.assign_statusbar(self.statusbar)</pre></div><p>Finally, we create a <code class="literal">run</code> function, which is separate from the GUI class, that simply creates the main Tkinter<a id="id137" class="indexterm"/> root window, packs our GUI widget inside it, and<a id="id138" class="indexterm"/> runs the application:</p><div class="informalexample"><pre class="programlisting">def run():
+    """Build the GUI."""
+    # create main window
+    window = tk.Tk()
+    window.wm_title("Python GIS")
+    try: # windows and mac
+        window.wm_state('zoomed')
+    except: # linux
+        window.wm_attributes("-zoomed", "1")
+    # pack in the GUI frame
+    gui = GUI(window)
+    gui.place(relwidth=1, relheight=1)
+    
+    # open the window
+    window.mainloop()</pre></div><p>Make this function directly<a id="id139" class="indexterm"/> available from the <code class="literal">app</code> package, by adding<a id="id140" class="indexterm"/> the following to <code class="literal">app/__init__.py</code>:</p><div class="informalexample"><pre class="programlisting">from .builder import run</pre></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Testing our application"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec20"/>Testing our application</h1></div></div></div><p>Provided you followed all of the instructions correctly, you should now be able to use the previous <code class="literal">run</code> function to begin exploring the application we have built so far. As we add more features throughout<a id="id141" class="indexterm"/> the book, you will likely want to call on this function repeatedly for testing purposes. Therefore, we add a ready-made script that does this for us called <code class="literal">guitester.py</code>, saving it in the same directory where our <code class="literal">pythongis</code> package is located to make the latter directly importable. The script only needs the following code:</p><div class="informalexample"><pre class="programlisting">import pythongis as pg
+pg.app.run()</pre></div><p>If you run <code class="literal">guitester.py</code> now, it should open an application that looks like this on Windows:</p><div class="mediaobject"><img src="images/5407OS_03_05.jpg" alt="Testing our application"/></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip05"/>Tip</h3><p>You will also likely want to start collecting a few vector and raster files that you can use to test with the application<a id="id142" class="indexterm"/> later on. A good place to get them is <a class="ulink" href="http://www.naturalearthdata.com/">http://www.naturalearthdata.com/</a>, and they are all in the same WGS84 coordinate system.</p></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec21"/>Summary</h1></div></div></div><p>At this point, we have made the basics of our application, one which doesn't do much right now but that is ready to be extended further as we continue to add new geospatial functionality. You learned to create a solid toolkit foundation of tools and widgets that we can use to build our GUI in a separate and flexible builder module, some of which will be extended in later chapters. The main missing piece, before we can say we have a functional GIS application, is to visualize data in our map widget. This is what we turn to in the next chapter.</p></div></div>
+</body></html>

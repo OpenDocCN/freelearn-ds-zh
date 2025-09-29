@@ -1,0 +1,428 @@
+<html><head></head><body>
+  <div id="sbo-rt-content"><div class="chapter" title="Chapter 4. Working with PostGIS"><div class="titlepage"><div><div><h1 class="title"><a id="ch04"/>Chapter 4. Working with PostGIS</h1></div></div></div><p>In this chapter we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Executing a PostGIS ST_Buffer analysis query and exporting it to GeoJSON</li><li class="listitem" style="list-style-type: disc">Finding out whether a point is inside a polygon</li><li class="listitem" style="list-style-type: disc">Splitting LineStrings at intersections using ST_Node</li><li class="listitem" style="list-style-type: disc">Checking the validity of LineStrings</li><li class="listitem" style="list-style-type: disc">Executing a spatial join and assigning point attributes to a polygon</li><li class="listitem" style="list-style-type: disc">Conducting a complex spatial analysis query using ST_Distance()</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec32"/>Introduction</h1></div></div></div><p>A spatial database is nothing but a standard database that can store geometry and execute spatial queries in their simplest forms. We will explore how to run spatial analysis queries, handle connections, and more, all from our Python code. Your ability to answer spatial questions such as "I want to locate all the hotels that are within 2 km of a golf course and less than 5 km from a park" is where PostGIS comes into play. This chaining of requests into a model is where the powers of spatial analysis shine.</p><p>We will work with the most popular and powerful open source spatial database called <span class="strong"><strong>PostgreSQL</strong></span>, along<a id="id201" class="indexterm"/> with the<a id="id202" class="indexterm"/> <span class="strong"><strong>PostGIS</strong></span> extension, including over 150 functions. Basically, we'll get a full-blown GIS with complex spatial analysis functions for both vectors and rasters, spatial data types, and diverse methods to move spatial data around.</p><p>If you are looking for more information on PostGIS and a good read, please check out <span class="emphasis"><em>PostGIS Cookbook</em></span> by <span class="emphasis"><em>Paolo Corti</em></span> (available at <a class="ulink" href="https://www.packtpub.com/big-data-and-business-intelligence/postgis-cookbook">https://www.packtpub.com/big-data-and-business-intelligence/postgis-cookbook</a>). This book explores the wider use of PostGIS and includes a full chapter on PostGIS Programming using Python.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Executing a PostGIS ST_Buffer analysis query and exporting it to GeoJSON"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec33"/>Executing a PostGIS ST_Buffer analysis query and exporting it to GeoJSON</h1></div></div></div><p>Let's start by<a id="id203" class="indexterm"/> executing our first spatial analysis query from Python against our already running PostgreSQL and PostGIS database. The <a id="id204" class="indexterm"/>goal is to generate a 100 m buffer around all schools and export the new buffer polygon to GeoJSON, including the name of a school. The end result will be shown on this map, available (<a class="ulink" href="https://github.com/mdiener21/python-geospatial-analysis-cookbook/blob/master/ch04/geodata/out_buff_100m.geojson">https://github.com/mdiener21/python-geospatial-analysis-cookbook/blob/master/ch04/geodata/out_buff_100m.geojson</a>) on GitHub.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip16"/>Tip</h3><p>Quick visualizations of GeoJSON data using GitHub is a fast and simple way to create a web map without coding a single line. Note that the data is then free for everyone else to download if you are using a public and free GitHub account. Private GitHub accounts mean the data, that is, GeoJSON, will also remain private if data privacy or sensitivity is an issue.</p></div></div><div class="mediaobject"><img src="images/50790OS_04_01.jpg" alt="Executing a PostGIS ST_Buffer analysis query and exporting it to GeoJSON"/></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec79"/>Getting ready</h2></div></div></div><p>To get started, we'll use our data in the PostGIS database. We will begin by accessing our <code class="literal">schools</code> table that we uploaded to PostGIS in the Batch importing a folder of Shapefiles into PostGIS using ogr2ogr recipe of <a class="link" href="ch03.html" title="Chapter 3. Moving Spatial Data from One Format to Another">Chapter 3</a>, <span class="emphasis"><em>Moving Spatial Data from One Format to Another</em></span>.</p><p>Connecting to<a id="id205" class="indexterm"/> a PostgreSQL and PostGIS database is accomplished with <a id="id206" class="indexterm"/>
+<span class="strong"><strong>Psycopg</strong></span>, which is a Python DB API (<a class="ulink" href="http://initd.org/psycopg/">http://initd.org/psycopg/</a>) implementation. We've already installed this in <a class="link" href="ch01.html" title="Chapter 1. Setting Up Your Geospatial Python Environment">Chapter 1</a>, <span class="emphasis"><em>Setting Up Your Geospatial Python Environment</em></span> along with PostgreSQL, Django, and PostGIS.</p><p>For all the following <a id="id207" class="indexterm"/>recipes, enter your virtual environment, <code class="literal">pygeoan_cb</code>, so that you have access to your libraries using this command:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>workon pygeoan_cb</strong></span>
+</pre></div></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec80"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The long road is not so long after all, so follow along:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import psycopg2
+import json
+from geojson import loads, Feature, FeatureCollection
+
+# NOTE change the password and username
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user,
+        port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+# the PostGIS buffer query
+buffer_query = """SELECT ST_AsGeoJSON(ST_Transform(
+        ST_Buffer(wkb_geometry, 100,'quad_segs=8'),4326)) 
+        AS geom, name
+        FROM geodata.schools"""
+
+# execute the query
+cur.execute(buffer_query)
+
+# return all the rows, we expect more than one
+dbRows = cur.fetchall()
+
+# an empty list to hold each feature of our feature collection
+new_geom_collection = []
+
+# loop through each row in result query set and add to my feature collection
+# assign name field to the GeoJSON properties
+for each_poly in dbRows:
+    geom = each_poly[0]
+    name = each_poly[1]
+    geoj_geom = loads(geom)
+    myfeat = Feature(geometry=geoj_geom, properties={'name': name})
+    new_geom_collection.append(myfeat)
+
+# use the geojson module to create the final Feature Collection of features created from for loop above
+my_geojson = FeatureCollection(new_geom_collection)
+
+# define the output folder and GeoJSon file name
+output_geojson_buf = "../geodata/out_buff_100m.geojson"
+
+
+# save geojson to a file in our geodata folder
+def write_geojson():
+    fo = open(output_geojson_buf, "w")
+    fo.write(json.dumps(my_geojson))
+    fo.close()
+
+# run the write function to actually create the GeoJSON file
+write_geojson()
+
+# close cursor
+cur.close()
+
+# close connection
+conn.close()</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec81"/>How it works...</h2></div></div></div><p>The database connection is using the <code class="literal">pyscopg2</code> module, so we import  the libraries at the start alongside <code class="literal">geojson</code> and the standard <code class="literal">json</code> modules to handle our GeoJSON export.</p><p>Our connection is <a id="id208" class="indexterm"/>created and then followed immediately with our SQL Buffer query string. The query uses three PostGIS functions. Working your way from the inside out, you will see the <code class="literal">ST_Buffer</code> function <a id="id209" class="indexterm"/>taking in the geometry of the school points followed by the 100 m buffer distance and the number of circle segments that we would like to generate. <code class="literal">ST_Transform</code> then takes the newly created buffer geometry and transforms it into the WGS84 coordinate system (EPSG: 4326) so that we can display it on GitHub, which only displays WGS84 and the projected GeoJSON. Lastly, we'll use the <code class="literal">ST_asGeoJSON</code> function to export our geometry as the GeoJSON geometry.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note27"/>Note</h3><p>PostGIS does not export the complete GeoJSON syntax, only the geometry in the form of the GeoJSON geometry. This is the reason that we need to complete our GeoJSON using the Python <code class="literal">geojson</code> module.</p></div></div><p>All of this means that we not only perform analysis on the query, but we also specify the output format and coordinate system all in one go.</p><p>Next, we will execute the query and fetch all the returned objects using <code class="literal">cur.fetchall()</code> so that we can later loop through each returned buffer polygon. Our <code class="literal">new_geom_collection</code> list will store each of the new geometries and the feature names. Next, in the <code class="literal">for</code> loop function, we'll use the <code class="literal">geojson</code> module function, <code class="literal">loads(geom)</code>, to input our geometry into a GeoJSON geometry object. This is followed by the <code class="literal">Feature()</code>function that actually creates our GeoJSON feature. This is then used as the input for the <code class="literal">FeatureCollection</code> function where the final, completed GeoJSON is created.</p><p>Lastly, we'll need to write this new GeoJSON file to disk and save it. Hence, we'll use the new file object where we use the standard Python <code class="literal">json.dumps</code> module to export our <code class="literal">FeatureCollection</code>.</p><p>We'll do a little clean up to close the cursor object and connection. Bingo! We are now done and can visualize our final results.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Finding out whether a point is inside a polygon"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec34"/>Finding out whether a point is inside a polygon</h1></div></div></div><p>A <a id="id210" class="indexterm"/>point inside a polygon analysis query is a very common spatial operation. This query can identify objects located within an area such as a polygon. The area of interest in this example is a 100 m buffer polygon around bike paths and we would like to locate all schools that are inside this polygon.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec82"/>Getting ready</h2></div></div></div><p>In the previous section, we used the <code class="literal">schools</code> table to create a buffer. This time around, we will use this table as our input points table. The <code class="literal">bikeways</code> table that we imported in <a class="link" href="ch03.html" title="Chapter 3. Moving Spatial Data from One Format to Another">Chapter 3</a>, <span class="emphasis"><em>Moving Spatial Data from One Format to Another</em></span>, will be used as our input lines to generate a new 100 m buffer polygon. Be sure, however, that you have the two datasets in your local PostgreSQL database.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec83"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Now, let's dive into some more code to find schools located within 100 m of the bikeways in order to find points inside a polygon:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import json
+import psycopg2
+from geojson import loads, Feature, FeatureCollection
+
+
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user, port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+# uncomment if needed
+# cur.execute("Drop table if exists geodata.bikepath_100m_buff;")
+
+# query to create a new polygon 100m around the bikepath
+new_bike_buff_100m = """ CREATE TABLE geodata.bikepath_100m_buff 
+       AS SELECT name, 
+       ST_Buffer(wkb_geometry, 100) AS geom
+       FROM geodata.bikeways; """
+
+# run the query
+cur.execute(new_bike_buff_100m)
+
+# commit query to database
+conn.commit()
+
+# query to select schools inside the polygon and output geojson
+is_inside_query = """ SELECT s.name AS name, 
+    ST_AsGeoJSON(ST_Transform(s.wkb_geometry,4326)) AS geom
+    FROM geodata.schools AS s,
+    geodata.bikepath_100m_buff AS bp
+        WHERE ST_WITHIN(s.wkb_geometry, bp.geom); """
+
+# execute the query
+cur.execute(is_inside_query)
+
+# return all the rows, we expect more than one
+db_rows = cur.fetchall()
+
+# an empty list to hold each feature of our feature collection
+new_geom_collection = []
+
+def export2geojson(query_result):
+    """
+    loop through each row in result query set and add to my feature collection
+    assign name field to the GeoJSON properties
+    :param query_result: pg query set of geometries
+    :return: new geojson file
+    """
+
+    for row in db_rows:
+        name = row[0]
+        geom = row[1]
+        geoj_geom = loads(geom)
+        myfeat = Feature(geometry=geoj_geom, 
+                    properties={'name': name})
+        new_geom_collection.append(myfeat)
+
+    # use the geojson module to create the final Feature
+    # Collection of features created from for loop above
+    my_geojson = FeatureCollection(new_geom_collection)
+    # define the output folder and GeoJSon file name
+    output_geojson_buf = "../geodata/out_schools_in_100m.geojson"
+
+    # save geojson to a file in our geodata folder
+    def write_geojson():
+        fo = open(output_geojson_buf, "w")
+        fo.write(json.dumps(my_geojson))
+        fo.close()
+
+    # run the write function to actually create the GeoJSON file
+    write_geojson()
+
+
+export2geojson(db_rows)</pre></div></li></ol></div><p>You can now <a id="id211" class="indexterm"/>view your newly created GeoJSON file on a great little site created by Mapbox at <a class="ulink" href="http://www.geojson.io">http://www.geojson.io</a>. Simply drag and drop your GeoJSON file from Windows Explorer in Windows or Nautilus in Ubuntu onto the <a class="ulink" href="http://www.geojson.io">http://www.geojson.io</a> web page and, Bob's your uncle, you should see 50 or so schools that are located within 100 m of a bikeway in Vancouver.</p><div class="mediaobject"><img src="images/50790OS_04_02.jpg" alt="How to do it..."/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec84"/>How it works...</h2></div></div></div><p>We will reuse <a id="id212" class="indexterm"/>code to make our database connection, so this should be familiar to you at this point. The <code class="literal">new_bike_buff_100m</code> query string contains our query to generate a new 100 m buffer polygon around all the bikeways. We need to execute this query and commit it to the database so that we can access this new set of polygons as input to our actual query that will find schools (points) located inside this new buffer polygon.</p><p>The <code class="literal">is_inside_query</code> string actually does the hard work for us by selecting selecting the values from the field <code class="literal">name</code> and the geometry from the <code class="literal">geom</code> field. The geometry is wrapped up in two other PostGIS functions to allow us to export our data as GeoJSON in the WGS 84 coordinate system. This will be the input geometry needed to generate our final new GeoJSON file.</p><p>The <code class="literal">WHERE</code> clause uses the <code class="literal">ST_Within</code> function to see whether a point is inside the polygon and returns <code class="literal">True</code> if the point is within the buffer polygon.</p><p>Now, we've created a new function that simply wraps up our export to the GeoJSON code that was used in the previous, <span class="emphasis"><em>Executing a PostGIS ST_Buffer analysis query and exporting it to GeoJSON</em></span>, recipe. This new <code class="literal">export2geojson</code> function simply takes one input of our PostGIS query and outputs a GeoJSON file. To set the name and location of the new output file, simply replace the path and name within the function.</p><p>Finally, all we need to do is call the new function to export the GeoJSON file using the <code class="literal">db_rows</code> variable that contains our list of schools as points located within the 100 m buffer polygon.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec85"/>There's more...</h2></div></div></div><p>This example to<a id="id213" class="indexterm"/> find all schools located within 100 m of the bike paths could be completed using another PostGIS function called <code class="literal">ST_Dwithin</code>.</p><p>The SQL to select all the schools located within 100 m of the bikepaths would look like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>SELECT *  FROM geodata.bikeways as b, geodata.schools as s where ST_DWithin(b.wkb_geometry, s.wkb_geometry, 100)</strong></span>
+</pre></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Splitting LineStrings at intersections using ST_Node"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec35"/>Splitting LineStrings at intersections using ST_Node</h1></div></div></div><p>Working <a id="id214" class="indexterm"/>with road data is usually a tricky business because the validity of the data and data structure plays a very important role. If you want to do anything useful with your road data, such as building a routing network, you will need to prepare the data first. The first task is usually to segmentize your lines, which means splitting all lines at intersections where LineStrings cross each other, creating a base network road dataset.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note28"/>Note</h3><p>Be aware that this recipe will split all lines on all intersections regardless of whether, for example, there is a road-bridge overpass where no intersection should be created.</p></div></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec86"/>Getting ready</h2></div></div></div><p>Before we get into the details of how to do this, we will use a small section of the <a id="id215" class="indexterm"/>
+<span class="strong"><strong>OpenStreetMap</strong></span> (<span class="strong"><strong>OSM</strong></span>) road data for our example. The OSM data is available in your <code class="literal">/ch04/geodata/</code>folder called <code class="literal">vancouver-osm-data.osm</code>. This data was simply downloaded from the <a class="ulink" href="http://www.openstreetmap.org">www.openstreetmap.org</a> home page using the <span class="strong"><strong>Export</strong></span> button located at the top of the page:</p><div class="mediaobject"><img src="images/50790OS_04_03.jpg" alt="Getting ready"/></div><p>The OSM data<a id="id216" class="indexterm"/> contains not only roads but all the other points and polygons located within the extent that I have chosen. The region of interest is again the Burrard Street bridge in Vancouver.</p><p>We are going to need to extract all the roads and import them into our PostGIS table. This time, let's try using the <code class="literal">ogr2ogr</code> command line directly from the console to upload the OSM streets to our PostGIS database:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>ogr2ogr -lco SCHEMA=geodata -nlt LINESTRING -f "PostgreSQL" PG:"host=localhost port=5432 user=pluto dbname=py_geoan_cb password=stars" ../geodata/vancouver-osm-data.osm lines -t_srs EPSG:3857</strong></span>
+</pre></div><p>This assumes that your OSM data is in the <code class="literal">/ch04/geodata</code> folder and the command is run while you are located in the <code class="literal">/ch04/code</code> folder.</p><p>Now this really long thing means that we connect to our PostGIS database as our output and input the <code class="literal">vancouver-osm-data.osm</code> file. Create a new table called <code class="literal">lines</code> and transform the input OSM projection to EPSG:3857. All data exported from OSM is in EPSG:4326. You can, of course, leave it in this system and simply remove the <code class="literal">-t_srs EPSG:3857</code> part of the command line option.</p><p>We are now ready to rock and roll with the splitting at intersections. If you like, go ahead and open the data in <a id="id217" class="indexterm"/>
+<span class="strong"><strong>QGIS</strong></span> (<span class="strong"><strong>Quantum GIS</strong></span>). In QGIS, you will see that the road data is not split at all road intersections as shown in this screenshot:</p><div class="mediaobject"><img src="images/50790OS_04_04.jpg" alt="Getting ready"/></div><p>Here, you can <a id="id218" class="indexterm"/>see that <span class="strong"><strong>McNicoll Avenue</strong></span> is a single LineString crossing over <span class="strong"><strong>Cypress Street</strong></span>. After we've completed the recipe, we will see that <span class="strong"><strong>McNicoll Avenue</strong></span> will be split at this intersection.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec87"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Running through the Python code is quite straightforward since the hard work is done in one SQL query. So follow along:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import psycopg2
+import json
+from geojson import loads, Feature, FeatureCollection
+
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user, 
+    port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+# drop table if exists
+# cur.execute("DROP TABLE IF EXISTS geodata.split_roads;")
+
+# split lines at intersections query
+split_lines_query = """
+ CREATE TABLE geodata.split_roads
+    (ST_Node(ST_Collect(wkb_geometry)))).geom AS geom
+    FROM geodata.lines;"""
+
+cur.execute(split_lines_query)
+conn.commit()
+
+cur.execute("ALTER TABLE geodata.split_roads ADD COLUMN id serial;")
+cur.execute("ALTER TABLE geodata.split_roads ADD CONSTRAINT split_roads_pkey PRIMARY KEY (id);")
+
+# close cursor
+cur.close()
+
+# close connection
+conn.close()</pre></div><div class="mediaobject"><img src="images/50790OS_04_05.jpg" alt="How to do it..."/></div></li></ol></div><p>Well, this was <a id="id219" class="indexterm"/>quite simple and we can now see that <span class="strong"><strong>McNicoll Avenue</strong></span> is split at the intersection with <span class="strong"><strong>Cypress Street</strong></span>.</p></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec88"/>How it works...</h2></div></div></div><p>Looking at the code, we can see that the database connection remains the same and the only new thing is the query itself that creates the intersection. Here three separate PostGIS functions are used to obtain our results:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The first function, when working our way inside-out in the query, starts with <code class="literal">ST_Collect(wkb_geometry)</code>. This simply takes our original geometry column as input. The simple combining of the geometries is all that is going on here.</li><li class="listitem" style="list-style-type: disc">Next up is the actual splitting of the lines using the <code class="literal">ST_Node(geometry)</code>, inputting the new geometry collection and nodding, which splits our LineStrings at intersections.</li><li class="listitem" style="list-style-type: disc">Finally, we'll use <code class="literal">ST_Dump()</code> as a set returning function. This means that it basically explodes all the LineString geometry collections into individual LineStrings. The end of the query with <code class="literal">.geom</code> specifies that we only want to export the geometry and not the returned array numbers of the split geometry.</li></ul></div><p>Now, we'll execute and commit the query to the database. The commit is an important part because, otherwise, the<a id="id220" class="indexterm"/> query will be run but it will not actually create the new table that we are looking to generate. Last but not least, we can close down our cursor and connection. That is that; we now have split LineStrings.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note29"/>Note</h3><p>Be aware that the new split LineStrings do NOT contain the street names and other attributes. To export the names, we would need to do a join on our data. Such a query to include the attributes on the newly created LineStrings could look like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>CREATE TABLE geodata.split_roads_attributes AS SELECT</strong></span>
+<span class="strong"><strong>   r.geom,</strong></span>
+<span class="strong"><strong>   li.name,</strong></span>
+<span class="strong"><strong>   li.highway</strong></span>
+<span class="strong"><strong>FROM</strong></span>
+<span class="strong"><strong>   geodata.lines li,</strong></span>
+<span class="strong"><strong>   geodata.split_roads r</strong></span>
+<span class="strong"><strong>WHERE</strong></span>
+<span class="strong"><strong>   ST_CoveredBy(r.geom, li.wkb_geometry)</strong></span>
+</pre></div></div></div></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Checking the validity of LineStrings"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec36"/>Checking the validity of LineStrings</h1></div></div></div><p>Working <a id="id221" class="indexterm"/>with road data has many areas to watch out for and one of these is invalid geometry. Our source data is OSM and is, therefore, collected by a community of users that are not trained by GIS professionals, resulting in errors. To execute spatial queries, the data must be valid or we will have results with errors or no results at all.</p><p>PostGIS includes the <code class="literal">ST_isValid()</code> function that returns True/False on the basis of whether a geometry is valid or not. There is also the <code class="literal">ST_isValidReason()</code> function that will output a text description of the geometry error. Finally, the <code class="literal">ST_isValidDetail()</code> function will return if the geometry is valid along with the reason and location of the geometry error. These three functions all accomplish similar tasks and selecting one depends on what you want to accomplish.</p><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec89"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Now, to determine if <code class="literal">geodata.lines</code> are valid, we will run another query that will list all invalid geometries if there are any:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import psycopg2
+
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user, 
+    port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+# the PostGIS buffer query
+valid_query = """SELECT
+                   ogc_fid, 
+                   ST_IsValidDetail(wkb_geometry)
+                FROM 
+                   geodata.lines
+                WHERE NOT
+                   ST_IsValid(wkb_geometry);
+                """
+
+# execute the query
+cur.execute(valid_query)
+
+# return all the rows, we expect more than one
+validity_results = cur.fetchall()
+
+print validity_results
+
+# close cursor
+cur.close()
+
+# close connection
+conn.close();</pre></div></li></ol></div><p>This query <a id="id222" class="indexterm"/>should return an empty Python list, which means that we have no invalid geometries. If there are objects in your list, then you'll know that you have some manual work to do to correct those geometries. Your best bet is to fire up QGIS and get started with digitizing tools to clean things up.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Executing a spatial join and assigning point attributes to a polygon"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec37"/>Executing a spatial join and assigning point attributes to a polygon</h1></div></div></div><p>We'll now<a id="id223" class="indexterm"/> get back to some more golf action where we would like to execute a spatial attribute join. We're given a situation where we have a set of polygons, in this case, these <a id="id224" class="indexterm"/>are in the form of golf greens without any hole number. Our hole number is stored in a point dataset that is located spatially within the green of each hole. We would like to assign each green its appropriate hole number based on its location within the polygon.</p><p>The OSM data from the Pebble Beach Golf Course located in Monterey California is our source data. This golf course is one the great golf courses on the PGA tour and is well mapped in OSM.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip17"/>Tip</h3><p>If you are interested in getting golf course data yourself from OSM, it is recommended that you use the great Overpass API at <a class="ulink" href="http://overpass-turbo.eu/">http://overpass-turbo.eu/</a>. This site enables you to export the OSM data as GeoJSON or KML, for example.</p><p>To download all the golf-specific OSM data, you will need to correct tags. To do this, simply copy and paste the following Overpass API query into the query window located on the left hand side, then click on <code class="literal">Download</code>:</p><div class="informalexample"><pre class="programlisting">/*
+
+This query looks for nodes, ways, and relations 
+using the given key/value combination.
+Choose your region and hit the Run button above!
+*/
+[out:json][timeout:25];
+// gather results
+(
+  // query part for: "leisure=golf_course"
+node["leisure"="golf_course"]({{bbox}});
+way["leisure"="golf_course"]({{bbox}});
+relation["leisure"="golf_course"]({{bbox}});
+  
+node["golf"="pin"]({{bbox}});
+way["golf"="green"]({{bbox}});
+way["golf"="fairway"]({{bbox}});
+way["golf"="tee"]({{bbox}});
+way["golf"="fairway"]({{bbox}});
+way["golf"="bunker"]({{bbox}});
+way["golf"="rough"]({{bbox}});
+way["golf"="water_hazard"]({{bbox}});
+way["golf"="lateral_water_hazard"]({{bbox}});
+way["golf"="out_of_bounds"]({{bbox}});
+way["golf"="clubhouse"]({{bbox}});
+way["golf"="ground_under_repair"]({{bbox}});
+
+);
+// print results
+out body;
+&gt;;
+out skel qt;</pre></div></div></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec90"/>Getting ready</h2></div></div></div><p>Importing our <a id="id225" class="indexterm"/>data into PostGIS will be the first step to execute<a id="id226" class="indexterm"/> our spatial query. This time around, we will use the <code class="literal">shp2pgsql</code> tool to import our data to change things a little since there are so many ways to get data into PostGIS. The <code class="literal">shp2pgsql</code> tool is definitely the most well-tested and common way to import Shapefiles into PostGIS. Let's get going and perform this import once again, executing this tool directly from the command line.</p><p>For Windows users, this should work, but check that the paths are correct or that <code class="literal">shp2pgsql.exe</code> is in your system path variable. By doing this, you save having to type the full path to execute.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note30"/>Note</h3><p>I assume that you are running the following command when you are in the <code class="literal">/ch04/code</code> folder:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>shp2pgsql -s 4326 ..\geodata\shp\pebble-beach-ply-greens.shp geodata.pebble_beach_greens | psql -h localhost -d py_geoan_cb -p 5432 -U pluto</strong></span>
+</pre></div></div></div><p>On a Linux machine your command is basically the same without the long path, assuming that your system links were all set up when you installed PostGIS in <a class="link" href="ch01.html" title="Chapter 1. Setting Up Your Geospatial Python Environment">Chapter 1</a>, <span class="emphasis"><em>Setting Up Your Geospatial Python Environment</em></span>.</p><p>Next up, we need to import our points with the attributes, so let's get to it as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>shp2pgsql -s 4326 ..\geodata\shp\pebble-beach-pts-hole-num-green.shp geodata.pebble_bea-ch_hole_num | psql -h localhost -d py_geoan_cb -p 5432 -U postgres</strong></span>
+</pre></div><p>That's that! We now have our points and polygons available in the PostGIS Schema <code class="literal">geodata</code> setting, which sets the stage for our spatial join.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec91"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The core<a id="id227" class="indexterm"/> work is done once again inside our PostGIS <a id="id228" class="indexterm"/>query string, assigning the attributes to the polygons, so follow along:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import psycopg2
+
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user, port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+# assign polygon attributes from points
+spatial_join = """  UPDATE geodata.pebble_beach_greens AS g 
+                        SET 
+                           name = h.name
+                        FROM 
+                           geodata.pebble_beach_hole_num AS h
+                        WHERE 
+                           ST_Contains(g.geom, h.geom);
+                     """
+cur.execute(spatial_join)
+conn.commit()
+
+# close cursor
+cur.close()
+
+# close connection
+conn.close()</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec92"/>How it works...</h2></div></div></div><p>The query is<a id="id229" class="indexterm"/> straightforward enough; we'll use the <code class="literal">UPDATE</code> standard SQL command to update the values in the name field of our table, <code class="literal">geodata.pebble_beach_greens</code>, with the hole numbers located in the <code class="literal">pebble_beach_hole_num</code> table.</p><p>We follow up by <a id="id230" class="indexterm"/>setting the name value from our <code class="literal">geodata.pebble_beach_hole_num</code> table, where the field name also exists and holds our needed attribute values.</p><p>Our <code class="literal">WHERE</code> clause uses the PostGIS query, <code class="literal">ST_Contains</code>, to return <code class="literal">True</code> if the point lies inside our greens, and if so, it will update our values.</p><p>This was easy and demonstrates the great power of spatial relationships.</p></div></div></div>
+
+
+  <div id="sbo-rt-content"><div class="section" title="Conducting a complex spatial analysis query using ST_Distance()"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec38"/>Conducting a complex spatial analysis query using ST_Distance()</h1></div></div></div><p>Now let's check for a<a id="id231" class="indexterm"/> more complex query in PostGIS to get our spatial juices flowing. We want to locate all the golf courses that are either inside or within 5 km of a national park or protected area. Plus, the golf course must be within 2 km of a city. The city data is derived from the tags in OSM where the <span class="emphasis"><em>tag place = city</em></span>.</p><p>The national parks and protected areas for this query belong to the Government of Canada. Our golf courses and datasets of cities are derived from an OSM located in British Columbia and Alberta.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec93"/>Getting ready</h2></div></div></div><p>We need the data of all the national parks and protected areas in Canada, so go and make sure they're located in the <code class="literal">/ch04/geodata/</code> folder.</p><p>The original data is located at <a class="ulink" href="http://ftp2.cits.rncan.gc.ca/pub/geott/frameworkdata/protected_areas/1M_PROTECTED_AREAS.shp.zip">http://ftp2.cits.rncan.gc.ca/pub/geott/frameworkdata/protected_areas/1M_PROTECTED_AREAS.shp.zip</a> for download if you do not already have the <code class="literal">/geodata</code> folder downloaded from GitHub.</p><p>The other datasets needed are the cities and golf courses that can be obtained from OSM. These two files are the GeoJSON files located in the /ch04/geodata/ folder and are called  <code class="literal">osm-golf-courses-bc-alberta.geojson</code> and <code class="literal">osm-place-city-bc-alberta.geojson</code>.</p><p>We will now import the downloaded data into our database:</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note31"/>Note</h3><p>Ensure that you are currently in the <code class="literal">/ch04/code</code> folder when you run the following commands; otherwise, adjust the paths as necessary.</p></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Starting <a id="id232" class="indexterm"/>with the OSM golf courses from British Columbia and Alberta, run this command-line call to ogr2ogr. Windows users need to note that they can either switch the slashes to backslashes or include the full path to GeoJSON:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>ogr2ogr -f PostgreSQL PG:"host=localhost user=postgres port=5432 dbname=py_geoan_cb password=air" ../geodata/geojson/osm-golf-courses-bc-alberta.geojson -nln geodata.golf_courses_bc_alberta</strong></span>
+</pre></div></li><li class="listitem">Now, we'll run the same command again to import the cities:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>ogr2ogr -f PostgreSQL PG:"host=localhost user=postgres port=5432 dbname=py_geoan_cb password=air" ../geodata/geojson/osm-place-city-bc-alberta.geojson -nln geodata.cities_bc_alberta</strong></span>
+</pre></div></li><li class="listitem">Last but not least, we'll need to import the protected areas and national parks of Canada using the <code class="literal">shp2pgsql</code> command line. Here, note that we need to use the <code class="literal">-W latin1</code> option to specify the required encoding. The data you acquire is for all of Canada and not just BC and Alberta:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>shp2pgsql -s 4326 -W latin1 ../geodata/shp/protarea.shp geodata.parks_pa_canada | psql -h localhost -d py_geoan_cb -p 5432 -U pluto</strong></span>
+</pre></div></li></ol></div><p>Now we have all three tables in our database and we can execute our analysis script.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec94"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's see what the code looks like:<div class="informalexample"><pre class="programlisting">#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import psycopg2
+import json
+import pprint
+from geojson import loads, Feature, FeatureCollection
+
+# Database Connection Info
+db_host = "localhost"
+db_user = "pluto"
+db_passwd = "stars"
+db_database = "py_geoan_cb"
+db_port = "5432"
+
+# connect to DB
+conn = psycopg2.connect(host=db_host, user=db_user, port=db_port, password=db_passwd, database=db_database)
+
+# create a cursor
+cur = conn.cursor()
+
+complex_query = """
+    SELECT
+      ST_AsGeoJSON(st_centroid(g.wkb_geometry)) as geom, c.name AS city, g.name AS golfclub, p.name_en AS park,
+    ST_Distance(geography(c.wkb_geometry), geography(g.wkb_geometry)) AS distance,
+    ST_Distance(geography(p.geom), geography(g.wkb_geometry)) AS distance
+      FROM 
+      geodata.parks_pa_canada AS p,
+      geodata.cities_bc_alberta AS c
+      JOIN 
+      geodata.golf_courses_bc_alberta AS g
+      ON
+        ST_DWithin(geography(c.wkb_geometry), geography(g.wkb_geometry),4000)
+     WHERE
+        ST_DWithin(geography(p.geom), geography(g.wkb_geometry),5000)
+                """
+# WHERE c.population is not null and e.name is not null
+# execute the query
+cur.execute(complex_query)
+
+# return all the rows, we expect more than one
+validity_results = cur.fetchall()
+
+# an empty list to hold each feature of our feature collection
+new_geom_collection = []
+
+# loop through each row in result query set and add to my feature collection
+# assign name field to the GeoJSON properties
+for each_result in validity_results:
+    geom = each_result[0]
+    city_name = each_result[1]
+    course_name = each_result[2]
+    park_name = each_result[3]
+    dist_city_to_golf = each_result[4]
+    dist_park_to_golf = each_result[5]
+    geoj_geom = loads(geom)
+    myfeat = Feature(geometry=geoj_geom, properties={'city': city_name, 'golf_course': course_name,
+                          'park_name': park_name, 'dist_to city': dist_city_to_golf,
+                          'dist_to_park': dist_park_to_golf})
+    new_geom_collection.append(myfeat)  # use the geojson module to create the final Feature Collection of features created from for loop above
+
+my_geojson = FeatureCollection(new_geom_collection)
+
+pprint.pprint(my_geojson)
+
+# define the output folder and GeoJSon file name
+output_geojson_buf = "../geodata/golfcourses_analysis.geojson"
+
+
+# save geojson to a file in our geodata folder
+def write_geojson():
+    fo = open(output_geojson_buf, "w")
+    fo.write(json.dumps(my_geojson))
+    fo.close()
+
+# run the write function to actually create the GeoJSON file
+write_geojson()
+
+# close cursor
+cur.close()
+
+# close connection
+conn.close()</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec95"/>How it works...</h2></div></div></div><p>Let's go step by <a id="id233" class="indexterm"/>step through the SQL query:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">We'll start with defining what columns we want our query to return and from which tables. Here, we'll define that we want the golf club geometry as a point, city name, golf club name, park name, distance between a city and golf club, and finally, distance between a park and golf club. The geometry that we return is of the golf course as a point, hence <code class="literal">ST_Centroid</code>, which returns the middle point of the golf course and then outputs this as the GeoJSON geometry.</li><li class="listitem" style="list-style-type: disc">The <code class="literal">FROM</code> clause sets our parks and tables of cities and assigns them an alias name with <code class="literal">SQL AS</code>. We then <code class="literal">JOIN</code> the golf courses based on the distance using <code class="literal">ST_DWithin()</code> so that we can locate distances that are less than 4 km between a city and golf course.</li><li class="listitem" style="list-style-type: disc">The <code class="literal">WHERE</code> clause, <code class="literal">ST_DWithin()</code>, enforces the last requirement that the distance between a park and golf course cannot be more than 5 km.</li></ul></div><p>The<a id="id234" class="indexterm"/> SQL does all of our heavy lifting to return the correct spatial analysis results. The next step is to use Python to output our results as valid GeoJSON in order to view our newly found golf courses. Each attribute property is then identified by its array location in the query and assigned a name for the GeoJSON output. In the end, we'll output a .geojson file that you can visualize directly in GitHub at <a class="ulink" href="https://github.com/mdiener21/python-geospatial-analysis-cookbook/blob/master/ch04/geodata/golfcourses_analysis.geojson">https://github.com/mdiener21/python-geospatial-analysis-cookbook/blob/master/ch04/geodata/golfcourses_analysis.geojson</a>.</p><div class="mediaobject"><img src="images/50790OS_04_06.jpg" alt="How it works..."/></div></div></div></div>
+</body></html>
