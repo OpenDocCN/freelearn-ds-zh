@@ -1,0 +1,579 @@
+- en: Chapter 5. Developing a Histogram OpenCL program
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we''ll cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a histogram in C/C++
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenCL implementation of the histogram
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Work-item synchronization
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Anyone who has taken elementary math in school would know what a histogram is.
+    It's one of the myriad of ways by which one can visualize the relationship between
+    two sets of data. These two sets of data are arranged on two axes such that one
+    axis would represent the distinct values in the dataset and the other axis would
+    represent the frequency at which each value occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The histogram is an interesting topic to study because its practical applications
+    are found in computational image processing, quantitative/qualitative finance,
+    computational fluid dynamics, and so on. It is one of the earliest examples of
+    OpenCL usage when running on CPUs or GPUs, where several implementations have
+    been made and each implementation has its pros and cons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a Histogram in C/C++
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we look at how we can implement this in OpenCL and run the application
+    on the desktop GPU, let's take a look at how we can implement it using a single
+    thread of execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This study of the sequential code is important because we need a way to make
+    sure our sequential code and parallel code produce the same result, which is quite
+    often referred to as the **golden reference** implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In your role as an OpenCL engineer, one of the items on your to-do list would
+    probably be to translate sequential algorithms to parallel algorithms, and it's
+    important for you to be able to understand how to do so. We attempt to impart
+    some of these skills which may not be exhaustive in all sense. One of the foremost
+    important skills to have is the ability to identify **parallelizable routines**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Examining the code that follows, we can begin to understand how the histogram
+    program works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here, we present the sequential code in its entirety, where it uses exactly
+    one executing thread to create the memory structures of a histogram. At this point,
+    you can copy the following code and paste it in a directory of your choice and
+    call this program `Ch5/histogram_cpu/histogram.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To build the program, we are assuming that you have a GNU GCC compiler. Type
+    the following command to into a terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, run `make` at the directory `Ch5/histogram_c`, and an executable
+    named `histogram` will be deposited in your directory where you issued that command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To run the program, simply execute the program `histogram` deposited on the
+    folder `Ch5/histogram_c`, and it should output nothing. However, feel free to
+    inject C's output function `printf`, `sprintf` into the previous code and convince
+    yourself that the histogram is working as it should.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To make a histogram, we need to have an initial dataset where it contains values.
+    The values in a histogram are computed by scanning through the dataset and recording
+    how many times a scanned value has appeared in the dataset. Hence, the concept
+    of **data binning**. The following diagram illustrates this concept:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_05_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In the following code, we see that the first `for` loop fills up the array
+    `data` with values ranging from `0` to `255`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The second `for` loop walks the `data` array and records the occurrence of each
+    value, and the final `for` loop serves to print out the occurrence of each value.
+    That is the essence of data binning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, you would iterate the binned data and print out what you''ve found:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we are going to look at how OpenCL can apply data binning into its implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OpenCL implementation of the Histogram
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will attempt to develop your intuition to be able to identify
+    possible areas of parallelization and how you can use those techniques to parallelize
+    sequential algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not wanting to delve into too much theory about parallelization, one of the
+    key insights about whether a routine/algorithm can be parallelized is to examine
+    whether the algorithm allows work to be split among different processing elements.
+    Processing elements from the OpenCL's perspective would be the processors, that
+    is, CPU/GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recall that OpenCL's work items are execution elements that act on a set of
+    data and execute on the processing element. They are often found in a work group
+    where all work items can coordinate data reads/writes to a certain degree and
+    they share the same kernel and work-group barriers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Examining the code, you will notice that the first thing that is probably able
+    to fulfill the description:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*"...allows work to be split among different processing elements"*'
+  prefs:
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: This would be to look for `for` loops. This is because loops mean that the code
+    is executing the same block of instructions to achieve some outcome, and if we
+    play our cards right, we should be able to split the work in the loop and assign
+    several threads to execute a portion of the code along with the data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In many algorithms, you will see that splitting the work sometimes does not
+    necessarily imply that the data needs to be cleanly partitioned, and that's because
+    the data is read-only; however, when the algorithm needs to conduct both reads
+    and writes to the data, then you need to figure out a way to partition them cleanly.
+    That last sentence deserves some explanation. Recall in [Chapter 2](ch02.html
+    "Chapter 2. Understanding OpenCL Data Transfer and Partitioning"), *Understanding
+    OpenCL Data Transfer and Partitioning*, where we discussed work items and data
+    partitioning, and by now you should have understood that OpenCL does not prevent
+    you, the developer, from creating race conditions for your data if you miscalculated
+    the data indexing or even introduced data dependencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With great power, comes great responsibility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In building a data parallel algorithm, it''s important to be able to understand
+    a couple of things, and from the perspective of implementing an OpenCL histogram
+    program, here are some suggestions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Understand your data structure**: In the previous chapters, we have seen
+    how we can allow user-defined structures and regular 1D or 2D arrays to be fed
+    into the kernel for execution. You should always search for an appropriate structure
+    to use and make sure you watch for the off-by-one errors (in my experience, they
+    are more common than anything else).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Decide how many work items should execute in a work-group**: If the kernel
+    only has one work item executing a large dataset, it''s often not efficient to
+    do so because of the way the hardware works. It makes sense to configure a sizeable
+    number of work items to execute in the kernel so that they take advantage of the
+    hardware''s resources and this often increases the temporal and spatial locality
+    of data, which means your algorithm runs faster.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Decide how to write the eventual result**: In the histogram implementation
+    we''ve chosen, this is important because each kernel will process a portion of
+    the data and we need to merge them back. We have not seen examples of that before,
+    so here''s our chance!'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let's see how those suggestions could apply. The basic idea is to split a large
+    array among several work groups. Each work group will process its own data (with
+    proper indexing) and store/bin that data in the scratchpad memory provided by
+    the hardware, and when the work group has finished its processing, its local memory
+    will be stored back to the global memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have chosen the 1D array to contain the initial set of data and this data
+    can potentially be infinite, but the author's machine configuration doesn't have
+    limitless memory, so there's a real limit. Next, we will split this 1D array into
+    several chunks, and this is where it gets interesting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each chunk of data will be cleanly partitioned and executed by a work group.
+    This work group has chosen to house 128 work items and each work item will produce
+    a bin of size 256 elements or a 256 bin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each work group will store these into the local memory also known as s**cratchpad
+    memory** because we don't want to keep going back and forth global and device
+    memory. This is a real performance hit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the code presented in the following section, one of the techniques you will
+    learn is to use the scratchpad memory or local memory in aiding your algorithm
+    to execute faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Local memory is a software controlled scratchpad memory, and hence its name.
+    The scratchpad allows the kernel to explicitly load items into that memory space,
+    and they exist in local memory until the kernel replaces them, or until the work
+    group ends its execution. To declare a block of local memory, the `__local` keyword
+    is used and you can declare them in the parameters to the kernel call or in the
+    body of the kernel. This memory allocation is shared by all work items in the
+    work group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The host code cannot read from or write to local memory. Only the kernel can
+    access local memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far you have seen how to obtain memory allocation from the OpenCL device
+    and fire the kernel to consume the input data and reading from that processed
+    data subsequently for verification. What you are going to experience in the following
+    paragraphs might hurt your head a little, but have faith in yourself, and I'm
+    sure we can get this through.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The complete working kernel is presented as follows from `Ch5/histogram/histogram.cl`,
+    and we have littered comments in the code so as to aid you in understanding the
+    motivation behind the constructs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OSX platform, you would run a compile command similar
+    to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can run `make` at the directory `Ch5/histogram`, and you
+    would have a binary executable named `Histogram`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program, simply execute the program, `Histogram`. A sample output
+    on my machine, which is an OS X, is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the host code, we first assign the necessary data structures that we need
+    to implement the histogram. An excerpt from the source `Ch5/histogram/main.c`
+    demonstrates the code that creates a single device queue, with the kernel and
+    your usual suspects. The variables `inputBuffer` and `intermediateBinBuffer` refer
+    to the unbinned array and intermediate bins:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So conceptually, the code splits the input data into chunks of 256 elements
+    and each such chunk would be loaded into device''s local memory, which would be
+    processed by the work items in the work group. The following is an illustration
+    of how it looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now, imagine the kernel is going to execute the code and it needs to know how
+    to fetch the data from the global memory, process it, and store it back to some
+    data store. Since we have chosen to use the local memory as a temporary data store,
+    let's take a look at how local memory can be used to help our algorithm, and finally
+    examine how it's processed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local memory resembles a lot to any other memory in C, hence you need to initialize
+    it to a proper state before you can use it. After this, you need to make sure
+    that proper array indexing rules are obeyed since those one-off errors can crash
+    your program and might hang your OpenCL device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The initialization of the local memory is carried out by the following program
+    statements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, I should caution you to put on your many-core hat now and imagine
+    that 128 threads are executing this kernel. With this understanding, you will
+    realize that the entire local memory is set to zero by simple arithmetic. The
+    important thing to realize by now, if you haven't, is that each work item should
+    not perform any repeated action.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The initialization could have been written in a sequential fashion and it would
+    still work, but it means each work item's initialization would overlap with some
+    other work item's execution. This is, in general, bad since in our case, it would
+    be harmless, but in other cases it means that you could be spending a large amount
+    of time debugging your algorithm. This synchronization applies to all work items
+    in a work group, but doesn't help in synchronizing between work groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we see a statement that we probably have not seen before. This is a form
+    of synchronization or memory barrier. The interesting observation about barriers
+    is that all the work items must reach this statement before being allowed to proceed
+    any further. It's like a starting line for runners in a 100 meter race.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reason for this is that our algorithm's correctness depends on the fact that
+    each element in the local memory must be `0` prior to any work-item wishing to
+    read and write to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You should be aware that you cannot set a value for the local memory greater
+    than what is available on the OpenCL device. In order to determine what is the
+    maximum configured scratchpad memory on your device, you need to employ the API
+    `clGetDeviceInfo` passing in the parameter `CL_DEVICE_LOCAL_MEM_SIZE`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Conceptually, here''s what the previous piece of code is doing—each work item
+    sets all elements to zero in a column-wise fashion and sets the elements collectively
+    as a work group with **128** work items executing it, sweeping from left to right.
+    As each item is a `uchar4` data type, you see that the number of rows is **64**
+    instead of **256**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_05_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Finally, let's attempt to understand how the values are fetched from global
+    memory and stored in the scratchpad.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a work group begins executing, it will reach into global memory and fetch
+    the contents of four values and stores them into a local variable and once that's
+    done, the next four statements are executed by each work item to process each
+    retrieved value using the component selection syntax, that is, `value.s0, value.s1,
+    value.s2, value.s3`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following illustration, provides how a work item can potentially access
+    four rows of data on the scratchpad and update four elements in those rows by
+    incrementing them. The important point to remember is that all elements in the
+    scratchpad must be written before they can be processed, and hence this is the
+    barrier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This type of programming technique where we build intermediate data structures
+    so that we can obtain the eventual data structure is often called **thread-based
+    histograms** in some circles. The technique is often employed when we know what
+    the final data structure looks like and we use the same ADT to solve for smaller
+    portions of data so that we can merge them in the end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '![How it works…](img/4520OT_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: If you analyze the memory access pattern, you will realize that what we have
+    created an **Abstract Data Type** (**ADT**) known as the **hash table** where
+    each row of data in the local memory represents the list of frequencies of the
+    occurrence of a value between 0 and 255.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that understanding, we can come to the final part of solving this problem.
+    Again, imagine that the work group has executed to this point, you have basically
+    a hash table, and you want to merge all those other hash tables held in the local
+    memories of the other work groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve this, we need to basically walk through the hash table, aggregate
+    all the values for each row, and we would have our answer. However, now we only
+    need one thread to perform all this, otherwise all 128 threads executing the *walk*
+    would mean you''re overcounting your values by 128 times! Therefore, to achieve
+    this, we make use of the fact that each work item has a local ID in the work group,
+    and we execute this code by selecting one particular work item only. The following
+    code illustrates this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: There is no particular reason why the first work item is chosen, I guess this
+    is done just by convention, and there's no harm choosing other work items, but
+    the important thing to remember is that there must only be one executing code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we turn our attention back to the host code again, since each intermediate
+    bin has been filled conceptually with its respective value from its respective
+    portions of the large input array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The (slightly) interesting part of the host code is simply walking through
+    the returned data held in `intermediateBins` and aggregating them to `deviceBin`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: And we are done!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Work item synchronization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This section is to introduce you to the concepts of synchronization in OpenCL.
+    Synchronization in OpenCL can be classified into two groups:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Command queue barriers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Memory barriers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The command queue barrier ensures that all previously queued commands to a command
+    queue have finished execution before any following commands queued in the command
+    queue can begin execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The work group barrier performs synchronizations between work items in a work
+    group executing the kernel. All work items in a work group must execute the barrier
+    construct before any are allowed to continue execution beyond the barrier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are two APIs for the command queue barriers and they are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But as of OpenCL 1.2, the following command queue barriers are deprecated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: These four/two APIs in OpenCL 1.2/1.1 respectively, allow us to perform synchronization
+    across the various OpenCL commands, but they do not synchronize the work items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There is no synchronization facility available to synchronize between work groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have not seen any example codes on how to use this, but it is still good
+    to know they exist, if we ever need them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, you can place barriers to work items in a work group that performs reads
+    and writes to/from local memory or global memory. Previously, you read that all
+    work items executing the kernel must execute this function before any are allowed
+    to continue execution beyond the barrier. This type of barrier must be encountered
+    by all work items in a work group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The OpenCL API is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: where flags can be `CLK_LOCAL_MEM_FENCE` or `CLK_GLOBAL_MEM_FENCE`. Be careful
+    where you place the barrier in the kernel code. If the barrier is needed in a
+    conditional statement that is like an `if-then-else` statement, then you must
+    make sure all execution paths by the work items can reach that point in the program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `CLK_LOCAL_MEM_FENCE` barrier will either flush any variables stored in
+    local memory or queue a memory fence to ensure correct ordering of memory operations
+    to local memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `CLK_GLOBAL_MEM_FENCE` barrier function will queue a memory fence to ensure
+    correct ordering of memory operations to global memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another side effect of placing such barriers is that when they're to be placed
+    in loop construct, all work items must execute the barrier for each iteration
+    of the loop before any are allowed to continue execution beyond the barrier. This
+    type of barrier also ensures correct ordering of memory operations to local or
+    global memory.
+  prefs: []
+  type: TYPE_NORMAL

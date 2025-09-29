@@ -1,0 +1,818 @@
+- en: Chapter 5. First-cut Design and Implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Riding on the ingredients of a Cassandra data model that were explained in the
+    previous chapters, now it is time to put them into a working application. We will
+    begin defining what we really want to store and inquire in the data model, setting
+    up the environment, writing the program code, and finally testing the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The application to be built is a Stock Screener Application, which stores the
+    historical stock quotes in a Cassandra database for technical analysis. The application
+    collects the stock quote data from a free source on the Internet and then applies
+    some technical analysis indicators to find out the buy and sell reference signals.
+    A brief and quick introduction of technical analysis is given in order to enable
+    you to easily understand what the application does. Although it is oversimplified
+    in architecture and not complete in features, it does provide a good foundation
+    for further improvement on more advanced features to be made by you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Disclaimer**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It should be assumed that the methods, techniques, or indicators discussed in
+    this book will be profitable and will not result in losses. There is no assurance
+    that the strategies and methods presented will be successful, or that you will
+    become a profitable trader. The past performance and results of any trading system
+    or trading methodology are not necessarily indicative of future results. You should
+    not trade with money that you cannot afford to lose. The examples discussed and
+    presented in this book are for educational purposes only. These are not solicitations
+    of any order to buy or sell. I assume no responsibility for your trading results.
+    No representation is being made that any account will, or is likely to, achieve
+    profits or losses similar to those discussed in this book. There is a very high
+    degree of risk in trading. You are encouraged to consult a certified financial
+    advisor before making any investment or trading decisions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stock Screener Application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will learn some background information of the sample application.
+    Then, we will discuss the data source, the initial data model, and the high-level
+    processing logic of the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An introduction to financial analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A stock screener is a utility program that uses a certain set of criteria to
+    screen a large number of stocks that match your preferences. It is akin to a search
+    engine on stocks but not on websites. The screening criteria might be based on
+    fundamental and/or technical analysis methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Firstly, let us look at what fundamental analysis is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Fundamental analysis**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fundamental analysis involves analyzing a company's historical and present financial
+    statements and health, its management and competitive advantages, and its competitors
+    and markets, in order to assess and calculate the value of a company stock and
+    predict its probable price evolution. The goal is to make financial forecasts
+    and find out the undervalued stock (stock that is cheap, in other words) for buy-and-hold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In contrast, technical analysis is a totally different approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Technical analysis**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical analysis is a stock analysis methodology used to forecast the direction
+    of prices through the study of past market data, primarily price and volume. The
+    fundamental principle of technical analysis is that the market price reflects
+    all the relevant information, so the analysis looks at the history of the trading
+    patterns rather than external drivers such as economic, fundamental, and news
+    events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this book, technical analysis is solely used for the Stock Screener Application.
+    As technical analysis focuses on price actions, the Stock Screener Application
+    requires stock price data as its input and then it applies technical analysis
+    techniques to determine whether the stock fulfills the buy or sell conditions.
+    Whenever such a condition is fulfilled, we can say that a trading signal is triggered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The conceptual design of the Stock Screener Application is shown in the following
+    figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![An introduction to financial analysis](img/8884OS_05_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We will go through the preceding figure from the left to the right. **Data Feed
+    Provider** is the source of stock quote data that is collected from a free Data
+    Feed Provider on the Internet, such as Yahoo! Finance. It should be noted that
+    Yahoo! Finance provides free-of-charge **end-of-day** (**EOD**) stock quote data,
+    thus providing the daily stock quote. If you want the **Stock Screener** to produce
+    intraday signals, you need to look for other Data Feed Providers who typically
+    have a wide range of paid service offers available. **Historical Data** is a repository
+    to store the historical stock quote data. **Stock Screener** is the application
+    to be developed in this chapter. Lastly, **Alert List** is a list of trading signals
+    found by the **Stock Screener**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we proceed to the high-level design of the **Stock Screener**, I would
+    like to highlight the reasons of establishing the **Historical Data** repository.
+    There are three major reasons. First, it can save tremendous network bandwidth
+    from repeatedly downloading historical stock quote data from the Data Feed Provider
+    (actually, Yahoo! Finance provides as many as 10 years of historical price data.)
+    Second, it serves as a canonical data model so that the **Stock Screener** does
+    not need to cater for the different data formats of different Data Feed Providers.
+    Finally, the **Stock Screener** can still perform technical analysis on the historical
+    data even though it is disconnected from the Internet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stock quote data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Technical analysis only focuses on price action. So what is price action? Price
+    action is simply the movement of a stock's price. It is encompassed in technical
+    and chart pattern analysis in an attempt to discover the order in the seemingly
+    random movement of price.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On a single day, the price action of a stock can be summarized by four important
+    prices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Open price**: This is the starting price for that day'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**High price**: This is the highest price for that day'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Low price**: This is the lowest price for that day'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Close price**: This is the closing price for that day'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These four prices are usually abbreviated as OHLC. In addition to OHLC, another
+    measure of how much of a given stock has been traded in a given period of time
+    is known as Volume. For a complete trading day, the volume is called daily volume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only five attributes such as **open price**, **high price**, **low price**,
+    **close price**, and **volume** (**OHLCV**), provide all the necessary and sufficient
+    data for technical analysis of stock. Now we know the input for technical analysis,
+    but how do we get them?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Many websites provide free-of-charge stock quote data that are very easy to
+    obtain, and are especially suitable for amateur or retail traders. The following
+    websites are just a few of them listed for your reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Yahoo! Finance: [http://finance.yahoo.com](http://finance.yahoo.com)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Google Finance: [https://www.google.com/finance](https://www.google.com/finance)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'EODData: [http://eoddata.com](http://eoddata.com)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'However, there is a caveat that stock quote data might have errors, for example,
+    incorrect high and low prices. In this book, I selected Yahoo! Finance as the
+    prime Data Feed Provider. The following screenshot is a sample of the historical
+    prices of a stock called *GS*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Stock quote data](img/8884OS_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As you scroll to the bottom of the web page, you will see a link *Download
+    to Spreadsheet*. When you click on this link, the historical stock quote data
+    can be downloaded as a **Comma Separated Values** (**CSV**) file. An excerpt of
+    the CSV file is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Stock quote data](img/8884OS_05_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Of course, we can manually download the historical stock quote data from the
+    website. Nonetheless, it becomes impractical when we want to download the data
+    of many different stocks on a daily basis. Thus, we will develop a program to
+    automatically collect the data feed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initial data model
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We now know that a single daily price action consists of a stock symbol, trading
+    date, open price, high price, low price, close price, and volume. Obviously, a
+    sequence of price action measured typically at successive trading days is of a
+    time-series nature and Cassandra is very suitable for storing time-series type
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As mentioned previously, it is beneficial to store the collected stock quote
+    data locally in a repository. Therefore, we will implement the repository as a
+    table in a Cassandra database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use CQL to define a table called `quote` to store the historical prices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The column data types and names are self-explanatory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One useful technique of designing a Cassandra data model is to imagine the
+    visual representation of the internal storage of a row. The following figure is
+    such an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Initial data model](img/8884OS_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Based on the design of the primary key, the row key is `symbol` and the clustering
+    column is `price_time`. It is expected that a row will become a wide row, as more
+    historical stock quote data gets added to it. Without the internal storage picture,
+    this might not be easy to spot in the initial data model design stage. For the
+    time being, we just take note of the potential wide row problem and leave it as
+    is (one possible solution is the date bucket pattern).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing flow
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following figure shows the processing flow of the **Stock Screener**, which
+    elaborates the conceptual design with a more detailed sequence of steps. Each
+    of the building blocks is explained starting first from the top, as shown in the
+    following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Processing flow](img/8884OS_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: '**Data Feed Provider** consists of **Data Feed**, **Data Feed Adapter**, and
+    **Data Mapper and Archiver**. Yahoo! Finance is chosen as the data feed. **Data
+    Feed Adapter** is used to deal with the different connectivity and interfacing
+    methods if we switch to other Data Feed Providers. **Data Mapper and Archiver**
+    caters for the different stock quote data formats and standardizes them to the
+    corresponding columns of the `quote` table.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `quote` table is the **Historical Data** repository and has been explained
+    previously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now turn our focus to the core **Stock Screener**. The heart of the **Stock
+    Screener** is the **Stock Screener Engine** that uses the **Screening Rule** on
+    the **Historical Data**, which is filtered by the **Data Scoper**. The **Screen
+    Rule** is used by one or more **Technical Analysis Signals** so that the **Stock
+    Screener Engine** produces an alert if the conditions of the **Technical Analysis
+    Signals** are met.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The alert generated by the **Stock Screener Engine** is presented in the form
+    of an **Alert List**, which can be kept as records or distributed through other
+    means.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Basically, the **Data Feed Provider** and the **Stock Screener** need not run
+    in the same process. They work in an asynchronous mode. This means that the **Data
+    Feed Provider** can collect, map, and archive the historical stock quote data
+    into the **Historical Data** repository, whereas the **Stock Screener** can analyze
+    and produce alerts independently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have come up with a high-level design of the application, the next thing
+    to do is conceivably see how it can be implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: System design
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will select the appropriate software for various system
+    components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The operating system
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When considering the implementation, the first fundamental choice is the operating
+    system. The single most important constraint is that it must be supported by Cassandra.
+    For this book, I have selected Ubuntu 14.04 LTS 64-bit Version, which can be obtained
+    at the official Ubuntu website, [http://www.ubuntu.com/](http://www.ubuntu.com/).
+    You should be able to painlessly set up your Linux box by following the verbose
+    installation instructions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, it is entirely up to you to use any other operating systems, supported
+    by Cassandra, such as Microsoft Windows and Mac OS X. Please follow the respective
+    operating system installation instructions to set up your machine. I have already
+    considered the portability of the Stock Screener. As you will see in the subsequent
+    sections, the Stock Screener Application is designed and developed in order to
+    be compatible with a great number of operating systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java Runtime Environment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As Cassandra is Java-based, a **Java Runtime Environment** (**JRE**) is required
+    as a prerequisite. I have used Oracle Java SE Runtime Environment 7 64-bit Version
+    1.7.0_65\. It is provided at the following URL:[http://www.oracle.com/technetwork/java/javase/downloads/jre7-downloads-1880261.html](http://www.oracle.com/technetwork/java/javase/downloads/jre7-downloads-1880261.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, I have downloaded the Linux x64 binary and followed the instructions
+    at [http://www.datastax.com/documentation/cassandra/2.0/cassandra/install/installJreDeb.html](http://www.datastax.com/documentation/cassandra/2.0/cassandra/install/installJreDeb.html)
+    to properly set up the JRE.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the time of writing, Java SE has been updated to Version 8\. However, I have
+    not tested JRE 8 and DataStax recommends JRE 7 for Cassandra 2.0 too. Therefore,
+    I will stick to JRE 7 in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Java Native Access
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you want to deploy Cassandra in production use on Linux platforms, **Java
+    Native Access** (**JNA**) is required to improve Cassandra's memory usage. When
+    installed and configured, Linux does not swap the **Java virtual machine** (**JVM**),
+    and thus avoids any performance related issues. This is recommended as a best
+    practice even when Cassandra, which is to be installed, is for non-production
+    use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To install JNA on Ubuntu, simply use Aptitude Package Manager with the following
+    command in a terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Cassandra version
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: I used Cassandra Version 2.0.9, which is distributed by DataStax Community,
+    on Debian or Ubuntu. The installation steps are well documented at [http://www.datastax.com/documentation/getting_started/doc/getting_started/gettingStartedDeb_t.html](http://www.datastax.com/documentation/getting_started/doc/getting_started/gettingStartedDeb_t.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The installation process typically takes several minutes depending on your Internet
+    bandwidth and the performance of your machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**DataStax**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: DataStax is a computer software company based in Santa Clara, California which
+    offers commercial enterprise grade for Apache Cassandra in its DataStax Enterprise
+    product. It also provides tremendous support for the Apache Cassandra community.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programming language
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It is now time to turn our attention to the programming language for the implementation
+    of the Stock Screener Application. For this book, I have chosen Python. Python
+    is a high-level programming language designed for speed of development. It is
+    open source, free, and cross-platform. It possesses a wealthy set of libraries
+    for almost every popular algorithm you can imagine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You need not be afraid of learning Python if you are not familiar with it. Python
+    is designed such that it is very easy to learn when compared to other programming
+    languages such as C++. Coding a Python program is pretty much like writing pseudocode
+    that improves the speed of development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, there are many renowned Python libraries used for data analysis,
+    for example, NumPy, SciPy, pandas, scikit-learn, and matplotlib. You can make
+    use of them to quickly build a full-blown application with all the bells and whistles.
+    For the Stock Screener Application, you will use NumPy and pandas extensively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When it comes to high performance, Python can also utilize Cython, which is
+    an optimizing static complier for Python programs to run as fast as native C or
+    C++ programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The latest major version of Python is Python 3\. However, there are still many
+    programs running that are written in Python 2\. This is caused by the breaking
+    backward compatibility of Python 3 that makes the migration of so many libraries
+    written in Python 2 to Python 3, a very long way to go. Hence, the coexistence
+    of Python 2 and Python 3 is expected for quite a long time in future. For this
+    book, Python 2.7.x is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following steps are used to install Python 2.7 in Ubuntu using a terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the installation is complete, type the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: You should see the version string returned by Python, which tells you that the
+    installation has been successful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One problem that many Python beginners face is the cumbersome installation of
+    the various library packages. To rectify this problem, I suggest that the reader
+    downloads the Anaconda distribution. Anaconda is completely free and includes
+    almost 200 of the most popular Python packages for Science, Mathematics, engineering,
+    and data analysis. Although it is rather bulky in size, it frees you from the
+    Python package hustle. Anaconda can be downloaded at [http://continuum.io/downloads](http://continuum.io/downloads),
+    where you can select the appropriate versions of Python and the operating system.
+    It is straightforward to install Anaconda by following the installation instructions,
+    so I will not detail the steps here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cassandra driver
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The last item of the system environment is the driver software for Python to
+    connect to a Cassandra database. In fact, there are several choices out there,
+    for example, pycassa, Cassandra driver, and Thrift. I have chosen Python Driver
+    2.0 for Apache Cassandra distributed by DataStax. It exclusively supports CQL
+    3 and Cassandra's new binary protocol, which was introduced in Version 1.2\. More
+    detailed information can be found at [http://www.datastax.com/documentation/developer/python-driver/2.0/common/drivers/introduction/introArchOverview_c.html](http://www.datastax.com/documentation/developer/python-driver/2.0/common/drivers/introduction/introArchOverview_c.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The driver can be easily installed with pip in a Ubuntu terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**pip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: pip is a command-line package management system used to install and manage Python
+    library packages. Its project page can be found at Github, [https://github.com/pypa/pip](https://github.com/pypa/pip).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The integrated development environment
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Spyder is an open source, cross-platform **integrated development environment**
+    (**IDE**), usually used for scientific programming in Python. It is automatically
+    installed by Anaconda and integrates NumPy, SciPy, matplotlib, IPython, and other
+    open source software. It is also my favorite Python development environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many other good and popular Python IDEs, such as IPython and Eclipse.
+    The code in this book is friendly to these IDEs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The system overview
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Alright, we have gone through the major system components of the Stock Screener
+    Application and decided their implementation. The following figure depicts the
+    system overview for the implementation of the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The system overview](img/8884OS_05_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: It is worth noting that the system will be developed on a single Ubuntu machine
+    first and then on a single node Cassandra cluster (In [Chapter 7](ch07.html "Chapter 7. Deployment
+    and Monitoring"), *Deployment and Monitoring*, we will expand the cluster to a
+    two-node cluster). It serves as a limit to the superb clustering capabilities
+    of Cassandra. However, from the software development perspective, the most important
+    thing is to completely realize the required functionalities rather than splitting
+    the significant efforts on the system or infrastructure components, which are
+    of second priority.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code design and development
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We are now entering the development stage. I will walk you through the coding
+    of the application building blocks step-by-step. Logically, two core modules will
+    be built, namely, Data Feed Provider and Stock Screener. First, we will build
+    the Data Feed Provider.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data Feed Provider
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Data Feed Provider achieves the following three tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collecting the historical stock quote data from Yahoo! Finance.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Transforming the received data into a standardized format.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Saving the standardized data into the Cassandra database.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Python has a well-known data analysis library called pandas. It is an open source
+    library providing high-performance, easy-to-use data structures, and data analysis
+    tools, especially, for time-series type of data. You can go to [http://pandas.pydata.org/](http://pandas.pydata.org/)
+    for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collecting stock quote
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'pandas offers a `DataReader` function in its `pandas.io.data` package. `DataReader`
+    extracts financial data from various Internet sources into a data structure known
+    as `DataFrame`. Yahoo! Finance is one of the supported Internet sources, making
+    the collection of the historical stock quote data a piece of cake. Refer to the
+    following Python code, `cha` `pter05_001.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: A brief explanation is required. pandas offers a very handy data structure called
+    `DataFrame`, which is a two-dimensional labeled data structure with columns of
+    potentially different types. You can think of it as a spreadsheet or SQL table.
+    It is generally the most commonly used pandas object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is a screenshot demonstrating the use of Spyder to write and
+    test `chapter05_001.py` code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Collecting stock quote](img/8884OS_05_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The left-hand side of the Spyder IDE is the place where you write Python code.
+    The middle panel on the right-hand side is the **IPython console** that runs the
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transforming data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Along with the data in the `DataFrame`, you can optionally pass index (row labels)
+    and columns (column labels). The row and column labels can be accessed respectively,
+    by accessing the index and columns attributes. For example, you can revisit the
+    screenshot of `table.csv` and see that the column names returned by Yahoo! Finance
+    are **Date**, **Open**, **High**, **Low**, **Close**, **Volume**, and **Adj Close**,
+    respectively. `DataReader` uses **Date** as the index of the returned `DataFrame`.
+    The remaining column names become the column labels of the `DataFrame`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last for-loop in `chapter05_001.py` is also worth some remarks. `DataFrame`
+    has a function, `iterrows()`, for iterating over its rows as (index, columns)
+    pairs. Therefore, the for-loop uses `iterrows()` to iterate the daily stock quotes
+    and we simply print out the index (that is converted to a string by the `date()`
+    function), and the **Open**, **High**, **Low**, **Close**, **Volume** columns
+    by passing the respective column labels to the row. **Adj Close** is a close price
+    with adjustments of stock split, merge, and dividend. We do not use this, as we
+    want to focus on pure prices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Please be aware that stock quote data from the different sources might have
+    different formats and, needless to say, different column names. Therefore, we
+    need to take care of such a subtle difference, when mapping them to our standardized
+    data model. `DataFrame` provides a very handy way to retrieve the data by column
+    names and a few useful functions to manipulate the index and columns. We can make
+    use of them to standardize the data format, as shown in `chapter05_002.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Storing data in Cassandra
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Before storing the retrieved data in Cassandra, we need to create the keyspace
+    and table in the Cassandra database. We will create a keyspace called `packtcdma`
+    and a table called `quote` in `chapter05_003.py` to hold the Historical Data,
+    as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The comments of the code are sufficient to explain what it is doing. Now, we
+    have the Historical Data repository ready and what follows is to store the received
+    data into it. This is exactly the purpose of `chapter05_004.py` in which a Python
+    function is created to insert the data, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although `chapter05_004.py` contains less than ten lines of code, it is rather
+    complicated and needs some explanation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can create a function in Python using the keyword `def`. This must be followed
+    by the function name and the parenthesized list of formal parameters. The code
+    that form the body of the function starts in the next line, indented by a tab.
+    Thus, in `chapter05_004.py`, the function name is `insert_quote()` with three
+    parameters, namely, `ss`, `sym`, and `d`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Indentation in Python**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Python, leading whitespace (spaces and tabs) at the beginning of a logical
+    line is used to compute the indentation level of the line, which in turn is used
+    to determine the grouping of statements. Be very careful of this. Most of the
+    Python IDE has features to check against the indentations. The article on the
+    myths about indentation of Python is worth reading, which is available at [http://www.secnetix.de/olli/Python/block_indentation.hawk](http://www.secnetix.de/olli/Python/block_indentation.hawk).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second interesting thing is the `prepare()` function. It is used to prepare
+    CQL statements that are parsed by Cassandra and then saved for later use. When
+    the driver uses a prepared statement, it only needs to send the values of parameters
+    to bind. This lowers network traffic and CPU utilization as a result of the avoidance
+    of re-parsing the statement each time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The placeholders for prepared statements are `?` characters so that the parameters
+    are passed in sequence. This method is called positional parameter passing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last segment of code is a for-loop that iterates through the `DataFrame`
+    and inserts each row into the quote table. We also use the `Decimal()` function
+    to cast the string into numeric value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting them all together
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: All pieces of Python code can be combined to make the Data Feed Provider. To
+    make the code cleaner, the code fragment for the collection of stock quote is
+    encapsulated in a function called `collect_data()` and that for data transformation
+    in `transform_yahoo()` function. The complete program, `chapter05_` `005.py`,
+    is listed as follows:.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Stock Screener
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Stock Screener retrieves historical data from the Cassandra database and
+    applies technical analysis techniques to produce alerts. It has four components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieve historical data over a specified period
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Program a technical analysis indicator for time-series data
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Apply the screening rule to the historical data
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Produce alert signals
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Data Scoper
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To utilize technical analysis techniques, a sufficient optimal number of stock
+    quote data is required for calculation. We do not need to use all the stored data,
+    and therefore a subset of data should be retrieved for processing. The following
+    code, `chapte05_006.py`, retrieves the historical data from the table quote within
+    a specified period:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first portion of the function should be easy to understand. It executes
+    a `select_cql` query for a particular stock symbol over a specified date period.
+    The clustering column, `price_time`, makes range query possible here. The query
+    result set is returned and used to fill two NumPy arrays, `idx` for index, and
+    `cols` for columns. The `cols` array is then reshaped as a two-dimensional array
+    with rows of prices and volume for each day. Finally, both `idx` and `cols` arrays
+    are used to create a `DataFrame` to return `df`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Time-series data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As a simple illustration, we use a 10-day **Simple Moving Average** (**SMA**)
+    as the technical analysis signal for stock screening. pandas provides a rich set
+    of functions to work with time-series data. The SMA can be easily computed by
+    the `rolling_mean()` function, as shown in `chapter05_007.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The screening rule
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'When SMA is calculated, we can apply a screening rule in order to look for
+    trading signals. A very simple rule is adopted: a buy-and-hold signal is generated
+    whenever a trading day whose close price is higher than 10-day SMA. In Python,
+    it is just a one liner by virtue of pandas power. Amazing! Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Stock Screener engine
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Until now, we coded the components of the Stock Screener. We now combine them
+    together to generate the Alert List, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Test run
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: An End-to-End Test consists of two parts. First, we test and verify `chapter05_005.py`,
+    which is the complete Data Feed Provider module. Then run `chapter05_005.py` in
+    Spyder. Historical stock quote data should be stored in the Cassandra database.
+    Then run and verify the Stock Screener module, `chapter05_009.py`, also in Spyder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A sample screen of the test run is shown in the following screenshot. The Alert
+    List should have seven buy-and-hold trading signals:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Test run](img/8884OS_05_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter was rather jam-packed. We designed a simple stock screening application
+    that collects stock quote data from Yahoo! Finance, which uses Cassandra as its
+    repository. The system environment of the application was also introduced with
+    brief setup instructions. Then we developed the application in Python with a step-by-step
+    explanation. Despite of using one Cassandra table, the basic row manipulation
+    logic has been demonstrated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will continue enhancing the Stock Screener Application
+    to collect stock quote data of a bunch of stocks and optimize the application
+    with several refinements.
+  prefs: []
+  type: TYPE_NORMAL

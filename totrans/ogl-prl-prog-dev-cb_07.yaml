@@ -1,0 +1,718 @@
+- en: Chapter 7. Developing the Matrix Multiplication with OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding matrix multiplication
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenCL implementation of the matrix multiplication
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Faster OpenCL implementation of the matrix multiplication by thread coarsening
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Faster OpenCL implementation of the matrix multiplication through register tiling
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reducing global memory via shared memory data prefetching in matrix multiplication
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to take a look at the problem of multiplying
+    two matrices to produce another matrix. This problem is also known as the matrix
+    multiplication and its applications range from mathematics, finance, physics,
+    and it is a popular system for solving linear equations. For illustration purposes,
+    we present a typical use case for solving linear equations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Introduction](img/4520OT_07_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: These equations can be modeled as ![Introduction](img/4520OT_07_02.jpg), where
+    the L.H.S of the equation consists of a 2 x 2 matrix which is multiplied by a
+    2 x 1 matrix (often called a vector, and they can be row vectors or column vectors)
+    which is equal to the vector on the R.H.S. Considering the fact that matrices
+    can have any order of rows and columns, mathematicians invented the notation,
+    ![Introduction](img/4520OT_07_03.jpg) where to solve this, we have to determine
+    ![Introduction](img/4520OT_07_04.jpg).Here, as we can see that the inverse of
+    the matrix needs to be known. At this point, that's all we like to say about the
+    wonderful world of matrices, lest we fall into the rabbit hole!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You should be aware that only square matrices have inverses, and even among
+    such matrices the inverses are not guaranteed to be present. We won't be covering
+    computing inverses in this chapter or book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding matrix multiplication
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The product C of two matrices A and B is defined as ![Understanding matrix
+    multiplication](img/4520OT_07_05.jpg), where j is the sum of all possible values
+    of i and k. There is an implied summation over the indices i, j, and k. The dimensions
+    of the matrix C is: ![Understanding matrix multiplication](img/4520OT_07_06.jpg),
+    where ![Understanding matrix multiplication](img/4520OT_07_07.jpg) denotes a matrix
+    with ![Understanding matrix multiplication](img/4520OT_07_08.jpg) rows and ![Understanding
+    matrix multiplication](img/4520OT_07_09.jpg) columns and when we write out the
+    product explicitly, it looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding matrix multiplication](img/4520OT_07_10.jpg)![Understanding
+    matrix multiplication](img/4520OT_07_11.jpg)![Understanding matrix multiplication](img/4520OT_07_12.jpg)![Understanding
+    matrix multiplication](img/4520OT_07_13.jpg)![Understanding matrix multiplication](img/4520OT_07_14.jpg)![Understanding
+    matrix multiplication](img/4520OT_07_15.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Another property of matrix multiplication is that multiplication is associative
+    and distributive over addition, but they are however not commutative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Two matrices A and B are considered commutative if they are diagonal matrices
+    and are of the same dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Knowing these properties will help us in formulating our initial algorithm
+    stemming from this formula: *c[ik]* = *a[ij]**b[jk]*. The commutative property
+    basically informs us that the order of multiplication between matrices A and B
+    matters, while the associative property allows us the flexibility to explore what
+    happens when two matrices A and B are too huge to fit into available memory on
+    the OpenCL device and we need to partition the matrix data across multiple devices.
+    The following diagram illustrates what happens when a row of matrix A and a column
+    of matrix B is read and its aggregated result is written into the appropriate
+    location in the output matrix, C:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding matrix multiplication](img/4520OT_07_17.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At this point, we are in pretty good shape to take a stab at matrix multiplication.
+    As before, we begin with an implementation in C/C++, which is a direct translation
+    of the formula and from there we will develop a better intuition on how to import
+    it to OpenCL and apply suitable optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the rest of this chapter, we are going to craft our algorithm so that it
+    runs on the GPU on your desktop/laptop. The reason for this is because the GPU
+    has more computation units than a CPU, and GPUs are often equipped with other
+    hardware components that allows the OpenCL to take advantage of that hardware
+    (including local data stores, out of order execution units, shared data store,
+    and so on), which often allows an enormous number of threads to execute in. Current
+    CPU processors don't implement OpenCL shared memory, so using GPUs is probably
+    the best option!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Get a GPU that supports OpenCL 1.1 and the preceding information is good enough
+    for these experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: By now, you should be familiar with creating the necessary data structures to
+    represent our three matrices in question (let's call them A, B, and C). Coincidentally,
+    they happen to be square matrices, but this does not affect our understanding
+    in any way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we examine this problem from the previous section, we understand that
+    we want to basically iterate through both matrices in the following fashion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pick a row from matrix A.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Pick a column from matrix B.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Multiply each element from the picked row with the corresponding element from
+    the picked column.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'From this description, we can begin to think of various implementation methods
+    and one such method could be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create two in-memory data structures for A and B, say `TmpA` and `TmpB`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Loop through A and pick a row for which each element to deposit into its corresponding
+    position in `TmpA`, do the same for a picked column and deposit into `TmpB`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Loop through `TmpA` and `TmpB` and perform the matrix multiplication.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In pseudo code, it looks something like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Another implementation is very similar to this one with the exception that we
+    use standard C/C++ array indexing techniques to reference the respective row(s)
+    and column(s) and we present an implementation in the following sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are various ways of implementing matrix multiplication algorithm in C/C++
+    as we've discussed previously. And it seems that there isn't a best design to
+    adopt. Personally, I've always favored a readable design versus a convoluted design.
+    However, it's necessary to write high performance code from time to time, so that
+    you can squeeze all the power that the programming language or hardware can provide.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: At this point, you may or may not have developed the necessary intuition to
+    design your algorithms, but one way is to continuously practice using different
+    techniques and measure each implementation with some benchmarks, and never clump
+    all the optimizations in one algorithm unless you're confident.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have some inkling as to what is meant by matrix multiplication,
+    it is definitely time for us to start exploring what the algorithm looks like
+    after being translated into its sequential form. The following is an example of
+    the matrix multiplication program in sequential form (the code is executed by
+    only one thread):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: When you examine this code, you will notice that there are three loop structures
+    and we use regular C/C++ array indexing techniques to reference each subsequent
+    element from their respective rows and columns. Take some time now to convince
+    that we are actually computing the matrix multiplication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As before, we put on our parallel developer hat and try to see how we can provide
+    a parallel OpenCL form of the equivalent program. Again, I'm naturally drawn to
+    the loop structures and we have three of them!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We noticed that as we iterate through the matrices A and B, the innermost loop
+    is the code block that is performing all the heavy lifting for `statement 1`,
+    `statement 2`, and `statement 3`. These statements will represent the core of
+    our OpenCL kernel and let's go and take a look at how we can map it to OpenCL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: OpenCL implementation of the matrix multiplication
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have spent a good amount of time understanding how matrix multiplication
+    works and we've looked at how it looks in its sequential form. Now we're going
+    to attempt to map this to OpenCL in the most direct way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The implementation technique here makes use of the fact that we create 2D thread
+    blocks where each thread/work item in each dimension will access their respective
+    elements in the row/column dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this recipe, we are going to use two matrices of dimensions 1024 x 1024 (we
+    call A and B), and we'll multiply these two matrices together to produce a third
+    matrix of 1024 x 1024, we call C.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You may wish to refresh your basic matrix theory at this point to convince yourself
+    that this is the case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We construct the familiar data structures in our host code and fill them with
+    random values. The host code in `Ch7/matrix_multiplication_01/MatrixMultiplication.c`
+    looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we set up the OpenCL command queue to enable profiling because we want
+    to keep looking at the effects of the subsequent optimizations that we are going
+    to apply. It's definitely very important to establish a reference point to which
+    your measurements can be compared against.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recall that OpenCL command queues can be created such that commands are executed
+    out-of-order. In this book, all command queues are created in-order so that they
+    execute in program order also known as program reading order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We present our first attempt to provide you an OpenCL version of the sequential
+    matrix multiplication algorithm. The kernel can be found in `Ch7/matrix_multiplication_01/simple_mm_mult.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Given the preceding OpenCL kernel code, we need to build an executable so that
+    it can execute on your platform. As before, the compilation will look familiar
+    to you. On my setup with an Intel Core i7 CPU & AMD HD6870x2 GPU running Ubuntu
+    12.04 LTS, the compilation looks like this and it''ll create an executable called
+    `MatrixMultiplication` into the directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, you should have an executable deposited in that directory and
+    all you need to do now is to run the program, simply execute the `MatrixMultiplication`
+    program in the directory and you should have noticed an output as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We discussed how the matrices were initialized and the next thing is to realize
+    the execution model where each work item in each dimension would work on each
+    element. And to accomplish this, we have to ensure that the invocation to execute
+    the OpenCL kernel code doesn''t dictate the size of the thread block:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: We achieve this by passing in the `NULL` value to the placeholder meant for
+    dictating work group size in the `clEnqueueNDRangeKernel` API. Next, we set the
+    values of the global work items to be equivalent to that of width of matrix B
+    and height of A represented by the `widthB` and `heightA` variables respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following diagram serves to illustrate what the execution would have looked
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_07_19.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: An astute reader would probably start guessing that this isn't the best way
+    to conduct this business and you're right! We are going to take a deeper look
+    at how we can make this work better soon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Faster OpenCL implementation of the matrix multiplication by thread coarsening
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, let''s try to make this beast run faster by applying a technique
+    in parallel programming: thread coarsening. This is important because when you
+    have a work item accessing an element, and then you have large matrices you could
+    potentially have millions of work items running! In general, that''s not a good
+    thing because many devices today cannot support millions of work items in *n*
+    dimensions unless it''s a supercomputer. But there are often clever ways to reduce
+    the amount of work items needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The general technique here is to explore ways in which we can merge threads
+    so that each thread now calculates multiple elements. When we reexamine the preceding
+    code, we might wonder if we could do with fewer threads and have them compute
+    more elements, and indeed we can.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The strategy we have adopted will basically have one work item updating an entire
+    row in the matrix C while walking through matrices A and B. At this time, we need
+    not even explore the use of atomic functions in OpenCL, since that's an aspect
+    we should try to delay exploring as long as possible. The main reason for not
+    exploring the use of atomics is simply because their execution time is too long
+    and it isn't mature of utilizing the capabilities of the OpenCL devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This OpenCL kernel is revised based on the concept of thread coarsening and
+    can be found in `Ch7/matrix_multiplication_02/mmult.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have taken a good look at the OpenCL kernel, we need to build an
+    executable form. As before, the compilation will look familiar to you. On my setup
+    with an Intel Core i7 CPU & AMD HD6870x2 GPU running Ubuntu 12.04 LTS the compilation
+    looks as follows, and it''ll create an executable called `MatrixMultiplication`
+    into the directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, an executable should have been deposited in the directory and
+    to execute it, simply execute the program `MatrixMultiplication` in the directory
+    and you should have noticed an output as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now if you were to compare the results with the previous one you would notice
+    that it is running faster!
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The hard part of this is being able to recognize when redundant work is being
+    applied. But in our case, it won't take too much effort to recognize that we are
+    actually using too many threads. How so you may ask? The clue lies in the fact
+    that the original matrix multiplication algorithm ran with one executing thread,
+    so the fact that we are using more than one work item does imply that there's
+    more we can do to improve it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hence when we look back at the algorithm, we discover a way to make them run
+    faster by getting more creative in the way we obtain those values using one work
+    item. At this point, you should convince yourself that the OpenCL kernel we just
+    looked at is indeed referencing the data values from the matrices A and B as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve what we did, we made some changes to the code in `Ch7/matrix_multiplication_02/MatrixMultiplication.c`
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The problem size is known to us, which is to perform matrix multiplication
+    for matrices of dimensions 1024 x 1024 and the reason why I chose the work group
+    size to be 256 is because my GPU has four compute units and you can discover this
+    by passing `CL_DEVICE_MAX_COMPUTE_UNITS` to `clGetDeviceInfo`. The following diagram
+    illustrates what it is like with thread coarsening:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_07_20.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: When you are able to reduce redundant work through thread coarsening, the kernel
+    would now execute faster and scale better because now more processors can execute.
+    It may seem counter intuitive because it defies common sense, since more threads
+    executing the kernel means that it should execute faster. Well, that's the simple
+    picture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What happens under the hood is more complicated and it starts from the fact
+    that each GPU has a number of processors and each of those processors would execute
+    the kernel. For a GPU to be able to execute at full capacity, naturally its processors
+    must be filled with data in the data cache and instructions should be ready to
+    be fired and execute the OpenCL kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However due to poor data spatial and temporal locality, the data caches perform
+    suboptimal and that causes stalls in the instruction pipeline, which translates
+    to delayed execution. Another problem is also related to the fact that memory
+    access patterns could be erratic or non-coalesced which translates to cache misses
+    and possibly memory ejection. This finally causes more delays.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coming back to the problem, there is another solution for optimizing the kernel
+    and that's by reusing the hardware registers of the work items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Faster OpenCL implementation of the matrix multiplication through register tiling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Register tiling is another technique we can apply to our matrix multiplication
+    algorithm. What it basically means is to explore opportunities to reuse the hardware
+    registers. In our case, what it means is that we need to examine the kernel code
+    and find opportunities to reuse registers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we need to put on our hardcore C developer hat (this person needs to think
+    on the level of the processor core, how data moves on buses, memory loads and
+    stores, and so on). And once your mind is sensitive enough to this level, then
+    things become better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall the kernel code in the previous section and we would notice after careful
+    scrutiny that the `A[i * heightA + k]` statement is always executed in the loop
+    structure, and this causes a lot of memory traffic to transpire because data needs
+    to be loaded from device memory into the registers of the device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To reduce the global memory traffic caused by the `A[i * heightA + k]` statement,
+    we can pull that statement out of the loop structure and create a thread local
+    memory structure that is visible only to the work item executing thread, and then
+    we can reuse that prefetched data in the subsequent computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This OpenCL kernel code is found in `Ch7/matrix_multiplication_03/mmult.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have taken a good look at the OpenCL kernel, we need to build an
+    executable form, where we can execute. As before, the compilation will look familiar
+    to you. On my setup with an Intel Core i7 CPU & AMD HD6870x2 GPU running Ubuntu
+    12.04 LTS, the compilation looks like this and it''ll create an executable called
+    `MatrixMultiplication` into the directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, the executable should be available to you in the directory.
+    To run the program, simply execute the program in the `MatrixMultiplication` directory
+    and you should notice an output as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now if you were to compare the results with the previous one you would notice
+    that it is running faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The idea originated from a technique found in high performance computing and
+    some folks like to call it scalar replacement. This is the form we have applied
+    in this section. Let's take some time to understand this with a simple algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s say we have the following algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we unroll the loop so that it looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When we will carefully observe this code, we will notice that the `statement
+    1`, `statement 2`, and `statement 3` have something in common and that is this
+    code, `A[i1,i2]`. In computer science terms, we noticed that there is one store
+    to memory and two loads from memory to registers. In scalar replacement, we replace
+    `A[i1,i2]` with a variable, which we call `X` for now. The code now looks as follows
+    after scalar replacement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the replacements have been done consistently and the algorithm is still
+    working as it should, we are good for now. Have a cup of tea!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's have a look at what we did. We have replaced array references (which are
+    in fact memory references) with scalars, and how it helps is that we have actually
+    reduced memory traffic by processing those items in register memory. Considering
+    that memory speed is significantly much slower than register read-write speed,
+    this revised algorithm is in much better form.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Loop unrolling is often used to explode the loop, so that we can identify expressions
+    or statements that can possibly be repeating and allowing scalar replacement to
+    extract those expressions/statements into thread private register memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scalar replacement is actually more complicated in actual practice, but the
+    presentation here serves its purpose in illustrating the general concept.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another thing we like to share with you is to optimize memory usage for the
+    work items and we've caught several glimpses of it before in previous chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reducing global memory via shared memory data prefetching in matrix multiplication
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our revised matrix multiplication algorithm appears to be pretty good but it
+    isn't quite there yet. The algorithm is still making a lot of references to matrix
+    B over global memory and we can actually reduce this traffic by prefetching the
+    data. You may not have noticed, but the concept of prefetching, which is to keep
+    the cache "hot" (an idea borrowed from the CPU). A CPU typically has a good size
+    of data and instruction caches (which are really hardware registers), so that
+    the processor can take advantage of the spatial and temporal localities of the
+    data. How does this concept map into other OpenCL devices, for example, the GPU?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every GPU that is an OpenCL compliant has a small amount of memory designed
+    for this purpose and their sizes typically are 32 KB to 64 KB. If you wish to
+    determine the exact amount of available high speed memory, simply pass the `CL_DEVICE_LOCAL_MEM_SIZE`
+    variable to `clGetDeviceInfo` for a device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In order for us to be able to reduce references to global memory, we need to
+    make changes in our code so that we load the data we need. Sieving through the
+    code again, we see that there is indeed one such opportunity and it is the following
+    statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Concentrating on this loop, we noticed that matrix B always gets loaded and
+    its values are always reused by all work items executing this kernel. We could
+    of course preload this data into shared memory. That should reduce global memory
+    requests significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following OpenCL kernel can be found in `Ch7/matrix_multiplicatione_04/mmult.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that you have taken a look at the OpenCL kernel, you would want to compile
+    the code and run it. As before the compilation will look familiar to you. On my
+    setup with an Intel Core i7 CPU and AMD HD6870x2 GPU running Ubuntu 12.04 LTS,
+    the compilation looks like this and it'll create an executable called `MatrixMultiplication`
+    into the directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To run the program, simply execute the `MatrixMultiplication` program in the
+    directory and you should get an output that resembles this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now if you were to compare the results with the previous one, you would notice
+    that it is running much faster!
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The code that we have introduced might cast some doubts within yourself that
+    because it looks sequential, it is actually executed in parallel during runtime.
+    The parallelism is introduced by the value indicated in the `localThreads` variable,
+    which is passed to `clEnqueueNDRangeKernel`. The memory barrier we placed into
+    the code serves to stop all work items from executing beyond that point, until
+    all functions before that point have been executed and the following diagram serves
+    to illustrate this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_07_22.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'So far you have seen changes made to the OpenCL kernel code, and now we need
+    to make changes to our host code so that we can actually accomplish this. The
+    following code snippet is taken from `Ch7/matrix_multiplication_04/MatrixMultiplication.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The schematics of the final algorithm have seen us tailoring the algorithm,
+    so that it achieves an initial reasonable performance and can be conceptually
+    represented by the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_07_24.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you want to know how much shared memory you can possibly create and pass
+    the `CL_DEVICE_LOCAL_MEM_SIZE` parameter to `clGetDeviceInfo` for your device
+    and the value returned will be in bytes. Typical values are between 32 KB to 64
+    KB.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,452 @@
+- en: Chapter 6. Enhancing a Version
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Traditionally, changes are usually not welcomed and are avoided as much as possible
+    by a relational database developer. However, business changes every day, especially
+    in the present fast-paced era. The delayed response to business changes of a system
+    using a relational database deteriorates the agility and even threatens the survival
+    of the enterprise. With the advancement of NoSQL and other related technologies,
+    we now have alternatives to embrace such business changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By continuing with the enhancements of the Stock Screener Application developed
+    in [Chapter 5](ch05.html "Chapter 5. First-cut Design and Implementation"), *First-cut
+    Design and Implementation*, the techniques of how to evolve an existing Cassandra
+    data model will be explained in detail. Meanwhile, the techniques of modeling
+    by query will be demonstrated as well. The source code of the Stock Screener Application
+    will then be modified accordingly. By the end of this chapter, a complete technical
+    analysis application on stocks will be developed. You can use it as a foundation
+    to quickly develop your own.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evolving the data model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Stock Screener Application created in [Chapter 5](ch05.html "Chapter 5. First-cut
+    Design and Implementation"), *First-cut Design and Implementation*, is good enough
+    to retrieve and analyze a single stock at one time. However, scanning just a single
+    stock looks very limited in practical use. A slight improvement can be made here;
+    it can handle a bunch of stocks instead of one. This bunch of stocks will be stored
+    as Watch List in the Cassandra database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Accordingly, the Stock Screener Application will be modified to analyze the
+    stocks in the Watch List, and therefore it will produce alerts for each of the
+    stocks being watched based on the same screening rule.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the produced alerts, saving them in Cassandra will be beneficial for backtesting
+    trading strategies and continuous improvement of the Stock Screener Application.
+    They can be reviewed from time to time without having to review them on the fly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Backtesting is a jargon used to refer to testing a trading strategy, investment
+    strategy, or a predictive model using existing historical data. It is also a special
+    type of cross-validation applied to time series data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, when the number of the stocks in the Watch List grows to a few
+    hundred, it will be difficult for a user of the Stock Screener Application to
+    recall what the stocks are by simply referring to their stock codes. Hence, it
+    would be nice to have the name of the stocks added to the produced alerts to make
+    them more descriptive and user-friendly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we might have an interest in finding out how many alerts were generated
+    on a particular stock over a specified period of time and how many alerts were
+    generated on a particular date. We will use CQL to write queries to answer these
+    two questions. By doing so, the modeling by query technique can be demonstrated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The enhancement approach
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The enhancement approach consists of four change requests in total. First, we
+    will conduct changes in the data model and then the code will be enhanced to provide
+    the new features. Afterwards, we will test run the enhanced Stock Screener Application
+    again. The parts of the Stock Screener Application that require modifications
+    are highlighted in the following figure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is remarkable that two new components are added to the Stock Screener Application.
+    The first component, **Watch List**, governs **Data Mapper and Archiver** to collect
+    stock quote data of those stocks in the Watch List from Yahoo! Finance. The second
+    component is **Query**. It provides two Queries on **Alert List** for backtesting
+    purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The enhancement approach](img/8884OS_06_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Watch List
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Watch List** is a very simple table that merely stores the stock code of
+    its constituents. It is rather intuitive for a relational database developer to
+    define the stock code as the primary key, isn''t it? Nevertheless, remember that
+    in Cassandra, the primary key is used to determine the node that stores the row.
+    As Watch List is expected to not be a very long list, it would be more appropriate
+    to put all of its rows on the same node for faster retrieval. But how can we do
+    that?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can create an additional column, say `watch_list_code`, for this particular
+    purpose. The new table is called `watchlist` and will be created in the `packtcdma`
+    keyspace. The CQL statement is shown in `chapter06_001.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `create_watchlist` function creates the table. Note that the `watchlist`
+    table has a compound primary key made of `watch_list_code` and `symbol`. A Watch
+    List called `WS01` is also created, which contains three stocks, `AAPL`, `AMZN`,
+    and `GS`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alert List
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In [Chapter 5](ch05.html "Chapter 5. First-cut Design and Implementation"),
+    *First-cut Design and Implementation*, **Alert List** is very rudimentary. It
+    is produced by a Python program and enumerates the date when the close price was
+    above its 10-day SMA, that is, the signal and the close price at that time. Note
+    that there were no stock code and stock name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will create a table called `alertlist` to store the alerts with the code
+    and name of the stock. The inclusion of the stock name is to meet the requirement
+    of making the Stock Screener Application more user-friendly. Also, remember that
+    joins are not allowed and denormalization is really the best practice in Cassandra.
+    This means that we do not mind repeatedly storing (duplicating) the stock name
+    in the tables that will be queried. A rule of thumb is *one table for one query*;
+    as simple as that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `alertlist` table is created by the CQL statement, as shown in `chapter06_002.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The primary key is also a compound primary key that consists of `symbol` and
+    `price_time`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the descriptive stock name
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Until now, the `packtcdma` keyspace has three tables, which are `alertlist`,
+    `quote`, and `watchlist`. To add the descriptive stock name, one can think of
+    only adding a column of stock name to `alertlist` only. As seen in the previous
+    section, this has been done. So, do we need to add a column for `quote` and `watchlist`?
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is, in fact, a design decision that depends on whether these two tables will
+    be serving user queries. What a user query means is that the table will be used
+    to retrieve rows for a query raised by a user. If a user wants to know the close
+    price of Apple Inc. on June 30, 2014, it is a user query. On the other hand, if
+    the Stock Screener Application uses a query to retrieve rows for its internal
+    processing, it is not a user query. Therefore, if we want `quote` and `watchlist`
+    to return rows for user queries, they need the stock name column; otherwise, they
+    do not need it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `watchlist` table is only for internal use by the current design, and so
+    it need not have the stock name column. Of course, if in future, the Stock Screener
+    Application allows a user to maintain Watch List, the stock name should also be
+    added to the `watchlist` table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, for `quote`, it is a bit tricky. As the stock name should be retrieved
+    from the Data Feed Provider, which is Yahoo! Finance in our case, the most suitable
+    time to get it is when the corresponding stock quote data is retrieved. Hence,
+    a new column called `stock_name` is added to `quote`, as shown in `chapter06_003.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is quite self-explanatory. Here, we use the `ALTER TABLE` statement to add
+    the `stock_name` column of the `varchar` data type to `quote`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Queries on alerts
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As mentioned previously, we are interested in two questions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How many alerts were generated on a stock over a specified period of time?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How many alerts were generated on a particular date?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For the first question, `alertlist` is sufficient to provide an answer. However,
+    `alertlist` cannot answer the second question because its primary key is composed
+    of `symbol` and `price_time`. We need to create another table specifically for
+    that question. This is an example of modeling by query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Basically, the structure of the new table for the second question should resemble
+    the structure of `alertlist`. We give that table a name, `alert_by_date`, and
+    create it as shown in `chapter06_004.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When compared to `alertlist` in `chapter06_002.py`, `alert_by_date` only swaps
+    the order of the columns in the compound primary key. One might think that a secondary
+    index can be created on `alertlist` to achieve the same effect. Nonetheless, in
+    Cassandra, a secondary index cannot be created on columns that are already engaged
+    in the primary key. Always be aware of this constraint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now finish the modifications on the data model. It is time for us to enhance
+    the application logic in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhancing the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Regarding the new requirements to be incorporated into the Stock Screener Application,
+    Watch List is created, and we will continue to implement the code for the remaining
+    changes in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data Mapper and Archiver
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Data Mapper and Archiver are components of the Data Feed Provider module, and
+    its source code file is `chapter05_005.py`. Most of the source code can be left
+    intact; we only need to add code to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Load Watch List for a Watch List code and retrieve data feed based on that
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Retrieve the name of the stocks and store it in the quote table
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The modified source code is shown in `chapter06_005.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we changed the `INSERT` statement to store the stock name into `quote`
+    in the `insert_quote` function. We then add a function called `load_watchlist`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, the new function, `load_watchlist`, submits a `SELECT` query on `watch_list`
+    to retrieve the stocks to be watched of a particular Watch List code; it then
+    returns a list of `symbol`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The change here is a new function named `get_stock_name`, which sends a web
+    service request to Yahoo! Finance and extracts the name of the stock from the
+    returned HTML page. We use a Python package called `BeautifulSoup` to make the
+    extraction of an element from a HTML page very convenient. The `get_stock_name`
+    function then returns the stock name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`BeautifulSoup` is a library designed for quick turnaround projects such as
+    screen scraping. It primarily parses any text given to it and finds anything wanted
+    through the tree traversal of the parsed text. More information can be found at
+    [http://www.crummy.com/software/BeautifulSoup/](http://www.crummy.com/software/BeautifulSoup/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `for` loop is used to iterate through the Watch List to retrieve the stock
+    name and the stock quote data. In addition, as we need to store the stock name
+    in the `quote` table, the `insert_quote` function accepts the stock name as a
+    new parameter and requires a little modification on the `INSERT` statement and
+    the `for` loop accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That is all about the changes on Data Mapper and Archiver.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stock Screener Engine
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We will use the source code of Stock Screener Engine in [Chapter 5](ch05.html
+    "Chapter 5. First-cut Design and Implementation"), *First-cut Design and Implementation*
+    to include the enhancements; to do so, we will perform the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to Data Mapper and Archiver, we will load Watch List for a Watch List
+    code and scan for alerts on each stock.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Retrieve stock quote data with the stock name column from the quote table.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Save the alerts into `alertlist`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The modified source code is shown in `chapter06_006.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we have included the stock name in the query resultset, we need to modify
+    the `SELECT` statement in the `retrieve_data` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: At the bottom of `chapter06_006.py`, the `for` loop is responsible for iterating
+    `watchlist` loaded by the new `load_watchlist` function, which is the same function
+    as in `chapter06_005.py` and does not require further explanation. Another `for`
+    loop inside saves the scanned alerts into `alertlist` by calling the new `insert_alert`
+    function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before explaining the `insert_alert` function, let us jump to the `retrieve_data`
+    function at the top. The `retrieve_data` function is modified to return the name
+    of the stock as well and hence the `cols` variable now contains six columns. Scroll
+    down a bit to `insert_alert`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `insert_alert` function, as its name suggests, saves the alert into `alertlist`
+    and `alert_by_date`. It has two `INSERT` statements for these two tables, respectively.
+    The `INSERT` statements are almost identical except for the name of the table.
+    Obviously, they are repeated, and this is what denormalization means. We also
+    apply a new feature of Cassandra 2.0 here, known as *batch*. A batch combines
+    multiple **data modification language** (**DML**) statements into a single logical,
+    atomic operation. The Cassandra Python driver from DataStax supports this feature
+    by the `BatchStatement` package. We create a batch by calling the `BatchStatement()`
+    function, then add the prepared `INSERT` statements into the batch, and finally
+    execute it. If either `INSERT` statement comes across an error during commit,
+    all DML statements in the batch will not be executed. Therefore, it is analogous
+    to a transaction in a relational database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Queries on Alerts
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The last modification to the Stock Screener Application is the enquiry functions
+    on alerts that are useful for backtesting and performance measurement. We write
+    two queries to answer the two questions, which are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How many alerts were generated on a stock over a specified period of time?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How many alerts were generated on a particular date?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'As we have used denormalization on the data model, it is very easy to execute.
+    For the first query, see `chapter06_007.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: A function named `alert_over_daterange` is defined to retrieve the rows relevant
+    to the first question. Then it transforms the CQL resultset to a pandas DataFrame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then we can come up with a query for the second question with reference to
+    the same logic in `chapter06_007.py`. The source code is shown in `chapter06_008.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once again, denormalization is a friend of Cassandra. It does not require a
+    foreign key, referential integrity, or table join.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing system changes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We can now implement the changes to the system one-by-one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First we run `chapter06_001.py` through to `chapter06_004.py` in sequence to
+    make changes to the data model.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then we execute `chapter06_005.py` to retrieve stock quote data for the Watch
+    List. It is worth mentioning that UPSERT is a very nice feature of Cassandra.
+    We do not encounter a duplicate primary key while we insert the same row into
+    a table. It simply updates the row if the row already exists or inserts the row
+    otherwise. It makes the data manipulation logic neat and clean.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Further, we run `chatper06_006.py` to store the alerts by scanning over the
+    stock quote data of each stock in the Watch List.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we execute `chapter06_007.py` and `chapter06_008.py` to enquire `alertlist`
+    and `alert_by_date`, respectively. Their sample test results are shown in the
+    following figure:![Implementing system changes](img/8884OS_06_02.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter extends the Stock Screener Application by a number of enhancements.
+    We made changes to the data model to demonstrate the modeling by query techniques
+    and how denormalization can help us achieve a high-performance application. We
+    also tried the batch feature provided by Cassandra 2.0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the source code in this chapter is not housekept and can be refactored
+    somehow. However, because of the limit on the number of pages, it is left as an
+    exercise for the reader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stock Screener Application is now running on a single node cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will delve into the considerations and procedures of
+    expanding it to a larger cluster, which is quite common in real-life production
+    systems.
+  prefs: []
+  type: TYPE_NORMAL

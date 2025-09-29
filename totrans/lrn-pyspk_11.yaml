@@ -1,0 +1,806 @@
+- en: Chapter 11. Packaging Spark Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far we have been working with a very convenient way of developing code in
+    Spark - the Jupyter notebooks. Such an approach is great when you want to develop
+    a proof of concept and document what you do along the way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, Jupyter notebooks will not work if you need to schedule a job, so it
+    runs every hour. Also, it is fairly hard to package your application as it is
+    not easy to split your script into logical chunks with well-defined APIs - everything
+    sits in a single notebook.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will learn how to write your scripts in a reusable form
+    of modules and submit jobs to Spark programmatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before you begin, however, you might want to check out the *Bonus Chapter 2,
+    Free Spark Cloud Offering* where we provide instructions on how to subscribe and
+    use either Databricks'' Community Edition or Microsoft''s HDInsight Spark offerings;
+    the instructions on how to do so can be found here: [https://www.packtpub.com/sites/default/files/downloads/FreeSparkCloudOffering.pdf](https://www.packtpub.com/sites/default/files/downloads/FreeSparkCloudOffering.pdf).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter you will learn:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What the `spark-submit` command is
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to package and deploy your app programmatically
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to modularize your Python code and submit it along with PySpark script
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The spark-submit command
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The entry point for submitting jobs to Spark (be it locally or on a cluster)
+    is the `spark-submit` script. The script, however, allows you not only to submit
+    the jobs (although that is its main purpose), but also kill jobs or check their
+    status.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Under the hood, the `spark-submit` command passes the call to the `spark-class`
+    script that, in turn, starts a launcher Java application. For those interested,
+    you can check the GitHub repository for Spark: [https://github.com/apache/spark/blob/master/bin/sparksubmit](https://github.com/apache/spark/blob/master/bin/spark-submit)t.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `spark-submit` command provides a unified API for deploying apps on a variety
+    of Spark supported cluster managers (such as Mesos or Yarn), thus relieving you
+    from configuring your application for each of them separately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the general level, the syntax looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will go through the list of all the options soon. The `app arguments` are
+    the parameters you want to pass to your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can either parse the parameters from the command line yourself using `sys.argv`
+    (after `import sys`) or you can utilize the `argparse` module for Python.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Command line parameters
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You can pass a host of different parameters for Spark engine when using `spark-submit`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In what follows we will cover only the parameters specific for Python (as `spark-submit`
+    can also be used to submit applications written in Scala or Java and packaged
+    as `.jar` files).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will now go through the parameters one-by-one so you have a good overview
+    of what you can do from the command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`--master`: Parameter used to set the URL of the master (head) node. Allowed
+    syntax is:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`local`: Used for executing your code on your local machine. If you pass `local`,
+    Spark will then run in a single thread (without leveraging any parallelism). On
+    a multi-core machine you can specify either, the exact number of cores for Spark
+    to use by stating `local[n]` where `n` is the number of cores to use, or run Spark
+    spinning as many threads as there are cores on the machine using `local[*]`.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`spark://host:port`: It is a URL and a port for the Spark standalone cluster
+    (that does not run any job scheduler such as Mesos or Yarn).'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`mesos://host:port`: It is a URL and a port for the Spark cluster deployed
+    over Mesos.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`yarn`: Used to submit jobs from a head node that runs Yarn as the workload
+    balancer.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--deploy-mode`: Parameter that allows you to decide whether to launch the
+    Spark driver process locally (using `client`) or on one of the worker machines
+    inside the cluster (using the `cluster` option). The default for this parameter
+    is `client`. Here''s an excerpt from Spark''s documentation that explains the
+    differences with more specificity (source: [http://bit.ly/2hTtDVE](http://bit.ly/2hTtDVE)):'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A common deployment strategy is to submit your application from [a screen session
+    on] a gateway machine that is physically co-located with your worker machines
+    (e.g. Master node in a standalone EC2 cluster). In this setup, client mode is
+    appropriate. In client mode, the driver is launched directly within the spark-submit
+    process which acts as a client to the cluster. The input and output of the application
+    is attached to the console. Thus, this mode is especially suitable for applications
+    that involve the REPL (e.g. Spark shell).
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: ''
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: Alternatively, if your application is submitted from a machine far from the
+    worker machines (e.g. locally on your laptop), it is common to use cluster mode
+    to minimize network latency between the drivers and the executors. Currently,
+    standalone mode does not support cluster mode for Python applications.
+  prefs:
+  - PREF_IND
+  - PREF_BQ
+  type: TYPE_NORMAL
+- en: '`--name`: Name of your application. Note that if you specified the name of
+    your app programmatically when creating `SparkSession` (we will get to that in
+    the next section) then the parameter from the command line will be overridden.
+    We will explain the precedence of parameters shortly when discussing the `--conf`
+    parameter.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--py-files`: Comma-delimited list of `.py`, `.egg` or `.zip` files to include
+    for Python apps. These files will be delivered to each executor for use. Later
+    in this chapter we will show you how to package your code into a module.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--files`: Command gives a comma-delimited list of files that will also be
+    delivered to each executor to use.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--conf`: Parameter to change a configuration of your app dynamically from
+    the command line. The syntax is `<Spark property>=<value for the property>`. For
+    example, you can pass `--conf spark.local.dir=/home/SparkTemp/` or `--conf spark.app.name=learningPySpark`;
+    the latter would be an equivalent of submitting the `--name` property as explained
+    previously.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Spark uses the configuration parameters from three places: the parameters from
+    the `SparkConf` you specify when creating `SparkContext` within your app take
+    the highest precedence, then any parameter that you pass to the `spark-submit`
+    script from the command line, and lastly, any parameter that is specified in the
+    `conf/spark-defaults.conf` file.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '`--properties-file`: File with a configuration. It should have the same set
+    of properties as the `conf/spark-defaults.conf` file as it will be read instead
+    of it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--driver-memory`: Parameter that specifies how much memory to allocate for
+    the application on the driver. Allowed values have a syntax similar to the 1,000M,
+    2G. The default is 1,024M.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--executor-memory`: Parameter that specifies how much memory to allocate for
+    the application on each of the executors. The default is 1G.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--help`: Shows the help message and exits.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--verbose`: Prints additional debug information when running your app.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--version`: Prints the version of Spark.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In a Spark standalone with `cluster` deploy mode only, or on a cluster deployed
+    over Yarn, you can use the `--driver-cores` that allows specifying the number
+    of cores for the driver (default is 1). In a Spark standalone or Mesos with `cluster`
+    deploy mode only you also have the opportunity to use either of these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`--supervise`: Parameter that, if specified, will restart the driver if it
+    is lost or fails. This also can be set in Yarn by setting the `--deploy-mode`
+    to `cluster`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--kill`: Will finish the process given its `submission_id`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--status`: If this command is specified, it will request the status of the
+    specified app'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In a Spark standalone and Mesos only (with the `client` deploy mode) you can
+    also specify the `--total-executor-cores`, a parameter that will request the number
+    of cores specified for all executors (not each). On the other hand, in a Spark
+    standalone and YARN, only the `--executor-cores` parameter specifies the number
+    of cores per executor (defaults to 1 in YARN mode, or to all available cores on
+    the worker in standalone mode).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, when submitting to a YARN cluster you can specify:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`--queue`: This parameter specifies a queue on YARN to submit the job to (default
+    is `default`)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`--num-executors`: Parameter that specifies how many executor machines to request
+    for the job. If dynamic allocation is enabled, the initial number of executors
+    will be at least the number specified.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now that we have discussed all the parameters it is time to put it into practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deploying the app programmatically
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Unlike the Jupyter notebooks, when you use the `spark-submit` command, you need
+    to prepare the `SparkSession` yourself and configure it so your application runs
+    properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we will learn how to create and configure the `SparkSession`
+    as well as how to use modules external to Spark.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you have not created your free account with either Databricks or Microsoft
+    (or any other provider of Spark) do not worry - we will be still using your local
+    machine as this is easier to get us started. However, if you decide to take your
+    application to the cloud it will literally only require changing the `--master`
+    parameter when you submit the job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Configuring your SparkSession
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The main difference between using Jupyter and submitting jobs programmatically
+    is the fact that you have to create your Spark context (and Hive, if you plan
+    to use HiveQL), whereas when running Spark with Jupyter the contexts are automatically
+    started for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we will develop a simple app that will use public data from
+    Uber with trips made in the NYC area in June 2016; we downloaded the dataset from
+    [https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2016-06.csv](https://s3.amazonaws.com/nyc-tlc/trip+data/yellow_tripdata_2016-06.csv)
+    (beware as it is an almost 3GB file). The original dataset contains 11 million
+    trips, but for our example we retrieved only 3.3 million and selected only a subset
+    of all available columns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The transformed dataset can be downloaded from [http://www.tomdrabas.com/data/LearningPySpark/uber_data_nyc_2016-06_3m_partitioned.csv.zip](http://www.tomdrabas.com/data/LearningPySpark/uber_data_nyc_2016-06_3m_partitioned.csv.zip).
+    Download the file and unzip it to the `Chapter13` folder from GitHub. The file
+    might look strange as it is actually a directory containing four files inside
+    that, when read by Spark, will form one dataset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, let's get to it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating SparkSession
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Things with Spark 2.0 have become slightly simpler than with previous versions
+    when it comes to creating `SparkContext`. In fact, instead of creating a `SparkContext`
+    explicitly, Spark currently uses `SparkSession` to expose higher-level functionality.
+    Here''s how you do it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code is all that you need!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you want to use RDD API you still can. However, you do not need to create
+    a `SparkContext` anymore as `SparkSession` starts one under the hood. To get the
+    access you can simply call (borrowing from the preceding example): `sc = spark.SparkContext`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we first create the `SparkSession` object and call its `.builder`
+    internal class. The `.appName(...)` method allows us to give our application a
+    name, and the `.getOrCreate()` method either creates or retrieves an already created
+    `SparkSession`. It is a good convention to give your application a meaningful
+    name as it helps to (1) find your application on a cluster and (2) creates less
+    confusion for everyone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Under the hood, the Spark session creates a `SparkContext` object. When you
+    call `.stop()` on `SparkSession` it actually terminates the `SparkContext` within.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modularizing code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Building your code in such a way so it can be reused later is always a good
+    thing. The same can be done with Spark - you can modularize your methods and then
+    reuse them at a later point. It also aids readability of your code and its maintainability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this example, we will build a module that would do some calculations on
+    our dataset: It will compute the *as-the-crow-flies* distance (in miles) between
+    the pickup and drop-off locations (using the Haversine formula), and also will
+    convert the calculated distance from miles into kilometers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'More on the Haversine formula can be found here: [http://www.movable-type.co.uk/scripts/latlong.html](http://www.movable-type.co.uk/scripts/latlong.html).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, first, we will build a module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Structure of the module
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We put the code for our extraneous methods inside the `additionalCode` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Check out the GitHub repository for this book if you have not done so already
+    [https://github.com/drabastomek/learningPySpark/tree/master/Chapter11](https://github.com/drabastomek/learningPySpark/tree/master/Chapter11).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The tree for the folder looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Structure of the module](img/B05793_11_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As you can see, it has a structure of a somewhat normal Python package: At
+    the top we have the `setup.py` file so we can package up our module, and then
+    inside we have our code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `setup.py` file in our case looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will not delve into details here on the structure (which on its own is fairly
+    self-explanatory): You can read more about how to define `setup.py` files for
+    other projects here [https://pythonhosted.org/an_example_pypi_project/setuptools.html](https://pythonhosted.org/an_example_pypi_project/setuptools.html).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `__init__.py` file in the utilities folder has the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: It effectively exposes the `geoCalc.py` and `converters` (more on these shortly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating the distance between two points
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first method we mentioned uses the Haversine formula to calculate the direct
+    distance between any two points on a map (Cartesian coordinates). The code that
+    does this lives in the `geoCalc.py` file of the module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `calculateDistance(...)` is a static method of the `geoCalc` class. It takes
+    two geo-points, expressed as either a tuple or a list with two elements (latitude
+    and longitude, in that order), and uses the Haversine formula to calculate the
+    distance. The Earth's radius necessary to calculate the distance is expressed
+    in miles so the distance calculated will also be in miles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Converting distance units
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We build the utilities package so it can be more universal. As a part of the
+    package we expose methods to convert between various units of measurement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: At this time we limit it to the distance only, but the functionality can be
+    further extended to other domains such as area, volume, or temperature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For ease of use, any class implemented as a `converter` should expose the same
+    interface. That is why it is advised that such a class derives from our `BaseConverter`
+    class (see `base.py`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It is a purely abstract class that cannot be instantiated: Its sole purpose
+    is to force the derived classes to implement the `convert(...)` method. See the
+    `distance.py` file for details of the implementation. The code should be self-explanatory
+    for someone proficient in Python so we will not be going through it step-by-step
+    here.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building an egg
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Now that we have all our code in place we can package it. The documentation
+    for PySpark states that you can pass `.py` files (using the `--py-files` switch)
+    to the `spark-submit` script separated by commas. However, it is much more convenient
+    to package our module into a `.zip` or an `.egg`. This is when the `setup.py`
+    file comes handy - all you have to do is to call this inside the `additionalCode`
+    folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If all goes well you should see three additional folders: `PySparkUtilities.egg-info`,
+    `build`, and `dist` - we are interested in the file that sits in the `dist` folder:
+    The `PySparkUtilities-0.1.dev0-py3.5.egg`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: After running the preceding command, you might find that the name of your `.egg`
+    file is slightly different as you might have a different Python version. You can
+    still use it in your Spark jobs, but you will have to adapt the `spark-submit`
+    command to reflect the name of your `.egg` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: User defined functions in Spark
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In order to do operations on `DataFrame`s in PySpark you have two options:
+    Use built-in functions to work with data (most of the time it will be sufficient
+    to achieve what you need and it is recommended as the code is more performant)
+    or create your own user-defined functions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To define a UDF you have to wrap the Python function within the `.udf(...)`
+    method and define its return value type. This is how we do it in our script (check
+    the `calculatingGeoDistance.py` file):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then use such functions to calculate the distance and convert it to
+    miles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using the `.withColumn(...)` method we create additional columns with the values
+    of interest to us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A word of caution needs to be stated here. If you use the PySpark built-in
+    functions, even though you call them Python objects, underneath that call is translated
+    and executed as Scala code. If, however, you write your own methods in Python,
+    it is not translated into Scala and, hence, has to be executed on the driver.
+    This causes a significant performance hit. Check out this answer from Stack Overflow
+    for more details: [http://stackoverflow.com/questions/32464122/spark-performance-for-scala-vs-python](http://stackoverflow.com/questions/32464122/spark-performance-for-scala-vs-python).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's now put all the puzzles together and finally submit our job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Submitting a job
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In your CLI type the following (we assume you keep the structure of the folders
+    unchanged from how it is structured on GitHub):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We owe you some explanation for the `launch_spark_submit.sh` shell script.
+    In Bonus [Chapter 1](ch01.html "Chapter 1. Understanding Spark"), *Installing
+    Spark*, we configured our Spark instance to run Jupyter (by setting the `PYSPARK_DRIVER_PYTHON`
+    system variable to `jupyter`). If you were to simply use `spark-submit` on a machine
+    configured in such a way, you would most likely get some variation of the following
+    error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Thus, before running the `spark-submit` command we first have to unset the
+    variable and then run the code. This would quickly become extremely tiring so
+    we automated it with the `launch_spark_submit.sh` script:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, this is nothing more than a wrapper around the `spark-submit`
+    command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If all goes well, you will see the following *stream of consciousness* appearing
+    in your CLI:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Submitting a job](img/B05793_11_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'There''s a host of useful things that you can get from reading the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Current version of Spark: 2.1.0'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spark UI (what will be useful to track the progress of your job) is started
+    successfully on `http://localhost:4040`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our `.egg` file was added successfully to the execution
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `uber_data_nyc_2016-06_3m_partitioned.csv` was read successfully
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Each start and stop of jobs and tasks are listed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Once the job finishes, you will see something similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Submitting a job](img/B05793_11_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: From the preceding screenshot, we can read that the distances are reported correctly.
+    You can also see that the Spark UI process has now been stopped and all the clean
+    up jobs have been performed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Monitoring execution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When you use the `spark-submit` command, Spark launches a local server that
+    allows you to track the execution of the job. Here''s what the window looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Monitoring execution](img/B05793_11_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: At the top you can switch between the **Jobs** or **Stages** view; the **Jobs**
+    view allows you to track the distinct jobs that are executed to complete the whole
+    script, while the **Stages** view allows you to track all the stages that are
+    executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also peak inside each stage execution profile and track each task execution
+    by clicking on the link of the stage. In the following screenshot, you can see
+    the execution profile for Stage 3 with four tasks running:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Monitoring execution](img/B05793_11_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In a cluster setup instead of **driver/localhost** you would see the driver
+    number and host's IP address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inside a job or a stage, you can click on the DAG Visualization to see how
+    your job or stage gets executed (the following chart on the left shows the **Job**
+    view, while the one on the right shows the **Stage** view):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Monitoring execution](img/B05793_11_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Databricks Jobs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you are using the Databricks product, an easy way to go from development
+    from your Databricks notebooks to production is to use the Databricks Jobs feature.
+    It will allow you to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Schedule your Databricks notebook to run on an existing or new cluster
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Schedule at your desired frequency (from minutes to months)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Schedule time out and retries for your job
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Be alerted when the job starts, completes, and/or errors out
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: View historical job runs as well as review the history of the individual notebook
+    job runs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This capability greatly simplifies the scheduling and production workflow of
+    your job submissions. Note that you will need to upgrade your Databricks subscription
+    (from Community edition) to use this feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use this feature, go to the Databricks **Jobs** menu and click on **Create
+    Job**. From here, fill out the job name and then choose the notebook that you
+    want to turn into a job, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Databricks Jobs](img/B05793_11_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Once you have chosen your notebook, you can also choose whether to use an existing
+    cluster that is running or have the job scheduler launch a **New Cluster** specifically
+    for this job, as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Databricks Jobs](img/B05793_11_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Once you have chosen your notebook and cluster; you can set the schedule, alerts,
+    timeout, and retries. Once you have completed setting up your job, it should look
+    something similar to the **Population vs. Price Linear Regression Job**, as noted
+    in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Databricks Jobs](img/B05793_11_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: You can test the job by clicking on the **Run Now** link under **Active runs**
+    to test your job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As noted in the **Meetup Streaming RSVPs** Job, you can view the history of
+    your completed runs; as shown in the screenshot, for this notebook there are **50**
+    completed job runs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Databricks Jobs](img/B05793_11_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'By clicking on the job run (in this case, **Run 50**), you can see the results
+    of that job run. Not only can you view the start time, duration, and status, but
+    also the results for that specific job:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Databricks Jobs](img/B05793_11_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**REST Job Server**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A popular way to run jobs is to also use REST APIs. If you are using Databricks,
+    you can run your jobs using the Databricks REST APIs. If you prefer to manage
+    your own job server, a popular open source REST Job Server is `spark-jobserver`
+    - a RESTful interface for submitting and managing Apache Spark jobs, jars, and
+    job contexts. The project recently (at the time of writing) was updated so it
+    can handle PySpark jobs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more information, please refer to [https://github.com/spark-jobserver/spark-jobserver](https://github.com/spark-jobserver/spark-jobserver).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we walked you through the steps on how to submit applications
+    written in Python to Spark from the command line. The selection of the `spark-submit`
+    parameters has been discussed. We also showed you how you can package your Python
+    code and submit it alongside your PySpark script. Furthermore, we showed you how
+    you can track the execution of your job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition, we also provided a quick overview of how to run Databricks notebooks
+    using the Databricks Jobs feature. This feature simplifies the transition from
+    development to production, allowing you to take your notebook and execute it as
+    an end-to-end workflow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This brings us to the end of this book. We hope you enjoyed the journey, and
+    that the material contained herein will help you start working with Spark using
+    Python. Good luck!
+  prefs: []
+  type: TYPE_NORMAL

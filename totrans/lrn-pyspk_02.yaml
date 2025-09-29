@@ -1,0 +1,836 @@
+- en: Chapter 2. Resilient Distributed Datasets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Resilient Distributed Datasets (RDDs) are a distributed collection of immutable
+    JVM objects that allow you to perform calculations very quickly, and they are
+    the *backbone* of Apache Spark.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the name suggests, the dataset is distributed; it is split into chunks based
+    on some key and distributed to executor nodes. Doing so allows for running calculations
+    against such datasets very quickly. Also, as already mentioned in [Chapter 1](ch01.html
+    "Chapter 1. Understanding Spark"), *Understanding Spark*, RDDs keep track (log)
+    of all the transformations applied to each chunk to speed up the computations
+    and provide a fallback if things go wrong and that portion of the data is lost;
+    in such cases, RDDs can recompute the data. This data lineage is another line
+    of defense against data loss, a complement to data replication.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics are covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Internal workings of an RDD
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating RDDs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Global versus local scopes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Transformations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Actions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Internal workings of an RDD
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'RDDs operate in parallel. This is the strongest advantage of working in Spark:
+    Each transformation is executed in parallel for enormous increase in speed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The transformations to the dataset are lazy. This means that any transformation
+    is only executed when an action on a dataset is called. This helps Spark to optimize
+    the execution. For instance, consider the following very common steps that an
+    analyst would normally do to get familiar with a dataset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Count the occurrence of distinct values in a certain column.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Select those that start with an `A`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Print the results to the screen.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: As simple as the previously mentioned steps sound, if only items that start
+    with the letter `A` are of interest, there is no point in counting distinct values
+    for all the other items. Thus, instead of following the execution as outlined
+    in the preceding points, Spark could only count the items that start with `A`,
+    and then print the results to the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s break this example down in code. First, we order Spark to map the values
+    of `A` using the `.map(lambda v: (v, 1))` method, and then select those records
+    that start with an `''A''` (using the `.filter(lambda val: val.startswith(''A''))`
+    method). If we call the `.reduceByKey(operator.add)` method it will reduce the
+    dataset and *add* (in this example, count) the number of occurrences of each key.
+    All of these steps **transform** the dataset.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, we call the `.collect()` method to execute the steps. This step is an
+    **action** on our dataset - it finally counts the distinct elements of the dataset.
+    In effect, the action might reverse the order of transformations and filter the
+    data first before mapping, resulting in a smaller dataset being passed to the
+    reducer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Do not worry if you do not understand the previous commands yet - we will explain
+    them in detail later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating RDDs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are two ways to create an RDD in PySpark: you can either `.parallelize(...)`
+    a collection (`list` or an `array` of some elements):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Or you can reference a file (or files) located either locally or somewhere
+    externally:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We downloaded the Mortality dataset `VS14MORT.txt` file from (accessed on July
+    31, 2016) [ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2014us.zip](ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2014us.zip);
+    the record schema is explained in this document [http://www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf](http://www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf).
+    We selected this dataset on purpose: The encoding of the records will help us
+    to explain how to use UDFs to transform your data later in this chapter. For your
+    convenience, we also host the file here: [http://tomdrabas.com/data/VS14MORT.txt.gz](http://tomdrabas.com/data/VS14MORT.txt.gz)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last parameter in `sc.textFile(..., n)` specifies the number of partitions
+    the dataset is divided into.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A rule of thumb would be to break your dataset into two-four partitions for
+    each in your cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Spark can read from a multitude of filesystems: Local ones such as NTFS, FAT,
+    or Mac OS Extended (HFS+), or distributed filesystems such as HDFS, S3, Cassandra,
+    among many others.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Be wary where your datasets are read from or saved to: The path cannot contain
+    special characters `[]`. Note, that this also applies to paths stored on Amazon
+    S3 or Microsoft Azure Data Storage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Multiple data formats are supported: Text, parquet, JSON, Hive tables, and
+    data from relational databases can be read using a JDBC driver. Note that Spark
+    can automatically work with compressed datasets (like the Gzipped one in our preceding
+    example).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on how the data is read, the object holding it will be represented
+    slightly differently. The data read from a file is represented as `MapPartitionsRDD`
+    instead of `ParallelCollectionRDD` when we `.paralellize(...)` a collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Schema
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'RDDs are *schema-less* data structures (unlike DataFrames, which we will discuss
+    in the next chapter). Thus, parallelizing a dataset, such as in the following
+    code snippet, is perfectly fine with Spark when using RDDs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, we can mix almost anything: a `tuple`, a `dict`, or a `list` and Spark
+    will not complain.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you `.collect()` the dataset (that is, run an action to bring it back
+    to the driver) you can access the data in the object as you would normally do
+    in Python:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It will produce the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `.collect()` method returns all the elements of the RDD to the driver where
+    it is serialized as a list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We will talk more about the caveats of using `.collect()` later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading from files
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When you read from a text file, each row from the file forms an element of an
+    RDD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `data_from_file.take(1)` command will produce the following (somewhat unreadable)
+    output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Reading from files](img/B05793_02_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: To make it more readable, let's create a list of elements so each line is represented
+    as a list of values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lambda expressions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this example, we will extract the useful information from the cryptic looking
+    record of `data_from_file`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Please refer to our GitHub repository for this book for the details of this
+    method. Here, due to space constraints, we will only present an abbreviated version
+    of the full method, especially where we create the Regex pattern. The code can
+    be found here: [https://github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb](https://github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s define the method with the help of the following code, which
+    will parse the unreadable row into something that we can use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A word of caution here is necessary. Defining pure Python methods can slow down
+    your application as Spark needs to continuously switch back and forth between
+    the Python interpreter and JVM. Whenever you can, you should use built-in Spark
+    functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we import the necessary modules: The `re` module as we will use regular
+    expressions to parse the record, and `NumPy` for ease of selecting multiple elements
+    at once.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we create a `Regex` object to extract the information as specified
+    and parse the row through it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We will not be delving into details here describing Regular Expressions. A good
+    compendium on the topic can be found here [https://www.packtpub.com/application-development/mastering-python-regular-expressions](https://www.packtpub.com/application-development/mastering-python-regular-expressions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the record is parsed, we try to convert the list into a `NumPy` array and
+    return it; if this fails we return a list of default values `-99` so we know this
+    record did not parse properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We could implicitly filter out the malformed records by using `.flatMap(...)`
+    and return an empty list `[]` instead of `-99` values. Check this for details:
+    [http://stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd](http://stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we will use the `extractInformation(...)` method to split and convert
+    our dataset. Note that we pass only the method signature to `.map(...)`: the method
+    will *hand over* one element of the RDD to the `extractInformation(...)` method
+    at a time in each partition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running `data_from_file_conv.take(1)` will produce the following result (abbreviated):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Lambda expressions](img/B05793_02_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Global versus local scope
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One of the things that you, as a prospective PySpark user, need to get used
+    to is the inherent parallelism of Spark. Even if you are proficient in Python,
+    executing scripts in PySpark requires shifting your thinking a bit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Spark can be run in two modes: Local and cluster. When you run Spark locally
+    your code might not differ to what you are currently used to with running Python:
+    Changes would most likely be more syntactic than anything else but with an added
+    twist that data and code can be copied between separate worker processes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, taking the same code and deploying it to a cluster might cause a lot
+    of head-scratching if you are not careful. This requires understanding how Spark
+    executes a job on the cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the cluster mode, when a job is submitted for execution, the job is sent
+    to the driver (or a master) node. The driver node creates a DAG (see [Chapter
+    1](ch01.html "Chapter 1. Understanding Spark"), *Understanding Spark*) for a job
+    and decides which executor (or worker) nodes will run specific tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The driver then instructs the workers to execute their tasks and return the
+    results to the driver when done. Before that happens, however, the driver prepares
+    each task''s closure: A set of variables and methods present on the driver for
+    the worker to execute its task on the RDD.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This set of variables and methods is inherently *static* within the executors'
+    context, that is, each executor gets a *copy* of the variables and methods from
+    the driver. If, when running the task, the executor alters these variables or
+    overwrites the methods, it does so **without** affecting either other executors'
+    copies or the variables and methods of the driver. This might lead to some unexpected
+    behavior and runtime bugs that can sometimes be really hard to track down.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Check out this discussion in PySpark''s documentation for a more hands-on example:
+    [http://spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes](http://spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transformations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Transformations shape your dataset. These include mapping, filtering, joining,
+    and transcoding the values in your dataset. In this section, we will showcase
+    some of the transformations available on RDDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Due to space constraints we include only the most often used transformations
+    and actions here. For a full set of methods available we suggest you check PySpark's
+    documentation on RDDs [http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since RDDs are schema-less, in this section we assume you know the schema of
+    the produced dataset. If you cannot remember the positions of information in the
+    parsed dataset we suggest you refer to the definition of the `extractInformation(...)`
+    method on GitHub, code for `Chapter 03`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .map(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'It can be argued that you will use the `.map(...)` transformation most often.
+    The method is applied to each element of the RDD: In the case of the `data_from_file_conv`
+    dataset, you can think of this as a transformation of each row.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this example, we will create a new dataset that will convert year of death
+    into a numeric value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running `data_2014.take(10)` will yield the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .map(...) transformation](img/B05793_02_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you are not familiar with `lambda` expressions, please refer to this resource:
+    [https://pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/](https://pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can of course bring more columns over, but you would have to package them
+    into a `tuple`, `dict,` or a `list`. Let''s also include the 17th element of the
+    row along so that we can confirm our `.map(...)` works as intended:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code will produce the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .map(...) transformation](img/B05793_02_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The .filter(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Another most often used transformation is the `.filter(...)` method, which
+    allows you to select elements from your dataset that fit specified criteria. As
+    an example, from the `data_from_file_conv` dataset, let''s count how many people
+    died in an accident in 2014:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that the preceding command might take a while depending on how fast your
+    computer is. For us, it took a little over two minutes to return a result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .flatMap(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `.flatMap(...)` method works similarly to `.map(...)`, but it returns a
+    flattened result instead of a list. If we execute the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It will yield the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .flatMap(...) transformation](img/B05793_02_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: You can compare this result with the results of the command that generated `data_2014_2`
+    previously. Note, also, as mentioned earlier, that the `.flatMap(...)` method
+    can be used to filter out some malformed records when you need to parse your input.
+    Under the hood, the `.flatMap(...)` method treats each row as a list and then
+    simply *adds* all the records together; by passing an empty list the malformed
+    records is dropped.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .distinct(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This method returns a list of distinct values in a specified column. It is
+    extremely useful if you want to get to know your dataset or validate it. Let''s
+    check if the `gender` column contains only males and females; that would verify
+    that we parsed the dataset properly. Let''s run the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code will produce the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .distinct(...) transformation](img/B05793_02_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: First, we extract only the column that contains the gender. Next, we use the
+    `.distinct()` method to select only the distinct values in the list. Lastly, we
+    use the `.collect()` method to return the print of the values on the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that this is an expensive method and should be used sparingly and only
+    when necessary as it shuffles the data around.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .sample(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `.sample(...)` method returns a randomized sample from the dataset. The
+    first parameter specifies whether the sampling should be with a replacement, the
+    second parameter defines the fraction of the data to return, and the third is
+    seed to the pseudo-random numbers generator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this example, we selected a randomized sample of 10% from the original dataset.
+    To confirm this, let''s print the sizes of the datasets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .sample(...) transformation](img/B05793_02_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We use the `.count()` action that counts all the records in the corresponding
+    RDDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .leftOuterJoin(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`.leftOuterJoin(...)`, just like in the SQL world, joins two RDDs based on
+    the values found in both datasets, and returns records from the left RDD with
+    records from the right one appended in places where the two RDDs match:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running `.collect(...)` on the `rdd3` will produce the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .leftOuterJoin(...) transformation](img/B05793_02_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is another expensive method and should be used sparingly and only when
+    necessary as it shuffles the data around causing a performance hit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What you can see here are all the elements from RDD `rdd1` and their corresponding
+    values from RDD `rdd2`. As you can see, the value `''a''` shows up two times in
+    `rdd3` and `''a''` appears twice in the RDD `rdd2`. The value `b` from the `rdd1`
+    shows up only once and is joined with the value `''6''` from the `rdd2`. There
+    are two things *missing*: Value `''c''` from `rdd1` does not have a corresponding
+    key in the `rdd2` so the value in the returned tuple shows as `None`, and, since
+    we were performing a left outer join, the value `''d''` from the `rdd2` disappeared
+    as expected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we used the `.join(...)` method instead we would have got only the values
+    for `''a''` and `''b''` as these two values intersect between these two RDDs.
+    Run the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It will result in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .leftOuterJoin(...) transformation](img/B05793_02_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Another useful method is `.intersection(...)`, which returns the records that
+    are equal in both RDDs. Execute the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .leftOuterJoin(...) transformation](img/B05793_02_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The .repartition(...) transformation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Repartitioning the dataset changes the number of partitions that the dataset
+    is divided into. This functionality should be used sparingly and only when really
+    necessary as it shuffles the data around, which in effect results in a significant
+    hit in terms of performance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code prints out `4` as the new number of partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `.glom()` method, in contrast to `.collect()`, produces a list where each
+    element is another list of all elements of the dataset present in a specified
+    partition; the main list returned has as many elements as the number of partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Actions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Actions, in contrast to transformations, execute the scheduled task on the dataset;
+    once you have finished transforming your data you can execute your transformations.
+    This might contain no transformations (for example, `.take(n)` will just return
+    `n` records from an RDD even if you did not do any transformations to it) or execute
+    the whole chain of transformations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .take(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This is most arguably the most useful (and used, such as the `.map(...)` method).
+    The method is preferred to `.collect(...)` as it only returns the `n` top rows
+    from a single data partition in contrast to `.collect(...)`, which returns the
+    whole RDD. This is especially important when you deal with large datasets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you want somewhat randomized records you can use `.takeSample(...)` instead,
+    which takes three arguments: First whether the sampling should be with replacement,
+    the second specifies the number of records to return, and the third is a seed
+    to the pseudo-random numbers generator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The .collect(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This method returns all the elements of the RDD to the driver. As we have just
+    provided a caution about it, we will not repeat ourselves here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The .reduce(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `.reduce(...)` method reduces the elements of an RDD using a specified method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can use it to sum the elements of your RDD:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will produce the sum of `15`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We first create a list of all the values of the `rdd1` using the `.map(...)`
+    transformation, and then use the `.reduce(...)` method to process the results.
+    The `reduce(...)` method, on each partition, runs the summation method (here expressed
+    as a `lambda`) and returns the sum to the driver node where the final aggregation
+    takes place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A word of caution is necessary here. The functions passed as a reducer need
+    to be **associative**, that is, when the order of elements is changed the result
+    does not, and **commutative**, that is, changing the order of operands does not
+    change the result either.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The example of the associativity rule is *(5 + 2) + 3 = 5 + (2 + 3)*, and of
+    the commutative is *5 + 2 + 3 = 3 + 2 + 5*. Thus, you need to be careful about
+    what functions you pass to the reducer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you ignore the preceding rule, you might run into trouble (assuming your
+    code runs at all). For example, let''s assume we have the following RDD (with
+    one partition only!):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we were to reduce the data in a manner that we would like to divide the
+    current result by the subsequent one, we would expect a value of `10`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, if you were to partition the data into three partitions, the result
+    will be wrong:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: It will produce `0.004`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `.reduceByKey(...)` method works in a similar way to the `.reduce(...)`
+    method, but it performs a reduction on a key-by-key basis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code produces the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .reduce(...) method](img/B05793_02_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The .count(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `.count(...)` method counts the number of elements in the RDD. Use the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code will produce `6`, the exact number of elements in the `data_reduce`
+    RDD.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `.count(...)` method produces the same result as the following method,
+    but it does not require moving the whole dataset to the driver:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If your dataset is in a key-value form, you can use the `.countByKey()` method
+    to get the counts of distinct keys. Run the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code will produce the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .count(...) method](img/B05793_02_12.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The .saveAsTextFile(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As the name suggests, the `.saveAsTextFile(...)` the RDD and saves it to text
+    files: Each partition to a separate file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To read it back, you need to parse it back as all the rows are treated as strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The list of keys read matches what we had initially:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The .saveAsTextFile(...) method](img/B05793_02_13.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The .foreach(...) method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This is a method that applies the same function to each element of the RDD in
+    an iterative way; in contrast to `.map(..)`, the `.foreach(...)` method applies
+    a defined function to each record in a one-by-one fashion. It is useful when you
+    want to save the data to a database that is not natively supported by PySpark.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, we''ll use it to print (to CLI - not the Jupyter Notebook) all the records
+    that are stored in `data_key` RDD:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you now navigate to CLI you should see all the records printed out. Note,
+    that every time the order will most likely be different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: RDDs are the backbone of Spark; these schema-less data structures are the most
+    fundamental data structures that we will deal with within Spark.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we presented ways to create RDDs from text files, by means
+    of the `.parallelize(...)` method as well as by reading data from text files.
+    Also, some ways of processing unstructured data were shown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transformations in Spark are lazy - they are only applied when an action is
+    called. In this chapter, we discussed and presented the most commonly used transformations
+    and actions; the PySpark documentation contains many more [http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One major distinction between Scala and Python RDDs is speed: Python RDDs can
+    be much slower than their Scala counterparts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter we will walk you through a data structure that made PySpark
+    applications perform *on par* with those written in Scala - the DataFrames.
+  prefs: []
+  type: TYPE_NORMAL

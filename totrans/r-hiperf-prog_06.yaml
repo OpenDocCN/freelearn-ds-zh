@@ -1,0 +1,453 @@
+- en: Chapter 6. Simple Tweaks to Use Less RAM
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, we have learned the techniques to overcome CPU limitations and improve
+    the speed of R programs. As you can recall from [Chapter 1](ch01.html "Chapter 1. Understanding
+    R's Performance – Why Are R Programs Sometimes Slow?"), *Understanding R's Performance
+    – Why Are R Programs Sometimes Slow?* that another key constraint of R is memory.
+    All the data that an R program needs to perform its tasks on must be loaded into
+    the computer's memory or RAM. RAM is also needed for any intermediate computations,
+    so the amount of RAM needed to process a given dataset can be many times the size
+    of the dataset, depending on the type of tasks or algorithms being executed. This
+    can become a problem when a large dataset needs to be processed, or when there
+    is little RAM available to complete the tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter and the next, we will learn how to optimize the RAM utilization
+    of R programs so that memory-intensive tasks can be executed successfully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reusing objects without taking up more memory
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Removing intermediate data when it is no longer needed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculating values on the fly instead of storing them persistently
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Swapping active and nonactive data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reusing objects without taking up more memory
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first tweak takes advantage of how R manages the memory of objects using
+    a **copy-on-modification** model. In this model, when a copy of an object `x`
+    is made, for example with `y <- x`, it is not actually copied in the memory. Rather,
+    the new variable `y` simply points to the same block of memory that contains `x`.
+    The first time when `y` is modified, R copies the data into a new block of memory
+    so that `x` and `y` have their own copies of the data. That is why this model
+    of memory management is called copy-on-modification. What this means is that new
+    objects can sometimes be created from existing objects without taking up additional
+    memory. To identify potential memory bottlenecks and manage the memory utilization
+    of R programs, it is helpful to understand when R copies data and when it does
+    not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take for example the following code, which generates a numeric vector `x` with
+    1 million elements and creates a list `y` that contains two copies of `x`. We
+    can examine the size of the objects using the `object.size()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At first glance, it looks like there are two objects: `x`, which takes up 7.6
+    MB of the memory, and `y`, which takes up 15.3 MB. However, the memory utilization
+    can be measured in a different way, and with surprising results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `object_size()` function from the CRAN package `pryr` measures the sizes
+    of `x` and `y` slightly differently and more accurately than `object.size()` from
+    the base R. It reports that `y`, which contains two numeric vectors takes up only
+    8 MB—the same as `x`, which is a single numeric vector of the same length. How
+    can that be? The `address()` function from the `pryr` package reveals the actual
+    blocks of memory that each object points to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As expected, `y`, a list, points to a different memory location than `x`, a
+    numeric vector, indicating that it is a different object. But the two elements
+    of `y` point to the original object `x` in the memory. R is smart about not copying
+    objects unnecessarily. In this case, it simply created two pointers in `y` that
+    point to `x`. This is so efficient that in fact, `x` and `y` combined together
+    take up only 8 MB, which is the size of `x`!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Actually, a tiny bit of extra memory is needed to store `y` and its pointers
+    to `x`, but that is negligible and does not show up in this measurement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When one of the vectors in `y` is modified, R creates a new copy, since this
+    vector is now different from `x`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `y[[1]]` vector now points to a different vector in the memory than `x`
+    and `y[[2]]`. As a result, `y` takes up 16 MB of RAM while `x` and `y` combined
+    still take up only 16 MB (since `y[[2]]` still points to `x`). Another way to
+    track this is when an object is copied to use `tracemem()`, which gives an alert
+    whenever the object being tracked is copied. See what happens to `y[[2]]` when
+    it is modified:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `tracemem[0x10f992000 -> 0x1108d6000]` line indicates that a copy of vector
+    `y[[2]]` was made when it was modified and gives the memory address of the new
+    copy. Now, `x`, `y[[1]]`, and `y[[2]]` are different objects in memory, hence
+    the total memory used by `x` and `y` is 24 MB:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: When an element of `y` is modified, a copy of `x` needs to be made so that the
+    original object `x` is unmodified. Otherwise, modifying one object will cause
+    unintended modifications to the other, resulting in errors in the program that
+    might be difficult to find.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The way in which R determines whether an object should be copied is by tracking
+    whether other objects refer to it. When `y` was created, R knew that `x` is being
+    used elsewhere and a copy needs to be made when it is modified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: R counts only up to two references, which is sufficient for it to determine
+    whether to copy an object or not. As long as two or more variables refer to the
+    same object, R will make a copy of it when it is modified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, when we modify `x` for the first time, R makes a copy of it because `x`
+    had been referred to by `y` before. Even though `y` now has its own copies of
+    the data, R errs on the side of caution and makes a copy of `x` to avoid potential
+    conflicts. Subsequent modifications to `x`, however, do not lead to unnecessary
+    copying, as the new copy of `x` is not being used anywhere else, as this example
+    shows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: In general, as long as a vector has not been referred to by any other object,
+    R allows it to be modified in place, avoiding the CPU and RAM overheads to make
+    copies of the vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'This example does not work in RStudio:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is because RStudio keeps a reference of every object in its own environment,
+    so R thinks that `x` is being referred to elsewhere. It creates a copy of `x`
+    every time it is modified, to be safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we understand when R copies data, we can optimize R programs in order
+    to avoid copying the data unnecessarily. For example, say we have two vectors
+    containing the ages and genders of 1 million customers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The retailer uses "`cust #"` for customer IDs. We want to label each vector
+    with the customer IDs so that we can easily look up the information by the customer
+    ID, using expressions like `customer.age["cust 1"]`. One way to do this is to
+    separately construct the names for each vector. The two vectors combined will
+    then take up 84 MB of memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Alternatively, the names can be stored in a separate vector that the age and
+    gender vectors then can refer to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: This simple change resulted in a saving of 8 MB of memory. On larger, more complex
+    data structures, these savings from not copying data unnecessarily can be significant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same copy-on-modification behavior applies to function arguments. When an
+    object is passed to a function, it is not copied; R simply provides a pointer
+    to the object. If, however, the object is modified within the function, R creates
+    a copy of that object in the function's environment so that the original object
+    is not modified in any way outside the function. In programming language parlance,
+    this is called **pass by value** because functions are given the value of their
+    arguments. This is part of R's design as a *functional programming language*.
+    Contrast this with **pass by reference**, which is sometimes used in other programming
+    languages, such as Java and C/C++, where functions can be given references or
+    pointers to the memory's addresses. In this case, functions can modify their arguments
+    without creating additional copies in memory, and the modifications persist even
+    after the functions exit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A consequence of R's pass by value model for functions means that many functions
+    need to make a copy of the data they are given. For example, calling `sort(x)`
+    returns a new vector with the sorted values of `x`, rather than sorting the values
+    in place (which is often the practice in Java and C/C++). Calling functions like
+    `sort()` often requires additional free memory that is at least as large as the
+    original data and sometimes more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Removing intermediate data when it is no longer needed
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In large R programs, objects are created in many places. Often, an object that
+    is created in an earlier part of the program is not needed in later parts of the
+    program. When faced with memory limits, it is useful to free up memory taken up
+    by objects when they are no longer needed, so that subsequent parts of the program
+    can run successfully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main tool for this is the `rm()` function that removes a given list of objects
+    from the current R environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following example, we have a data frame containing 500,000 transactions
+    from a retail store and the items within each transaction. Each row of the data
+    frame represents a unique transaction-item pair that occurred in a sales database.
+    Although, we have to generate the data for this example in a real business context,
+    this data could be extracted from a retailer''s sales database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The data looks like this where, for example, the first nine rows indicate that
+    transaction 1 includes items 680, 846, 196, and so on (the data that you generate
+    might look different):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our task is to find common baskets of items, that is, items that appear frequently
+    together in the same transactions, or frequent itemsets. The `apriori()` function
+    in the `arules` CRAN package can be used to find these frequent itemsets. But
+    it does not accept data in the form of transaction-item pairs that we can extract
+    from a sales database. Instead, `arules` defines the `transactions` class that
+    it accepts as input. We need to split the items column of the data frame into
+    the different transactions and then coerce the resulting list into a `transactions`
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can now call the `apriori()` function to find the frequent itemsets. In this
+    example, we want itemsets that have a support of at least 0.3, that is, sets of
+    items that appear in at least 30 percent of the transactions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When we started with the data frame of transaction-item pairs, we had to convert
+    it into a few different formats before the data could be used by `apriori()`.
+    Each of these intermediate data structures takes up valuable memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the dataset is large or when memory is scarce, `apriori()` might fail
+    to execute as it runs out of memory. In such situations, `rm()` can be used to
+    free up memory by deleting unneeded objects before calling `apriori()` or even
+    between each data transformation step. The following code illustrates this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another technique to automatically remove temporary variables is to encapsulate
+    code in functions. This way, any variables created in the function will automatically
+    be deleted when the function exists. For example, say we only need to remove temporary
+    variables before calling `apriori()`, because that is when the code tends to run
+    into memory limits. We can encapsulate all the previous lines of codes in a function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: After calling `prepare_data()`, any temporary variables created within it are
+    deleted without having to explicitly call `rm()`. In this case, only one temporary
+    variable, `trans.list` is deleted. But the same technique can be used when more
+    temporary variables are declared in the function. Not only is this means of removing
+    temporary variables convenient, it also makes the code more readable and easier
+    to maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In large R programs, periodic removal of large data structures can help to minimize
+    overall memory usage. When `rm()` is called, the memory might not be freed and
+    returned to the operating system immediately. Rather, R's **garbage collector**
+    automatically frees the memory when it is needed, or when the amount of memory
+    from removed objects exceeds a threshold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating values on the fly instead of storing them persistently
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While executing an R program, it is sometimes convenient to cache all the data
+    needed by the program, including the results of intermediate computations into
+    a RAM prior to execution. During the execution, as and when the program needs
+    to access any part of the data, it can be done very rapidly as all the data has
+    been loaded into the R workspace. Caching intermediate results in RAM can save
+    computational time significantly, especially when they are accessed frequently,
+    as unnecessary recalculation of the data is avoided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is not a problem when the cached data can fit into RAM. However, it becomes
+    a problem when there is not enough memory space to contain the data. The good
+    news is, in many cases, the program does not need all parts of the data at the
+    same time. One solution is to swap in and out portions of the data between RAM
+    and the hard disk. Because disk I/O is slow, as we have established in [Chapter
+    1](ch01.html "Chapter 1. Understanding R's Performance – Why Are R Programs Sometimes
+    Slow?"), *Understanding R's Performance – Why Are R Programs Sometimes Slow?*,
+    this approach might result in a slow execution. A better solution is to calculate
+    and recalculate portions of the data that are needed at the moment. Yes, calculation
+    costs computational time, but it is often less costly than disk I/O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s look at an example from a common task in data science: hierarchical
+    clustering. In some commonly used variants of hierarchical clustering, such as
+    the single, complete, and average linkage, one important step in the algorithm
+    is to calculate the distance matrix between every pair of observations in the
+    dataset, and then decide which pair of observations is the closest to each other.
+    This step can be accomplished by the following code, in which we have artificially
+    created a random dataset `A`, with 10,000 observations (rows) and 10 features
+    (columns). The code first calculates the distance matrix of `A`, sets the diagonal
+    element of the distance matrix to `NA` because an observation is always closest
+    to itself and finally finds the closest pair using the `which()` function. In
+    this instance, observations 6778 and 6737 are found to be the closest pair. To
+    execute this program, about 801 MB of RAM is required, as can be seen from the
+    outputs of `object_size()` in the following code. This is because even though
+    the dataset only occupies 800 KB, its distance matrix needs about a quadratic
+    amount of the original space because it is storing all the pairwise distances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: On close inspection, we do not actually need the whole distance matrix at once
+    to find the closest pair. It is possible to calculate the set of pairwise distances
+    between the first observation and the rest of the observations to get the minimum
+    pair for this set; repeat the process for the second observation and then compare
+    the minimum of the two sets and so on. Doing this incurs additional steps and
+    hence longer computational time, but it demands only a small fraction of RAM compared
+    to that of the preceding code (because only a chunk of the distance matrix is
+    maintained at a given time). The code to do this is shown below. It first calculates
+    the distances between all the observations in `A` with the observation 1 in `A`
+    (using the `pdist` package) and then finds and saves the closest pair only for
+    this chunk to a temporary list `output`. This process is repeated for the observations
+    2, 3, …, 10,000 in `A` using `lapply`. The set of closest pairs from every chunk
+    is stored in the `temp_res` list. The final step is to find the minimum pair among
+    this set and store it in the variable `res2`. Evaluating the output of `res2`
+    reveals the same result as the one found using the preceding code. However, this
+    time we need only 2.7 MB of memory for the `temp_res` list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Indeed the time needed by the second approach is longer. We can speed this up
+    by parallelizing the code, for example by substituting `lapply()` with `parLApply()`
+    of the `parallel` package (see [Chapter 8](ch08.html "Chapter 8. Multiplying Performance
+    with Parallel Computing"), *Multiplying Performance with Parallel Computing*).
+    In practice, for a specific case of finding the closest pair of observations efficiently
+    without storing a full distance matrix, we can leverage optimized k-nearest neighbor
+    functions, like the `knn()` function in the `FNN` package. Where such an alternative
+    optimized package is unavailable, the approach of calculating values on the fly
+    as illustrated in the preceding code is useful to reduce memory use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Swapping active and nonactive data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In some situations, large objects that are removed to free up memory are needed
+    later in the program. R provides tools to save data to the disk and reload them
+    later when enough memory is available. Returning to the retail sales data example,
+    suppose that we need the `sales.data` data frame for further processing after
+    mining for frequent itemsets. We can save it to the disk using `saveRDS()` and
+    reload it later using `readRDS()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `saveRDS()` and `readRDS()` functions save one object at a time without
+    the name of the object. For example, the name `sales.data` is not saved. However,
+    the column names `trans` and `items` are saved. As an alternative, the `save()`
+    and `load()` functions can be used to handle multiple objects or even all objects
+    in an environment, along with their variable names.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned about the copy-on-modification semantics of R's
+    memory management. A good understanding of how this works enables us to find opportunities
+    to reduce the memory consumption of R programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also saw how temporary variables and intermediate computations can be removed
+    from the environment when they are no longer needed, to free up memory for subsequent
+    computations. Besides removing temporary variables explicitly, we learned two
+    other ways to manage temporary variables automatically. First, on the fly computations
+    produce intermediate data without creating variables that persist in the memory.
+    Second, functions are a useful way to group related operations and automatically
+    remove temporary variables when exiting the functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we saw how to save data to the disk to free up memory and reload them
+    later when needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will explore more advanced techniques in order to optimize
+    memory consumption and allow R programs to work with larger datasets, even data
+    that is too big to fit in the memory.
+  prefs: []
+  type: TYPE_NORMAL

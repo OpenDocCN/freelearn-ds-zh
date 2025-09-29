@@ -1,0 +1,988 @@
+- en: Simulating Sales Data and Working with Databases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Food Factory example is about a fictitious company called **The Food Factory**.
+    They sell custom meals for people looking for healthy food. They allow their customers
+    to choose the macronutrients combinations they want, as well as their protein
+    sources. Macronutrients are the base for any diet, and they are composed of carbohydrates,
+    proteins, and fats. Customers can choose the percentage of each macronutrient,
+    as well as their protein source (fish, chicken, beef, or vegetarian); then, The
+    Food Factory will come up with a tasty meal which fulfills their diet specifications.
+    They have found some great combinations this way, and if they continue to do as
+    well as they have, they will add more meal options, as well as fixed recipes,
+    according to what their customers like most.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Food Factory has done a good job so far and they have a system in place
+    that allows them to collect a good amount of data across their five store locations,
+    as well as keep track of customer messages. Our job in this example will be to
+    analyze the data to diagnose the current state of the business and propose ways
+    to improve it. To do so, we will use lots of visualizations in [Chapter 5](part0110.html#38STS0-f494c932c729429fb734ce52cafce730),
+    *Communicating Sales with Visualizations;* perform text analysis on customer reviews
+    in [Chapter 6](part0129.html#3R0OI0-f494c932c729429fb734ce52cafce730), *Understanding
+    Reviews with Text Analysis;* and provide automatic diagnosis of the current state
+    of the business in [Chapter 7](part0147.html#4C62M0-f494c932c729429fb734ce52cafce730),
+    *Developing Automatic Presentations*. Sounds good, right? However, before we can
+    do all of that, we need to get a hold of the data, and we don't have it yet. We're
+    going to simulate it! This chapter will show you how to design a non-trivial data
+    simulation to produce the data for the example. Furthermore, The Food Factory,
+    as well as many organizations, doesn't always make our lives easier by providing
+    CSV files, and they often have databases we need to work with. This chapter will
+    also show you how to work with such databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some of the important topics covered in this chapter are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing and implementing non-trivial simulations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Simulating numbers, categories, strings, and dates
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Function signatures with parameter objects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reusing functions in different contexts
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mixing internal and external data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Working with relational databases
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Required packages
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The only package required for this chapter is `RMySQL`. However, to be able
+    to fully replicate the code shown towards the end of the chapter, you will need
+    a working installation of the MySQL database ([https://www.mysql.com/](https://www.mysql.com/)).
+    Specific instructions for Linux and Mac can be found in [Appendix](part0296.html#8Q96G0-f494c932c729429fb734ce52cafce730),
+    *Required Packages.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Package** | **Reason** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `RMySQL` | Interface to MySQL database |'
+  prefs: []
+  type: TYPE_TB
+- en: Designing our data tables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It's always a good practice to design with paper and a pencil before starting
+    to program. If you do, you'll find that your code is much better because you'll
+    contemplate scenarios that you may not see if you start programming right away,
+    and, instead of hacking your way around what you have already programmed, you'll
+    be able to design solutions beforehand. It's an easy investment that very often
+    pays off, so that's what we will do in this section, we will design our data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The basic variables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's start from the most simple scenario we can imagine and try to find any
+    potential problems we may encounter. For each sale, we would like to have the
+    following variables, the sales `DATE`, the `COST` for producing that type of food,
+    the `QUANTITY` bought, the `PRICE` for the type food, whether or not we applied
+    a `DISCOUNT`, the macronutrient percentages for `CARBS` (carbohydrates), `PROTEIN`,
+    and `FAT`, the `PROTEIN_SOURCE` of the food (either `FISH`, `CHICKEN`, `BEEF`,
+    or `VEGETARIAN`, if the person does not eat meat), the `STORE` where it was sold,
+    the `DELIVERY` method (either send `TO LOCATION` or deliver `IN STORE`), the `STATUS` of
+    the sale, which can be `PENDING`, `DELIVERED`, `RETURNED`, or `CANCELLED` (a sale
+    can't have two statuses at the same time), whether or not it has been `PAID`,
+    the client's `BIRTH_DATE` and `GENDER`, how many `STARS` they awarded to the company,
+    the `CUSTOMER_SINCE` date, and how many messages they sent us related to their
+    order, as well as the `DATE`, `STARS`, and actual `MESSAGE` for each one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simplifying assumptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We can complicate the example as much as we want, but to keep the simulation
+    simple (although not trivial), we are going to assume a couple of things upfront.
+    First, we assume that each sale record contains a single type of food. If a person
+    buys two or more different types of foods, then each of those types will produce
+    a different sale record. However, each sale can contain as many portions of the
+    foods as we want, as long as they are the same type (combination of macronutrients
+    and protein sources). This is the most important simplification, since company
+    sales orders normally have various items per sale, but it will allow us to focus
+    on the programming side of things.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Second, we will not worry about the relation among food types and costs (or
+    prices) being continuous in the mathematical sense. This means that we may find
+    a food type with some combination of macronutrients and protein sources that is
+    very similar to another food's combination, but their production costs, as well
+    as their prices, are very different. Similarly, we assume that each food type
+    has its unique cost and price, and it can vary for different sales (the same food
+    type can have different costs and prices for different sales). This is not a realistic
+    assumption, as most companies have standardized products (including costs and
+    prices), but we can think of The Food Factory as being a craft shop, where each
+    food is unique, and that can generate the differences in costs and prices. If
+    anything, it's adding complexity (fun) to the analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Third, we will not worry about the relation among sales dates and sale statuses,
+    or among sales dates and whether or not a sale has been paid. This means that
+    we may actually find sales that have been delivered and are old, but were not
+    paid. This is something that does happen in some real-life cases, so there's no
+    problem assuming it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fourth, the fact that a customer's messages related to a specific sale are rated
+    high or low, does not affect the overall score they gave to The Food Factory.
+    There are two `STARS` columns, one for overall rating of The Food Factory, and
+    one that will be sent with each message related to an order. This means that a
+    client who in general likes The Food Factory can have a bad experience, and it
+    will not affect how much they continue to like the store. Conversely, a customer
+    who in general does not like The Food Factory, will not start liking it because
+    they had a good experience with it one day. This assumption holds true for people
+    with fixed preferences, but does not hold true in general. If we wanted to, we
+    could include mechanisms in the simulation that take these dynamics into account.
+    As a matter of fact, I encourage you to try to implement some of these mechanisms
+    yourself. It will be good practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fifth, we won't worry about the macronutrients making sense, including the combination
+    with protein sources. A common diet would include approximately 50% protein, 35%
+    carbohydrates, and 15% fat, but we won't worry about our numbers making nutritional
+    sense. That means, please don't think any of these simulated food orders are realistic,
+    or are actually healthy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Potential pitfalls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we understand the general data structure, we need to find potential
+    pitfalls that should be avoided. We can think about this data structure as a standard
+    table structure (a data frame or a spreadsheet) where each column represents a
+    variable and each row represents an observation (a sales record, in our case).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The too-much-empty-space problem
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's say we have a sales record; what happens if we get a message related to
+    that order from our customer? Well, we simply add the data to the corresponding
+    columns `DATE`, `STARS`, and `MESSAGE`. What happens if we get another message
+    related to the same order? Well, a possible solution would be to add a new combination
+    of `DATE`, `STARS`, and `MESSAGE` for the new message, but names would collapse.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How would we differentiate among them? Well, we can append a number indicating
+    the actual message number. Then, we would have `DATE_1`, `STARS_1`, and `MESSAGE_1` for
+    the first message, and `DATE_2`, `STARS_2`, and `MESSAGE_2` for the second message.
+    That would fix it, wouldn't it? What happens if we get a third, or more, messages
+    related to the order? Well, we would end up with a lot of variables in our data
+    frame. Specifically, we would have as many combinations as the maximum number
+    of messages that were sent to a single order. What would be the content of the
+    cells for the orders that did not have such a big number of messages? They would
+    be empty. That would be a lot of wasted space! Plus, the general structure for
+    the data would feel awkward. There must be a better way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you think about it, it feels like the messages and the sales are two different
+    things and that they should be kept separate, doesn't it? If you think about it
+    that way, you are right. So let's imagine that, let's keep one data frame for
+    the sales orders and another for the messages. There is another problem. Can you
+    see it? How are we going to tell which messages belong to which sales orders?
+    Identifiers to the rescue! We can add `SALE_ID` to the sales data frame, where
+    it should be unique, and we can add the same `SALE_ID` to the messages data frame,
+    where it will not be unique because there can be multiple messages related to
+    the same sales order. This means we have a one-to-many relation. With this in
+    mind, the sales data frame would have all the variables we mentioned earlier,
+    minus the `DATE`, `STARS`, and `MESSAGE` variable for the messages (don't confuse
+    the sales order `DATE` with the `DATE` for each message), and those three variables
+    would conform to the separate messages data frame. Both data frames would have
+    a `SALE_ID` variable. Great; we're past that one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The too-much-repeated-data problem
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What variable do we still have in the sales data frame? Well, to phrase it in
+    such a way as to make the problem very obvious, we still have the sales variables
+    and the customer's variables. So, what might the problem be? Well, each time a
+    customer makes a new purchase, we save her `BIRTH_DATE`, `CLIENT_SINCE`, `GENDER`,
+    and `STARS` information again. What if a frequent customer has 100 different purchases
+    with The Food Factory? Well, her information will be repeated 100 times! We need
+    to fix that. How might we do it? We do the same thing we did before, separate
+    things that are different. That's right. We create a separate data frame for the
+    customer data, and we already know how to link the customers with the sales since
+    we used that same technique in the previous problem, we create identifiers in
+    both data frames. This is a many-to-one relation (from the point of view of the
+    sales data towards the customers' data). I'm sure you can figure out which variables
+    belong to which data frames.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By eliminating the repeated data, we're also eliminating the possibility of
+    accidentally changing some of those repeated values and then being confused about
+    which ones are correct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To recapitulate, what we have done is break up a huge initial table that contained
+    all the information in a single place into three different tables that are linked
+    through identifiers, in such a way that we represent different things in each
+    table (sales, clients, and client messages), while eliminating a lot of wasted
+    space and repeated values. To get more intuition on how is organized after these
+    adjustments, we can take a look at the following image which shows what data attributes
+    belong to which entities, and how they are related among each other:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00028.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Data entities and attributes for the simulation
+  prefs: []
+  type: TYPE_NORMAL
+- en: These techniques, together with many others, are called **database normalization**,
+    which can be useful in certain scenarios. There are times, however, that we will
+    not want our data to be fully normalized because of performance issues, but those
+    are advanced cases that we won't cover in this book. For the interested reader,
+    I'd recommend looking at Silberschatz, Korth, and Sudarshan's, *Database System
+    Concepts, 2010* for advanced concepts and examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, keep in mind that although we are creating our own unique identifiers
+    in this chapter, in real-world applications you will be better off using a well
+    established tool for such a task. The `uuid` package is specially designed to
+    generate and handle **Universally Unique Identifiers** (**UUIDs**). You can find
+    more information about it in its CRAN page ([https://cran.r-project.org/web/packages/uuid/index.html](https://cran.r-project.org/web/packages/uuid/index.html)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simulating the sales data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Enough concepts; let''s start programming. To get a clear idea of where we''re
+    heading, we start by initializing the `sales` data frame we will be using, with
+    zero observations for now. We do so by defining the available categories for each
+    factor variable, and defining empty values with the data type we need for each
+    variable. As you can see, it has the identifiers `SALE_ID` and `CLIENT_ID`, which
+    will allow us to link this data with the one from `clients` and `client_messages`.
+    To understand this, let''s have a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This way of initializing an empty data frame, as opposed to many other methods
+    you may find elsewhere, is safer, since you'll have the correct column types from
+    the beginning. If your code relies on some column type checking (as we will do),
+    it will work even with a data frame with zero rows (as is the case here).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simulating numeric data according to distribution assumptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will generate the data for each column separately and then we'll recreate
+    the data frame with it. We want to start with the easy parts first, so we'll take
+    a look at the simulation for `QUANTITY`, `COST`, `PRICE`, and `DISCOUNT`. The
+    easy way would be to just simulate some random numbers and make sure they are
+    within some range by multiplying or dividing them accordingly. We could also use
+    the `round()` function to make sure `QUANTITY` is not fractional. However, if
+    we want to do it the correct way, then we must consider the underlying assumptions
+    in each of those numbers. An image showing the distributions mentioned in the
+    following paragraphs is shown below.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00029.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Distributions for COST, PRICE, QUANTITY and DISCOUNT
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `COST` and `PRICE` value follow a normal distribution because they are
+    real numbers. On average, `COST` should be lower than `PRICE`, so we will set
+    their respective mean parameters accordingly. Note that this allows for the possibility
+    of some foods being sold for less than their production cost, which sometimes
+    happens when companies are trying to minimize losses. `DISCOUNT` follows an exponential
+    distribution because we want most discounts to be zero, or low (compared to the
+    price). This means that we don''t give out discounts often, and when we do, they
+    will be small. `QUANTITY` follows a *Poisson distribution* because it needs to
+    be an integer. A good resource is Sean Owen''s *Common Probability Distributions:
+    The Data Scientist''s Crib Sheet, 2015* ( [https://blog.cloudera.com/blog/2015/12/common-probability-distributions-the-data-scientists-crib-sheet/](https://blog.cloudera.com/blog/2015/12/common-probability-distributions-the-data-scientists-crib-sheet/)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given these assumptions, we will create three functions. `COST` and `PRICE` are
+    simulated with the `random_values()` function, while `QUANTITY` and `DISCOUNT` have
+    their own functions. The `random_values()` function uses the `rnorm()` function
+    to simulate `n` values (where `n` is the number of rows we want in the data frame)
+    using the normal distribution, with a specific `mean` and standard deviation (`sqrt(variance)`).
+    We then take these values and round them to two decimal places using the `round()` function
+    as shown in the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `random_discounts()` function uses the `rexp()` function to simulate `n` values
+    using the exponential distribution with the `lambda` parameter, and, as we did
+    before, we use the `round()` function to round the values to two decimal places.
+    When we use this function, we''ll use a very high `lambda` parameter (100) to
+    heavily skew the distribution to the right so that we get a lot of zeros in the
+    simulation. However, this will make our values be very small (for example, 0.021).
+    If we use these values directly, our discounts will be of a couple of cents, which
+    is not realistic. Therefore, we multiply these values by 100 to get discounts
+    that are a couple of dollars. Note that if we first round and then multiply by
+    100, we get full dollar discounts (for example, $2), but if we first multiply
+    by 100 and then round, we get discounts that include cents (for example, $2.1),
+    which is something we prefer to avoid, but it would work just as well. Let''s
+    have a look at the following code to understand this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `random_quantities()` function uses the `rpois()` function to simulate
+    `n` values using the *Poisson distribution* with the `lambda` parameter. In this
+    case, we don''t need to round, because the values will already be integers. However,
+    we do add `1` to each value, because we might get zero as a quantity, and having
+    a sales order with zero foods would not make sense. Adding `1`  guarantees we
+    have at least one food in each sales order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Simulating categorical values using factors
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `random_levels()` function simulates `n` categorical values by sampling
+    the `levels` provided with replacement (controlled by the third parameter, which
+    is sent as `TRUE`). You can think about the `levels` as an array of strings, each
+    of which is a possible value for the simulation. These `levels` will come from
+    the categories defined for factor variables in the data frame (`PROTEIN_SOURCE`,
+    `STORE`, `DELIVERY`, `STATUS`, and `PAID`). A sample with replacement means that
+    every time we pick one of the values from the `levels` object, we return it so
+    that we can pick it again later. Sampling without replacement only makes sense
+    when you want a number of samples that is smaller than the total amount of values
+    available, which is not the case here, since we want to simulate thousands of
+    rows and we won't have that many `levels`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There''s a third parameter that we have not mentioned, the `probabilities` parameter.
+    As you can see, by default it''s set to `NULL`, but we do send an object there;
+    it must be a vector of numbers between 0 and 1, such that they sum to 1 and they
+    represent the probability of picking a specific category. The order of this `probabilities` object
+    must be the same as in the `levels` object. For example, if we have three possible
+    levels and we send the `probabilities` object as `c(0.2, 0.3, 0.5)`, the first
+    level will have a 20% probability of being picked, while the second and third
+    levels will have probabilities of 30% and 50%, respectively. Note that the probabilities
+    add up to one. Let''s have a look at the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we don't check whether the `probabilities` object is being sent as
+    `NULL` before we pass it along to the `sample()` function. This can be done because
+    the corresponding parameter in the `sample()` function also uses `NULL` as a default,
+    and interprets it as using equal probabilities for all the values. You can check
+    this in the function's documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To test that the probabilities are being implemented correctly, we can simulate
+    100 values and then create a table with the results to see the amount of values
+    produced for each of the categories. As you can see, if we simulate `100` values
+    of the categories `A`, `B`, and `C`, with 20%, 30%, and 50% probabilities, we
+    get 18%, 37%, and 45% proportions, respectively. These results are close enough
+    to our specifications, and thus, correct. Note that you will get different values
+    every time you re-execute the code, and they will almost never be the exact values
+    you specified, which is natural in simulations. However, they should almost always
+    be close to the specifications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Simulating dates within a range
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `random_dates_in_range()` function uses the same `sample()` function we
+    used before, but instead of receiving a list of strings as categories from factor
+    variables, it will receive a list of dates. To generate the full set of valid
+    dates for the simulation, we use the `seq()` function. This function will generate
+    all values from the `start` to the `end` by a specific interval. If we want to
+    generate all odd numbers between 1 and 10, we will use `seq(1, 10, 2)`, which
+    means that it will take `1` and add `2` to it sequentially until `10` is reached.
+    In our case, we want the increment to be a full day, and, conveniently, the `seq()` function
+    provides this capability when sending date objects by sending the increment as
+    the string `"day"`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that this will only work when sending *date* objects. If you try to test
+    this function with strings, you will get an error saying that `''from'' cannot
+    be NA, NaN, or infinite`. Instead, you should convert those strings to dates with
+    the `as.Date()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Simulating numbers under shared restrictions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As you may remember, The Food Factory creates their foods by receiving a macronutrient
+    specification. Customers can specify whatever combination of percentages they
+    want for each one, as long as they add up to 1\. Now we are going to simulate
+    these macronutrient percentages. This will require a little more work than the
+    previous cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we create a function that will return numeric triples, where each number
+    is between 0 and 1, and together they add up to 1\. To accomplish this, we will
+    use two random numbers and make the third one dependent on the first two. We will
+    use the following mathematical fact:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00030.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This tells us to take one number as *1 - max(a, b)*, another as *min(a, b)*,
+    and the last one as *abs(a, b)*; which is exactly what we do in the `random_triple()` function.
+    Doing so mathematically guarantees that we will get three random numbers between
+    0 and 1 that together add up to 1\. Note that the `random_triple()` is one of
+    the few functions we have created which does not require any arguments at all,
+    which makes sense, since we don''t need *external* information to simulate the
+    triple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can test that it''s working simply by using `sum()` over the result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we want to generate `n` of these triples. To do so, we use the `replicate()` function
+    to produce `n` triples. The `TRUE` argument corresponds to the `simplify` argument
+    of the function, which will reduce a list of triples to matrix form, which is
+    easier to work with in this particular case. When we are testing the code and
+    look at the results of `replicate(n, random_triple(), TRUE)`, we will find that
+    the resulting structure is the transpose of what we want, meaning that it has
+    three rows and `n` columns, where each row represents a macronutrient percentage
+    and each column represents an observation. We want to transpose this structure
+    to get the macronutrient percentages as columns and the observations as rows;
+    to do so, we simply use the `t()` function. After that, we simply create a data
+    frame with the corresponding values for each macronutrient:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Simulating strings for complex identifiers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It's time for the most complex part of the simulation, the identifiers. We want
+    to produce `n` identifiers, and, depending on what identifiers we are simulating,
+    we may want them to be unique. Client identifiers in the client data must be unique,
+    because we don't want two distinct clients with the same identifier, and our clients'
+    data will not have repeated records by design. On the other hand, we don't want
+    unique client identifiers in the sales data, because we want *repeated* clients
+    to appear in there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We could create two distinct functions that take care of these cases independently,
+    but it's easy enough to combine them into a single function by just using a `reduction` parameter
+    that specifies the percentage of unique identifiers. If the `reduction` parameter
+    is sent as 0 (the default), we assume that full unique identifiers are requested.
+    We will assume that identifiers are composed of a group of letters followed by
+    a group of digits, and each group's length should be specified separately. That's
+    what the `n_letters` and `n_digits` are for. Our implementation will work by creating
+    the letters and digits groups separately and then combining them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we will create the letter combinations by taking a sample from the `LETTERS` group
+    (an internal R object which contains all ASCII letters in the capitalized form)
+    of size `n` with replacement (we may have repeated letters in each identifier).
+    Then, we are going to replicate this sample for `n_letters`, which is the amount
+    of letters we need in each identifier, and we won't simplify the structure, which
+    is why we send the `FALSE` parameter. This will return a list with `n_letters` elements,
+    where each element is a vector of `n` letters. Now we want to paste these objects
+    together. To do so, we use the `paste0()` function (which is a shortcut for the
+    `paste()` function that collapses everything together, if you just use `paste()`,
+    you will get spaces between the letters). However, we can't send our construction
+    to `paste0()` because we will get some garbage out. We need to use the `do.call()` function
+    to this properly. To understand what is going on, let's assume that `n_letters`
+    is 5, and see how the code behaves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we will focus on the digit combinations. Our objective is to get a number
+    between zero and the number formed of `n_digits` nines. For example, if `n_digits` is
+    5, we want numbers between 0 and 99,999\. This will be broken into two steps.
+    First, create the dynamic right-extreme number composed of only nines. Then, make
+    sure that it has exactly `n_digit` digits, even if the natural way of representing
+    the number does not. This means that if `n_digits` is 5 and the number we end
+    up sampling is 123, we need to use 00123 as the result, since we need to ensure
+    `n_digit` digits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To accomplish the first part, we use `replicate()` to repeat the string **9** `n_digits` times.
+    Then we use `paste()` with `collapse = ""` to put all the strings together, resulting
+    in a string such as **99999**. Then we convert that string into a number by using
+    the `as.numeric()` function. We end up with the desired number of nines in the
+    `max_number` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then we use the `sprintf()` function to make sure we have `n_digits` when using
+    the number. To do so, we specify the `format` with a pre-fill of zeros (using
+    the `"%0"` syntax), such that we have `n_digits` (using the `n_digits` followed
+    by the `d` letter for digits). We put this inside a `paste()` function because
+    the `format` string will be created dynamically. Following the example stated
+    before, it would be `"%05d"` for 5 digits. For more information on how to use
+    the `sprintf()` function, take a look at [Chapter 1](part0022.html#KVCC0-f494c932c729429fb734ce52cafce730),
+    *Introduction to R*. These lines combined give us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we need to paste the `letters` and `digits` objects together by using the
+    `paste0()` function again. Since this is a vectorized operation, we will end up
+    with a single array of `n` identifiers. Note that even though we have not enforced
+    uniqueness, the probability of the sampling procedures producing repeated identifiers
+    is so extremely low that we won't worry about it here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Real-world problems have a surprising ability to produce these extremely low
+    probability cases, making careless code fail. If you are developing critical applications,
+    always make sure you check for these cases explicitly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, if `reduction` is greater than zero, meaning that we want to use only
+    the `reduction` percentage of the identifiers created so far to generate the total
+    of `n` identifiers, we will use the `sample()` function to get `n` identifiers
+    from the first `reduction` percentage identifiers, which is computed as an array
+    from 1 to the floor of the percentage (must be an integer) of the `ids`, and we
+    will do it with replacement (hence the `TRUE` parameter). If `reduction` is zero,
+    we simply send the `ids` we have created so far without any modifications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Putting everything together
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have done the hard work of creating all our simulation functions,
+    we can just assemble them inside a general function that will use them to easily
+    simulate the data for us. The first thing we note is that there are a lot of parameters
+    that we need to control, and if we create a function signature that contains all
+    of these parameters explicitly, we will be constraining ourselves by having a
+    rigid signature that is hard to work with. We don't want to deal with these parameters
+    by hand because it will make it cumbersome to work with the code. What if we could
+    pass a single parameter that would mutate for us as we require? Well, we can do
+    that! Parameter objects exist for this reason. They are a simple concept to grasp
+    and provide a lot of flexibility. They are lists that are packed before being
+    sent to the function and are unpacked inside the function to be used as needed
+    inside nested functions. This is a form of *encapsulation*. We will look deeper
+    into encapsulation in [Chapter 8](part0178.html#59O440-f494c932c729429fb734ce52cafce730),
+    *Object-Oriented System to Track Cryptocurrencies*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we note that since these simulations are stochastic processes, meaning
+    we may get different results every time we execute them, we may lose the reproducibility
+    of our results. To avoid this, we simply set the seed at the beginning of the
+    simulations to make sure we get the same results every time, just as we did in
+    [Chapter 3](part0076.html#28FAO0-f494c932c729429fb734ce52cafce730), *Predicting
+    Votes with Linear Models*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rest of the code is simply calling the functions we have already created
+    with the appropriate arguments, which come from the parameters object we unpack
+    at the beginning. There are three things worth noting. First, we can’t simply
+    use the `random_composition()` function directly into one of the variables in
+    the data frame we create because the resulting object contains data for three
+    different variables in the data frame. Therefore we need to store an intermediate
+    object with the results, `composition`, and then use it to extract the information
+    for each macronutrient. Second, we use the `stringsAsFactors` argument of the
+    `data.frame()` function as `FALSE` to make sure that `SALE_ID` and `CLIENT_ID`
+    are not treated as factors (since they are strings). When factors start having
+    many categories inside, processing data frames becomes slower, and we can avoid
+    that by treating them as simple strings since we will have lots of unique identifiers.
+    Third, since we are treating all strings as non-factors and we may not get all
+    of the possible categories in our sample when using `random_levels()` the factor
+    variable may be defined without some of the factors we previously specified. To
+    make sure this doesn’t happen we explicitly define the levels inside the `factor()`
+    function to be the levels in the original sales data frame sent to the function
+    which contains the data from our initial definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, to create our simulation, we create the `parameters` object with the
+    necessary information, and update our `sales` object using the `random_sales_data()` function.
+    In this case we are going to simulate 10,000 sales orders between January 2015
+    (`date_start`) and today's date (`date_end`, using the `Sys.Date()` function to
+    generate the date for today). We require our identifiers to have five letters
+    (`n_letters`) followed by five digits (`n_digits`), and we want our `CLIENT_ID` to
+    use only the first 25% of the generated identifiers to allow for repeated customers
+    (`reduction`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We want five foods per sales order on average (`quantity_lambda`), with production
+    costs with a mean of 30 (`cost_mean`) and variance of 10 (`cost_variance`), and
+    prices with a mean of 50 (`price_mean`) and a variance of 10 (`price_variance`).
+    We also want discounts around 1 or 2 USD (`discount_lambda`; remember the transformation
+    we did inside the corresponding function). Finally, we want the probabilities
+    of `PENDING`, `DELIVERED`, `RETURNED`, and `CANCELLED` as `STATUS` to be 20%,
+    60%, 10%, and 10%, respectively. Similarly, we want the probabilities of an order
+    being paid to be 90%:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can have fun with these parameters and simulate many different kinds of
+    scenarios. For example, if you want to simulate a company that has been doing
+    very badly with thin margins or even losses, you can bring the means of costs
+    and prices together, and maybe even increase their respective variances to make
+    sure there are a lot of crossovers, meaning losses per sale order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Congratulations! You now know how to produce non-trivial data simulations. With
+    this knowledge, you can have a lot of fun simulating many kinds of data. We encourage
+    you to expand this example and play around with its analysis using the knowledge
+    from the following chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simulating the client data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have gone through the sales data simulation and we have the necessary
+    fundamentals, the rest of the data simulation will be much easier. Furthermore,
+    we will use many of the functions we created before to simulate the client and
+    client messages data, which is great! Reusing functions like this is very efficient,
+    and over time you will get into the habit of doing so. You will build your own
+    collection of reusable code, which will make you increasingly more efficient when
+    programming.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start by defining the data frame we will use, just as we did before. In
+    this case we will have the `CLIENT_ID`, `BIRTH_DATE`, `CLIENT_SINCE`, `GENDER`,
+    and `STARS` variables. The `STARS` represent a rating between `1` (bad) and `5`
+    (excellent):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first thing we note is that the `CLIENT_ID` information should not be simulated
+    again, because we will get different client identifiers from the ones we already
+    have in the sales data. We want unique client identifiers in the sales data to
+    correspond to a record in the client data, which we accomplish by sending them
+    as the `client_ids` parameter and assigning them directly into the `CLIENT_ID` variable
+    in the `clients` data frame. In this case, `n` will correspond to the number of
+    unique client identifiers we get, which we get by using the `length()` function.
+    The other parameters we extract as we normally would with parameter objects. Specifically,
+    we need the range of dates which are valid for our client''s birth dates (they
+    must be at least 18 years old), as well as the valid range of dates since they
+    were clients (they couldn''t have been a client before the company started operations
+    in January 2015; see the parameters for the sales data simulation). The rest of
+    the code is very similar to what we saw in the sales data simulation, so we won''t
+    explain it again. To understand this, let''s have a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To simulate the client data, we simply create the corresponding parameters
+    inside the parameters object and send that to the `random_clients_data()` function
+    to update the `clients` data frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Did you notice how easy this was? This is because we created our fundamentals
+    in the previous section, and they drastically simplified following applications
+    of the same concepts. As you increase your programming skills, this will happen
+    more often.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simulating the client messages data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Simulating text messages that actually make sense is very hard, and we won''t
+    attempt it here. Instead, what we''ll do is leverage a dataset that was published
+    about food reviews on Amazon. The dataset was published as part of the paper published
+    by McAuley and Leskovec, *From amateurs to connoisseurs: modeling the evolution
+    of user expertise through online reviews, 2013*. You can find the dataset in Kaggle
+    ([https://www.kaggle.com/snap/amazon-fine-food-reviews](https://www.kaggle.com/snap/amazon-fine-food-reviews)).
+    We won''t show the code that prepared the data for this example, but basically,
+    what it does is rename the variables we want `STARS`, `SUMMARY`, and `MESSAGE`,
+    delete the rest, and save the data frame into the `reviews.csv` file. For the
+    interested reader, the code that accomplishes this task, as well as the original
+    and processed data, is inside the code repository for this book ([https://github.com/PacktPublishing/R-Programming-By-Example](https://github.com/PacktPublishing/R-Programming-By-Example)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The idea is that since it''s hard to simulate this data, we will leverage an
+    already existing dataset with real reviews and sample it to get the messages we
+    want for our example. As before, we start by defining the `client_messages` data
+    frame we will use with the `SALE_ID`, `DATE`, `STARS`, `SUMMARY`, and `MESSAGE` variables
+    as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we have done before, in our `random_client_messages_data()` function, we
+    first unpack the parameter object and set the seed. The next step is to actually
+    retrieve the reviews sample we want with the `random_reviews()` function we will
+    create next. Assuming we have the reviews data ready, we create the `client_messages` data
+    frame by taking a random sample from the `sale_ids` from the sales data so that
+    we can generate a connection among messages and sales orders, and we do so in
+    a way that we can generate various messages for a single sales order, since we
+    use the `replace` argument as `TRUE`. The other parts of the code are similar
+    to what we have seen before. Let''s have a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `random_reviews()` function takes the CSV file path as an argument in `reviews_file` and
+    uses it to load the data into the `reviews` object. Then it takes a sample of
+    the row indexes without replacement, because we don''t want to use the same review
+    twice, and we have enough reviews to make sure that doesn''t happen (there are
+    over 5,00,000 reviews in the data). We simply return this subset of the data frame
+    back to be used in the final `client_messages` data frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we create the parameters object with the necessary information, and
+    pass it along to the `random_client_messages_data()` to update the `client_messages` data
+    frame with the simulated data. Make sure you change the `reviews_file` path to
+    the one appropriate for your setup (`./` means that it''s in the same directory).
+    Let''s have a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: We're done! Now we should have a full simulation for sales data, as well as
+    data for clients and their messages for their respective sales orders. Not every
+    sales order will have a message, and some of them may have more than one, and
+    this is by design. Remember that the reviews we used for the example are not necessarily
+    for foods, but the idea was to show how these techniques can be used to simulate
+    new data using already existing datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A look at the three datasets we have simulated should put a smile on our face.
+    Note that we omit the `client_messages` data because it was too large to be shown
+    here, but you should see it just fine on your computer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Working with relational databases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have the data we need for the rest of the example, we're going to
+    learn how to work with it using databases. In this section, we will learn how
+    to save our data into a relational database, as well as how to read it back. We
+    won't go too deep into advanced operations or workflows. We will only look into
+    the basics, and this section may be skipped if you are not interested in this
+    topic. It's not critical to know this to reproduce the rest of the example in
+    the following chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first thing we must do is install the `RMySQL` package. There are various
+    packages for working with databases, and they work almost the same. We chose the
+    `RMySQL` package because it''s designed for the MySQL database, which is very
+    popular and easy to work with in almost all operating systems. To be able to reproduce
+    this code, you will need a MySQL database set up properly in your computer, and
+    we won''t go into the details of how to do so here. You can find many good resources
+    online. From this point on, we''ll assume you have your database ready:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first thing we need to do to work with databases is to connect and disconnect
+    from them. To do so, we use the `dbConnect()` and `dbDisconnect()` functions.
+    The `dbConnect()` function returns an object that contains the connection to the
+    database, and which must be used in all following actions regarding the database.
+    We will call this object `db` to remind us that it represents the database we''re
+    working with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you're using a database that is not operating on the same computer you're
+    using R from, then you can use the corresponding IP address in the `host` parameters
+    as you normally would with any SQL remote connection. There's a fifth parameter
+    that we need to use when we know the name of the database we're connecting (a
+    single MySQL server can have multiple databases inside). When you see the `TRUE` value
+    after trying to disconnect from the database, it means that everything executed
+    correctly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To send a query into the database server, we use the `dbSendQuery()` function
+    after having connected to it again. We create the fresh `sales` database (which
+    will contain our `sales`, `clients`, and `client_messages` tables) in our MySQL
+    server by executing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since MySQL syntax requires "`;`" at the end of each query, depending on your
+    setup, you may get an error if you don''t put them in. Now we will disconnect
+    and reconnect to the server, but this time, we will specify which particular database
+    we want to work with (the `sales` database we just created):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we're going to write the data we simulated into the MySQL server. To do
+    so, we use the `dbWriteTable()` function. The first argument is the database connection
+    object, the second argument is the name of the table we want to store the data
+    in, the third argument is the data frame that contains the data we want to store,
+    and the fourth argument, as the name suggests, will overwrite (as opposed to append)
+    any data already present in the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To read a full table from the MySQL server into R, we use the `dbReadTable()` function.
+    However, note that when we do, any information regarding factors is lost, and
+    the data frame only knows it contains strings, which is the way the data is stored
+    within the MySQL server. To verify this, you can look into the structure of the
+    data being read from the MySQL server with the `str()` function. We won''t show
+    the output here to preserve space, but you will find that `sales` does have the
+    factor information, while `sales_from_db` does not:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Not fixing this metadata problem about the factor variables will have implications
+    when we create our visualizations in the next chapter. We can deal with it now
+    or later, but since this chapter is about working with data, we will show how
+    to do so here. First, we will create the `read_table()` function that will wrap
+    the `dbReadTable()` function. This `read_table()` function will check which table
+    is being read and apply the appropriate metadata by calling `add_sales_metadata()`,
+    `add_clients_metadata()`, or `add_client_messages_metadata()`. Note that if the
+    table being read is not one of those three, we will not know what metadata to
+    add for now, so we will just return the table directly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The way we add metadata to each case is by redefining the factor variables
+    as we did before, as well as transforming the date objects, which are also received
+    as strings. We don''t have to change anything else in the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we can see that both `sales` and `sales_from_db` contain the same metadata.
+    Again, we don''t show the output to preserve space, but you''ll see that the factor
+    metadata is now preserved when reading from the MySQL server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Since they have the same data and metadata, it's now safe to completely read
+    the data from the MySQL server whenever we need to work with this data. Just remember
+    to use the `read_table()` function instead of the `dbReadTable()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reading full tables from the MySQL server with the `dbReadTable()` is only practical
+    when the tables are not too large. If you're working with a database in a real
+    problem, that's probably not the case. If the data you're trying to read is too
+    large, use a combination of the `dbSendQuery()` and `fetch()` functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want to know what data type will be used in the MySQL server to store
+    the data you''re sending, you can use the `dbDataType()` function with the `MySQL()` argument,
+    as well as the data type whose server type you want to find out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, you may use the `dbListTables()` and `dbListFields()` functions to
+    find out the tables available in the database and the fields available for a specific
+    table, respectively. If you followed the example this far, you should see the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that you see the `row.names` field because it's necessary for MySQL functionality,
+    but when you actually read the data from the database, you won't get that field.
+    You will get all other fields shown (the ones in capital letters).
+  prefs: []
+  type: TYPE_NORMAL
+- en: These are the basics of working with a MySQL server using R. For the interested
+    reader, a good, concise resource that showcases many other `RMySQL` features are
+    Squared Academy's *RMySQL Tutorial for Beginners, 2016* slides ([https://www.slideshare.net/RsquaredIn/rmysql-tutorial-for-beginners](https://www.slideshare.net/RsquaredIn/rmysql-tutorial-for-beginners)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we established the fundamentals of the food sales example
+    by presenting the general scenario for The Food Factory: what they do, what they
+    want to accomplish, and, most importantly, how to simulate the data we will need
+    for the rest of the example. We went over various techniques to simulate different
+    kinds of data, like numbers, categories, strings, and dates. The approach we showed
+    is flexible enough to allow you to simulate many different kinds of data in modular
+    and incremental ways. We also showed how to allow flexibility for different assumptions
+    about the simulation to easily take place by using parameter objects. We learned
+    how to create functions that are useful for different scenarios, and how to mix
+    our simulated data with data coming from external sources. Finally, we learned
+    how to work with external MySQL databases.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are ready to take on the analysis part of the example. In the next chapter,
+    [Chapter 5](part0110.html#38STS0-f494c932c729429fb734ce52cafce730), *Communicating
+    Sales with Visualization*, we will use the data we just simulated to create many
+    visualizations that will allow us to get a good idea of the current status of
+    The Food Factory, as well as its areas for improvement.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1293 @@
+- en: Chapter 6.  Spark Stream Processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Data processing use cases can be mainly divided into two types. The first type
+    is the use cases where the data is static and processing is done in its entirety
+    as one unit of work, or by dividing it into smaller batches. While doing the data
+    processing, the underlying data set does not change nor do new data sets get added
+    to the processing units. This is batch processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second type is the use cases where the data is getting generated like a
+    stream, and the processing is done as and when the data is generated. This is
+    stream processing. In the previous chapters of this book, all the data processing
+    use cases were pertaining to the former type. This chapter is going to focus on
+    the latter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following topics in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data stream processing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Micro batch data processing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A log event processor
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Windowed data processing and other options
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Kafka stream processing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Streaming jobs with Spark
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data stream processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Data sources generate data like a stream, and many real-world use cases require
+    them to be processed in real time. The meaning of *real time* can change from
+    use case to use case. The main parameter that defines what is meant by real time
+    for a given use case is how soon the ingested data or the frequent interval in
+    which all the data ingested since the last interval needs to be processed. For
+    example, when a major sports event is happening, the application that consumes
+    the score events and sends them to the subscribed users should be processing the
+    data as fast as it can. The faster can be sent, the better it is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what is the definition of *fast* here? Is it fine to process the score data
+    within, say, an hour of the score event happening? Probably not. Is it fine to
+    process the data within a minute of the score event happening? It is definitely
+    better than processing after an hour. Is it fine to process the data within a
+    second of the score event happening? Probably yes, and much better than the earlier
+    data processing time intervals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In any data stream processing use cases, this time interval is very important.
+    The data processing framework should have the capability to process the data stream
+    in an appropriate time interval of choice to deliver good business value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When processing stream data in regular intervals of choice, the data is collected
+    from the beginning of the time interval to the end of the time interval, grouped
+    in a micro batch, and data processing is done on that batch of data. Over an extended
+    period of time, the data processing application would have processed many such
+    micro batches of data. In this type of processing, the data processing application
+    will have visibility of only the specific micro batch that is getting processed
+    at a given point in time. In other words, the application will not have any visibility
+    or access to the already processed micro batches of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, there is another dimension to this type of processing. Suppose a given
+    use case mandates the need to process the data every minute, but at the same time,
+    while processing the data of a given micro batch, there is a need to peek into
+    the data that was already processed in the last 15 minutes. A fraud detection
+    module of a retail banking transaction processing application is a good example
+    of this particular business requirement. There is no doubt that the retail banking
+    transactions are to be processed within milliseconds of their occurrence. When
+    processing an ATM cash withdrawal transaction, it is a good idea to see whether
+    somebody is trying to continuously withdraw cash and, if found, send the proper
+    alert. For this, when processing a given cash withdrawal transaction, the application
+    checks whether there are any other cash withdrawals from the same ATM using the
+    same card that was used in the last 15 minutes. The business rule is to send an
+    alert when such transactions are more than two in the last 15 minutes. In this
+    use case, the fraud detection application should have visibility of all the transactions
+    that happened in a window of 15 minutes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A good stream data processing framework should have the ability to processing
+    the data in any given interval of time, as well as the ability to peek into the
+    data ingested within a sliding window of time. The Spark Streaming library that
+    is working on top of Spark is one of the best data stream processing frameworks
+    that has both of these capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Look again at the bigger picture of the Spark library stack as given in *Figure
+    1* to set the context and see what is being discussed here before getting into
+    and taking up the use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Data stream processing](img/image_06_001.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 1
+  prefs: []
+  type: TYPE_NORMAL
+- en: Micro batch data processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Every Spark Streaming data processing application will be running continuously
+    till it is terminated. This application will be constantly *listening* to the
+    data source to receive the incoming stream of data. The Spark Streaming data processing
+    application would have a configured batch interval. At the end of every batch
+    interval, it will produce a data abstraction named **Discretized Stream** (**DStream**)
+    which works very similar to Spark's RDD. Just like RDD, a DStream supports an
+    equivalents method for the commonly used Spark transformations and Spark actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Just like RDD, a DStream is also immutable and distributed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 2* shows how DStreams are being produced in a Spark Streaming data
+    processing application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Micro batch data processing](img/image_06_004.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 2* depicts the most important elements of a Spark Streaming application.
+    For the configured batch interval, the application produces one DStream. Each
+    DStream is a collection of RDDs consisting of the data collected within that batch
+    interval. The number of RDDs within a DStream for a given batch interval will
+    vary.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Since Spark Streaming applications are continuously running applications collecting
+    data, in this chapter, rather than running the code in REPL, the complete application
+    is discussed, including the instructions to compile, package and run.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Spark programming model was discussed in [Chapter 2](ch02.html "Chapter 2. Spark
+    Programming Model"), *Spark Programming Model*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programming with DStreams
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Programming with DStreams in a Spark Streaming data processing application also
+    follows a very similar model, as DStreams consist of one or more RDDs. When methods
+    such as Spark transformations or Spark actions are invoked on a DStream, the equivalent
+    operation is applied to all the RDDs that constitute the DStream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An important point to note here is that not all the Spark transformations and
+    Spark actions that work on RDD are unsupported on DStreams. The other notable
+    change is the differences in capability across programming languages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Scala and Java APIs for Spark Streaming are ahead of the Python API in terms
+    of the number of features supported for Spark Streaming data processing application
+    development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 3* depicts how methods applied on a DStream are applied on the underlying
+    RDDs. The Spark Streaming programming guide is to be consulted before using any
+    of the methods on DStreams. The Spark Streaming programming guide is marked with
+    special callouts containing the text *Python API* wherever the Python API deviates
+    from its Scala or Java counterparts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Assume that, for a given batch interval in a Spark Streaming data processing
+    application, a DStream is generated consisting of multiple RDDs. When a filter
+    method is applied on that DStream, here is how it gets translated into the underlying
+    RDDs. *Figure 3* shows a filter transformation applied on a DStream with two RDDs,
+    resulting in another DStream containing only one RDD because of the filter condition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Programming with DStreams](img/image_06_003.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 3
+  prefs: []
+  type: TYPE_NORMAL
+- en: A log event processor
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: These days, it is very common to have a central repository of application log
+    events in many enterprises. Also, the log events are streamed live to data processing
+    applications in order to monitor the performance of the running applications on
+    a real-time basis so that timely remediation measures can be taken. Such a use
+    case is discussed here to demonstrate the real-time processing of log events using
+    a Spark Streaming data processing application. In this use case, the live application
+    log events are written to a TCP socket. The Spark Streaming data processing application
+    constantly listens to a given port on a given host to collect the stream of log
+    events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready with the Netcat server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The Netcat utility that comes with most UNIX installations is used here as
+    the data server. To make sure that Netcat is installed in the system, type the
+    manual command as given in the following scripts, and, after coming out of it,
+    run it and make sure that there is no error message. Once the server is up and
+    running, whatever is typed in the standard input of the Netcat server console
+    is considered as the application logs events for simplicity and demonstration
+    purposes. The following commands run from a terminal prompt will start the Netcat
+    data server on localhost port `9999`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once the preceding steps are completed, the Netcat server is ready and the Spark
+    Streaming data processing application will process all the lines that are typed
+    in the previous console window. Leave this console window alone; all the following
+    shell commands will be run in a different terminal window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since there is a lack of parity of Spark Streaming features between different
+    programming languages, the Scala code is used to explain all the Spark Streaming
+    concepts and use cases. After that, the Python code is given, and, if there is
+    a lack of support for any of the features being discussed in Python, that is also
+    captured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Scala and Python code are organized in the way demonstrated in *Figure 4*.
+    For the compilation, packaging and running of the code, bash scripts are used
+    so that it is easy for the readers to run them to produce consistent results.
+    Each of these script file contents are discussed here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Organizing files
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the following folder tree, the `project`and `target`folders are created
+    at runtime. The source code that comes with this book can be copied directly to
+    a convenient folder in the system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Organizing files](img/image_06_007.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For compiling and packaging, the **Scala build tool** (**sbt**) is used. In
+    order to make sure that sbt is working properly, run the following commands from
+    the `Scala` folder of the tree in *Figure 4* in the terminal window. This is to
+    make sure that sbt is working fine and the code is compiling:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The following table captures the representative sample list of files and the
+    purpose of each of them in the context of the Spark Streaming data processing
+    application that is being discussed here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **File Name** | **Purpose** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `README.txt` | Instructions to run the application. One for the Scala application
+    and the other one for the Python application. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `submitPy.sh` | Bash script to submit the Python job to the Spark cluster.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `compile.sh` | Bash script to compile the Scala code. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `submit.sh` | Bash script to submit the Scala job to the Spark cluster. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `config.sbt` | The sbt configuration file. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `*.scala` | Spark Streaming data processing application code in Scala. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `*.py` | Spark Streaming data processing application code in Python. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `*.jar` | The Spark Streaming and Kafka integration JAR file that needs to
+    be downloaded and placed under the `lib` folder for the proper functioning of
+    the applications. This is being used in `submit.sh` as well as in `submitPy.sh`
+    for submitting the job to the cluster. |'
+  prefs: []
+  type: TYPE_TB
+- en: Submitting the jobs to the Spark cluster
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To properly run the application, some of the configurations depend on the system
+    in which it is being run. They are to be edited in the `submit.sh` file and the
+    `submitPy.sh` file. Wherever such edits are required, comments are given with
+    the `[FILLUP]` tag. The most important of these are the setting of the Spark installation
+    directory and the Spark master configuration, which can differ from system to
+    system. The source of the preceding script `submit.sh` file is given as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The source of the preceding script file `submitPy.sh` is given as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Monitoring running applications
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As described in [Chapter 2](ch02.html "Chapter 2. Spark Programming Model"),
+    *Spark Programming Model*, Spark installation comes with a powerful Spark web
+    UI for monitoring the Spark applications that are running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are additional visualizations available specifically for the Spark Streaming
+    jobs that are running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following scripts start the Spark master and workers, and enable monitoring.
+    The assumption here is that the reader has made all the configuration changes
+    suggested in [Chapter 2](ch02.html "Chapter 2. Spark Programming Model"), *Spark
+    Programming Model* to enable Spark application monitoring. If that is not done,
+    the applications can still be run. The only change to be made is to put the cases
+    in the `submit.sh` file and the `submitPy.sh` file to make sure that instead of
+    the Spark master URL, something like `local[4]` is used. Run the following commands
+    on the terminal window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Make sure that the Spark web UI is up and running by visiting `http://localhost:8080/`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the application in Scala
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code snippet is the Scala code for the log event processing application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the previous code snippet, there are two Scala objects. One is for setting
+    the proper logging levels, to make sure that unwanted messages are not displayed
+    on the console. The `StreamingApps` Scala object holds the logic of the stream
+    processing. The following list captures the essence of the functionality:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Spark configuration is created with the application name.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A Spark `StreamingContext` object is created, which is the heart of the stream
+    processing. The second parameter of the `StreamingContext` constructor is the
+    batch interval, which is 10 seconds. The line containing `ssc.socketTextStream`
+    creates DStreams at every batch interval, which is 10 seconds here, containing
+    the lines typed in the Netcat console.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A filter transformation is applied next on the DStream, to have only the lines
+    containing the word `ERROR`. The filter transformation creates new DStreams containing
+    only the filtered lines.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The next line prints the DStream contents to the console. In other words, for
+    every batch interval, if there are lines containing the word `ERROR`, that get
+    displayed in the console.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At the end of this data processing logic, the given `StreamingContext` is started
+    and will run until it is terminated.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the previous code snippet, there is no loop construct telling the application
+    to repeat till the running application is terminated. This is achieved by the
+    Spark Streaming library itself. From the beginning till the termination of the
+    data processing application, all the statements are run once. All the operations
+    on the DStreams are repeated (internally) for every batch. If the output of the
+    previous application is closely examined, the output from the println() statements
+    are seen only once in the console, even though these statements are between the
+    initialization and termination of the `StreamingContext`. That is because the
+    *magic loop* is repeating only for the statements containing original and derived
+    DStreams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of the special nature of the looping implemented in Spark Streaming
+    applications, it is futile to give print statements and log statements within
+    the streaming logic in the application code, like the one that is given in the
+    code snippet. If that is a must, then these logging statements are to be instrumented
+    within the functions that are passed to DStreams for the transformations and actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If persistence is required for the processed data, there are many output operations
+    available for DStreams, just as there are for RDDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compiling and running the application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The following commands are run on the terminal window to compile and run the
+    application. Instead of using `./compile.sh`, a simple sbt compile command can
+    also be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that, as discussed previously, the Netcat server must be running before
+    these commands are executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: If no error messages are shown, and the results are showing in line with the
+    previous output, the Spark Streaming data processing application has started properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling the output
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Note that the output of the print statements comes before the DStream output
+    print. So far, nothing has been typed in the Netcat console and, therefore, there
+    is nothing to process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now go to the Netcat console that was started earlier and enter the following
+    lines of log event messages by giving a gap of few seconds to make sure that the
+    output goes to more than one batch, where the batch size is 10 seconds:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once the log event messages are entered into the Netcat console window, the
+    following results will start showing up in the Spark Streaming data processing
+    application, filtering only the log event messages containing the keyword ERROR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The Spark web UI (`http://localhost:8080/`) was already enabled, and Figures
+    5 and 6 show the Spark applications and statistics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the main page (after visiting the URL `http://localhost:8080/`), click
+    the running Spark Streaming data processing application's name link to bring up
+    the regular monitoring page. From that page, click the **Streaming** tab, to reveal
+    the page containing the streaming statistics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The link and tab to be clicked are circled in red:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling the output](img/image_06_008.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From the page shown in *Figure 5*, click on the circled application link; it
+    will take you to the relevant page. From that page, once the **Streaming** tab
+    is clicked, the page containing the streaming statistics will show up as captured
+    in *Figure 6*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Handling the output](img/image_06_009.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are a whole lot of application statistics available from these Spark web
+    UI pages, and exploring them extensively is a good idea to gain a deeper understanding
+    of the behavior of the Spark Streaming data processing applications submitted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Care must be taken while enabling the monitoring of streaming applications as
+    it should not affect the performance of the application itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the application in Python
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The same use case is implemented in Python, and the following code snippet
+    saved in `StreamingApps.py`is used to do this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The following commands are run on the terminal window to run the Python Spark
+    Streaming data processing application from the directory where the code is downloaded.
+    Before running the application, in the same way that the modifications are made
+    to the script that is used to run the Scala application, the `submitPy.sh` file
+    also has to be changed to point to the right Spark installation directory and
+    configure the Spark master. If monitoring is enabled, and if the submission is
+    pointing to the right Spark master, the same Spark web UI will capture the statistics
+    of the Python Spark Streaming data processing applications as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following commands are run on the terminal window to run the Python application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the same log event messages used in the Scala implementation are entered
+    into the Netcat console window, the following results will start showing up in
+    the streaming application, filtering only the log event messages containing the
+    keyword `ERROR`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you look at the outputs from both the Scala and Python programs, you can
+    clearly see whether there are any log event messages containing the word `ERROR`
+    in a given batch interval. Once the data is processed, the application discards
+    the processed data without retaining them for any future use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In other words, the application never retains or remembers any of the log event
+    messages from the previous batch intervals. If there is a need to capture the
+    number of error messages, say in the last 5 minutes or so, then the previous approach
+    will not work. We will discuss that in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Windowed data processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the Spark Streaming data processing application discussed in the previous
+    section, assume that there is a need to count the number of log event messages
+    containing the keyword ERROR in the previous three batches. In other words, there
+    should be the ability to count the number of such event messages across a window
+    of three batches. At any given point in time, the window should be sliding along
+    with time as and when a new batch of data is available. Three important terms
+    have been discussed here, and *Figure 7* explains them. They are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Batch interval: The time interval at which a DStream is produced'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Window length: The duration of the number of batch intervals where there is
+    a need to peek into all the DStreams produced in those batch intervals'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sliding interval:  The interval at which the window operation, such as counting
+    the event messages, is performed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Windowed data processing](img/image_06_011.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 7*, at a given point in time, the DStreams used for the operation
+    to be performed are enclosed in a rectangle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In every batch interval, a new DStream is generated. Here, the window length
+    is three and the operation to be performed in a window is counting the number
+    of event messages in that window. The sliding interval is kept the same as the
+    batch interval so that the counting operation is done as and when a new DStream
+    is generated, so that the count is correct all the time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At time **t2**, the counting operation is done on the DStreams generated at
+    times **t0**, **t1**, and **t2**. At time **t3**, the counting operation is done
+    again since the sliding window is kept the same as the batch interval, and this
+    time counting the events is done on the DStreams generated at time **t1**, **t2**,
+    and **t3**. At time **t4**, the counting operation is done again, counting the
+    events done on the DStreams generated at time **t2**, **t3**, and **t4**. The
+    operations continue in that fashion till the application is terminated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting the number of log event messages processed in Scala
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the preceding section, the processing of the log event messages is discussed.
+    In the same application code after the printing of the log event messages containing
+    the word `ERROR`, include the following lines of code in the Scala application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first parameter is the window length and the second one is the sliding
+    window interval. This single magic line will print a count of log event messages
+    processed once the following lines are typed in the Netcat console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The same Spark Streaming data processing application in Scala, with the additional
+    lines of code, produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the output is studied properly, it can be noticed that, in the first batch
+    interval, one log event message is processed. Obviously the count displayed is
+    `1` for that batch interval. In the next batch interval, one more log event message
+    is processed. The count displayed for that batch interval is `2`. In the next
+    batch interval, no log event message is processed. But the count for that window
+    is still `2`. For one more window, the count is displayed as `2`. Then it reduces
+    to `1`, and then 0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most important point to be noted here is that, in the application codes
+    for both Scala and Python, immediately after StreamingContext creation, the following
+    line of code needs to be inserted to specify the checkpoint directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Counting the number of log event messages processed in Python
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the Python application code, after the printing of the log event messages
+    containing the word ERROR, include the following lines of code in the Scala application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first parameter is the window length and the second one is the sliding
+    window interval. This single magic line will print a count of log event messages
+    processed once the following lines are typed in the Netcat console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The same Spark Streaming data processing application in Python, with the additional
+    lines of code, produces the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The output pattern of the Python application is also very similar to the Scala
+    application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More processing options
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Apart from the count operation in a window, there are more operations that can
+    be done on DStreams in conjunction with windowing. The following table captures
+    the important transformations. All these transformations are acting on the selected
+    window and return a DStream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Transformation** | **Description** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `window(windowLength, slideInterval)` | Returns DStreams computed in the
+    window |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `countByWindow(windowLength, slideInterval)` | Returns the count of elements
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `reduceByWindow(func, windowLength, slideInterval)` | Returns one element
+    by applying the aggregation function |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `reduceByKeyAndWindow(func, windowLength, slideInterval, [numTasks])` | Returns
+    one key/value pair per key after applying the aggregation function over  multiple
+    values per key |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `countByValueAndWindow(windowLength, slideInterval, [numTasks])` | Returns
+    one key/count pair per key after applying the count of multiple values per key
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: One of the most important steps of stream processing is the persisting of the
+    stream data into secondary storage. Since the velocity of the data in Spark Streaming
+    data processing applications is going to be very high, any kind of persistence
+    mechanism that introduces additional latency into the whole process is not an
+    advisable solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In batch processing scenarios, it is fine to write to the HDFS and other file
+    system based storage. But when it comes to the storage of stream output, depending
+    on the use case, an ideal stream data storage mechanism should be chosen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: NoSQL data stores such as Cassandra support fast writes of temporal data. It
+    is also ideal to read the data that is stored for any further analysis purposes.
+    Spark Streaming library supports many output methods on DStreams. They include
+    options to save the stream data as text file, object file, Hadoop files, and so
+    on. As well as this, there are many third-party drivers available to save the
+    data into various data stores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kafka stream processing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The log event processor example covered in this chapter was listening to a TCP
+    socket for the stream of messages to be processed by the Spark Streaming data
+    processing application. But in real-world use cases, this is not going to be the
+    case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Message queueing systems with publish-subscribe capability are generally used
+    for processing messages. The traditional message queueing systems failed to perform
+    because of the huge volume of messages to be processed per second for the needs
+    of large-scale data processing applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Kafka is a publish-subscribe messaging system used by many IoT applications
+    to process a huge number of messages. The following capabilities of Kafka made
+    it one of the most widely used messaging systems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Extremely fast: Kafka can process huge amounts of data by handling reading
+    and writing in short intervals of time from many application clients'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Highly scalable: Kafka is designed to scale up and scale out to form a cluster
+    using commodity hardware'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Persists a huge number of messages: Messages reaching Kafka topics are persisted
+    into the secondary storage, while at the same time it is handling huge number
+    of messages flowing through'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A detailed treatment of Kafka is outside the scope of this book. It is assumed
+    that the reader is familiar with and has working knowledge of Kafka. From a Spark
+    Streaming data processing application perspective, it doesn't really make a difference
+    whether it is a TCP socket or Kafka that is being used as a message source. But
+    working on a teaser use case with Kafka as the message producer will give a good
+    appreciation of the toolsets enterprises are using heavily. *Learning Apache Kafka*
+    *- Second Edition* by *Nishant Garg* ([https://www.packtpub.com/big-data-and-business-intelligence/learning-apache-kafka-second-edition](https://www.packtpub.com/big-data-and-business-intelligence/learning-apache-kafka-second-edition))
+    is a good reference book to learn more about Kafka.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following are some of the important elements of Kafka, and are terms to
+    be understood before proceeding further:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Producer: The real source of the messages, such as weather sensors or mobile
+    phone network'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Broker: The Kafka cluster, which receives and persists the messages published
+    to its topics by various producers'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Consumer: The data processing applications subscribed to the Kafka topics that
+    consume the messages published to the topics'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The same log event processing application use case discussed in the preceding
+    section is used again here to elucidate the usage of Kafka with Spark Streaming.
+    Instead of collecting the log event messages from the TCP socket, here the Spark
+    Streaming data processing application will act as a consumer of a Kafka topic
+    and the messages published to the topic will be consumed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Spark Streaming data processing application uses the version 0.8.2.2 of
+    Kafka as the message broker, and the assumption is that the reader has already
+    installed Kafka, at least in a standalone mode. The following activities are to
+    be performed to make sure that Kafka is ready to process the messages produced
+    by the producers and that the Spark Streaming data processing application can
+    consume those messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Start the Zookeeper that comes with Kafka installation.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Start the Kafka server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a topic for the producers to send the messages to.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Pick up one Kafka producer and start publishing log event messages to the newly
+    created topic.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Use the Spark Streaming data processing application to process the log events
+    published to the newly created topic.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Starting Zookeeper and Kafka
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following scripts are run from separate terminal windows in order to start
+    Zookeeper and the Kafka broker, and to create the required Kafka topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Make sure that the environment variable `$KAFKA_HOME` is pointing to the directory
+    where Kafka is installed. Also, it is very important to start Zookeeper, Kafka
+    server, Kafka producer, and Spark Streaming log event data processing application
+    in separate terminal windows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Kafka message producer can be any application capable of publishing messages
+    to the Kafka topics. Here, the `kafka-console-producer` that comes with Kafka
+    is used as the producer of choice. Once the producer starts running, whatever
+    is typed into its console window will be treated as a message that is published
+    to the chosen Kafka topic. The Kafka topic is given as a command line argument
+    when starting the `kafka-console-producer`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The submission of the Spark Streaming data processing application that consumes
+    log event messages produced by the Kafka producer is slightly different from the
+    application covered in the preceding section. Here, many Kafka jar files are required
+    for the data processing. Since they are not part of the Spark infrastructure,
+    they have to be submitted to the Spark cluster. The following jar files are required
+    for the successful running of this application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`$KAFKA_HOME/libs/kafka-clients-0.8.2.2.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`$KAFKA_HOME/libs/kafka_2.11-0.8.2.2.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`$KAFKA_HOME/libs/metrics-core-2.2.0.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`$KAFKA_HOME/libs/zkclient-0.3.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Code/Scala/lib/spark-streaming-kafka-0-8_2.11-2.0.0-preview.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Code/Python/lib/spark-streaming-kafka-0-8_2.11-2.0.0-preview.jar`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the preceding list of jar files, the maven repository co-ordinate for `spark-streaming-kafka-0-8_2.11-2.0.0-preview.jar`
+    is `"org.apache.spark" %% "spark-streaming-kafka-0-8" % "2.0.0-preview"`. This
+    particular jar file has to be downloaded and placed in the lib folder of the directory
+    structure given in Figure 4\. It is being used in the `submit.sh` and the `submitPy.sh`
+    scripts, which  submit the application to the Spark cluster. The download URL
+    for this jar file is given in the reference section of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `submit.sh` and `submitPy.sh` files, the last few lines contain a conditional
+    statement looking for the second parameter value of 1 to identify this application
+    and ship the required jar files to the Spark cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Instead of shipping these individual jar files separately to the Spark cluster
+    when the job is submitted, an assembly jar can be used by creating it using sbt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the application in Scala
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code snippet is the Scala code for the log event processing application
+    that processes the messages produced by the Kafka producer. The use case of this
+    application is the same as the one discussed in the preceding section concerning
+    windowing operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Compared to the Scala code in the preceding section, the major difference is
+    in the way the stream is created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the application in Python
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code snippet is the Python code for the log event processing
+    application that processes the message produced by the Kafka producer. The use
+    case of this application is also the same as the one discussed in the preceding
+    section concerning windowing operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following commands are run on the terminal window to run the Scala application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following commands are run on the terminal window to run the Python application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When both of the preceding programs are running, whatever log event messages
+    are typed into the console window of the Kafka console producer, and invoked using
+    the following command and inputs, will be processed by the application. The outputs
+    of this program will be very similar to the ones that are given in the preceding
+    section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Spark provides two approaches to process Kafka streams. The first one is the
+    receiver-based approach that was discussed previously and the second one is the
+    direct approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This direct approach to processing Kafka messages is a simplified method in
+    which Spark Streaming is using all the possible capabilities of Kafka just like
+    any of the Kafka topic consumers, and polls for the messages in the specific topic,
+    and the partition by the offset number of the messages. Depending on the batch
+    interval of the Spark Streaming data processing application, it picks up a certain
+    number of offsets from the Kafka cluster, and this range of offsets is processed
+    as a batch. This is highly efficient and ideal for processing messages with a
+    requirement to have exactly-once processing. This method also reduces the Spark
+    Streaming library's need to do additional work to implement the exactly-once semantics
+    of the message processing and delegates that responsibility to Kafka. The programming
+    constructs of this approach are slightly different in the APIs used for the data
+    processing. Consult the appropriate reference material for the details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding sections introduced the concept of a Spark Streaming library and
+    discussed some of the real-world use cases. There is a big difference between
+    Spark data processing applications developed to process static batch data and
+    those developed to process dynamic stream data in a deployment perspective. The
+    availability of data processing applications to process a stream of data must
+    be constant. In other words, such applications should not have components that
+    are single points of failure. The following section is going to discuss this topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spark Streaming jobs in production
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When a Spark Streaming application is processing the incoming data, it is very
+    important to have uninterrupted data processing capability so that all the data
+    that is getting ingested is processed. In business-critical streaming applications,
+    most of the time missing even one piece of data can have a huge business impact.
+    To deal with such situations, it is important to avoid single points of failure
+    in the application infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From a Spark Streaming application perspective, it is good to understand how
+    the underlying components in the ecosystem are laid out so that the appropriate
+    measures can be taken to avoid single points of failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A Spark Streaming application deployed in a cluster such as Hadoop YARN, Mesos
+    or Spark Standalone mode has two main components very similar to any other type
+    of Spark application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Spark driver**: This contains the application code written by the user'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Executors**: The executors that execute the jobs submitted by the Spark driver'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: But the executors have an additional component called a receiver that receives
+    the data getting ingested as a stream and saves it as blocks of data in memory.
+    When one receiver is receiving the data and forming the data blocks, they are
+    replicated to another executor for fault-tolerance. In other words, in-memory
+    replication of the data blocks is done onto a different executor. At the end of
+    every batch interval, these data blocks are combined to form a DStream and sent
+    out for further processing downstream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 8* depicts the components working together in a Spark Streaming application
+    infrastructure deployed in a cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spark Streaming jobs in production](img/image_06_013.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 8*, there are two executors. The receiver component is deliberately
+    not displayed in the second executor to show that it is not using the receiver
+    and instead just collects the replicated data blocks from the other executor.
+    But when needed, such as on the failure of the first executor, the receiver in
+    the second executor can start functioning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing fault-tolerance in Spark Streaming data processing applications
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Spark Streaming data processing application infrastructure has many moving parts.
+    Failures can happen to any one of them, resulting in the interruption of the data
+    processing. Typically failures can happen to the Spark driver or the executors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This section is not intended to give detailed treatment to running the Spark
+    Streaming applications in production with fault-tolerance. The intention is to
+    make the reader appreciate the precautions to be taken when deploying Spark Streaming
+    data processing applications in production.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When an executor fails, since the replication of data is happening on a regular
+    basis, the task of receiving the data stream will be taken over by the executor
+    on which the data was getting replicated. There is a situation in which when an
+    executor fails, all the data that is unprocessed will be lost. To circumvent this
+    problem, there is a way to persist the data blocks into HDFS or Amazon S3 in the
+    form of write-ahead logs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There is no need to have both the in-memory replication of the data blocks and
+    write-ahead logs together in one infrastructure. Keep only one of them, depending
+    on the need.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the Spark driver fails, the driven program is stopped, all the executors
+    lose connection, and they stop functioning. This is the most dangerous situation.
+    To deal with this situation, some configuration and code changes are necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Spark driver has to be configured to have an automatic driver restart,
+    which is supported by the cluster managers. This includes a change in the Spark
+    job submission method to have the cluster mode in whichever may be the cluster
+    manager. When a restart of the driver happens, to start from the place when it
+    crashed, a checkpointing mechanism has to be implemented in the driver program.
+    This has already been done in the code samples that are used. The following lines
+    of code do that job:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In a sample application, it is fine to use a local system directory as the checkpoint
+    directory. But in a production environment, it is better to keep this checkpoint
+    directory as an HDFS location in the case of Hadoop or an S3 location in the case
+    of an Amazon cloud.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From an application coding perspective, the way the `StreamingContext`is created
+    is slightly different. Instead of creating a new `StreamingContext`every time,
+    the factory method `getOrCreate`of the `StreamingContext`is to be used with a
+    function, as shown in the following code segment. If that is done, when the driver
+    is restarted, the factory method will check the checkpoint directory to see whether
+    an earlier `StreamingContext`was in use, and, if found in the checkpoint data,
+    it is created. Otherwise, a new `StreamingContext`is created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code snippet gives the definition of a function that can be used
+    with the `getOrCreate`factory method of the `StreamingContext`. As mentioned earlier,
+    a detailed treatment of these aspects is beyond the scope of this book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: At a data source level, it is a good idea to build parallelism for faster data
+    processing and, depending on the source of data, this can be accomplished in different
+    ways. Kafka inherently supports partition at the topic level, and that kind of
+    scaling out mechanism supports a good amount of parallelism. As a consumer of
+    Kafka topics, the Spark Streaming data processing application can have multiple
+    receivers by creating multiple streams, and the data generated by those streams
+    can be combined by the union operation on the Kafka streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The production deployment of Spark Streaming data processing applications is
+    to be done purely based on the type of application that is being used. Some of
+    the guidelines given previously are just introductory and conceptual in nature.
+    There is no silver bullet approach to solving production deployment problems,
+    and they have to evolve along with the application development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Structured streaming
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the data streaming use cases that have been covered so far, there are many
+    developer tasks in terms of building of the structure data and implementing fault
+    tolerance for the application. The data that has been dealt with so far in data
+    streaming applications is unstructured data. Just like the batch data processing
+    use cases, even in streaming use cases, if there is the capability to process
+    structured data, that is a great advantage, and lots of pre-processing can be
+    avoided. Data stream processing applications are continuously running applications
+    and they are bound to develop failures or interruptions. In such situations, it
+    is imperative to build fault tolerance in the data streaming applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In any data streaming application, the data is getting ingested continuously,
+    and if there is a need to interrogate the data received at any given point in
+    time, the application developers have to persist the data processed into a data
+    store that supports querying. In Spark 2.0, the structured streaming concept is
+    built around these aspects, and the whole idea behind building this brand new
+    feature from the ground up is to relieve application developers of these pain
+    areas. There is a feature with the reference number SPARK-8360 being built at
+    the time of writing this chapter, and its progress can be monitored by visiting
+    the corresponding page.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The structured streaming concept can be explained using a real-world use case,
+    such as the banking transaction use case we looked at before. Assume that the
+    comma-separated transaction records containing the account number and transaction
+    amount are coming in a stream. In the structured stream processing method, all
+    these data items get ingested into an unbounded table or DataFrame that supports
+    querying using Spark SQL. In other words, since the data is accumulated in a DataFrame,
+    whatever data processing is possible using a DataFrame will be possible with the
+    stream data as well. This reduces the burden on application developers and they
+    can focus on the business logic of the application rather than the infrastructure
+    related-aspects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: References
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For more information, visit the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://spark.apache.org/docs/latest/streaming-programming-guide.html](https://spark.apache.org/docs/latest/streaming-programming-guide.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://kafka.apache.org/](http://kafka.apache.org/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://spark.apache.org/docs/latest/streaming-kafka-integration.html](http://spark.apache.org/docs/latest/streaming-kafka-integration.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://www.packtpub.com/big-data-and-business-intelligence/learning-apache-kafka-second-edition](https://www.packtpub.com/big-data-and-business-intelligence/learning-apache-kafka-second-edition)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://search.maven.org/remotecontent?filepath=org/apache/spark/spark-streaming-kafka-0-8_2.11/2.0.0-preview/spark-streaming-kafka-0-8_2.11-2.0.0-preview.jar](http://search.maven.org/remotecontent?filepath=org/apache/spark/spark-streaming-kafka-0-8_2.11/2.0.0-preview/spark-streaming-kafka-0-8_2.11-2.0.0-preview.jar)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://issues.apache.org/jira/browse/SPARK-836](https://issues.apache.org/jira/browse/SPARK-836)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Spark provides a very powerful library on top of the Spark core to process
+    the stream of data getting ingested at a high velocity. This chapter introduced
+    the basics of the Spark Streaming library, and a simple log event message processing
+    system has been developed with two types of data source: one uses a TCP data server
+    and the other uses Kafka. At the end of the chapter, a brief look at the production
+    deployment of Spark Streaming data processing applications is provided and the
+    possible ways of implementing fault-tolerance in Spark Streaming data processing
+    applications as discussed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spark 2.0 brings the capability to process and query structured data in streaming
+    applications, and the concept has been introduced, which relieves application
+    developers from pre-processing the unstructured data, building fault-tolerance
+    and querying the data that is being ingested on a near-real-time basis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Applied mathematicians and statisticians have come up with ways and means to
+    answer questions related to a new piece of data based on the *learning* that has
+    already been done on an existing bank of data. Typically these questions include,
+    but are not limited to: does this piece of data fit a given model, can this piece
+    of data be classified in a certain way, and does this piece of data belong to
+    any group or cluster?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are lots of algorithms available to *train* a data model and ask questions
+    to this *model* about the new piece of data. This rapidly evolving branch of data
+    science has huge applicability in data processing, and is popularly known as machine
+    learning. The next chapter is going to discuss the machine learning library of
+    Spark.
+  prefs: []
+  type: TYPE_NORMAL

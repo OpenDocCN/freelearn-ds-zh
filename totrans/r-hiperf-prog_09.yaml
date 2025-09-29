@@ -1,0 +1,751 @@
+- en: Chapter 9. Offloading Data Processing to Database Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have learned many different ways to optimize the performance of an R code
+    for speed and memory efficiency. But sometimes R alone is not enough. Perhaps,
+    a very large dataset is stored in a data warehouse. It would be infeasible to
+    extract all the data into R for processing. We might even wish to tap into the
+    power of specially-designed analytical databases that can perform computations
+    on data much more efficiently than R can. In this chapter, we will learn how to
+    tap into the power of external database systems from within R and combine that
+    power with the flexibility and ease of use of the R language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extracting data into R versus processing data in a database
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Preprocessing data in a relational database using SQL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Converting R expressions into SQL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Running statistical and machine learning algorithms in a database
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using columnar databases for improved performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using array databases for maximum scientific computing performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Extracting data into R versus processing data in a database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most R programmers are familiar with and very comfortable manipulating data
+    in R using R data structures and packages. This requires moving all the data into
+    R whether in memory or on a disk, on a single computer or on a cluster. In some
+    situations, this might not be efficient especially if the data constantly changes
+    and needs to be updated often—extracting data out of a database or data warehouse
+    every time it needs to be analyzed takes a lot of time and computational resources.
+    In some cases, it might not be feasible at all to move terabytes or more of data
+    from their sources into R.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of moving the data into R, another approach is to move the computational
+    tasks to the data. In other words, we can process the data in the database and
+    retrieve only the results into R, which are usually much smaller than the raw
+    data. This reduces the amount of network bandwidth required to transmit the data
+    and the local storage and memory required to process the data in R. It also allows
+    R programmers to tap into powerful databases that are purpose-built for analytical
+    workloads on large datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to perform in-database computations and analyses, a new set of tools
+    is needed. At the foundation of all in-database tools is the SQL language, which
+    most relational databases support. While this book is not about SQL, knowing how
+    to run even simple SQL statements in a database can help speed up many tasks in
+    R. Other tools such as `dplyr` build on SQL to provide easy and familiar interfaces
+    such as data frame-like objects in order to manipulate the data in the database.
+    Yet other tools like MonetDB.R and SciDB allow us to tap into databases that are
+    designed for high-performance analytical workloads such as columnar and array
+    databases. We shall look at these tools in the following sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preprocessing data in a relational database using SQL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will start by learning how to run SQL statements in the database from R.
+    The first few examples show how processing data in a database instead of moving
+    all the data into R can result in faster performance even for simple operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To run the examples in this chapter, you will need a database server supported
+    by R. The CRAN package, `RJDBC` provides an interface to JDBC drivers that most
+    databases come with. Alternatively, search on CRAN for packages such as `RPostgreSQL`,
+    `RMySQL`, and `ROracle` that offer functionalities and optimizations specific
+    to each database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following examples are based on a PostgreSQL database and the `RPostgreSQL`
+    package as we will need them later in this chapter when we learn about the `PivotalR`
+    package and MADlib software. Feel free, however, to adapt the code to the database
+    that you use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Configuring PostgreSQL to work with R involves setting up both the server and
+    the client. First, we need to set up the PostgreSQL database server. This can
+    be on a different computer than the one running R to simulate tapping into an
+    existing database from R; or it can be on the same computer for simplicity. In
+    our case, we will set up a Linux virtual machine to host the PostgreSQL database
+    server and use Mac OS X as the client. Here are the steps to set up the database
+    server:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Download PostgreSQL from [http://www.postgresql.org/download/](http://www.postgresql.org/download/)
+    and follow the installation instructions for your operating system.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Enable username/password authentication on the database server by adding the
+    following command line to `pg_hba.conf` (in the PostgreSQL `data` folder):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Create a user account and password that can be used to connect to the database
+    from R by running the following command line (you might need to be the `root`
+    or the `postgres` user to run this):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Create a database for the examples in this chapter by running the following
+    command line (you might need to be the `root` or the `postgres` user to run this):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Ensure that the database is accessible via a network connection from the computer
+    that runs R by adding the following lines to `postgresql.conf` (in the PostgreSQL
+    `data` folder):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Restart the PostgreSQL server for the changes to take effect (you might need
+    to be the `root` user to do this).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Next, we will set up the client by installing the `RPostgreSQL` package on
+    the computer that runs R:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Non-Windows only: install `libpq`, the PostgreSQL C libraries, that are needed
+    to install `RPostgreSQL`. If you have installed the PostgreSQL server on the same
+    computer as R, the libraries are already in the system, so you can skip this step.
+    Otherwise, make sure that the version of the libraries matches the version of
+    the PostgreSQL server:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Run R and install the `RPostgreSQL` CRAN package from its source code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Test the database connection from R by substituting the details with the correct
+    information for your database:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Once the database is set up, we will generate some sales data for the examples
+    to follow. The example database has two tables, `sales` and `trans_items`. The
+    `sales` table contains information about sales transactions in a retail chain,
+    including the transaction ID, customer ID, and store ID. The `trans_items` table
+    records the individual items in each transaction and the total price for each
+    item. Once the data is generated in R, we will use `dbWriteTable()` to write the
+    data into new tables in the database, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first task is to calculate the total sales for each store. Let''s compare
+    two different ways of doing this. The first way is to extract all the store IDs
+    along with the prices of the items associated with each store by joining the `sales`
+    and `trans_items` tables. Once this data is in R, the sales for each store is
+    computed by summing the item prices for each store ID using `tapply()`. The second
+    way to compute the same data is to perform the aggregation in the database using
+    the SQL `GROUP BY` clause and `SUM()` function. We will use `microbenchmark()`
+    to compare the execution times for both methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this simple test, performing the computations in the database takes only
+    33 percent of the time to do the same by extracting the data into R. Let''s take
+    a look at another example. The second task is to get a list of the top ten customers
+    who have spent the most money, in decreasing order. Again, we will compare the
+    speed of performing the computations in R versus in the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Again, running the computations in the database instead of in R has resulted
+    in a 70 percent reduction in the execution time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we are done, we need to disconnect from the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: These tests were conducted on the same computer with the database server running
+    in a virtual machine. Even on such a small dataset and over a very small network
+    (the virtual network between the host computer and the virtual machine), the differences
+    in the performance were dramatic. These tests clearly demonstrate that minimizing
+    the amount of data being copied out of the database can provide a big performance
+    boost. On larger datasets and powerful analytical databases, the performance difference
+    can be even more pronounced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Converting R expressions to SQL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While SQL is a powerful and flexible language used to manipulate data in a database,
+    not everyone is proficient in it. Fortunately, the R community has developed a
+    few packages that translate familiar R syntax into SQL statements that are then
+    executed on the database. We will look at two of them—`dplyr` and `PivotalR`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using dplyr
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `dplyr` package is a handy package designed to allow the manipulation of
+    table-like data with a standard set of operations and transformations, no matter
+    where the data is stored—in a data frame, data table, or database. It supports
+    SQLite, PostgreSQL, MySQL, Amazon RedShift, Google BigQuery, and MonetDB databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `dplyr` package provides a way to specify a set of operations to be performed
+    on the data without actually performing the computations on the database server
+    until we instruct R to do so, by calling the `collect()`function. By pooling a
+    few operations together (as opposed to executing them one by one), the database
+    server can optimize the execution. This in turn helps to minimize computational
+    load of the server. Let's see how this works with an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we need to establish a connection with the database, as before. Here,
+    we will use the `src_postgres()` function provided by `dplyr`. The syntax is slightly
+    different from `dbConnect()` of `RPostgreSQL`, but the arguments are similar.
+    After establishing the connection, we will create references to the `sales` and
+    `trans_items` tables in the database using the `tbl()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s recreate the previous example using `dplyr`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first step is to join the `sales` and `trans_items` tables using `inner_join()`.
+    Then, `group_by()` groups the items according to customer ID, and `summarize()`
+    sums the total spending for each customer. Finally, we will use `arrange()` to
+    sort the customer in decreasing order of spending, and `select()` to select only
+    the columns we want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output of each of these steps is a `tbl` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These are virtual tables that are an accumulation of all the operations applied
+    so far. Up to this point, no SQL has been sent to the database server and no computation
+    has been performed on it. We can examine the SQL query that will be executed when
+    the results are retrieved by retrieving the `query` member of the `tbl` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Normally, the `collect()` function is used to run the SQL statement and retrieve
+    the results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since we want only the top 10 customers and not all the customers, we can use
+    `head()` to minimize the data being transferred from the database into R:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As more complex data manipulation operations are constructed in `dplyr`, the
+    individual R statements and temporary variables created can get unwieldy. The
+    `dplyr` package provides the `%>%` operator to chain operations together. The
+    preceding construct can be rewritten more succinctly as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `dplyr` package provides other useful operations like `filter()` for filtering
+    rows, and `mutate()` for defining new columns as functions of the existing columns.
+    These operations can be combined in many creative and useful ways to process data
+    in a database before retrieving the results into R.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using PivotalR
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `PivotalR` package provides similar capabilities as `dplyr`, but with a
+    different syntax. Because it was developed by Pivotal Software Inc., it supports
+    only PostgreSQL or Pivotal (Greenplum) databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As usual, the first step in using the package is to establish a connection
+    to the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you have not installed MADlib on the PostgreSQL database (see the next section
+    of this chapter), you might get a warning that says "MADlib does not exist in
+    database." This is not a problem for the examples in this section as they do not
+    cover the MADlib functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is to create references to the database tables using `db.data.frame()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `db.data.frame` objects behave similar to standard R data frames in many
+    ways, except that they are wrappers for SQL queries that need to be executed on
+    the database. Many of the standard R information and statistical functions are
+    supported. In order to execute the SQL and retrieve the results, use the `lookat()`
+    function (or the shorthand `lk()`). For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To see the SQL query that will be executed on the database server, use the
+    `content()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you get the error message "Invalid SciDB object", it could mean that some
+    of the `PivotalR` functions are being masked by functions of the same name in
+    the `SciDB` package, which we will cover later in this chapter. In particular,
+    both packages provide the `count()` function. To run the examples in this section
+    successfully, unload the `scidb` package with `detach("package:scidb", unload=TRUE)`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'New columns can be computed from existing columns by using the familiar R syntax
+    without affecting the data on the database; instead, the transformations are translated
+    into SQL functions that compute the new columns on the fly. In the following example,
+    we will compute a new column `foreign_price` that is returned to R in memory and
+    not stored in the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s take a look at a full example of how to construct a query in `PivotalR`.
+    Say we want to compute some statistics to understand the purchasing patterns of
+    consumers at the transaction level. We have to group the data by transactions
+    and then group it again by customers to compute the statistics for each customer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first call to `by()` aggregates the item-level sales data into transactions;
+    summing up the total value of each transaction. Next, `merge()` joins the `sales`
+    table with the aggregated transaction data to match the customers with how much
+    they have spent. Then, we will use `by()` again to aggregate all the transactions
+    by customer. For each customer, we will calculate the number of transactions they
+    made, the total value of those transactions, and the number of stores they visited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of returning the results, they can also be stored into a new database
+    table by using `as.db.data.frame()`. This is useful for lengthy computations with
+    many intermediate steps. Storing intermediate results in the database helps to
+    reduce the amount of data being transferred between R and the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Further statistics can be computed from the intermediate data, such as the
+    minimum, maximum, mean and standard deviation of customer spending:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the intermediate data is no longer required, it can be deleted from the
+    database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Both `dplyr` and `PivotalR` provide flexible easy ways to manipulate data in
+    a database using R functions and syntax. They allow us to tap into the processing
+    power and speed of high-performance databases to query large datasets and integrate
+    the results of the queries into other analyses in R. Because they are quite similar
+    in capabilities, choosing between the two is largely a matter of compatibility
+    with existing database systems and personal preference for one syntax over the
+    other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running statistical and machine learning algorithms in a database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, the examples in this chapter have performed simple computations on data
+    in a database. Sometimes we need to perform more complex computations than that.
+    Several database vendors have begun to build advanced statistics or even machine
+    learning capabilities into their database products, allowing these advanced algorithms
+    to run in the database using highly optimized code for maximum performance. In
+    this chapter, we will look at one open source project, MADlib ([http://madlib.net/](http://madlib.net/)),
+    whose development is supported by Pivotal Inc., that brings advanced statistics
+    and machine learning capabilities to PostgreSQL databases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: MADlib adds a host of statistical capabilities to PostgreSQL, including descriptive
+    statistics, hypothesis tests, array arithmetic, probability functions, dimensionality
+    reduction, linear models, clustering models, association rules, and text analysis.
+    New models and statistical methods are constantly being added to the library to
+    expand its capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: At the moment, MADlib binaries are only available for Mac OS X and Red Hat/CentOS
+    Linux. For other operating systems, [https://github.com/madlib/madlib/wiki/Building-MADlib-from-Source](https://github.com/madlib/madlib/wiki/Building-MADlib-from-Source)
+    provides instructions to build MADlib from source. MADlib does not support Windows
+    at the time of writing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before installing MADlib, ensure that the `plpython` module from PostgreSQL
+    is installed. On Redhat/CentOS, run this command by substituting the package name
+    with one that matches the version of PostgreSQL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On Mac OS X, check the documentation for your PostgreSQL installation method.
+    For example, using Homebrew, the following command installs PostgreSQL with `plpython`
+    support:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once PostgreSQL has been set up with `plpython`, follow the instructions at
+    [https://github.com/madlib/madlib/wiki/Installation-Guide](https://github.com/madlib/madlib/wiki/Installation-Guide)
+    to install MADlib. The user account being used to install MADlib needs superuser
+    privileges, which can be granted by running `ALTER ROLE ruser WITH SUPERUSER;`
+    in PostgreSQL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, return to R and connect to PostgreSQL using the `RPostgreSQL` package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Say we want to mine our sales database for association rules. As you can remember
+    from [Chapter 6](ch06.html "Chapter 6. Simple Tweaks to Use Less RAM"), *Simple
+    Tweaks to Use Less RAM*, the `arules` package provides functions to mine for frequent
+    itemsets and association rules. In order to use the `arules` package, the entire
+    `trans_items` table would need to be extracted into R and converted into a `transactions`
+    object. If the dataset is large, this might take a long time, or might not be
+    possible at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternatively, we can mine the association rules in the database using MADlib
+    functions. The data does not need to be copied out of the database at all, and
+    all the computations can take place in the database as long as the database server
+    or cluster has sufficient capacity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running the association rules mining algorithm is as simple as calling the
+    `madlib.assoc_rules()` function in an SQL `SELECT` statement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code includes comments that describe the arguments to `madlib.assoc_rules()`.
+    Here, the algorithm is asked to search for association rules with a support of
+    at least 0.001 and confidence of at least 0.01\. The name of the input table and
+    columns are specified, as well as the name of the schema in which you can store
+    the results. In this case, the results will be stored in a table called `assoc_rules`
+    in the `public` schema.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every time the function is run, the `assoc_rules` table will be overwritten;
+    so if you would like to keep a copy of the results, you will have to make a copy
+    of the table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s retrieve the results, that is, the association rules that meet the minimum
+    support and confidence:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The results indicate the items on the left- and right-hand sides of each association
+    rule, along with the statistics for each rule such as the support, confidence,
+    lift, and conviction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of the other MADlib functions work in a similar way—data is supplied to
+    a function in a database table, the function is called with the appropriate arguments,
+    and the results are written to a new database table in the specified schema.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Because Pivotal, Inc. developed both the `PivotalR` package and MADlib, it is
+    natural that `PivotalR` provides interfaces to some MADlib functions such as linear
+    models, ARIMA time series models and decision trees. It also provides useful functions
+    to extract information such as regression coefficients from the MADlib output.
+    Unfortunately, `PivotalR` does not provide wrappers to all the MADlib functions
+    such as the `madlib.assoc_rules()` function used in the preceding code. For maximum
+    flexibility in using the MADlib library, use SQL statements to call the MADlib
+    functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In-database analytics libraries such as MADlib allow us to harness the power
+    of advanced analytics in large databases and bring the results of the algorithms
+    into R for further analysis and processing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using columnar databases for improved performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Most relational databases use a row-based data storage architecture—the data
+    is stored in the database row by row. Whenever the database performs a query,
+    it retrieves the relevant rows for the query before processing the query. This
+    architecture is well suited for business transactional uses, where complete records
+    (that is, including all columns) are written, read, updated, or deleted, a few
+    rows at a time. For most statistical or analytical use cases, however, many rows
+    of data, often with only a few columns, need to be read. As a result, row-based
+    databases are sometimes inefficient at analytical tasks because they read entire
+    records at a time regardless of how many columns are actually needed for analysis.
+    The following figure depicts how a row-based database might compute the sum of
+    one column.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using columnar databases for improved performance](img/9263OS_09_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Computing the sum of one column in a row-based database
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The increase in demand for data analysis platforms in recent years has led
+    to the development of databases that use alternative storage architectures that
+    are optimized for data analysis instead of business transactions. One such architecture
+    is **columnar storage**. Columnar databases store data in columns instead of rows.
+    This is very similar to R data frames where each column of a data frame is stored
+    in a contiguous block of memory in the form of an R vector. When computing the
+    sum of one column, a columnar database needs to read only one column of data,
+    as shown in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using columnar databases for improved performance](img/9263OS_09_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Computing the sum of one column in a columnar database
+  prefs: []
+  type: TYPE_NORMAL
+- en: One example of a columnar database is MonetDB, which can be downloaded from
+    [https://www.monetdb.org/Downloads](https://www.monetdb.org/Downloads). Follow
+    the instructions there to install it. After installation, take the following steps
+    to initialize and start the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On Linux or Mac OS X, run the following commands in a terminal window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: On Windows, initialize and start the server by going to **Start** | **Programs**
+    | **MonetDB** | **Start server**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Because MonetDB is based on SQL, connecting to and working with MonetDB from
+    R is similar to working with PostgreSQL. We can either execute SQL statements
+    using the `MonetDB.R` CRAN package or use `dplyr`. For example, we can load the
+    same sales and transaction data into MonetDB using `MonetDB.R`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let''s benchmark the query performance for the same SQL queries used in
+    the `RPostgreSQL` examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Compared to PostgreSQL, MonetDB took 55 percent less time for both queries (as
+    you can remember from before that the median times needed by PostgreSQL for the
+    first and second queries were 251.1 and 260.1 milliseconds, respectively). Of
+    course, this is not a comprehensive or rigorous comparison between row-based and
+    columnar databases, but it gives an indication of the performance gains that can
+    be achieved by selecting the right database architecture for the task at hand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using array databases for maximum scientific-computing performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Columnar databases provide good query performance for datasets that resemble
+    R data frames, for example, most data from business IT systems. These datasets
+    are usually two dimensional and can contain heterogeneous data types. On the other
+    hand, scientific data sometimes contain homogeneous data types but are multidimensional.
+    An example of this is weather readings in different points in time and space.
+    For such applications, a new type of database called the **array database** provides
+    even better query and scientific computing performance. One example of this is
+    SciDB, available for download at [http://www.scidb.org/](http://www.scidb.org/).
+    `SciDB` provides a **massively parallel processing** (**MPP**) architecture that
+    can perform queries in parallel on petabytes of array data. It supports in-database
+    linear algebra, graph operations, linear models, correlations, and statistical
+    tests. It also offers an R interface through the `SciDB` package that is available
+    on CRAN.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To download and install SciDB, follow the instructions at [https://github.com/Paradigm4/deployment](https://github.com/Paradigm4/deployment).
+    Then, install `shim` ([https://github.com/paradigm4/shim](https://github.com/paradigm4/shim))
+    on the SciDB server, which is needed for R in order to communicate with SciDB.
+    Finally, install the `scidb` package from CRAN.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Connect to the SciDB database using the `scidbconnect()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then load some data into the database using `as.scidb()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`scidb` provides familiar R syntax to manipulate SciDB matrices and arrays:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can even mix SciDB matrices/arrays with R matrices/arrays:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As with the other database packages, operations are not actually performed
+    until the results are retrieved. In the case of `SciDB`, the `[]` operator causes
+    the database to perform the computations and return the results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`SciDB` supports many other common array/matrix operations such as subsetting,
+    comparison, filtering, apply, joining, aggregation, and sorting. It is a powerful
+    tool for working with large, multidimensional numerical data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we took a tour of various database systems and the R packages
+    that allow us to interface with them, and saw how in-database querying and analysis
+    can provide better performance than copying the data into R to do the same analysis.
+    This is especially true for large datasets that cannot be easily processed in
+    R; using a database that is tuned for querying and analysis can help to avoid
+    performance issues in R. As technology improves, more and more advanced analysis
+    and algorithms can be run in databases providing more options for R programmers
+    who face the challenge of analyzing large datasets efficiently. These powerful
+    data processing tools can complement R very nicely—they provide the computing
+    muscle to analyze large datasets, while R provides easy interfaces for data manipulation
+    and analysis. R can also help to bring together different threads of analyses,
+    regardless of the tool used, to present a coherent and compelling picture of the
+    data using tools such as data visualization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next and final chapter, we will go to the frontiers of Big Data and take
+    a look at how R can be used alongside Big Data tools to process extremely large
+    datasets.
+  prefs: []
+  type: TYPE_NORMAL

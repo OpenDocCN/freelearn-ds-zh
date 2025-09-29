@@ -1,0 +1,2405 @@
+- en: Implementing an Efficient Simple Moving Average
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: During the last few decades, demand for computing power has steadily increased
+    as the data volume has become larger and models have become more complex. It is
+    obvious that minimizing the time needed for these calculations has become an important
+    task and that there are obvious performance problems that need to be tackled.
+    These performance problems arise from a mismatch between data volume and existing
+    analytical methods. Eventually, a fundamental shift in data analysis techniques
+    will be required, but for now, we must settle with improving the efficiency of
+    our implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: R was designed as an interpreted language with a high-level expressiveness,
+    and that's one of the reasons why it lacks much of the fine-grained control and
+    basic constructs to support highly-performant code. As Arora nails it in the book,
+    she edited, *Conquering Big Data with High Performance Computing, by Springer,
+    2016:* "*While R is clearly a high productivity language, it has not necessarily
+    been a high performance language*.*"*
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is not uncommon for the execution time of an R program to be measured in
+    hours, or even in days. As the volume of data to be analyzed increases, the execution
+    time can become prohibitively long, and it's often the case that data scientists
+    and statisticians get stuck with these bottlenecks. When this happens, and if
+    they don't know much about performance optimization, they'll probably just settle
+    with reduced amounts of data, which can hinder their analysis. However, fear not;
+    R programs can be slow, but well-written R programs are usually fast enough, and
+    we will look at various techniques you can use to increase the performance of
+    your R code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter is not meant to make you a performance optimization expert, but
+    rather provide an overview that introduces you to the vast amount of techniques
+    that can be used when attempting to increase your code's performance. We will
+    look at many different techniques, each of which can have chapters and even books
+    dedicated to them, so we will have to look at them from a very high level, but
+    if you find yourself being constantly restricted by computing resources, they
+    are something you will want to look further into.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some of the important topics covered in this chapter are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deciding how fast an implementation must be
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The importance of using good algorithms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reasons why R can be slow or inefficient at times
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The big performance impact small changes can have
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Measuring your code's performance to find bottlenecks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Comparing different implementations among themselves
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Getting the most from your computer by parallelizing
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving performance by interfacing with other languages
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Required packages
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have already worked with some of the packages required for this chapter,
+    such as `ggplot2` and `lubridate`. The other three packages are introduced to
+    benchmark functions and compare their performance among themselves, and for advanced
+    optimization techniques like **delegation** and **parallelization**, which will
+    be explained in their respective sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To be able to replicate all the examples in this chapter, you also need working
+    compilers for Fortran and C++ code. Refer to [Appendix](part0296.html#8Q96G0-f494c932c729429fb734ce52cafce730),
+    *Required Packages*, for instructions on how to install them for your operating
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at the following table depicting the uses of the required
+    packages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Packages** | **Reason** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ggplot2` | High-quality graphs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `lubridate` | Easily transfer dates |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `microbenchmark` | Benchmark functions'' performance |'
+  prefs: []
+  type: TYPE_TB
+- en: Starting by using good algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To be able to communicate the ideas contained in this chapter clearly, first
+    I need to provide some simple definitions. When I refer to an *algorithm*, I mean
+    an abstract specification for a process. When I refer to an *implementation*,
+    I refer to the way an algorithm is actually programmed. Finally, when I refer
+    to a *program* or an *application*, I mean a set of such algorithm implementations
+    working together. Having said that, it's easy to see how an algorithm can be implemented
+    in many different ways (for example, one implementation may be using a list, while
+    another may be using an array). Each of these implementations will have different
+    performances, and they are related, but not equivalent, to an algorithm's time-complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For those unfamiliar with the last term, each algorithm has the following two
+    basic properties
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Time complexity**: This property refers to the number of calculations an
+    algorithm needs to execute, in relation to the size of input it receives. There
+    are various mathematical tools to measure this complexity, the most common one
+    being Big-O notation, which measures the worst-case scenario for an algorithm.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Space complexity**: This property refers to the amount of memory required
+    to execute the algorithm, again in relation to the size of the input it receives,
+    and it can be also measured with the same mathematical tools.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It's a well-known fact that an inefficient algorithm implemented very efficiently
+    can be orders of magnitude slower than an efficient algorithm implemented inefficiently.
+    This means that most of the time, algorithm selection is much more important than
+    implementation optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many other things to consider when evaluating an algorithm other than
+    the complexities mentioned previously, such as efficiency resources usage (for
+    example, internet bandwith), as well as other properties such as security or implementation
+    difficulty. We won't dig into these topics in this book. However, if you want
+    your code to perform well, you must study data structures and algorithms formally.
+    Great resources to get started on these topics are the book by Cormen, Leiserson,
+    Rivest, and Stein, titled *Introduction to Algorithms, by MIT Press, 2009*, and
+    Skiena's, *The Algorithm Design Manual, by Springer, 2008*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Just how much impact can algorithm selection have?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Calculating Fibonacci numbers is a traditional example when teaching recursiveness.
+    Here, we will use it to compare the performance of two algorithms, one recursive
+    and one sequential.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In case you are not familiar with them, Fibonacci numbers are defined recursively
+    in a sequence where the next is the sum of the previous two, and the first two
+    numbers are ones (our base cases). The actual sequence is 1, 1, 2, 3, 5, 8, 13,
+    21, 34, 55, 89, 144, and so on. This is called a Fibonacci sequence, and it exhibits
+    interesting properties, such as being related to the golden ratio, which you should
+    definitely look up if don't know what it is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our `fibonacci_recursive()` function receives the position of the Fibonacci
+    number we want to calculate as `n`, restricted to integers greater than or equal
+    to one. If `n` is a base case, that is, if it''s below 1, we will simply return
+    it (not that if we''re computing the Fibonacci number at the second position,
+    our operation `n - 2` would be zero, which is not a valid position, that''s why
+    we need to use `<=` instead of `==`). Otherwise, we will return the sum of the
+    recursive calls to the previous two with `fibonacci_recursive(n - 1)` and `fibonacci_recursive(n
+    - 2)`, as shown in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Why is this happening? The answer is that this algorithm is doing a lot of
+    unnecessary work, making it a bad algorithm. To understand why, let''s mentally
+    go through the execution of the algorithm for the third and fourth Fibonacci numbers
+    and make the corresponding execution trees, as shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00061.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In the preceding diagram, **f(n)** is short for `fibonacci_recursive(n)`, so
+    that we can fit all the objects inside it, and colors are used to show which function
+    calls are repeated. As you can see, when you execute `fibonacci_recusive(3)`,
+    the `fibonacci_recursive(1)` call is executed twice. When executing `fibonacci_recursive(4)`,
+    that same call is executed three times. How many times will it be executed for
+    `fibonacci_recursive(5)` and `for fibonacci_recursive(6)`? That's an exercise
+    for you, the reader, and as you'll find, the number increases exponentially.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To be technically precise, the time complexity for the algorithm is O(2^n),
+    which is as bad as you can get. Furthermore, most of the calculations are completely
+    unnecessary since they are repeated. The algorithm is correct, but its performance
+    is one of the worst. As we mentioned earlier, even if you provide the most efficient
+    implementation possible for this algorithm, it will be much slower than a very
+    inefficient implementation of a more efficient one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we design a correct algorithm that avoids doing all the unnecessary calculations,
+    we can have a much faster program, and that''s exactly what the following algorithm
+    does. Instead of making a tree of recursive calls, we will simply compute the
+    Fibonacci numbers in order up to the one we are being asked for. We will simply
+    add the previous two numbers and store the result in the array `f`, which will
+    have `n` integers. We specify the two base cases and proceed with the calculation,
+    as shown in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, each number is computed only once, which is the most efficient
+    algorithm we can design for this problem. This avoids all the overhead from the
+    recursive algorithm and leaves us with a linear time complexity of O(n). Even
+    if we code this algorithm without much care for performance optimization, it's
+    execution time will be many orders of magnitude faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With this algorithm, we can actually compute the 1476^(th) Fibonacci number,
+    which is the largest one that R''s internal architecture will allow for. If we
+    try to compute the 1477^(th) Fibonacci number, we will get infinity (`Inf`) as
+    a response due to the mechanisms R uses to store integers, which is a topic we
+    won''t go into. Furthermore, the computation for the 1476^(th) Fibonacci number
+    is almost instantaneous, which goes to showcase the importance of choosing a good
+    algorithm before worrying about optimizing it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, note that we achieved an increase in speed at the expense of using
+    more memory. The recursive algorithm discarded every Fibonacci number once it
+    computed it, while the sequential algorithm keeps every single one in memory.
+    For this particular problem, this seems to be a good trade-off. The trade-off
+    among time and space is a common one in performance optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have seen just how important algorithm selection can be, for the
+    rest of the chapter we will work with a single algorithm, and we will focus on
+    optimizing its implementation. However, the point remains that choosing an efficient
+    algorithm is more important than implementing it efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How fast is fast enough?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's assume that you have chosen a good algorithm and implemented it without
+    too much regard for optimization, as is commonly the case with first attempts.
+    Should you invest the time to optimize it? Performance optimization can be a very
+    costly activity. You must not try to optimize your code unless you must. Your
+    time is valuable, and it's probably better spent doing something else.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's say that for some reason, you must make your implementation faster. The
+    first thing you must decide on is how fast is fast enough. Is your algorithm required
+    to simply finish within a couple of hours instead of a couple of days, or do you
+    need to come down to microsecond levels? Is this an absolute requirement or should
+    you simply do the best job you can within a specific time frame? These are important
+    questions that you must consider before optimizing your code, and sometimes the
+    solution is not even optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's not rare for clients to prefer spending more money on using some type of
+    cloud resource to tackle the performance problem rather than spending valuable
+    time optimizing an algorithm's performance, especially if they can be providing
+    more business value doing something else.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Apart from the machine-time versus human-time trade-off mentioned earlier, there
+    are other considerations when deciding whether to optimize an algorithm's implementation
+    or not. Do you want your code to be easily readable? Do you want your code to
+    be shareable? It's often the case that more performant code is also more difficult
+    to understand. Furthermore, if you're developing code that is executed parallelly,
+    it will impose a bunch of restrictions on the type of systems that can execute
+    it, and you need to keep that in mind.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'I suggest that you keep to the minimum number of optimizations; this will make
+    you achieve your goal regarding how fast an implementation must run, and don''t
+    do more than that. The process will be simple: find the most important bottleneck,
+    remove it (or at least decrease its impact), check whether or not your implementation
+    is fast enough, and if it''s not, repeat. We will go through this cycle a couple
+    of times along this chapter, and even though it seems easy in retrospective, it
+    can be quite difficult in reality, especially when dealing with complex algorithms.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating simple moving averages inefficiently
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The algorithm we will work with for the rest of the chapter is called **simple
+    moving average** (**SMA**). It's a very well-known tool for doing technical analysis
+    of time-series, specially for financial markets and trading. The idea behind SMA
+    is that you will compute an average at each point in time by looking back at a
+    predefined number periods. For example, let's say you're looking at a minute-by-minute
+    time-series, and you will compute an SMA(30). This means that at each observation
+    in your time-series, you will take the observations that correspond to the previous
+    30 minutes from starting at a specific observation (30 observations back), and
+    will save the average for those 30 observations as the SMA(30) value for that
+    point in time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the later diagram, you can visualize the idea behind SMAs. The diagram shows
+    a monotone time-series that increases by one value-unit for every time-unit, both
+    of which start at one (that is, its value is **1** at time **1**, **2** at time
+    **2**, and so on), along with some figures surrounding the group of observations
+    the SMA calculation will take. As you can see, for SMA(3), we get the last three
+    elements at every point in the time-series; similarly, for SMA(4), we get the
+    last four elements. When you calculate the average for the subset of elements
+    in the figure, you get the numbers in the top-left corners, which correspond to
+    the specific SMA time-series calculated. Specifically for such a time-series,
+    for the SMA(3) case, the result is NA, NA, **2**, **3**, **4**, **5**, **6**,
+    **7**, and **8**, and for the SMA(4) case, the result is NA, NA, NA, **2.5**,
+    **3.5**, **4.5**, **5.5**, **6.5**, and **7.5**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are a couple of following properties we should note about SMAs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, note that both SMA(3) and SMA(4) are series that contain the same number
+    of observations as the original time-series, **9** in this case.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Second, note that they both begin with a number of NA equal to the number SMA
+    parameter minus one. This is because in the case of SMA(3), at time **2**, we
+    don't have three observations back, we only have two. Therefore, an NA is used
+    to indicate that SMA(3) could not be computed at that point. The same explanation
+    applies to all other NA values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Third and finally, note that every time we move one time-unit, we add one observation
+    and remove another observation (the tail) from the current subset.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Take a look at the following figure depicting the preceding properties:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00062.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Simulating the time-series
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Of course, you have been collecting data from cryptocurrency markets since you
+    implemented your own version of the object-oriented system we developed in the
+    last chapter, haven't you? I'm just kidding. If you have, it's probably not enough
+    data for what we will do in this chapter, so here's a small piece of code that
+    will simulate two time-series for Bitcoin and Litecoin price in US Dollars. The
+    data structure is similar to the one used in the previous chapter, making the
+    code we develop here useful for that system also.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We won''t go too deep into how the function works since it should be clear
+    for you at this point, except to point out that we''re using the `time_to_timestamp.TimeStamp()`
+    function we developed in the last chapter, and that the `simulate_prices()` function
+    uses a quadratic model on top of an ARIMA simulation. If you don''t know what
+    an ARIMA model is, don''t worry too much about it (it''s not needed to understand
+    this chapter). If you''re interested in learning more about it, take a look at
+    Shumway and Stoffer''s book, *Time Series Analysis and Its Applications: With
+    R Examples, Springer, 2011*. We are using a quadratic model because Bitcoin''s
+    price has been accelerating during the past couple of months (this is being written
+    during November 2017). Let''s take a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the parameters used to call the `simulate_market()` function try to
+    resemble what is seen currently in Bitcoin and Litecoin prices, but keep in mind
+    that this is a very simple model, so don't expect it to behave as the actual price
+    time-series for these assets. Finally, we simulate 525,600 observations for each
+    asset, which is approximately equal to the number of minutes in a year (`N <-
+    60 * 24 * 365`, which contains seconds per hour, hours per day, and days per year).
+    This means we're simulating minute-by-minute data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To visualize the Bitcoin prices we simulated, you may use the following code.
+    It simply produces one graph that uses a sample of 1,000 elements throughout the
+    year (more than that is unnecessary, since you won''t be able to perceive more
+    points, and it will slow down the calculations); also, another graph is produced,
+    which shows a zoom-in effect into the first hour in the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As can be seen, there''s a strong upward trend when looking at the full year
+    simulation, but if you zoom-in into a smaller time frame, you''ll see quite a
+    bit of price variance, which allows for useful SMA implementations. Let''s take
+    a look at the following graph:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/00063.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Our first (very inefficient) attempt at an SMA
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As was mentioned earlier, we will work with SMA implementations for the rest
+    of the chapter. To differentiate among them, we will change the function name
+    for each subsequent implementation, starting with `sma_slow_1()`. All SMA implementations
+    will receive the following parameters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`period`: To specify how many observations to use for the SMA.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`symbol`: To denote the asset we want to make the calculations for'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For this example, options will be  `BTC` for `Bitcoin` or `LTC` for `Litecoin`.
+    However, when you execute the system yourself, you'll be able to expand it with
+    any cryptocurrency symbol you so desire.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`data`: The actual data that contains the price time-series for every asset.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will make two assumptions on `data`—the `timestamp` column is in increasing
+    order and we don't have gaps in the time-series, meaning that we have price data
+    for every minute. This allows us to skip any ordering procedures and check whether
+    the SMA should contain NA internally when no data is available. Note that both
+    these assumptions are fulfilled by our data simulation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we''ll explain how `sma_slow_1()` works. Note that this is a very inefficient
+    implementation, and you should definitely avoid programming this way. However,
+    these are common errors people make, and we will be removing them one by one while
+    we measure the impact they actually have on your code''s speed. Let''s see how
+    it is done by performing the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we create an empty data frame named `result` that contains a single column
+    called `sma`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then, we loop over all rows in the data; `end` denotes the end, or right-extreme,
+    of the SMA interval under consideration.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We create a `position` integer that is the same as the `end` every time we start
+    the loop as well as an `sma` object that will contain the actual SMA computation
+    for the end position, an `n_accumulated` integer that keeps track of the number
+    of observations we have accumulated, and a `period_prices` data frame that contains
+    a single column to store the prices for the current SMA calculation.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Next, we check whether the observation at the current `end` corresponds to the
+    `symbol` we're interested in. If it's not, we simply ignore that iteration, but
+    if it is, we will accumulate `period_prices` starting at the `end` position (remember
+    that `position` is equal to `end` and this point) and going backward until the
+    number of accumulated prices is equal to the `period` we're interested in or the
+    current `position` is lower than 1 (meaning that we're at the beginning of the
+    time-series). To do so, we use a while-loop that checks for the condition mentioned
+    before, increases `n_accumulated` when an observation with the same `symbol` is
+    found and its data is appended to the `period_prices` data frame, and increases
+    the `position` regardless of whether the observation was useful so that we don't
+    get stuck.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'After the while-loop is finished, we know that we have either accumulated a
+    number of prices equal to the `period` we are interested in or we encountered
+    the beginning of the time-series. In the first case, we compute the mean of such
+    prices by iterating over the `period_prices` data frame, and assign that as the
+    `sma` value for the current `end` position. In the second case, we simply record
+    an `NA` value since we were not able to compute the full SMA. Take a look at the
+    following code snippet:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the implementation seems complicated, it's because it is. As we start improving
+    our code, it will naturally be simplified, which will make it easier to understand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we want to actually see that it works. To do so, we bring the `sma-slow.R`
+    file into memory (which contains all the slow implementations) as well as the
+    data as shown in the following code snippet:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we take only the first 100 observations, which correspond to 50 minutes
+    of Bitcoin price action (remember that these 100 observations only contain 50
+    for Bitcoin; the other 50 are for Litecoin). We can see that the SMA(5) for Bitcoin
+    makes sense, including the first four NA (feel free to check the numbers by hand,
+    but remember to use the data and results for your own data simulation):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we understand how to fix this code, we need to understand why R can be
+    slow as well as how to measure how much of an impact we're having while we are
+    improving it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding why R can be slow
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Understanding why a programming language can be slow is a fundamental skill
+    needed to be able to increase the speed of its implementations. Any implementation
+    in any programming language is similarly affected by an algorithm's time and memory
+    complexities, because they are algorithms, and not implementation properties.
+    However, the way languages handle specific implementations can vary quite a bit,
+    and that's what we'll focus on now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the case of R, people often find the following four main bottlenecks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object immutability
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Interpreted dynamic typings
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Memory-bound processes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Single-threaded processes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By no means is this list complete or encountered in every implementation. It's
+    just the most common bottlenecks I've seen people encounter, and which, after
+    being fixed, produced the largest amount of speed improvements. They are often
+    good starting points, but every implementation is different, so it's very difficult
+    to suggest general rules for performance optimization, and you should keep this
+    in mind.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Object immutability
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Improving the speed of R implementations does not necessarily involve advanced
+    optimization techniques, such as parallelization. Indeed, there are a number of
+    simple tweaks that, while not always obvious, can make R run significantly faster.
+    The top bottleneck people encounter with R is a lack of understanding about its
+    object immutability property, and the overhead incurred when making copies of
+    such objects. Simply taking care of this can produce dramatic performance improvements,
+    and it's not too difficult once you understand how to do so. This is a good candidate
+    to start looking for optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As an example of some of the issues that can arise, suppose you have an array
+    of numbers named `a`. Now, suppose you want to update first element of `a` to
+    be `10`, as shown in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This assignment is much more complex than it seems. It is actually implemented
+    via the `` `"[<-"` `` replacement function through this call and assignment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: At first, you may find this to be a very weird syntax, but remember that, as
+    we saw in [Chapter 1](part0022.html#KVCC0-f494c932c729429fb734ce52cafce730), *Introduction
+    to R*, we can have strings that represent objects, including functions, as is
+    the case here. The [PRE11]
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_1 <- sma_slow_1(period, symbol, data_original[1:10000, ])
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rprof(NULL)
+  prefs: []
+  type: TYPE_NORMAL
+- en: summaryRprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.self'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                         self.time self.pct total.time total.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "rbind"                      1.06    10.84       6.16     62.99'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "structure"                  0.82     8.38       0.94      9.61'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "data.frame"                 0.68     6.95       4.32     44.17'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "[.data.frame"               0.54     5.52       1.76     18.00'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "sma_slow_1"                 0.48     4.91       9.78    100.00'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> (Truncated output)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.total'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                         total.time total.pct self.time self.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "sma_slow_1"                  9.78    100.00      0.48     4.91'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "rbind"                       6.16     62.99      1.06    10.84'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "data.frame"                  4.32     44.17      0.68     6.95'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "["                           1.88     19.22      0.20     2.04'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "as.data.frame"               1.86     19.02      0.10     1.02'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> (Truncated output)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $sample.interval'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 0.02'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $sampling.time'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 9.78'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: system.time(sma_slow_1(period, symbol, data_original[1:10000, ]))
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>   user  system elapsed'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>  9.251   0.015   9.277'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_1 <- sma_slow_1(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 81035.19'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_slow_2 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: result <- data.frame(sma=numeric())
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for(end in 1:nrow(data)) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- end
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period_prices <- NULL
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if(data[end, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: while(n_accumulated < period & position >= 1) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if(data[position, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period_prices <- c(period_prices,
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: data[position, "price_usd"])
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- n_accumulated + 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- position - 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (n_accumulated == period) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for (price in period_prices) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- sma + price
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- sma / period
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- rbind(result, data.frame(sma=sma))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(result)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_2 <- sma_slow_2(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma == sma_2$sma, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 33031.7785'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_3 <- sma_slow_3(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_3 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 19628.243'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_slow_4 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: result <- NULL
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for(end in 1:nrow(data)) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- end
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period_prices <- NULL
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (data[end, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: while(n_accumulated < period & position >= 1) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (data[position, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period_prices <- c(period_prices,
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: data[position, "price_usd"])
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- n_accumulated + 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- position - 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (n_accumulated == period) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- mean(period_prices)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- c(result, sma)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(result)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_4 <- sma_slow_4(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_4 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 20825.8790'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: x <- sample(100)
+  prefs: []
+  type: TYPE_NORMAL
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: mean(x),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sum(x) / length(x),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .Internal(mean(x)),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: times = 1e+05
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: performance
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> Unit: nanoseconds'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                expr  min   lq      mean median   uq      max neval'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>             mean(x) 1518 1797 2238.2607   1987 2230  2335285 1e+05'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>    sum(x)/length(x)  291  345  750.2324    403  488 27016544 1e+05'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>  .Internal(mean(x))  138  153  187.0588    160  176    34513 1e+05'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_slow_5 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: result <- NULL
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for(end in 1:nrow(data)) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- end
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (data[end, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: while(n_accumulated < period & position >= 1) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (data[position, "symbol"] == symbol) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- sma + data[position, "price_usd"]
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n_accumulated <- n_accumulated + 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position <- position - 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (n_accumulated == period) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- sma / period
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- c(result, sma)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(result)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_5 <- sma_slow_5(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_5 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 16682.68'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_5 <- sma_slow_5(period, symbol, data_original[1:10000, ])
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rprof(NULL)
+  prefs: []
+  type: TYPE_NORMAL
+- en: summaryRprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.self'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                self.time self.pct total.time total.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "[.data.frame"      0.54    26.21       1.24     60.19'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "["                 0.22    10.68       1.34     65.05'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "NextMethod"        0.20     9.71       0.20      9.71'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "sma_slow_5"        0.14     6.80       2.06    100.00'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "Ops.factor"        0.12     5.83       0.52     25.24'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> (Truncated output)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.total'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                  total.time total.pct self.time self.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "sma_slow_5"           2.06    100.00      0.14     6.80'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "["                    1.34     65.05      0.22    10.68'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "[.data.frame"         1.24     60.19      0.54    26.21'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "Ops.factor"           0.52     25.24      0.12     5.83'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "NextMethod"           0.20      9.71      0.20     9.71'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> (Truncated output)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_6 <- sma_slow_6(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_6 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 2991.5720'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_slow_7 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- data[data$symbol == symbol, ]
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- NULL
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for(end in 1:nrow(data)) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: start <- end - period + 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (start >= 1) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- mean(data[start:end, "price_usd"])
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma <- NA
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- c(result, sma)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(result)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_7 <- sma_slow_7(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_7 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 910.793'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_efficient_1 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- data[data$symbol == symbol, ]
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(unlist(lapply(1:nrow(data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma_from_position_1,
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period, data)))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_from_position_1 <- function(end, period, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: start <- end - period + 1
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(ifelse(start >= 1,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: mean(data[start:end, "price_usd"]), NA))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_8 <- sma_efficient_1(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_8 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 1137.704'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_efficient_2 <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- data[data$symbol == symbol, "price_usd"]
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(unlist(lapply(1:length(data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma_from_position_2,
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period, data)))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_from_position_2 <- function(end, period, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: start <- end - period + 1
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(ifelse(start >= 1, sum(data[start:end]) / period, NA))
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_9 <- sma_efficient_2(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_9 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 238.2425'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Rprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_9 <- sma_efficient_2(period, symbol, data_original[1:10000, ])
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rprof(NULL)
+  prefs: []
+  type: TYPE_NORMAL
+- en: summaryRprof()
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.self'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>          self.time self.pct total.time total.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "ifelse"      0.02      100       0.02       100'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> $by.total'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#>                   total.time total.pct self.time self.pct'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "ifelse"                0.02       100      0.02      100'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "FUN"                   0.02       100      0.00        0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "lapply"                0.02       100      0.00        0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "sma_efficient_2"       0.02       100      0.00        0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> "unlist"                0.02       100      0.00        0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: library(parallel)
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_parallel_inefficient <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- as.numeric(data[data$symbol == symbol, "price_usd"])
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: cluster <- makeCluster(detectCores())
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result <- unlist(parLapply(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: cluster, 1:length(data), sma_from_position_2, period, data))
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: stopCluster(cluster)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(result)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_10 <- sma_parallel_inefficient(period, symbol, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_10 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 1197329.3980'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: sma_parallel <- function(period, symbol, data, cluster) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- as.numeric(data[data$symbol == symbol, "price_usd"])
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(unlist(parLapply(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: cluster, 1:length(data), sma_from_position_2, period, data)))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: cluster <- makeCluster(detectCores())
+  prefs: []
+  type: TYPE_NORMAL
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_11 <- sma_parallel(period, symbol, data, cluster),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_11 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 44825.9355'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: subroutine sma_fortran(period, dataa, smas, n)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: integer pos, n, endd, period
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: real dataa(n), smas(n), sma
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: do 10 endd = 1, n
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: pos = endd
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = 0.0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: do 20 while ((endd - pos .lt. period) .and. (pos .ge. 1))
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = sma + dataa(pos)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: pos = pos - 1
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 20      end do
+  prefs: []
+  type: TYPE_NORMAL
+- en: if (endd - pos .eq. period) then
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = sma / period
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: else
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = 0
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: end if
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: smas(endd) = sma
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 10  continue
+  prefs: []
+  type: TYPE_NORMAL
+- en: end
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: $ gfortran -c sma-delegated-fortran.f -o sma-delegated-fortran.so
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: system("R CMD SHLIB sma-delegated-fortran.f")
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: system("R CMD SHLIB sma-delegated-fortran.f")
+  prefs: []
+  type: TYPE_NORMAL
+- en: dyn.load("sma-delegated-fortran.so")
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_delegated_fortran <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- data[which(data$symbol == symbol), "price_usd"]
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n <- length(data)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: results <- .Fortran(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '"sma_fortran",'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: period = as.integer(period),
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: dataa = as.single(data),
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: smas = single(n),
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: n = as.integer(n)
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(as.numeric(results$smas))
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_12 <- sma_delegated_fortran(period, symboo, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_12 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 148.0335'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include'
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace Rcpp;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // [[Rcpp::export(sma_delegated_cpp)]]
+  prefs: []
+  type: TYPE_NORMAL
+- en: NumericVector smaDelegated(int period, NumericVector data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: int position, n = data.size();
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: NumericVector result(n);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: double sma;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: for (int end = 0; end < n; end++) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position = end;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = 0;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: while(end - position < period && position >= 0) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = sma + data[position];
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: position = position - 1;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (end - position == period) {
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = sma / period;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: sma = NA_REAL;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: result[end] = sma;
+  prefs:
+  - PREF_IND
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return result;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: library(Rcpp)
+  prefs: []
+  type: TYPE_NORMAL
+- en: sourceCpp("./sma-delegated-cpp.cpp")
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_delegated_cpp <- function(period, symbol, data) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: data <- as.numeric(data[which(data$symbol == symbol), "price_usd"])
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return(sma_cpp(period, data))
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: performance <- microbenchmark(
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_13 <- sma_delegated_cpp(period, symboo, data),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: unit = "us"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )
+  prefs: []
+  type: TYPE_NORMAL
+- en: all(sma_1$sma - sma_13 <= 0.001, na.rm = TRUE)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> TRUE'
+  prefs: []
+  type: TYPE_NORMAL
+- en: summary(performance)$median
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#> [1] 80.6415'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: library(compiler)
+  prefs: []
+  type: TYPE_NORMAL
+- en: sma_efficient_2_compiled <-
+  prefs: []
+  type: TYPE_NORMAL
+- en: cmpfun(sma_efficient_2, options = list(optimize = e))
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: library(compiler)
+  prefs: []
+  type: TYPE_NORMAL
+- en: enableJIT(level = 3)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '```'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**JIT** compilation can also be enabled by setting the `R_ENABLE_JIT` environment
+    in the operating system before starting R. The value of `R_ENABLE_JIT` should
+    be set to the value of the level argument.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using memoization or cache layers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you have deterministic algorithms, every time you provide equal inputs, you
+    should receive equal outputs, and if that's the case and the process to go from
+    inputs to outputs is very time-consuming, you may use memoization or cache layers.
+    The basic idea is that you store some copies of the inputs and outputs, and whenever
+    an input is sent to a function, before computing the output, you check whether
+    or not that specific input's output has been computed before. If it has, send
+    that instead of doing all the work again. This means you should only be computing
+    the output for each input once.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You should try to implement such a layer in the `fibonacci_recursive()` function
+    we created at the beginning of this chapter to see how big of an impact these
+    kind of techniques can have, even when using slow algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes, these types of techniques are also used even when the output for
+    a given input changes through time. All you have to do in such cases is to provide
+    a mechanism that will invalidate or delete the stored input/output relation after
+    a specific amount of time so that it's actually recalculated next time the input
+    is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving our data and memory management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: R, as any programming language, is constrained by CPU, RAM, and I/O, and in
+    this chapter, we focused on increasing the speed for the CPU part. However, considerable
+    performance gains can be achieved by also making our RAM and I/O usage more efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Measuring RAM (memory) usage is best done outside of R using the tools provided
+    by your operating system for exactly this purpose. The information that these
+    tools report varies depending on the operating system, but here are the key metrics
+    you should keep an eye on: CPU usage, free memory, physical memory, swap size,
+    and bytes read/written per second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you encounter high CPU utilization, the CPU is likely the main bottleneck
+    for R's performance. Use the profiling techniques in this chapter to identify
+    which parts of the code are taking most of the CPU's time is the way to go.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you encounter enough free system memory with high disk I/O, your code is
+    likely performing lots of read/write operations to disk. Remove any unnecessary
+    I/O operations and store intermediate data in the memory if there is sufficient
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you encounter low CPU utilization and low free system memory with a large
+    swap size, the system is likely running out of physical memory and is thus swapping
+    memory onto the disk. In this case, see whether you have enough resources to handle
+    the loads you're sending to R, and if you do, try to use the `rm()` function to
+    remove unused objects that are waiting memory from R's session.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you encounter a scenario similar to the last one, but you know that you don't
+    have enough memory to handle the full data you're working with, even if you did
+    so efficiently, you may try to partition your data. Can you work with a subset
+    of the data by parts and then bring the results together? If so, you should try
+    that. For example, if your full data doesn't fit in memory and you're trying to
+    find the maximum value, you may want to split your data into four parts, load
+    each them one by one, calculate the maximum for each of them, and remove them
+    from memory after you do, while keeping the maximum and then getting the maximum
+    of the four maximums you computed separately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another possibility for a scenario like the previous one is to simply migrate
+    your data handling to a database. Databases are specialized tools for dealing
+    with data, and can avoid data being a bottleneck in R since only the preprocessed
+    subset of the data you need is brought into R. Most of databases nowadays also
+    perform very efficient simple operations, like finding the maximum. You can leverage
+    the techniques we showed in [Chapter 4](part0091.html#2MP360-f494c932c729429fb734ce52cafce730),
+    *Simulating Sales Data and Working with Databases*, to accomplish this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using specialized packages for performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Another good way to increase the performance of your implementations is to look
+    for specialized functions published in CRAN packages or elsewhere. Before you
+    go about changing your own code, take a look and see if you can find a very efficient
+    implementation somewhere else. There's tremendous variation in CRAN packages'
+    quality and speed, but leveraging them can definitely save you a lot of time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Two very powerful packages to help you develop efficient implementations are
+    the `data.table` and `dplyr` packages. They can provide efficient ways of dealing
+    with data frames, and in the case of `dplyr` other objects as well. The **Basic
+    Linear Algebra Subprogram** (**BLAS**) library can also be very helpful when performing
+    linear algebra operations. It's written using Fortran and is highly optimized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Flexibility and power with cloud computing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sometimes, you don't even need more computing power or efficient resources usage.
+    Sometimes, you just need to run R on some other computer without tying up your
+    own for hours or days. In those cases, using cloud computing resources can be
+    very useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cloud computing resources are not only useful when you want to use an extra
+    machine, they are a very efficient way to get hold of supercomputers to do some
+    work for you. It's very easy to build a machine with 64 CPU cores and 512 GB of
+    RAM memory. Using a system like that may be cheaper than you think, and it can
+    be leveraged for very costly computations that would take way too much time in
+    commodity hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specialized R distributions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Finally, if none of the previous options have worked for you, you may also use
+    specialized R distributions. These distributions are maintained independently
+    of the common R distribution and are focused on optimizing specific aspects within
+    R. Some of them are built to provide fine-grained controlled for parallelization,
+    and some do it for you automatically. Learning to use those distributions can
+    be require a significant time investment, which may or may not be beneficial for
+    your particular case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we saw the most important reasons behind slow R code: programming
+    without understanding object immutability, the nature of interpreted dynamic typings,
+    memory-bound processes, and single-threaded processes. We learned that the first
+    one can be reduced by properly using R, the second one can be reduced by delegating
+    to statistically typed languages such as Fortran or C++, the third one can be
+    reduced using more powerful computers (specifically with more RAM), and, finally,
+    the fourth one can be reduced using parallelization.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also mentioned some variables that we may want to take into account when
+    deciding whether or not to optimize our implementations, how small a difference
+    in implementation may result in big performance enhancements, and how the performance
+    gains from these enhancements can become larger as the size of the inputs increases.
+    Finally, we also learned how to profile and benchmark to improve our implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next and final chapter, we will learn to use the `Shiny` package to create
+    interactive dashboards that will make use of the SMA implementation we developed
+    throughout this chapter.
+  prefs: []
+  type: TYPE_NORMAL

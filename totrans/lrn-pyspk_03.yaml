@@ -1,0 +1,887 @@
+- en: Chapter 3. DataFrames
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A DataFrame is an immutable distributed collection of data that is organized
+    into named columns analogous to a table in a relational database. Introduced as
+    an experimental feature within Apache Spark 1.0 as `SchemaRDD`, they were renamed
+    to `DataFrames` as part of the Apache Spark 1.3 release. For readers who are familiar
+    with Python Pandas `DataFrame` or R `DataFrame`, a Spark DataFrame is a similar
+    concept in that it allows users to easily work with structured data (for example,
+    data tables); there are some differences as well so please temper your expectations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By imposing a structure onto a distributed collection of data, this allows Spark
+    users to query structured data in Spark SQL or using expression methods (instead
+    of lambdas). In this chapter, we will include code samples using both methods.
+    By structuring your data, this allows the Apache Spark engine – specifically,
+    the Catalyst Optimizer – to significantly improve the performance of Spark queries.
+    In earlier APIs of Spark (that is, RDDs), executing queries in Python could be
+    significantly slower due to communication overhead between the Java JVM and Py4J.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you are familiar with working with DataFrames in previous versions of Spark
+    (that is Spark 1.x), you will notice that in Spark 2.0 we are using SparkSession
+    instead of `SQLContext`. The various Spark contexts: `HiveContext`, `SQLContext`,
+    `StreamingContext`, and `SparkContext` have merged together in SparkSession. This
+    way you will be working with this session only as an entry point for reading data,
+    working with metadata, configuration, and cluster resource management.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more information, please refer to *How to use SparkSession in Apache Spark
+    2.0*([http://bit.ly/2br0Fr1](http://bit.ly/2br0Fr1)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, you will learn about the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Python to RDD communications
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A quick refresh of Spark's Catalyst Optimizer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Speeding up PySpark with DataFrames
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating DataFrames
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Simple DataFrame queries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Interoperating with RDDs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Querying with the DataFrame API
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Querying with Spark SQL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using DataFrames for an on-time flight performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Python to RDD communications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Whenever a PySpark program is executed using RDDs, there is a potentially large
+    overhead to execute the job. As noted in the following diagram, in the PySpark
+    driver, the `Spark Context` uses `Py4j` to launch a JVM using the `JavaSparkContext`.
+    Any RDD transformations are initially mapped to `PythonRDD` objects in Java.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once these tasks are pushed out to the Spark Worker(s), `PythonRDD` objects
+    launch Python `subprocesses` using pipes to send *both code and data* to be processed
+    within Python:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Python to RDD communications](img/B05793_03_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: While this approach allows PySpark to distribute the processing of the data
+    to multiple Python subprocesses on multiple workers, as you can see, there is
+    a lot of context switching and communications overhead between Python and the
+    JVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'An excellent resource on PySpark performance is Holden Karau''s *Improving
+    PySpark Performance: Spark performance beyond the JVM*: [http://bit.ly/2bx89bn](http://bit.ly/2bx89bn).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Catalyst Optimizer refresh
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As noted in [Chapter 1](ch01.html "Chapter 1. Understanding Spark"), *Understanding
+    Spark*, one of the primary reasons the Spark SQL engine is so fast is because
+    of the **Catalyst Optimizer**. For readers with a database background, this diagram
+    looks similar to the logical/physical planner and cost model/cost-based optimization
+    of a **relational database management system** (**RDBMS**):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Catalyst Optimizer refresh](img/B05793_03_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The significance of this is that, as opposed to immediately processing the query,
+    the Spark engine's Catalyst Optimizer compiles and optimizes a logical plan and
+    has a cost optimizer that determines the most efficient physical plan generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As noted in earlier chapters, while the Spark SQL Engine has both rules-based
+    and cost-based optimizations that include (but are not limited to) predicate push
+    down and column pruning. Targeted for the Apache Spark 2.2 release, the jira item
+    *[SPARK-16026] Cost-based Optimizer Framework* at [https://issues.apache.org/jira/browse/SPARK-16026](https://issues.apache.org/jira/browse/SPARK-16026)
+    is an umbrella ticket to implement a cost-based optimizer framework beyond broadcast
+    join selection. For more information, please refer to the *Design Specification
+    of Spark Cost-Based Optimization* at [http://bit.ly/2li1t4T](http://bit.ly/2li1t4T).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As part of **Project Tungsten**, there are further improvements to performance
+    by generating byte code (code generation or `codegen`) instead of interpreting
+    each row of data. Find more details on Tungsten in the *Project Tungsten* section
+    in [Chapter 1](ch01.html "Chapter 1. Understanding Spark"), *Understanding Spark*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As previously noted, the optimizer is based on functional programming constructs
+    and was designed with two purposes in mind: to ease the adding of new optimization
+    techniques and features to Spark SQL, and to allow external developers to extend
+    the optimizer (for example, adding data-source-specific rules, support for new
+    data types, and so on).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For more information, please refer to Michael Armbrust''s excellent presentation,
+    *Structuring Spark: SQL DataFrames, Datasets, and Streaming* at [http://bit.ly/2cJ508x](http://bit.ly/2cJ508x).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For further understanding of the *Catalyst Optimizer*, please refer to *Deep
+    Dive into Spark SQL's Catalyst Optimizer* at [http://bit.ly/2bDVB1T](http://bit.ly/2bDVB1T).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Also, for more information on *Project Tungsten*, please refer to *Project
+    Tungsten: Bringing Apache Spark Closer to Bare Metal* at [http://bit.ly/2bQIlKY](http://bit.ly/2bQIlKY),
+    and *Apache Spark as a Compiler: Joining a Billion Rows per Second on a Laptop*
+    at [http://bit.ly/2bDWtnc](http://bit.ly/2bDWtnc).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Speeding up PySpark with DataFrames
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The significance of DataFrames and the *Catalyst Optimizer* (and *Project Tungsten*)
+    is the increase in performance of PySpark queries when compared to non-optimized
+    RDD queries. As shown in the following figure, prior to the introduction of DataFrames,
+    Python query speeds were often twice as slow as the same Scala queries using RDD.
+    Typically, this slowdown in query performance was due to the communications overhead
+    between Python and the JVM:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Speeding up PySpark with DataFrames](img/B05793_03_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Source: *Introducing DataFrames in Apache-spark for Large Scale Data Science*
+    at [http://bit.ly/2blDBI1](http://bit.ly/2blDBI1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With DataFrames, not only was there a significant improvement in Python performance,
+    there is now performance parity between Python, Scala, SQL, and R.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: It is important to note that while, with DataFrames, PySpark is often significantly
+    faster, there are some exceptions. The most prominent one is the use of Python
+    UDFs, which results in round-trip communication between Python and the JVM. Note,
+    this would be the worst-case scenario which would be similar if the compute was
+    done on RDDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Python can take advantage of the performance optimizations in Spark even while
+    the codebase for the Catalyst Optimizer is written in Scala. Basically, it is
+    a Python wrapper of approximately 2,000 lines of code that allows PySpark DataFrame
+    queries to be significantly faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Altogether, Python DataFrames (as well as SQL, Scala DataFrames, and R DataFrames)
+    are all able to make use of the Catalyst Optimizer (as per the following updated
+    diagram):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Speeding up PySpark with DataFrames](img/B05793_03_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For more information, please refer to the blog post *Introducing DataFrames
+    in Apache Spark for Large Scale Data Science* at [http://bit.ly/2blDBI1](http://bit.ly/2blDBI1),
+    as well as Reynold Xin''s Spark Summit 2015 presentation, *From DataFrames to
+    Tungsten: A Peek into Spark''s Future* at [http://bit.ly/2bQN92T](http://bit.ly/2bQN92T).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating DataFrames
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Typically, you will create DataFrames by importing data using SparkSession (or
+    calling `spark` in the PySpark shell).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Spark 1.x versions, you typically had to use `sqlContext`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In future chapters, we will discuss how to import data into your local file
+    system, **Hadoop Distributed File System** (**HDFS**), or other cloud storage
+    systems (for example, S3 or WASB). For this chapter, we will focus on generating
+    your own DataFrame data directly within Spark or utilizing the data sources already
+    available within Databricks Community Edition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For instructions on how to sign up for the Community Edition of Databricks,
+    see the bonus chapter, *Free Spark Cloud Offering*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, instead of accessing the file system, we will create a DataFrame by generating
+    the data. In this case, we'll first create the `stringJSONRDD` RDD and then convert
+    it into a DataFrame. This code snippet creates an RDD comprised of swimmers (their
+    ID, name, age, and eye color) in JSON format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating our own JSON data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Below, we will generate initially generate the `stringJSONRDD` RDD:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have created the RDD, we will convert this into a DataFrame by using
+    the SparkSession `read.json` method (that is, `spark.read.json(...)`). We will
+    also create a temporary table by using the `.createOrReplaceTempView` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In Spark 1.x, this method was`.registerTempTable`, which is being deprecated
+    as part of Spark 2.x.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a DataFrame
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here is the code to create a DataFrame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating a temporary table
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Here is the code for creating a temporary table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: As noted in the previous chapters, many RDD operations are transformations,
+    which are not executed until an action operation is executed. For example, in
+    the preceding code snippet, the `sc.parallelize` is a transformation that is executed
+    when converting from an RDD to a DataFrame by using `spark.read.json`. Notice
+    that, in the screenshot of this code snippet notebook (near the bottom left),
+    the Spark job is not executed until the second cell containing the `spark.read.json`
+    operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These are screenshots from Databricks Community Edition, but all the code samples
+    and Spark UI screenshots can be executed/viewed in any flavor of Apache Spark
+    2.x.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To further emphasize the point, in the right pane of the following figure, we
+    present the DAG graph of execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A great resource to better understand the Spark UI DAG visualization is the
+    blog post *Understanding Your Apache Spark Application Through Visualization*
+    at [http://bit.ly/2cSemkv](http://bit.ly/2cSemkv).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following screenshot, you can see the Spark job'' s`parallelize` operation
+    is from the first cell generating the RDD `stringJSONRDD`, while the `map` and
+    `mapPartitions` operations are the operations required to create the DataFrame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creating a temporary table](img/B05793_03_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Spark UI of the DAG visualization of the spark.read.json(stringJSONRDD) job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following screenshot, you can see the *stages* for the `parallelize`
+    operation are from the first cell generating the RDD `stringJSONRDD`, while the
+    `map` and `mapPartitions` operations are the operations required to create the
+    DataFrame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creating a temporary table](img/B05793_03_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Spark UI of the DAG visualization of the stages within the spark.read.json(stringJSONRDD)
+    job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to note that `parallelize`, `map`, and `mapPartitions` are all
+    RDD *transformations*. Wrapped within the DataFrame operation, `spark.read.json`
+    (in this case), are not only the RDD transformations, but also the *action* which
+    converts the RDD into a DataFrame. This is an important call out, because even
+    though you are executing DataFrame *operations*, to debug your operations you
+    will need to remember that you will be making sense of *RDD operations* within
+    the Spark UI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that creating the temporary table is a DataFrame transformation and not
+    executed until a DataFrame action is executed (for example, in the SQL query to
+    be executed in the following section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: DataFrame transformations and actions are similar to RDD transformations and
+    actions in that there is a set of operations that are lazy (transformations).
+    But, in comparison to RDDs, DataFrames operations are not as lazy, primarily due
+    to the Catalyst Optimizer. For more information, please refer to Holden Karau
+    and Rachel Warren's book *High Performance Spark*, [http://highperformancespark.com/](http://highperformancespark.com/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simple DataFrame queries
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that you have created the `swimmersJSON` DataFrame, we will be able to run
+    the DataFrame API, as well as SQL queries against it. Let's start with a simple
+    query showing all the rows within the DataFrame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DataFrame API query
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To do this using the DataFrame API, you can use the `show(<n>)` method, which
+    prints the first `n` rows to the console:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Running the`.show()` method will default to present the first 10 rows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This gives the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![DataFrame API query](img/B05793_03_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: SQL query
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If you prefer writing SQL statements, you can write the following query:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will give the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![SQL query](img/B05793_03_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We are using the `.collect()` method, which returns all the records as a list
+    of **Row** objects. Note that you can use either the `collect()` or `show()` method
+    for both DataFrames and SQL queries. Just make sure that if you use `.collect()`,
+    this is for a small DataFrame, since it will return all of the rows in the DataFrame
+    and move them back from the executors to the driver. You can instead use `take(<n>)`
+    or `show(<n>)`, which allow you to limit the number of rows returned by specifying
+    `<n>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that, if you are using Databricks, you can use the `%sql` command and run
+    your SQL statement directly within a notebook cell, as noted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![SQL query](img/B05793_03_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Interoperating with RDDs
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are two different methods for converting existing RDDs to DataFrames
+    (or Datasets[T]): inferring the schema using reflection, or programmatically specifying
+    the schema. The former allows you to write more concise code (when your Spark
+    application already knows the schema), while the latter allows you to construct
+    DataFrames when the columns and their data types are only revealed at run time.
+    Note, **reflection** is in reference to *schema reflection* as opposed to Python
+    `reflection`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inferring the schema using reflection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the process of building the DataFrame and running the queries, we skipped
+    over the fact that the schema for this DataFrame was automatically defined. Initially,
+    row objects are constructed by passing a list of key/value pairs as `**kwargs`
+    to the row class. Then, Spark SQL converts this RDD of row objects into a DataFrame,
+    where the keys are the columns and the data types are inferred by sampling the
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `**kwargs` construct allows you to pass a variable number of parameters
+    to a method at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Going back to the code, after initially creating the `swimmersJSON` DataFrame,
+    without specifying the schema, you will notice the schema definition by using
+    the `printSchema()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This gives the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Inferring the schema using reflection](img/B05793_03_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: But what if we want to specify the schema because, in this example, we know
+    that the `id` is actually a `long` instead of a `string`?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programmatically specifying the schema
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this case, let''s programmatically specify the schema by bringing in Spark
+    SQL data types (`pyspark.sql.types`) and generate some `.csv` data for this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we will encode the schema as a string, per the `[schema]` variable below.
+    Then we will define the schema using `StructType` and `StructField`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note, the `StructField` class is broken down in terms of:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`name`: The name of this field'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`dataType`: The data type of this field'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`nullable`: Indicates whether values of this field can be null'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Finally, we will apply the schema (`schema`) we created to the `stringCSVRDD`
+    RDD (that is, the generated`.csv` data) and create a temporary view so we can
+    query it using SQL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this example, we have finer-grain control over the schema and can specify
+    that `id` is a `long` (as opposed to a string in the previous section):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This gives the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Programmatically specifying the schema](img/B05793_03_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In many cases, the schema can be inferred (as per the previous section) and
+    you do not need to specify the schema, as in this preceding example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Querying with the DataFrame API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As noted in the previous section, you can start off by using `collect()`, `show()`,
+    or `take()` to view the data within your DataFrame (with the last two including
+    the option to limit the number of returned rows).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of rows
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To get the number of rows within your DataFrame, you can use the `count()`
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This gives the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running filter statements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To run a filter statement, you can use the `filter` clause; in the following
+    code snippet, we are using the `select` clause to specify the columns to be returned
+    as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of this query is to choose only the `id` and `age` columns, where
+    `age` = `22`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Running filter statements](img/B05793_03_12.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'If we only want to get back the name of the swimmers who have an eye color
+    that begins with the letter `b`, we can use a SQL-like syntax, `like`, as shown
+    in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Running filter statements](img/B05793_03_13.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Querying with SQL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's run the same queries, except this time, we will do so using SQL queries
+    against the same DataFrame. Recall that this DataFrame is accessible because we
+    executed the `.createOrReplaceTempView` method for `swimmers`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Number of rows
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following is the code snippet to get the number of rows within your DataFrame
+    using SQL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Number of rows](img/B05793_03_14.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Running filter statements using the where Clauses
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To run a filter statement using SQL, you can use the `where` clause, as noted
+    in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of this query is to choose only the `id` and `age` columns where
+    `age` = `22`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Running filter statements using the where Clauses](img/B05793_03_15.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As with the DataFrame API querying, if we want to get back the name of the
+    swimmers who have an eye color that begins with the letter `b` only, we can use
+    the `like` syntax as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Running filter statements using the where Clauses](img/B05793_03_16.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For more information, please refer to the *Spark SQL, DataFrames, and Datasets
+    Guide* at [http://bit.ly/2cd1wyx](http://bit.ly/2cd1wyx).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'An important note when working with Spark SQL and DataFrames is that while
+    it is easy to work with CSV, JSON, and a variety of data formats, the most common
+    storage format for Spark SQL analytics queries is the *Parquet* file format. It
+    is a columnar format that is supported by many other data processing systems and
+    Spark SQL supports both reading and writing Parquet files that automatically preserves
+    the schema of the original data. For more information, please refer to the latest
+    *Spark SQL Programming Guide > Parquet Files* at: [http://spark.apache.org/docs/latest/sql-programming-guide.html#parquet-files](http://spark.apache.org/docs/latest/sql-programming-guide.html#parquet-files).
+    Also, there are many performance optimizations that pertain to Parquet, including
+    (but not limited to) *Automatic Partition Discovery and Schema Migration for Parquet*
+    at [https://databricks.com/blog/2015/03/24/spark-sql-graduates-from-alpha-in-spark-1-3.html](https://databricks.com/blog/2015/03/24/spark-sql-graduates-from-alpha-in-spark-1-3.html)
+    and *How Apache Spark performs a fast count using the parquet metadata* at [https://github.com/dennyglee/databricks/blob/master/misc/parquet-count-metadata-explanation.md](https://github.com/dennyglee/databricks/blob/master/misc/parquet-count-metadata-explanation.md).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: DataFrame scenario – on-time flight performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To showcase the types of queries you can do with DataFrames, let''s look at
+    the use case of on-time flight performance. We will analyze the *Airline On-Time
+    Performance and Causes of Flight Delays: On-Time Data* ([http://bit.ly/2ccJPPM](http://bit.ly/2ccJPPM)),
+    and join this with the airports dataset, obtained from the *Open Flights Airport,
+    airline, and route data* ([http://bit.ly/2ccK5hw](http://bit.ly/2ccK5hw)), to
+    better understand the variables associated with flight delays.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For this section, we will be using Databricks Community Edition (a free offering
+    of the Databricks product), which you can get at [https://databricks.com/try-databricks](https://databricks.com/try-databricks).
+    We will be using visualizations and pre-loaded datasets within Databricks to make
+    it easier for you to focus on writing the code and analyzing the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you would prefer to run this on your own environment, you can find the datasets
+    available in our GitHub repository for this book at [https://github.com/drabastomek/learningPySpark](https://github.com/drabastomek/learningPySpark).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preparing the source datasets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will first process the source airports and flight performance datasets by
+    specifying their file path location and importing them using SparkSession:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we're importing the data using the CSV reader (`com.databricks.spark.csv`),
+    which works for any specified delimiter (note that the airports data is tab-delimited,
+    while the flight performance data is comma-delimited). Finally, we cache the flight
+    dataset so subsequent queries will be faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Joining flight performance and airports
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One of the more common tasks with DataFrames/SQL is to join two different datasets;
+    it is often one of the more demanding operations (from a performance perspective).
+    With DataFrames, a lot of the performance optimizations for these joins are included
+    by default:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In our scenario, we are querying the total delays by city and origin code for
+    the state of Washington. This will require joining the flight performance data
+    with the airports data by **International Air Transport Association** (**IATA**)
+    code. The output of the query is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Joining flight performance and airports](img/B05793_03_17.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Using notebooks (such as Databricks, iPython, Jupyter, and Apache Zeppelin),
+    you can more easily execute and visualize your queries. In the following examples,
+    we will be using the Databricks notebook. Within our Python notebook, we can use
+    the `%sql` function to execute SQL statements within that notebook cell:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the same as the previous query, but due to formatting, easier to read.
+    In our Databricks notebook example, we can quickly visualize this data into a
+    bar chart:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Joining flight performance and airports](img/B05793_03_18.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Visualizing our flight-performance data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s continue visualizing our data, but broken down by all states in the
+    continental US:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output bar chart is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Visualizing our flight-performance data](img/B05793_03_19.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'But, it would be cooler to view this data as a map; click on the bar chart
+    icon at the bottom-left of the chart, and you can choose from many different native
+    navigations, including a map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Visualizing our flight-performance data](img/B05793_03_20.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: One of the key benefits of DataFrames is that the information is structured
+    similar to a table. Therefore, whether you are using notebooks or your favorite
+    BI tool, you will be able to quickly visualize your data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You can find the full list of `pyspark.sql.DataFrame` methods at [http://bit.ly/2bkUGnT](http://bit.ly/2bkUGnT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the full list of `pyspark.sql.functions` at [http://bit.ly/2bTAzLT](http://bit.ly/2bTAzLT).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spark Dataset API
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'After this discussion about Spark DataFrames, let''s have a quick recap of
+    the Spark Dataset API. Introduced in Apache Spark 1.6, the goal of Spark Datasets
+    was to provide an API that allows users to easily express transformations on domain
+    objects, while also providing the performance and benefits of the robust Spark
+    SQL execution engine. As part of the Spark 2.0 release (and as noted in the diagram
+    below), the DataFrame APIs is merged into the Dataset API thus unifying data processing
+    capabilities across all libraries. Because of this unification, developers now
+    have fewer concepts to learn or remember, and work with a single high-level and
+    *type-safe* API – called Dataset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spark Dataset API](img/B05793_03_21.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Conceptually, the Spark DataFrame is an *alias* for a collection of generic
+    objects Dataset[Row], where a Row is a generic *untyped* JVM object. Dataset,
+    by contrast, is a collection of *strongly-typed* JVM objects, dictated by a case
+    class you define, in Scala or Java. This last point is particularly important
+    as this means that the Dataset API is *not supported* by PySpark due to the lack
+    of benefit from the type enhancements. Note, for the parts of the Dataset API
+    that are not available in PySpark, they can be accessed by converting to an RDD
+    or by using UDFs. For more information, please refer to the jira [SPARK-13233]:
+    Python Dataset at [http://bit.ly/2dbfoFT](http://bit.ly/2dbfoFT).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With Spark DataFrames, Python developers can make use of a simpler abstraction
+    layer that is also potentially significantly faster. One of the main reasons Python
+    is initially slower within Spark is due to the communication layer between Python
+    sub-processes and the JVM. For Python DataFrame users, we have a Python wrapper
+    around Scala DataFrames that avoids the Python sub-process/JVM communication overhead.
+    Spark DataFrames has many performance enhancements through the Catalyst Optimizer
+    and Project Tungsten which we have reviewed in this chapter. In this chapter,
+    we also reviewed how to work with Spark DataFrames and worked on an on-time flight
+    performance scenario using DataFrames.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we created and worked with DataFrames by generating the data
+    or making use of existing datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will discuss how to transform and understand your own
+    data.
+  prefs: []
+  type: TYPE_NORMAL

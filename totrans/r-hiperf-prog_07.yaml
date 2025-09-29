@@ -1,0 +1,624 @@
+- en: Chapter 7. Processing Large Datasets with Limited RAM
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we learned how to optimize the memory consumption of
+    R programs by reducing the copying of data and by removing temporary data. Sometimes,
+    that is still not enough. We might have data that is too large to even fit into
+    memory, let alone perform any computations on them, or even if the data can fit
+    into memory, there is not much free memory left for the analyses that we need
+    to perform.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will learn advanced techniques to overcome memory limitations
+    and process large datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using memory-efficient data structures
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using memory-mapped files and processing data in chunks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using memory-efficient data structures
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: One of the first things to consider when you work with a large dataset is whether
+    the same information can be stored and processed using more memory-efficient data
+    structures. But first we need to know how data is stored in R. Vectors are the
+    basic building blocks of almost all data types in R. R provides atomic vectors
+    of logical, integer, numeric, complex, character and raw types. Many other data
+    structures are also built from vectors. Lists, for example, are essentially vectors
+    in R's internal storage structures. They differ from atomic vectors in the way
+    that they store pointers to other R objects rather than atomic values. That is
+    why lists can contain objects of different types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s examine how much memory is required for each of the atomic data types.
+    To do that, we will create vectors of each type with 1 million elements and measure
+    their memory consumption using `object.size()` (for character vectors, we will
+    call `rep.int(NA_character_, 1e6)`, which will create a truly empty character
+    vector containing the `NA` values, which as we shall see shortly, takes up less
+    memory than a character vector containing empty strings):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: These results were taken from a 64-bit version of R. Notice that all these vectors
+    take up memory in multiples of 1 million plus an extra 40 bytes. These 40 bytes
+    are taken up by the headers of the vectors that R uses to store information about
+    the vectors, such as the lengths and data types. The remaining space is taken
+    up by the data stored in the vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By dividing these numbers by 1 million, we see that raw values take up 1 byte
+    each, logical and integer values 4 bytes, numeric values 8 bytes, and complex
+    values 16 bytes. The following figure depicts the structure and memory required
+    for these types of vectors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using memory-efficient data structures](img/9263OS_07_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Internal structure of logical, integer, numeric, and complex vectors
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Character vectors and lists are a little different because they do not store
+    the actual data within their vectors. Instead, they store pointers to other vectors
+    that contain the actual data. In the computer''s memory, each element of a character
+    vector or list is a pointer that occupies 4 bytes in a 32-bit R and 8 bytes in
+    a 64-bit R. This is depicted in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using memory-efficient data structures](img/9263OS_07_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Internal structure of lists and character vectors
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s examine character vectors more closely to see how they are stored. To
+    do this, we will generate three different character vectors, all having 1 million
+    strings with 10 characters each. The first vector simply contains 1 million copies
+    of the `"0123456789"` string, generated using the `formatC()` function to take
+    up ten characters. The second vector contains 1,000 copies of 1,000 unique strings,
+    generated using `formatC()` to take up 10 characters. The third vector contains
+    1 million unique strings with 10 characters each. Because these vectors contain
+    the same number of strings with the same length, we would expect them to take
+    up the same amount of memory. Let''s test this hypothesis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: It turns out that the three character vectors take up vastly different amounts
+    of memory, depending on the actual content of the strings. This is because R stores
+    only one copy of each unique string in its CHARSXP cache in order to save memory.
+    The character vectors that we created actually store pointers to the strings in
+    this cache, rather than the strings themselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, each of the strings in this cache is a full-fledged R vector with
+    a 24- or 40-byte header (in a 32-bit and 64-bit R respectively) and exactly one
+    string. The null character is appended to the end of the string, and the total
+    vector length is rounded up to the nearest multiple of eight. So, for example,
+    the string `0123456789` would be stored as `0123456789\0` (where `\0` is the null
+    character) plus five more bytes to make a total of 16 bytes. Adding on the 40-byte
+    header in a 64-bit R, this 10-character string occupies 56 bytes of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Turning back to the results, the first vector with 1 million copies of `0123456789`
+    requires 8,000,040 bytes for the character vector itself that contains pointers
+    and another 56 bytes for storing the string itself. This makes for a total of
+    8,000,096 bytes, as reported by `object.size()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second vector contains 1,000 unique strings, so it uses a total of *8,000,040
+    + 1,000 × 56 = 8,056,040* bytes of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The third vector contains 1 million unique strings, so it uses a total of *8,000,040
+    + 1,000,000 × 56 = 64,000,040* bytes of memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Evidently the memory consumption of character vectors depends on the number
+    of unique strings contained in the vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Smaller data types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Having understood how atomic vectors are stored in R, we now look at some simple
+    strategies to reduce the memory footprint of large datasets so that they might
+    fit in memory for analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way is to coerce data to smaller data types, where possible. For example,
+    if a dataset contains only integer values, storing them in an integer instead
+    of numeric vector reduces memory consumption by about half:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This also applies to character strings. Where there are many duplicated strings
+    in a character vector, converting it to a factor vector can reduce the memory
+    consumption, since factors are actually integer vectors that index a character
+    vector of the unique strings (the levels of the factor) that appear in the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: These same techniques can be applied to the components of other data structures,
+    such as matrices, data frames, and lists that are built on atomic vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sparse matrices
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sometimes the data might be very sparse, that is, it contains a lot of zeroes
+    or empty values. Instead of storing a full vector of matrix in memory, using *sparse
+    matrices* can significantly reduce the amount of memory required to represent
+    the data. Sparse matrices are provided by the `Matrix` package that comes with
+    R.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Say we have a 1,000 by 1,000 matrix of numbers (1 million elements in total)
+    with about 70 percent zeroes. We can use the `Matrix()` function to create either
+    dense or sparse matrices from this data, depending on the sparse argument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The dense matrix requires about the same amount of memory as the numeric vector
+    of raw data. The sparse matrix reduces the size of the data by 55 percent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sparse matrices are also very useful for binary data (`TRUE`/`FALSE`, `0`/`1`,
+    `"yes"`/`"no"`, `"hot"`/`"cold"`, and so on). Simply convert the binary data into
+    logical values, where the majority class is `FALSE` (if the majority class if
+    `TRUE`, just invert the data). We can then create sparse matrices that only store
+    information about where the `TRUE` values occur in the matrix. Again, let''s test
+    this on a 70 percent sparse matrix of 1 million logical values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The sparse logical matrix is even more compact than the sparse numeric matrix,
+    being 33 percent smaller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Symmetric matrices
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Symmetric matrices, that is, matrices that are equal to their transpose are
+    used in many statistical methods. Some examples include distance matrices, correlation
+    matrices, and graph adjacency matrices. It is possible to save memory by keeping
+    only half of the matrix, including the diagonal, since we can generate the other
+    half of the matrix by taking the mirror image of the half matrix. The `Matrix`
+    package provides the `dspMatrix` class to efficiently store symmetric matrices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Beyond sparse and symmetric matrices, the `Matrix` package provides several
+    other efficient matrix-type data structures including triangular matrices and
+    diagonal matrices. Depending on the type of data, some of these data structures
+    might be even more memory-efficient than the generic sparse or symmetric matrices
+    used in the preceding examples. Furthermore, the package makes it such that basic
+    matrix operations, such as matrix multiplication (`%*%`), are applicable for both
+    dense and sparse matrices. Hence, in most cases, we do not need to manually port
+    matrix operations from their dense to sparse versions. Consult the documentation
+    of the `Matrix` package for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bit vectors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Binary data can be represented in an even more efficient way, using bit vectors.
+    Unlike logical values in R that take up four bytes or 32 bits, bit vectors store
+    each logical value using only one bit. This reduces the memory consumption of
+    logical values by a factor of 32\. Bit vectors, however, cannot store the `NA`
+    value, so they are not suitable for data that contains the `NA` values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In R, bit vectors are provided by the `bit` package on CRAN. Let''s compare
+    the sizes of a logical vector and the equivalent bit vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: As expected, the bit vector is 3.2 percent, or 1/32 as large as the logical
+    vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Bit vectors also allow for much quicker logical operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: When dealing with large amounts of logical or binary data, bit vectors not only
+    save memory but also provide a speed boost when they are operated on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using memory-mapped files and processing data in chunks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Some datasets are so large that even after applying all memory optimization
+    techniques and using the most efficient data types possible, they are still too
+    large to fit in or be processed in the memory. Short of getting additional RAM,
+    one way to work with such large data is to store them on a disk in the form of
+    **memory-mapped files** and load the data into the memory for processing one small
+    chunk at a time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, say we have a dataset that would require 100 GB of RAM if it is
+    fully loaded into the memory and another 100 GB of free memory for the computations
+    that need to be performed on the data. If the computer on which the data is to
+    be processed only has 64 GB of RAM, we might divide the data into four chunks
+    of 25 GB each. The R program will then load the data into the memory one chunk
+    at a time and perform the necessary computations on each chunk. After all the
+    chunks have been processed, the results from each chunk-wise computation will
+    finally be combined in order to compute the final results. Whether this can be
+    done easily depends on the nature of the algorithm that is being run on the data.
+    Some algorithms can easily be converted to compute on chunks of data, while others
+    might require substantial effort to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two CRAN packages that provide memory-mapped files to work with large
+    datasets in this manner: `bigmemory` and `ff`. We will look at each of these in
+    turn.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bigmemory package
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `bigmemory` CRAN package provides a matrix-like data structure called `big.matrix`.
+    Data stored in `big.matrix` objects can be of type `double` (8 bytes, the default),
+    `integer` (4 bytes), `short` (2 bytes), or `char` (1 byte).The `big.matrix` objects
+    can exist in RAM or in the form of memory-mapped files, and they can be manipulated
+    in very much the same way as standard R matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: At the time of writing, `bigmemory` is not supported on Windows, but the package
+    authors are working to fix this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create a `big.matrix` object, we can either call `big.matrix()` to create
+    a new object, or `as.big.matrix()` to coerce a matrix into `big.matrix`. For the
+    next example, we will create a new `big.matrix` object with 1 billion rows and
+    3 columns in R''s temporary folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this might take a while, but when it is done, we have a new object
+    `bm` that stores a pointer to the new memory-mapped file. We can find the new
+    file called `bm` in the temporary directory with a size of 22 GB:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Such a large dataset would not have fit into the main memory of most computers.
+    Another file, `bm.desc`, was created alongside the data file. This is used to
+    retrieve the memory-mapped file at a later time or by another R program by calling
+    something like `my.bm <- attach.big.matrix(file.path(tempdir(), "bm.desc"))`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `big.matrix` objects support many of the same operations as standard R
+    matrices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the subsetting operator `[` is used, `bigmemory` materializes the selected
+    portion of the data into the RAM as a matrix. As different parts of a `big.matrix`
+    are used, `bigmemory` automatically loads the relevant portions of the data into
+    the RAM and removes portions that are no longer needed. Because everything selected
+    by `[` is loaded into the memory, care must be taken to ensure that the selected
+    data can fit into the available memory. Calls such as `bm[, ]` will likely lead
+    to out of memory errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s now see how an R program might work with `big.matrix` by processing
+    one chunk of it at a time. First we will fill it with random data, one chunk at
+    a time. The first column will contain integers from the Poisson distribution with
+    a mean of 1,000\. The second column will contain binary data represented by ones
+    and zeroes. The third will contain real numbers uniformly distributed between
+    0 and 100,000\. The following code fills in `bm` with these random numbers in
+    100 chunks of 10 million rows at a time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another example of a chunked computation is to find the standard deviation
+    of each column. Calling `sd(bm[1, ])` might not work, as even a single column
+    of data can exceed available memory. Two passes through the data are needed: one
+    to compute the mean of each column, and another to compute the squared deviations
+    from the mean.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The data can be split into chunks of 10 million rows, as before. In the first
+    pass, the column means are computed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code iterates through each chunk of data and computes the column sums of
+    each chunk using the `colSums()` function. This is added to the global column
+    sums, stored in `col.sums`. Once all the chunks have been processed, the column
+    means are computed by dividing `col.sums` by the number of rows in the data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the second pass, the squared deviations of the observations from the column
+    means are computed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each chunk of data is first transposed using `t()` so that `col.means` can be
+    subtracted from each column of the transposed data to calculate the deviations
+    from the means. The deviations are then squared and summed over the rows as the
+    data was transposed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once all the chunks have been processed, the total squared deviations of each
+    column are then divided by *n-1* to compute the variance of each column. Finally,
+    the square roots of the column variances give the column standard deviations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The authors of `bigmemory` also wrote a companion package `biganalytics` that
+    provides common statistical functions for `big.matrix` objects. We can compare
+    the results of the preceding exercise with the `colsd()` function from `biganalytics`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have seen how to perform computations over chunks of data using `big.matrix`
+    objects. The authors of `bigmemory` have also created other CRAN packages that
+    provide useful functions that operate over `big.matrix` objects. These are listed
+    in the following table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Package | Samples of functions provided |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `biganalytics` | Statistics: `colmean()`, `colmin()`, `min()`, `colmax()`,
+    `max()`, `colrange()`, `range()`, `colvar()`, `colsd()`, `colsum()`, `sum()`,
+    `colprod()`, `prod()`, and `colna()`Apply: `apply()`Linear models: `biglm.big.matrix()`,
+    `bigglim.big.matrix()`Clustering: `bigkmeans()` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `bigtabulate` | Table and `tapply`: `bigtabulate()`, `bigtable()`, `bigtsummary()`Split:
+    `bigsplit()` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `bigalgebra` | Arithmetic operations |'
+  prefs: []
+  type: TYPE_TB
+- en: The ff package
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While `big.matrix` is useful for data that can be coerced to the same type,
+    sometimes a more data frame-like memory-mapped format is required while dealing
+    with heterogeneous data types. The `ff` CRAN package provides this capability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ff` CRAN package supports more data types than `bigmemory`. The following
+    table shows the different data types, called `vmodes`, that can be stored in `ff`
+    vectors, arrays and data frames.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Data type or vmode | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Boolean` | 1-bit logical without `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Logical` | 2-bit logical with `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Quad` | 2-bit unsigned integer without `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Nibble` | 4-bit unsigned integer without `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Byte` | 8-bit signed integer with `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Ubyte` | 8-bit unsigned integer without `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Short` | 16-bit signed integer with `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Ushort` | 16-bit unsigned integer without `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Integer` | 32-bit signed integer with `NA` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Single` | 32-bit float |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Double` | 64-bit float |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Complex` | 2 x 64 bit float |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Raw` | 8-bit unsigned char |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Factor` | Factor (stored as `integer`) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Ordered` | Ordered factor (stored as `integer`) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `POSIXct` | POSIXct (stored as a `double`) |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Date` | Date (stored as `double`) |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The `ff` objects can be created by passing a vector of values to the `ff()`
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because no filename was specified, `ff()` automatically creates a new file in
+    R's temporary directory. The filename can also be specified using the `filename`
+    argument, as shown in the next example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If a scalar is passed to `ff()` along with the dimensions for the new `ff`
+    object, the scalar value will be used to initialize the object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `vmode` argument sets the storage mode of the `ff` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Data frames can be constructed using `ffdf()`. Here, we create a new `ffdf`
+    object using the integer and quad `ff` vectors created in the preceding code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ff` objects provide the convenient `chunk()` function to split up the
+    data into chunks based on the available memory. With its default arguments, `chunk()`
+    recommends to load the entire data frame `d` in one chunk:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The maximum chunk size in bytes can also be set using the `BATCHBYTES` argument.
+    When it is set to 2 million bytes, `chunk()` recommends splitting the data into
+    four chunks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: In general, it is desirable to have smaller number chunks, as every chunk incurs
+    an (typically small) I/O overhead that is required every time an R session needs
+    to read data from disk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The indices returned by `chunk()` can be used to index the rows of an `ffdf`
+    or `ff` object. The following code iterates through each chunk of data, selecting
+    the chunk with `d[idx, ]` and `q[idx]`, and performs some computations on the
+    chunk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ff` CRAN package has a companion package, `ffbase`, that provides useful
+    functions for manipulating `ff` and `ffdf` objects. Here is a sample of these
+    functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Mathematics**: `abs()`, `sign()`, `sqrt()`, `ceiling()`, `floor()`, `log()`,
+    `exp()`, `cos()`, `cosh()`, `sin()`, `sinh()`, `gamma()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Summaries**: `all()`, `any()`, `max()`, `min()`, `cumsum()`, `cummin()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Uniqueness**: `duplicated()`, `unique()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Apply**: `ffdfdply()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'When we are finished with the `ff` or `ffdf` objects, we can delete the files
+    using `delete()` and remove the R variables using `rm()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Because the underlying vectors `i` and `q` are also deleted while deleting
+    the data frame `d`, attempting to delete the vectors will result in an error.
+    We can simply remove the R objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned how R stores vectors in memory, and how to estimate
+    the amount of memory required for different types of data. We also learned how
+    to use more efficient data structures like sparse matrices and bit vectors in
+    order to store some types of data, so that they can be fully loaded and processed
+    in the memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For datasets that are still too large, we used `big.matrix`, `ff`, and `ffdf`
+    objects to store memory on disk using memory-mapped files and processed the data
+    one chunk at a time. The `bigmemory` and `ff` packages, along with their companion
+    packages, provide a rich set of functionality for memory-mapped files that cannot
+    be covered fully, in this book. We encourage you to look up the documentation
+    for these packages to learn more about how to take advantage of the power of memory-mapped
+    files when you handle large datasets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will look beyond running R in a single process or thread,
+    and learn how to run R computations in parallel.
+  prefs: []
+  type: TYPE_NORMAL

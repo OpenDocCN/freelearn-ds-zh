@@ -1,0 +1,906 @@
+- en: Chapter 8. Developing the Sparse Matrix Vector Multiplication in OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Solving the **SpMV** (**Sparse Matrix Vector Multiplication**) using the conjugate
+    gradient method
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how to solve SpMV using the ELLPACK-R format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how to solve SpMV using the CSR format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how to solve SpMV using VexCL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter on matrix multiplication, we developed an appreciation
+    of the problem space as well as its domain of application, but what we didn't
+    tell you earlier was that there are dense matrices as well as sparse matrices
+    in addition to their dense and sparse vectors. When we say dense or sparse matrix/vector,
+    we mean that there are a lot of non-zero or zero values, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fact that a matrix is dense or sparse matters from a computational point
+    of view, since it doesn't really make sense to multiply any value with zero as
+    the result is evidently zero; if you were to apply the naïve method of solving
+    this problem, which is to use the methods you developed during the matrix multiplication
+    to solve the problem where the matrix or vector is sparse, but you would not be
+    taking advantage of that brand new OpenCL CPU/GPU you just bought, you are simply
+    wasting processor cycles and also wasting massive amounts of bandwidth. The question
+    lies in solving this problem in an efficient manner and this requires understanding
+    how to compute this efficiently, which solves one part of the issue. The other
+    part of this issue is to investigate how to store the sparse matrices efficiently,
+    since allocating a ![Introduction](img/4520OT_08_07.jpg) matrix to store a matrix
+    that is populated with mostly zeroes is wasteful of memory space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going to take a whirlwind tour of this subject, however it will not be
+    exhaustive. There is a lot of literature already published on this subject. However,
+    we will spend some time to formulate a basic and general idea by recognizing that
+    most of the past and current work focuses on a combination of creating data structures
+    that are efficient and compact to represent the sparse structures. We will also
+    spend some time devising efficient computational methods on those data structures.
+    As far as matrices go, we won't look into the possibilities of dynamic matrices
+    (via insertion or deletion), and instead we will focus on static sparse matrix
+    formats.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to present the theory behind solving SpMV efficiently through
+    building up our knowledge to the conjugate gradient (via steepest descent and
+    Gram-Schmidt), and before applying that algorithm we'll look into some of the
+    common data storage schemes. We'll present an implementation using the VexCL using
+    the **Conjugate Gradient** (**CG**) method which is an OpenCL framework build
+    using C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following are some of the examples of sparse matrices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Introduction](img/4520OT_08_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient
+    Method
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The conjugate gradient method is the most popular iterative method for solving
+    sparse linear systems, and I will attempt to make you understand how it works.
+    Along this journey, we will look into steepest descent, conjugate gradient convergence,
+    and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: I wanted to say a big thank you to *Jonathan Richard Shewchuk* (AP of University
+    of California), without whom I might not have understood why conjugate gradients
+    matter You can learn more about him at [http://www.cs.cmu.edu/~jrs/](http://www.cs.cmu.edu/~jrs/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A reason why the CG method is popular in solving sparse systems is that it not
+    only handles really large sparse matrices well but it is also very efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the previous chapter on matrix multiplication, we have seen what it means
+    to multiply two matrices, and this time round, we are focusing on the problem
+    of ![Solving SpMV (Sparse Matrix Vector Multiplication) using the Conjugate Gradient
+    Method](img/4520OT_08_13a.jpg) where *A* is a known square and positive definite
+    matrix, *x* is an unknown vector, and *b* is a known vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The inner product of two vectors is written as *x^Ty*, and it represents the
+    scalar sum ![Getting ready](img/4520OT_08_08.jpg). *xTy* is equivalent to *yTx*,
+    and if *x* and *y* are orthogonal (at right angles to one another, and this will
+    be important to realize when we study steepest descent), then *xTy = 0*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A positive-definite matrix *A* is such that for every non-zero vector *x*, *xTAx
+    > 0*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A quadratic form is actually a scalar and quadratic function of a vector of
+    the form as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting ready](img/4520OT_08_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Just like any linear function, we would know its gradient that can be expressed
+    in this derived form as ![Getting ready](img/4520OT_08_38.jpg) (yep, it''s not
+    a typo, and we mean the transpose of matrix *A*), and when we know that matrix
+    *A* is symmetric, that is, ![Getting ready](img/4520OT_08_11.jpg) becomes *A*
+    because *AT=A*, then this equation reduces to ![Getting ready](img/4520OT_08_12.jpg).
+    Like any derivate of a linear equation, we know that the mathematical solution
+    to ![Getting ready](img/4520OT_08_13.jpg) can be found when it is equal to *0*
+    and by solving ![Getting ready](img/4520OT_08_13a.jpg). The goal is to find a
+    particular value of *x* which minimizes ![Getting ready](img/4520OT_08_14.jpg).
+    Diagrammatically, it can be imagined as a parabola like the one in the following
+    diagram, which is what ![Getting ready](img/4520OT_08_14.jpg) evaluates to be
+    exactly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting ready](img/4520OT_08_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This forms our foundation to study the steepest descent and its cousin method—the
+    conjugate gradient method. In the following sections, let us first explore the
+    concepts behind steepest descent and then head over to conjugate gradient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the steepest descent method, we start at an arbitrary point *x[(0)]* and
+    slide down to the bottom of the paraboloid. We keep taking steps *x(1)*, *x(2)*,
+    and so on until we are pretty confident in saying that we have come to the solution
+    *x*. That's basically how it works. Generally speaking, we haven't said anything
+    about how to choose the next point to slide to though, as always the devil is
+    in the details. Solder on!
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we take a step, we choose the direction in which ![Getting ready](img/4520OT_08_14.jpg)
+    decreases most quickly, and now it's appropriate to introduce two vectors, which
+    we will use to gauge for ourselves whether or not we're dropping in the right
+    direction (that is, if we are moving towards the bottom of the parabola). The
+    error vector ![Getting ready](img/4520OT_08_15.jpg) measures how far we are from
+    the solution from the current step. The residual vector ![Getting ready](img/4520OT_08_16.jpg)
+    measures how far we are from the correct value of *b*, and this vector can be
+    thought of as the direction of steepest descent. When we take the next step so
+    that we can be closer to the actual solution, *x*, we are actually choosing a
+    point ![Getting ready](img/4520OT_08_17.jpg), and you will notice that another
+    variable has been chosen which is alpha, ![Getting ready](img/4520OT_08_18.jpg).
+  prefs: []
+  type: TYPE_NORMAL
+- en: This variable ![Getting ready](img/4520OT_08_18.jpg) of whichever value will
+    tell us whether we have reached the bottom of the parabola. To put this another
+    way, imagine yourself falling into a salad bowl (closest thing I could think of)
+    and the only way you can stop falling is when you sit at the bottom of the bowl.
+    We know from calculus that the derivative of that point ![Getting ready](img/4520OT_08_19.jpg)
+    where you land is zero, that is, its gradient is also *0*. To determine this value,
+    we have to set the derivative of that point to be equal to zero and we already
+    have seen the equation ![Getting ready](img/4520OT_08_20.jpg), and we know now
+    that ![Getting ready](img/4520OT_08_21.jpg).
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s now calculate the directional derivative of ![How to do it...](img/4520OT_08_22.jpg)
+    when it is equal to zero because ![How to do it...](img/4520OT_08_18.jpg) minimizes
+    *f*. Using the chain rule, we know that ![How to do it...](img/4520OT_08_23.jpg)and
+    plugging in what we know of ![How to do it...](img/4520OT_08_13.jpg), we have
+    the following sequence of derivations by which we derive the value of ![How to
+    do it...](img/4520OT_08_18.jpg):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_a.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In summary, the steepest descent comprises the following equations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_b.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Using the steepest descent means is that I take a step down the rabbit hole
+    and before I take the next step I'm going to guess what its going to be and take
+    it; if I'm right, hooray!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The conjugate gradient method builds on steepest descent, and the two share
+    a lot of similarities such that the conjugate gradient makes guesses which will
+    eventually lead to the solution in *x*. Both methods use the residual vector to
+    judge how far the guesses are from the correct answer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The idea is to pick a set of orthogonal search directions, and in each direction
+    we''ll take exactly one step (pretty much the same as what we have seen before)
+    ![How to do it...](img/4520OT_08_24.jpg). It turns out that we need to make the
+    search direction *A-orthogonal* instead of orthogonal. We say that two vectors
+    ![How to do it...](img/4520OT_08_25.jpg) and ![How to do it...](img/4520OT_08_26.jpg)
+    are A-orthogonal if ![How to do it...](img/4520OT_08_27.jpg). When we use a search
+    direction, one of the things that we want to minimize is the amount of space in
+    which we search, and for this we would need *linear independent vectors* ![How
+    to do it...](img/4520OT_08_28.jpg). From there, we can use the Gram-Schmidt process
+    to generate them and we would have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_29.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As we did in the steepest descent method, let''s use the same trick to determine
+    what ![How to do it...](img/4520OT_08_30.jpg) is since it looks really familiar
+    like ![How to do it...](img/4520OT_08_18.jpg), and we derive it using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_d.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: From the previous equation, we plug in the fact that two vectors are A-orthogonal,
+    that is, the left-hand side of the equation is *0*, and we solve for the right-hand
+    side which resulted in ![How to do it...](img/4520OT_08_30.jpg). When we compare
+    this value with ![How to do it...](img/4520OT_08_18.jpg), we would discover that
+    they are pretty much the same except for the fact that the CG method uses linear
+    independent vectors instead of the residual vector, as found in steepest descent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The CG method builds on the Gram-Schimdt process/conjugation and steepest descent,
+    whereby it removes the presence of search vectors. It favors the use of residual
+    vectors instead, and this is important from a computational point of view, otherwise
+    your program would need to store all of the search vectors, and for a large domain
+    space it would probably be a very bad idea. There is a fair bit of math that we
+    skipped, but feel free to download the original paper from *Jonathan Shewchuk*
+    from the following link
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf](http://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the method of conjugate gradient, we have the following equations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_31.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We're going to see how we can translate this into OpenCL. But first, it's time
+    for a cup of coffee!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have established a basic idea of what the CG method is like, its
+    time to take a look at how a simple SpMV kernel can be implemented. However, recall
+    that I mentioned that we have to understand how the data in the sparse matrix
+    can be stored. That turns out to be crucial in the implementation, and it's justifiable
+    to spend the next couple of sections illustrating to you the well-known data storage
+    formats.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are a wide variety of sparse matrix representations, each with a different
+    storage requirement, even computational characteristics, and with those come the
+    varieties in which you can access and manipulate elements of the matrix. I made
+    a remark earlier that we will be focusing on static sparse matrix formats, and
+    I present here four storage formats that have been proven to be rather popular
+    not only because of the decent performance but also because they were also some
+    of the earliest formats which have been popular among scalar and vector architectures,
+    and quite recently, in GPGPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following paragraphs, we are going to introduce you to the following
+    sparse matrix representations in the following order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ELLPACK format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ELLPACK-R format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Coordinate format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compressed sparse row format
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let''s start with the ELLPACK format. This format is also known as ELL. For
+    an *M x N* matrix with a maximum of *K* non-zero values per row, the ELLPACK format
+    stores the non-zero values into a dense *M x K* array which we''ll name `data`,
+    where rows with lesser than *K* non-zero values are zero padded. Similarly, the
+    corresponding column indices are stored in another array, which we''ll name `indices`.
+    Again, a zero or some sentinel value is used for padding this array. The following
+    representation of matrices illustrates what it looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR](img/4520OT_08_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: A quick analysis on this format means that if the maximum number of non-zero
+    values in each row does not differ too much from the average, the ELL format is
+    rather appealing because it is intuitive, at least to me.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we examine the ELLPACK-R format. This format is a variant of the ELLPACK
+    format, and in addition to the data arrays that you have seen earlier, we have
+    a new array `rl`, which is used to store the actual length of each row. The following
+    representation illustrates what it looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR](img/4520OT_08_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: It's not obvious now how this differs from ELLPACK, but the serial and parallel
+    kernel which we will see later will make use of this new array to make the code
+    and data transfers tighter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We proceed with the coordinate format. The coordinate format is a simple storage
+    scheme. The arrays `row`, `col`, and `data` store the row indices, column indices,
+    and values, respectively of the non-zero matrix entries. COO is a general sparse
+    matrix representation since the required storage is always proportional to the
+    number of non-zero values. The following is what the COO format looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR](img/4520OT_08_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In this format, there are three one-dimensional arrays—`row`, `col`, and `data`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Last one on this list is the **Compressed Sparse Ro**w (**CSR**) format. The
+    CSR format is a popular, general-purpose sparse matrix representation. Like the
+    COO Format, CSR explicitly stores column indices and non-zero values in the arrays
+    `indices` and `data`. A third array of row pointers, `ptr`, takes the CSR representation.
+    For an *M x N* matrix, `ptr` has length *M + 1*, and stores the offset into the
+    *i*th row in `ptr[i]`. The last entry in `ptr`, which would otherwise correspond
+    to the *M + 1*^(th) row, stores the number of non-zero values in the matrix. The
+    following representation illustrates what it looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding the various SpMV data storage formats including ELLPACK, ELLPACK-R,
+    COO, and CSR](img/4520OT_08_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: At this point, this is all I want to discuss about data representations for
+    sparse matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You should be aware that there are other formats like **DIA**, also known as,
+    **diagonal format**, Hybrid/HYB for ELL/COO, and packet (for processors that resemble
+    vector architectures).
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now that we have examined three data storage formats, let''s go on a little
+    further and check out how we would solve the SpMV problem using the ELLPACK format.
+    As before, we would like to start this section by kicking off with a code presentation
+    on how the SpMV CPU kernel would look:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Take a few moments to convince yourself that we are indeed using the ELLPACK
+    format to solve SpMV, and the data when stored in the low-level memory, is in
+    row-major order. Putting on your parallel developer hat again, one strategy is
+    to have one thread / work item process one row of the matrix data, and this implies
+    that you can remove the outer loop structure thus giving you this possible SpMV
+    ELL kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first thing you would probably notice is that the outer loop structure has
+    been removed, and that is intuitive when you consider the fact that that structure
+    was present initially so that we can iterate over the inner loop which contains
+    the actual work of the dot product between a row of the matrix and vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, when we examine its memory access patterns using our strategy of fine-grained
+    parallelism, we would have something like the following representation and it
+    would exhibit similar problems when we look at the SpMV CSR kernel in a later
+    section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_08_07a.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Understanding how to solve SpMV using the ELLPACK-R format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: ELLPACK-R is a variant of the ELLPACK format, and apparently it is rather popular
+    for implementing SpMV on GPUs. ELLPACK-R should be used if no regular substructures
+    such as off-diagonals or dense blocks can be exploited. The basic idea is to compress
+    the rows by shifting all non-zero entries to the left and storing the resulting
+    ![Understanding how to solve SpMV using the ELLPACK-R format](img/4520OT_08_32.jpg)
+    matrix column by column consecutively in main host memory, where *N* is the maximum
+    number of non-zero entries per row.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The SpMV ELLPACK-R scalar kernel is called scalar because of the fact that
+    we have not taken advantage of a particular aspects unique to GPUs when it comes
+    to parallel program development in OpenCL. This aspect is known as **wavefront-/warp-level
+    programming**. We''ll talk more about this in the SpMV CSR kernel presentation
+    in the next section. Hence, in this part we will present our OpenCL kernel, as
+    shown in the following code, that employs the strategy of using one thread to
+    process a row of the matrix data, and this time, we have the help of another array,
+    `rowLengths`, which records the actual length of each row in the matrix where
+    it contains non-zero values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Examining the previous code, we noticed that once again we have reduced two
+    `for` loops into one by recognizing the fact that each thread or work item (in
+    OpenCL parlance, if you recall) can perform the work in the inner loop independently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following code we present our kernel that has been "vectorized", we recognized
+    that our SpMV ELLPACK-R kernel could be improved by taking advantage of the hardware's
+    inbuilt feature to run a bunch of threads executing the code and in lock step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This vectorization will not work if you were to execute it on your OpenCL x86
+    compliant CPU unless it has the vectorization hardware available to the GPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is incredibly useful when the occasions call for it, and this situation
+    calls for it. This resulted in our SpMV ELLPACK-R vector kernel shown in the following
+    code. Our strategy is to have a warp processed at each row of the matrix, and
+    we break each row so that data can be processed by the threads in a warp or wavefront:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This vector kernel takes advantage of two facts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The kernel is executed by groups of threads and those threads execute in lock
+    step
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Parallel reduction**: Parallel reduction is rightfully a topic by itself
+    and the variant technique we are using is known as **segmented reduction**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To help you understand how parallel reduction works, let's assume and imagine
+    we have a one-dimensional array filled with 16 elements and each array element
+    is given a number. Now, I like to ask you how you would go about calculating the
+    sum of all elements in this given array? There are definitely more than two ways
+    in which you can do this, but let's say you are giving the fact that eight work
+    items can execute in lock step. how can you take advantage of that?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way is to have each work item add two array elements and that would give
+    you the partial sums, but how would you be able to add all of these partial sums
+    to produce one single sum that represents the summation of the array? Without
+    going into too much detail, let''s use the following diagram and see if you can
+    figure out how it would have worked:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works](img/4520OT_08_08a.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Understanding how to solve SpMV using the CSR format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: After viewing all these different data representations for sparse matrices,
+    you will probably realize there's more to the picture than we earlier imagined,
+    and this serves to highlight the fact that researchers and engineers have spent
+    a lot of time and effort to solve what looks like a deceptively simple problem
+    in an efficient manner. Hence in this section, we are going to take a look at
+    how to solve the SpMV problem using the CSR format looking at various recipes
+    from sequential, scalar, and finally vector kernels in that order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, let us take a look at what SpMV code would look like in its sequential
+    form, that is, when executed on a modern CPU, using the CSR format, and then let''s
+    take a look at a naïve implementation of the SpMV:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Examining the preceding code, you will notice that the array `ptr` is being
+    used to pick the non-zero elements in the array—`data`—which is desirable, and
+    `ptr` is also being used to index into the `indices` array to retrieve the correct
+    element in the vector `vec` so that we never conduct operations that multiply
+    a zero value. This point is important to note from a computational point of view
+    because it means we are not wasting precious processor cycles performing work
+    we will never use; from another perspective, this representation also means that
+    the caches are always filled with values we will need and not stored with values
+    that are inherently zero valued.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As promised, let us take a look at another solution that focuses on matrix-vector
+    multiplication executing on a modern desktop CPU, and in both these examples,
+    the only difference is the fact that the previous code took into account the matrix
+    is sparse while the following code assumes the matrix is dense:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Take a few moments and examine both code bases, and you will realize the amount
+    of computational cycles and memory bandwidth that was saved and wasted needlessly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: It is always recommended to compare the sequential form against the parallel
+    form so that you can derive basic metrics about your transformed algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we have made done some basic comparisons, we need to figure out what
+    our parallelization strategy is going to be. For this, we need to put on our parallel
+    developer hat again and scrutinize the code for the SpMV CSR serial kernel shown
+    earlier and look for parallelizable portions. One of the things you might have
+    already recognized is the fact that the dot product between a row of the matrix
+    and the vector `vec`, may be computed independently of all other rows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following code demonstrates the implementation where we have one work item
+    process a row of the matrix, and some literature would call this the scalar kernel.
+    In this kernel, as before, our strategy focuses on looking at the two loop structures,
+    and we discover that the outer loop structure can be flattened out and replaced
+    by work items / threads, and we know how to achieve that; focusing back on the
+    inner loop structure which is essentially what one work item /thread is executing
+    on, we find that we can retain all of its execution flow and mimic that in the
+    OpenCL kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, let''s take a look at how the SpMV kernel is written with the CSR format
+    in mind:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you can recall, in the previous chapter we noted that such an execution model
+    uses really fine-grained parallelism, and such a kernel will probably not perform
+    very well. The issue does not lie within the CSR representation, it lies within
+    the fact that the work items / threads are not accessing those values in the CSR
+    simultaneously. In fact, each thread that was working on each row of the matrix
+    produces a memory access pattern in the following diagram. After tracing the execution
+    of this SpMV CSR kernel for four work items / threads, you will notice that each
+    thread would refer to a different portion of the array `val` (which contains all
+    non-zero entries in the matrix *A*), and memory loads will be latched on the caches
+    (which contain memory banks and memory lanes/lines) and finally the hardware registers
+    will execute upon them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: From this point onwards, you should be thinking in terms of how GPUs work on
+    a low-level basis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's use the matrix found in the CSR format earlier as an example to illustrate
+    how this SpMV CSR is not really working too well. Each cache is actually implemented
+    by lanes/lines such that each line can hold a number of bytes, and in our example,
+    it assumes each line can hold 16 elements (assuming each element is of the size
+    4 bytes which translates to 64 bytes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: It should be obvious to you by now that there's a lot of wastage of cache bandwidth.
+    Since our kernel is parallel, we could conceptually have four different lines
+    holding various parts of the input array. What would have been desirable is to
+    allow all the data in at once and keeping the cache hot while processing it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One way of achieving this is to apply the previous techniques you've learned.
+    Kudos for thinking about that. However, let's learn another technique and in some
+    literature it is known as warp-/wavefront-level programming. We saw it in action
+    in the previous section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall in another chapter, where we introduced the fact that threads of some
+    of the OpenCL devices, GPUs notably execute a bunch of threads in lock step in
+    the processor. The following figure illustrates the memory access pattern for
+    a SpMV CSR kernel when building and executing on a CPU in a serial fashion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it](img/4520OT_08_09a.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To optimize your algorithm with respect to memory access, have your work items
+    in a single wavefront/warp access the memory locations from the same cache line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, you would want to ask yourself the question on how you go about working
+    out a kernel that is able to load the elements you need into the same cache line
+    and take advantage of the fact that threads in a warp or wavefront execute in
+    the lock step. This fact also implies that you need coordination, but don't worry,
+    we won't have to use the atomic functions found in OpenCL for this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When I see the term *lock step*, I immediately conjure the image of 10 runners,
+    akin to executing threads in a warp/wavefront, lined up for a 100 meter dash,
+    and the exception here as compared to the warp-/wavefront-level programming is
+    that all these runners need to reach the finishing line together. Weird, I know,
+    but that's how it works. Coordinating this batch of runners is like strapping
+    leashes on eight horses dragging a wagon and the cowboy driving the carriage using
+    his whip to accelerate or decelerate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: At this point, I like to digress a little and point out to you that **Intel
+    Math Kernel Library** (**Intel MKL**) 11.0 implements sparse solvers using data
+    storage formats based on the CSR formats and has good performance for running
+    on Intel CPUs as they not only optimize memory management but also take advantage
+    of **Instruction Level Parallelism** (**ILP**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, you have to recognize and imagine your kernel to be executed by a bunch
+    of threads and for starters, let's imagine 32 or 64 of them running at once. Each
+    of these threads have an ID and that's the primary method in which you identify
+    and control them, that is, placing the control-flow constructs that allows or
+    restrict threads from running. To illustrate the point, let us take a look at
+    the following improved SpMV CSR vector kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The SpMV CSR OpenCL kernel is found in `Ch8/SpMV/spmv.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have taken a good look at the OpenCL kernel, we need to build an
+    executable form on which to execute. As before, the compilation will look familiar
+    to you. On my setup with an Intel Core i7 CPU and AMD HD6870x2 GPU running Ubuntu
+    12.04 LTS, the compilation looks like the following and it''ll create an executable
+    called `SpMV` into the working directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, the executable should be available to you on the directory.
+    To run the program, simply execute the program `SpMV` in the directory, and you
+    should notice an output that resembles the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The way this works deserves a significant number of explanations, but first
+    of all is the fact that we have adapted our parallel reduction into another form,
+    which is otherwise known as segmented reduction. By this time, you should be relatively
+    familiar with the rest of the code, so I won't walk you through that as you may
+    doze off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parallel reduction, in all its forms, is a very effective way to conduct reduction
+    across processors and even architectures. The famous Hadoop framework is an example
+    of parallel reduction across architectures, and the form we are seeing now is
+    that confined to the processor residing on the OpenCL GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let me walk you through what happened here in our segmented reduction example
+    for the SpMV CSR vector kernel. Initially, we set up a shared memory space in
+    our kernel to hold 128 elements of the type `float`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You might be curious as to why we need the keyword `volatile` when defining
+    the array `partialSums`. The main reason is because on the level of warp/wavefront-level
+    programming, OpenCL does not have synchronization functions like the memory fences
+    we have encountered so far, and when you do not place the `volatile` keyword when
+    declaring shared memory, the compiler is free to replace the store to and load
+    from `__local` memory with register storage, and execution errors will arise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The intention was for each thread in the warp/wavefront to store its own computation
+    into its own slot marked by its thread ID.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we see the following bunch of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code does two things—first is that it only allows threads with certain
+    IDs to execute and the second thing it does is to only allow the thread with ID
+    `0`, that is, zero to write out the total sum into the appropriate element of
+    the output array, `out`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s get into the details. When an executing thread / work item attempts
+    to execute the following piece of code, the kernel will first determine if its
+    ID is allowed, and the threads with IDs ranging from 0 to 15 will get to execute,
+    while those in the following code will not execute, and we will have **thread
+    divergence**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Recall that thread divergence occurs at branches, that is, `if-then-else`, switches,
+    and so on, which basically partition`s a warp/wavefront into two, where one part
+    of the group executes code while the other part doesn't.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'At this point, you should convince yourself that pair-wise reduction takes
+    place for the entire shared-memory array, `partialSums`, and I find it helpful
+    when I trace it on paper or the computer (whatever is your preference). When the
+    executing threads have finished the parallel reduction, notice that there are
+    no overlapping writes (this is intentional), and we need to place a memory fence
+    at that point just to make sure every thread has reached that point before proceeding.
+    This memory fence is important, otherwise bad things will happen. Next, the parallel
+    reduction occurs again, but this time we only need to process half of the array,
+    and we restrict the number of threads to `8`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: We repeat this cycle by dropping the number of executable threads by the power
+    of two till it reaches `1`, and at that point, the final aggregated value will
+    be in the zeroth position in the array, `partialSums`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we have our final aggregated value in the zeroth position of the array
+    `partialSums`, we can write it out to its appropriate position in the array `out`
+    indexed by the row we''ve processed. This segmented reduction is drawn out in
+    the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works](img/4520OT_08_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Understanding how to solve SpMV using VexCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Finally, I would like to present solving the SpMV CSR kernel using the conjugate
+    gradient method. We have studied this method in the beginning of this chapter
+    and hopefully, we still remember what it is. Let me help you by refreshing your
+    memory of the core equations on the CG method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Understanding how to solve SpMV using VexCL](img/4520OT_08_31.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'So far, we have developed a pretty good idea about how to solve SpMV problems
+    using various ways through the SpMV ELLPACK, ELLPACK-R, and CSR formats in both
+    scalar and vector forms, but it took us a while to get there for sure. In this
+    section, you will be introduced to an OpenCL framework for solving problems, and
+    its called VexCL. It can be downloaded from:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'VexCL main page: [https://github.com/ddemidov/vexcl](https://github.com/ddemidov/vexcl)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'VexCL Wiki: [https://github.com/ddemidov/vexcl/wiki](https://github.com/ddemidov/vexcl/wiki)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: OpenCL has suffered, in the author's opinion, on the lack of tooling support,
+    and VexCL is again, in the author's opinion, one of the better wrappers around
+    OpenCL C++ and I like to take this section to briefly introduce you to it and
+    you can go download it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For VexCL to work with you, you will need a C++11 compliant compiler, and GNU
+    GCC 4.6 and the Boost Libs fit the bill. On my setup, I've got the GCC 4.7 compiled
+    with Boost List Version 1.53 without much trouble. That means I won't list the
+    installation instructions as the installation process is relatively straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following OpenCL kernel is found in `Ch8/SpMV_VexCL/SpMV.cpp`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The host code basically fills the one-dimensional arrays with the required values
+    so that they can conform to the CSR format. After this, the device vectors are
+    declared with their appropriate data types and linked with their appropriate host
+    vectors (the copying will take place but it happens behind the scenes), and two
+    reductors are defined (they are basically the reduction kernels we have seen before);
+    the reductor will only execute in the OpenCL device using a single thread of execution,
+    so it isn't quite the same as the parallel reduction we have seen back then; its
+    reduction is alright, but it is carried out in a sequential fashion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we initialized an ADT known as `SpMAT` which holds the representation
+    of a sparse matrix, and this ADT has the capability to span multiple devices,
+    which is very desirable property since the written code is transparent to its
+    actual underlying computing devices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the background, the C++ code you have been shown will cause code generation
+    to occur, and that is the code that will be used, compiled, and executed again;
+    if you like to see the generated kernel code, simply place the C macro `VEXCL_SHOW_KERNELS`.
+    We finally transfer the processed data from the device memory to the host memory
+    using the `copy` function from the `vex` namespace.
+  prefs: []
+  type: TYPE_NORMAL

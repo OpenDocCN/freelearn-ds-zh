@@ -1,0 +1,803 @@
+- en: Chapter 2. Accessing Geodata
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'All GIS processing must start with geographic data, so we begin our application
+    by building the capacity to interact with, load, and save various geographic file
+    formats. This chapter is divided into a vector and raster section, and in each
+    section, we will cover the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Firstly, we create a data interface which means understanding data structures
+    and how to interact with them.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Secondly and thirdly, any format-specific differences are outsourced to separate
+    loader and saver modules.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This is a lot of functionality to fit into one chapter, but by working your
+    way through, you will learn a lot about data structures, and file formats, and
+    end up with a solid foundation for your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The approach
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In our efforts to build data access in this chapter, we focus on simplicity,
+    understanding, and lightweight libraries. We create standardized data interfaces
+    for vector and raster data so that we can use the same methods and expect the
+    same results on any data, without worrying about file format differences. They
+    are not necessarily optimized for speed or memory efficiency as they load entire
+    files into memory at once.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our choice of third-party libraries for loading and saving, we focus on format-specific
+    ones, so that we can pick and choose which formats to support and thus maintain
+    a lightweight application. This requires some more work but allows us to learn
+    intricate details about file formats.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If the size is not an issue in your application, you may wish to instead use
+    the more powerful **GDAL** library, which can single-handedly load and save a
+    much wider range of both vector and raster formats. To use GDAL, I suggest downloading
+    and installing a precompiled version from [http://www.lfd.uci.edu/~gohlke/pythonlibs/#gdal](http://www.lfd.uci.edu/~gohlke/pythonlibs/#gdal).
+    On top of GDAL, the packages **Fiona** ([http://www.lfd.uci.edu/~gohlke/pythonlibs/#fiona](http://www.lfd.uci.edu/~gohlke/pythonlibs/#fiona))
+    and **Rasterio** ([http://www.lfd.uci.edu/~gohlke/pythonlibs/#rasterio](http://www.lfd.uci.edu/~gohlke/pythonlibs/#rasterio))
+    provide a more convenient and Pythonic interface to GDAL's functionality for vector
+    and raster data, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vector data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We begin by adding support for vector data. We will be creating three submodules
+    inside our `vector` package: `data`, `loader`, and `saver`. To make these accessible
+    from their parent vector package, we need to import it in `vector/__init__.py`
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: A data interface for vector data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first thing we want is a data interface that we can conveniently interact
+    with. This data interface will be contained in a module of its own, so create
+    this module now and save it as `vector/data.py`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start off with a few basic imports, including compatibility functions for
+    Shapely (which we installed in [Chapter 1](ch01.html "Chapter 1. Preparing to
+    Build Your Own GIS Application"), *Preparing to Build Your Own GIS Application*)
+    and the spatial indexing abilities of **Rtree**, a package we will install later.
+    Note that vector data loading and saving, are handled by separate modules that
+    we have not yet created, but since they are accessed through our data interface,
+    we need to import them here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Downloading the example code**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can download the example code files from your account at [http://www.packtpub.com](http://www.packtpub.com)
+    for all the Packt Publishing books you have purchased. If you purchased this book
+    elsewhere, you can visit [http://www.packtpub.com/support](http://www.packtpub.com/support)
+    and register to have the files e-mailed directly to you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The vector data structure
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Geographic vector data can be thought of as a table of data. Each row in the
+    table is an observation (say, a country), and holds one or more attributes, or
+    piece of information for that observation (say, population). In a vector data
+    structure, rows are known as a **features**, and have additional geometry definitions
+    (coordinates that define, say, the shape and location of a country). An overview
+    of the structure may therefore look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The vector data structure](img/5407OS_02_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In our implementation of the vector data structure, we therefore create the
+    interface as a `VectorData` class. To create and populate a `VectorData` instance
+    with data, we can give it a `filepath` argument that it loads via the loader module
+    that we create later. We also allow for optional keyword arguments to pass to
+    the loader, which as we shall see includes the ability to specify text encoding.
+    Alternatively, an empty `VectorData` instance can be created by not passing it
+    any arguments. While creating an empty instance, it is possible to specify the
+    geometry type of the entire data instance (meaning, it can only hold either polygon,
+    line, or point geometries), otherwise it will set the data type based on the geometry
+    type of the first feature that is added.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to storing the fieldnames and creating features from rows and geometries,
+    a `VectorData` instance remembers the `filepath` origin of the loaded data if
+    applicable, and the **Coordinate Reference System** (**CRS**) which defaults to
+    unprojected WGS84 if not specified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To store the features, rather than using lists or dictionaries, we use an **ordered**
+    dictionary that allows us to identify each feature with a unique ID, sort the
+    features, and perform fast and frequent feature lookups. To ensure that each feature
+    in `VectorData` has a unique ID, we define a unique ID generator and attach independent
+    ID generator instances to each `VectorData` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To let us interact with the `VectorData` instance, we add various magic methods
+    to enable standard Python operations such as getting the number of features in
+    the data, looping through them, and getting and setting them through indexing
+    their ID. Finally, we include a convenient `add_feature` and `copy` method. Take
+    a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we load or add features, they are stored in a `Feature` class with a link
+    to its parent `VectorData` class. For the sake of simplicity, maximum interoperability,
+    and memory efficiency, we choose to store feature geometries in the popular and
+    widely supported **GeoJSON** format, which is just a Python dictionary structure
+    formatted according to certain rules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: GeoJSON is a human-readable textual representation to describe various vector
+    geometries, such as points, lines, and polygons. For the full specification, go
+    to [http://geojson.org/geojson-spec.html](http://geojson.org/geojson-spec.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We make sure to give the `Feature` class some magic methods to support standard
+    Python operations, such as easy getting and setting of attributes through fieldname
+    indexing using the position of the desired field in the feature''s parent list
+    of fields to fetch the relevant row value. A `get_shapely` method to return the
+    Shapely geometry representation and `copy` method will also be useful for later.
+    The following code explains the `Feature` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Computing bounding boxes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Although we now have the basic structure of vector data, we want some additional
+    convenience methods. For vector data, it is frequently useful to know the **bounding
+    box** of each feature, which is an aggregated geographical description of a feature
+    represented as a sequence of four coordinates `[xmin, ymin, xmax, ymax]`. Computing
+    the bounding box can be computationally expensive, so we allow the `Feature` instance
+    to receive a precomputed bounding box upon instantiation if available. In the
+    Feature''s `__init__` method, we therefore add to what we have already written:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This bounding box can also be cached or stored, for later use, so that we can
+    just keep referring to that value after we have computed it. Using the `@property`
+    descriptor, before we define the `Feature` class''s `bbox` method, allows us to
+    access the bounding box as a simple value or attribute even though it is computed
+    as several steps in a method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the bounding box for the entire collection of features in the `VectorData`
+    class is also useful, so we create a similar routine at the `VectorData` level,
+    except we do not care about caching because a `VectorData` class will frequently
+    lose or gain new features. We want the bounding box to always be up to date. Add
+    the following dynamic property to the `VectorData` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Spatial indexing
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Finally, we add a spatial indexing structure that nests the bounding boxes
+    of overlapping features inside each other so that feature locations can be tested
+    and retrieved faster. For this, we will use the Rtree library. Perform the following
+    steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Go to [http://www.lfd.uci.edu/~gohlke/pythonlibs/#rtree](http://www.lfd.uci.edu/~gohlke/pythonlibs/#rtree).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Download the wheel file appropriate for our system, currently `Rtree-0.8.2.-cp27-none-win32.whl`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To install the package on Windows, open your command line and type `C:/Python27/Scripts/pip
+    install path/to/Rtree-0.8.2.-cp27-none-win32.whl`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To verify that the installation has worked, open an interactive Python shell
+    window and type `import rtree`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Rtree is only one type of spatial index. Another common one is a **Quad Tree**
+    index, whose main advantage is faster updating of the index if you need to change
+    it often. `PyQuadTree` is a pure-Python implementation created by the author,
+    which you can install in the command line as `C:/Python27/Scripts/pip install
+    pyquadtree`.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Since spatial indexes rely on bounding boxes, which as we said before can be
+    computationally costly, we only create the spatial index if the user specifically
+    asks for it. Therefore, let''s create a `VectorData` class method that will make
+    a spatial index from the Rtree library, populate it by inserting the bounding
+    boxes of each feature and their ID, and store it as a property. This is shown
+    in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once created, Rtree''s spatial index has two main methods that can be used
+    for fast spatial lookups. The spatial lookups only return the IDs of the matches,
+    so we use those IDs to fetch the actual feature instances from the matched IDs.
+    Given a target bounding box, the first method finds features that overlap it,
+    while the other method loops through the *n* nearest features in the order of
+    closest to furthest away. In case the target bounding box is not in the required
+    `[xmin, ymin,xmax,ymax]` format, we force it that way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Loading vector files
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So far, we have not defined the routine that actually loads data from a file
+    into our `VectorData` interface. This is contained in a separate module as `vector/loader.py`.
+    Start off the module by importing the necessary modules (don''t worry if you have
+    never heard of them before, we will install them shortly):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The main point of the loader module is to use a function, which we call `from_file()`,
+    that takes a filepath and automatically detects which file type it is. It then
+    loads it with the appropriate routine. Once loaded, it returns the information
+    that our `VectorData` class expects: fieldnames, a list of row lists, a list of
+    GeoJSON dictionaries of the geometries, and CRS information. An optional encoding
+    argument determines the text encoding of the file (which the user will have to
+    know or guess in advance), but more on that later. Go ahead and make it now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Shapefile
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To deal with the shapefile format, an old but very commonly used vector file
+    format, we use the popular and lightweight **PyShp** library. To install it in
+    the command line just type `C:/Python27/Scripts/pip install pyshp`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inside the `from_file` function, we first detect if the file is in the shapefile
+    format and then run our routine for loading it. The routine starts using the PyShp
+    module to get access to the file contents through a `shapereader` object. Using
+    the `shapereader` object, we extract the name (the first item) from each field
+    information tuple, and exclude the first field which is always a deletion flag
+    field. The rows are loaded by looping the `shapereader` object's `iterRecords`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loading geometries is slightly more complicated because we want to perform some
+    additional steps. PyShp, like most packages, can format its geometries as GeoJSON
+    dictionaries via its shape object's `__geo_interface__` property. Now, remember
+    from the earlier *Spatial indexing* section, calculating the individual bounding
+    boxes for each individual feature can be costly. One of the benefits of the shapefile
+    format is that each shape's bounding box is stored as part of the shapefile format.
+    Therefore, we take advantage of the fact that they are already calculated for
+    us and stored as a part of the GeoJSON dictionary that we send to initiate our
+    `VectorData` class. We create a `getgeoj` function that adds the bounding box
+    information to the GeoJSON dictionary if it is available (point shapes for instance,
+    do not have a `bbox` attribute) and use it on each shape that we get from the
+    `shapereader` object's `iterShapes` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, the shapefile formats have an optional `.prj` file containing projection
+    information, so we also try to read this information if it exists, or default
+    to unprojected WGS84 if not. Finally, we have the function return the loaded fields,
+    rows, geometries, and projection so our data module can use them to build a `VectorData`
+    instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the final code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: GeoJSON
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: GeoJSON is a more recent file format than the shapefile format, due to its simplicity
+    it is widely used, especially by web applications. The library we will use to
+    read them is `PyGeoj`, created by the author. To install it, in the command line,
+    type `C:/Python27/Scripts/pip install pygeoj`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To detect GeoJSON files, there is no rule as to what their filename extension
+    should be, but it tends to be either `.geojson` or just `.json`. We then load
+    the GeoJSON file into a PyGeoj object. The GeoJSON features don't need to have
+    all the same fields, so we use a convenience method that gets only the fieldnames
+    that are common to all features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Rows are loaded by looping the features and accessing the `properties` attribute.
+    This PyGeoj object''s geometries consist purely of GeoJSON dictionaries, same
+    as our own data structure, so we just load the geometries as is. Finally, we return
+    all the loaded information. Refer to the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: File format not supported
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Since we do not intend to support any additional file formats for now, we add
+    an `else` clause returning an unsupported file format exception if the file path
+    didn''t match any of the previous formats:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Saving vector data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To enable saving our vector data back to the file, create a module called `vector/saver.py`.
+    At the top of the script, we import the necessary modules:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The main purpose of the saver module is a simple `to_file` function, which will
+    do the saving for us. We do not allow a CRS projection argument, as that will
+    require a way to format projections according to different standards which, to
+    my knowledge, can currently only be done using GDAL, which we opted not to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, a common difficulty faced when saving files containing text is that you
+    must remember to encode your **Unicode** type text (text with fancy non-English
+    characters) back into machine-readable byte strings, or if they are Python objects
+    such as dates, we want to get their byte-string representation. Therefore, the
+    first thing we do is create a quick function that will do this for us, using the
+    text encoding argument from the `to_file` function. So far, our code looks like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Shapefile
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For saving vector data to the shapefile format, once we have created a `shapewriter`
+    object, we first want to detect and set all the fields with the correct value
+    types. Instead of dealing with potential type mismatches, we just check whether
+    all valid values in each field are numeric, and if not, we force to text type.
+    In the end, we assign to each field, a field tuple with a cleaned and encoded
+    fieldname (shapefiles do not allow names longer than 10 characters or that contain
+    spaces), the value type (where *C* stands for text characters and *N* for numbers),
+    the maximum text length, and the decimal precision for numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once this is done, we can start writing our file. Unfortunately, PyShp currently
+    has no ready-made way to save geometries directly from GeoJSON dictionaries, so
+    we first create a function to do this conversion. Doing this requires making an
+    empty PyShp shape instance and setting the correct `shapeType` property. The `points`
+    attribute is a continuous list of all coordinate points, which for multigeometries
+    is separated at the index positions indicated in the `parts` attribute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can then loop all our features, use our function to convert GeoJSON into
+    PyShp shape instances, append those to the writer''s `_shapes` list, encode and
+    add the feature''s row with the `record` method, and finish up by saving. The
+    entire code is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: GeoJSON
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Saving GeoJSON is slightly more straightforward to implement with the PyGeoj
+    package. We start by creating a new `geojwriter` object, following which we loop
+    all of our features, encode Unicode text to byte strings, add them to the `geojwriter`
+    instance, and save once finished:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: File format not supported
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Finally, we add an `else` clause to provide a message that the user attempted
+    to save to a file format, for which saving is not yet supported:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Raster data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we have implemented a data structure for loading and saving vector
+    data, we can proceed to do the same for raster data. As stated earlier, we will
+    be creating three submodules inside our `raster` package: `data`, `loader`, and
+    `saver`. To make these accessible from their parent raster package, we need to
+    import it in `raster/__init__.py` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: A data interface for raster data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Raster data has a very different structure that we must accommodate, and we
+    begin by making its data interface. The code for this interface will be contained
+    in a module of its own inside the raster folder. To create this module now, save
+    it as `raster/data.py`. Start it out with a few basic imports, including the loader
+    and saver modules that we have not yet created and PIL which we installed in [Chapter
+    1](ch01.html "Chapter 1. Preparing to Build Your Own GIS Application"), *Preparing
+    to Build Your Own GIS Application*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The raster data structure
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A raster consists of one or more grids of data referred to as **bands**. These
+    grids and the values in each of their **cells** represent how a piece of information
+    flows across space-like pixels in a photograph:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The raster data structure](img/5407OS_02_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Given raster data's similarities with imagery data, we take advantage of our
+    existing PIL imaging library that we imported earlier and use it for our application's
+    raster data structure. Its C-based code makes it fast and memory-efficient, and
+    it already contains a lot of the pixel-based raster functionality that we want
+    to be able to do eventually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the top level, our `RasterData` class contains some raster metadata and one
+    or more **Band** layers, which are just wrappers around pixel image data containers.
+    When creating a new `RasterData` class, we usually load from a file path. The
+    actual loading is outsourced to a loader module we create later, which returns
+    a dictionary of various metadata about the raster (`info`), a list of one or more
+    bands (`bands`), and the definition of its coordinate reference system (`crs`).
+    We can also create a new `RasterData` class from non-spatial data based on a list
+    of lists representing a grid or an ordinary image file, in which case it is up
+    to us to define its CRS and geospatial metadata (we return to this shortly).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `Band` class is where the actual values are stored. We keep one reference
+    to a PIL image (`img`) so that we can use its various imagery processing methods,
+    and one reference to the image's pixel access object (`cells`) so we can tinker
+    directly with individual pixels. Each pixel is accessed as a `Cell` class instance,
+    which provides a convenience method for its row/column position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Positioning the raster in coordinate space
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We are not done yet. While the gridded structure of our raster bands gives
+    us a sense of the relative location of each value within the grid, it does not
+    say anything about their real-world geographical position in the same way that
+    a `Feature` geometry''s coordinates does. This is why we need additional geospatial
+    metadata about the raster. To position our values in geographic space, there are
+    two ways this can be specified in our `info` metadata dictionary:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need to translate one of the cells (`xy_cell`) to a geographic or projected
+    coordinate (`xy_geo`) and specify the coordinate width and height of its cells
+    (`cellwidth` and `cellheight`) so that we can move and resize the raster. These
+    are essentially just components of the transform coefficients described next.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In some cases, such as aerial imagery taken along some arbitrary direction,
+    it might not be enough to move and resize the raster. We may also need to rotate
+    and possibly skew the raster. To do this, we need a set of affine transform coefficients
+    (`transform_ceoffs`), so we can recalculate the position of each and every cell
+    to end up with the warped image. This is also known as a **geotransform**.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'There is also a third possibility, by using a sample of geocoded points, which
+    can then be approximated using a non-linear transformation, but we do not cover
+    this method. For more on positioning rasters in coordinate space, check out: [http://www.remotesensing.org/geotiff/spec/geotiff2.6.html](http://www.remotesensing.org/geotiff/spec/geotiff2.6.html).'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The following diagram illustrates how a set of geotransform coefficients might
+    offset, scale, and rotate a raster dataset to position it in coordinate space,
+    which usually requires flipping the *y* axis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Positioning the raster in coordinate space](img/5407OS_02_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: One last aspect of raster data that should be considered is where in each cell
+    the coordinate offsets are anchored; either at the cell center or any of its four
+    corners. We store this information as `xy_anchor`. However, as the difference
+    is very small, we choose not to do anything with it for our simple application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Based on the provided geospatial metadata, we must first calculate the regular
+    and inverse transform coefficients (`update_geotransform()`) so that we can map
+    back and forth between cell positions and spatial coordinates (`cell_to_geo()`
+    and `geo_to_cell()`). With this foundation, we can get further information about
+    the bounding box of the raster (`bbox`). Most importantly, we allow repositioning/warping
+    the raster (and its nodata mask that we create later) into a new raster that reflects
+    its real-world location within a specified bounding box and at a specified width/height
+    resolution (`positioned()`). This repositioning is easy to implement by transforming
+    from the old to the new coordinate bounding box using PIL''s quad transform. Let''s
+    add these functionalities to the `RasterData` structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Nodata masking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Sometimes cells in a raster contain missing data, so each `RasterData` class
+    will define a `nodata_value` in its `info` metadata dictionary if specified. This
+    is important because these `nodata` cells have to be ignored while visualizing
+    or performing operations. Therefore, in our data interface, we need to create
+    an additional image grid that knows the location of missing values so that we
+    can use it with PIL to mask or hide away those values. This mask is accessed as
+    a dynamic property that we cache for repeated use. Refer to the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Loading raster data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, it is time to add the loading to the `Raster` class. Unfortunately, besides
+    GDAL, there are not many independent file format libraries that focus on loading
+    geographic raster formats. Nevertheless, we are still able to make a minimal loader
+    of the common GeoTIFF file format based on PIL. We initiate the module with some
+    imports and save it as `raster/loader.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The main purpose of our loader module is to provide a `from_file` function that
+    returns the necessary pieces to our raster data structure. Before we get into
+    loading each raster file format, we begin with a function to read metadata from
+    the ESRI world file format that sometimes accompany raster files. The world file
+    is a very simple text file containing six values defining the affine geotransform
+    metadata discussed previously, and its filename extension is either `.wld` or
+    a variation on the image file type it accompanies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: With support for this world file, we can easily allow the loading and saving
+    of image-like raster formats with PIL, such as `.png`, `.bmp`, `.gif`, or `.jpg`,
+    but we do not do so in this book. The world file also sometimes comes with the
+    ESRI ASCII raster format, a simple text file format, that is easy to understand
+    and implement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take a look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: GeoTIFF
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: GeoTIFF is a geographic extension of the flexible TIFF image file format, with
+    the only difference being additional geo-specific metadata tags. PIL can read
+    TIFF files along with their metadata tags, but once we fully load or access the
+    image contents, PIL makes it format-neutral by stripping away any format-specific
+    info. Therefore, you must extract the geo tags before you do anything with the
+    image. Once extracted, it is up to us to interpret the tag codes, because PIL
+    does not know about the GeoTIFF specification. We extract tags relating to the
+    geotransform, nodata value, and the name and text-encoded tags of the CRS (there
+    are numerous other CRS-specific tags, but it will be too much to deal with all
+    of them here). Finally, we split the image into its individual bands in case it
+    is a composite RGB raster, and return the info metadata, band tuples, and CRS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The full-GeoTIFF specification can be found online at [http://www.remotesensing.org/geotiff/spec/contents.html](http://www.remotesensing.org/geotiff/spec/contents.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Refer to the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: File format not supported
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As with the vector loader, we raise an exception if an attempt to load an unsupported
+    raster file format has been made, using the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Saving raster data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Finally, we want to save our raster data back to file, so we create a new module
+    called `raster/saver.py`. We start out with some imports as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Inside the main `to_file` function, we define a cross-format function to combine
+    raster bands into a final image ready to be saved, and a basic method for creating
+    the `worldfile` containing geotransform:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: GeoTIFF
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Next, we allow saving to GeoTIFF using PIL. Until recently, saving GeoTIFF with
+    PIL was not possible. This was because PIL had not implemented saving TIFF tags
+    of type `float` or `double`, this would lead to errors because most GeoTIFF tags
+    are double values. A recent user contribution added the required support for double
+    tags, and by the time you read this, PIL's Pillow fork should have hopefully incremented
+    to a new stable version 2.8.2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If Pillow is still on version 2.8.1, you will have to add this support yourself
+    by modifying your PIL package in `site-packages`. After opening PIL''s `TiffImagePlugin.py`
+    file, you will see that the `ImageFileDirectory` class has a `save` method starting
+    at around line 483\. This method loops through all the provided tags with several
+    `if` statements checking for different tag value types. Between the `if` statements
+    commented as `untyped data` and `string data`, you must add a new `if` statement
+    with the following code for floats and doubles, and remember to save your changes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The actual saving procedure is implemented by leveraging some less well-known
+    features of PIL. In order to save our raster's metadata as tags in the file itself,
+    we must refer to PIL's `TiffImagePlugin` module, disable its use of the LibTIFF
+    library, and create an empty `ImageFileDirectory` class to hold the tags. Each
+    added tag value is set by index setting the tag container and must be followed
+    by index setting the tag value type on the container's `tagtype` property.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once all the geotransform, nodata, and projection tags are set, we simply combine
+    the band images into one and pass the tag container as an extra argument to the
+    final `save()` call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: File format not supported
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'These are the only raster file formats we allow saving to for now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we built the core foundation of our application. In each of
+    our `vector` and `raster` folders, we created three new modules that allow us
+    to access, edit, and share some popular geographic data formats. Our folder structure
+    should, therefore, look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Summary](img/5407OS_02_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This is the minimum we will need for any type of GIS application. We can theoretically,
+    at this point, make a minimalistic application focused only on loading and handling
+    file formats. In the next chapter, we jump straight into making the visual interface
+    application, so we can have a real interactive application up and running as soon
+    as possible.
+  prefs: []
+  type: TYPE_NORMAL

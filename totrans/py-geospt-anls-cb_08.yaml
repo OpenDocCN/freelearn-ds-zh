@@ -1,0 +1,891 @@
+- en: Chapter 8. Network Routing Analysis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding the Dijkstra shortest path with pgRouting
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finding the Dijkstra shortest path with NetworkX in pure Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generating evacuation polygons based on an indoor shortest path
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating centerlines from polygons
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building an indoor routing system in 3D
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calculating indoor route walk time
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Routing has become commonplace on navigation devices for road networks across
+    the world. If you want to know how to drive from point A to point B, simply enter
+    the start address and end address into your navigation software and it will calculate
+    the shortest route for you in seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s a scenario you may come across: Route me to Prof. Dr. Smith''s office
+    in the Geography Department for my meeting at any university anywhere. Hmm, sorry,
+    there''s no routing network available on my navigation software. This is a reminder
+    for you to not to forget to ask for directions on campus for your meeting location.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter is all about routing and, specifically, routing inside large building
+    complexes from office *A33*, first floor in building *E01* to office *B55*, sixth
+    floor in building *P7*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Introduction](img/50790OS_08_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We will explore the powerful routing capabilities of **pgRouting**, an extension
+    of PostgreSQL. With pgRouting, we can calculate the shortest path using either
+    the Dijkstra, A*, and/or K shortest path algorithms. Alongside pgRouting, we will
+    use a pure Python solution with the NetworkX library to generate a route from
+    the same source data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'BIG IMPORTANT NOTE. Pay attention to the input network dataset used and make
+    sure that it is in the EPSG: 3857 coordinate system, a geometric Cartesian meter
+    system. Routing calculations using world coordinates in EPSG: 4326 must be converted
+    if used by such a system. Also, note that the GeoJSON coordinate system is interpreted
+    by QGIS as EPSG:4326 even though the coordinates are stored in EPSG:3857!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding the Dijkstra shortest path with pgRouting
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are a few Python libraries out there, such as **networkX** and **scikit-image**,
+    that can find the shortest path over a raster or NumPy array. We want to focus
+    on routing over a vector source and returning a vector dataset; therefore, pgRouting
+    is a natural choice for us. Custom Python *Dijkstra* or the *A Star (A*)* shortest
+    path algorithms exist but one that performs well on large networks is hard to
+    find. The `pgRouting` extension of PostgreSQL is used by OSM and many other projects
+    and is well tested.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our example will have us load a Shapefile of an indoor network from one floor
+    for simplicity's sake. An indoor network is comprised of network lines that go
+    along the hallways and open walkable spaces within a building, leading to a door
+    in most cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For this recipe, we are going to need to set up our PostGIS database with the
+    pgRouting extension. On a Windows machine, you can install pgRouting by downloading
+    a ZIP file for Postgresql 9.3 at [http://winnie.postgis.net/download/windows/pg93/buildbot/](http://winnie.postgis.net/download/windows/pg93/buildbot/).
+    Then, extract the zip file into `C:\Program Files\PostgreSQL\9.3\`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For Ubuntu Linux users, the pgRouting website explains the details at [http://docs.pgrouting.org/2.0/en/doc/src/installation/index.html#ubuntu-debian](http://docs.pgrouting.org/2.0/en/doc/src/installation/index.html#ubuntu-debian).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To enable this extension, you have a couple of options. First off, you can
+    run the command-line `psql` tool to activate the extension as follows if you have
+    your PostgreSQL running as explained in [Chapter 1](ch01.html "Chapter 1. Setting
+    Up Your Geospatial Python Environment"), *Setting Up Your Geospatial Python Environment*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can use the **pgAdmin** user tool by simply opening up the `py_geoan_cb`
+    database, right-clicking on **Extensions**, selecting **New Extension...,** and
+    in the **Name** field, scrolling down to find the `pgRouting` entry and selecting
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we need some data to do our routing calculations. The data used is a Shapefile
+    located in your `/ch08/geodata/shp/e01_network_lines_3857.shp` folder. Take a
+    look at [Chapter 3](ch03.html "Chapter 3. Moving Spatial Data from One Format
+    to Another"), *Moving Spatial Data from One Format to Another*, on how to import
+    the Shapefile or use `shp2pgsql`. Here is the command-line one-liner using `ogr2ogr`
+    to import the Shapefile:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that you either use the same username and password from [Chapter 1](ch01.html
+    "Chapter 1. Setting Up Your Geospatial Python Environment"), *Setting Up Your
+    Geospatial Python Environment*, or your own defined username and password.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For Windows users, you might need to insert the full path of your Shapefile,
+    something that could look like `c:\somepath\geodata\shp\e01_network_lines.shp`.
+    We explicitly set the input of the EPSG:3857 Web Mercator because, sometimes,
+    ogr2ogr guesses the wrong projection and in this way, it ensures that it is correct
+    on upload. Another thing to note is that we also explicitly define the output
+    table column types because `ogr2ogr` uses numeric fields for our integers and
+    this does not go well with `pgRouting`, so we explicitly pass the comma-separated
+    list of field names and field types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For a detailed description of how ogr2ogr works, visit [http://gdal.org/ogr2ogr.html](http://gdal.org/ogr2ogr.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our new table includes two fields, one called `type` and the other, `type_id`.
+    The `type_id` variable will store an integer used to identify what kind of network
+    segment we are on, such as stairs, an indoor way, or elevator. The remaining fields
+    are necessary for `pgRouting`, which is installed as shown in the following code,
+    and include columns called `source`, `target`, and `cost`. The `source` and `target`
+    columns both need to be integers, while the `cost` field is of a double precision
+    type. These types are the requirements of the pgRouting functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s go ahead and add these fields now to our `ch08_e01_networklines` table
+    with the help of some SQL queries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the network dataset has its new columns, we need to run the create topology
+    `pgr_createTopology()`function. This function takes the name of our network dataset,
+    a tolerance value, geometry field name, and a primary key field name. The function
+    will create a new table of points on the LineString intersections, that is, nodes
+    on a network that are in the same schema:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `pgr_createTopology` function parameters include the name of the networklines
+    LineStrings containing our cost and type fields. The second parameter is the distance
+    tolerance in meters followed by the name of the geometry column and our primary
+    key unique id called `ogc_fid`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that our tables and environment are set up, this allows us to actually create
+    the shortest path called the Dijkstra route.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To run the Python code, make sure you have the `psycopg2` and `geojson` modules
+    installed as described in [Chapter 1](ch01.html "Chapter 1. Setting Up Your Geospatial
+    Python Environment"), *Setting Up Your Geospatial Python Environment*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Check out this code and follow along:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The resulting query, if you ran it inside `pgAdmin`, for example, would return
+    the following:![How to do it...](img/50790OS_08_02.jpg)
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'A route needs to be visualized on a map and not as a table. Go ahead and drag
+    and drop your newly created `/ch08/geodata/ch08_shortest_path_pgrouting.geojson`
+    file into QGIS. If all goes well, you should see this pretty little line, excluding
+    the red arrows and text:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/50790OS_08_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our code journey starts with setting up our database connection so that we can
+    execute some queries against our uploaded data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we are ready to run some routing, but wait, How do we set the start and
+    end points that we want to route to and from? The natural way to do this is to
+    input and the x, y coordinate pair for the start and end points. Unfortunately,
+    the `pgr_dijkstra()` function takes only the start and end node IDs. This means
+    that we need to get these node IDs from the new table called `ch08_e01_networklines_vertices_pgr`.
+    To locate the nodes, we use a simple PostGIS function, `ST_Within()`, to find
+    the nearest node within one meter from the input coordinate. Inside this query,
+    our input geometry uses the `ST_GeomFromText()` function so that you can clearly
+    see where things go in our SQL. Now, we'll execute our query and convert the response
+    to an integer value as our node ID. This node ID is then ready for input in the
+    next and final query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The routing query will return a sequence number, node, edge, cost, and geometry
+    for each segment along our final route. The geometry created is GeoJSON using
+    the `ST_AsGeoJSON()` PostGIS function that feeds the creation of our final GeoJSON
+    output route.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The pgRouting `pgr_dijkstra()`function's input arguments include an SQL query,
+    start node ID, end node ID, directed value, and a `has_rcost` Boolean value. We
+    set the `directed` and `has_rcost` values to `False`, while passing in the `start_node`
+    and `end_node` IDs. This query performs a `JOIN` between the generated route IDs
+    and input network IDs so that we have some geometry output to visualize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our journey then ends with processing the results and creating our output GeoJSON
+    file. The routing query has returned a list of individual segments from start
+    to end that aren't in the form of a single LineString, but a set of many LineStrings.
+    This is why we need to create a list and append each route segment to a list by
+    creating our GeoJSON `FeatureCollection` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, we use the `write_geojson()` function to output our final GeoJSON file
+    called `ch08_shortest_path_pgrouting.geojson`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that this GeoJSON file is in the EPSG:3857 coordinate system and is interpreted
+    by QGIS as EPSG:4326, which is incorrect. Geodata for routing, such as OSM data
+    and custom datasets, has lots of possible mistakes, errors, and inconsistencies.
+    Beware that the devil is hiding in the detail of the data this time and not so
+    much in the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Go ahead and drag and drop your GeoJSON file into QGIS to see how your final
+    route looks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding the Dijkstra shortest path with NetworkX in pure Python
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This recipe is a pure Python solution to calculate the shortest path on a network.
+    **NetworkX** is the library we will use with many algorithms to solve the shortest
+    path problem, including Dijkstra ([http://networkx.github.io/](http://networkx.github.io/)).
+    **NetworkX** relies on `numpy` and `scipy` to perform some graph calculations
+    and help with performance. In this recipe, we will only use Python libraries to
+    create our shortest path based on the same input Shapefile used in our previous
+    recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Start with installing *NetworkX* on your machine with the `pip` installer as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the network graph algorithms, NetworkX requires `numpy` and `scipy`, so
+    take a look at [Chapter 1](ch01.html "Chapter 1. Setting Up Your Geospatial Python
+    Environment"), *Setting Up Your Geospatial Python Environment*, for instructions
+    on these. We also use Shapely to generate our geometry outputs to create GeoJSON
+    files, so check whether you have installed Shapely. One hidden requirement is
+    that GDAL/OGR is used in the back end of NetworkX's `import Shapefile` function.
+    As mentioned earlier, in [Chapter 1](ch01.html "Chapter 1. Setting Up Your Geospatial
+    Python Environment"), you will find instructions on this subject.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The input data that represents our network is a Shapefile at `/ch08/geodata/shp/e01_network_lines_3857.shp`,
+    containing our network dataset that is already prepared for routing, so make sure
+    you download this chapter. Now you are ready to run the example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'You need to run this code from the command line to generate the resulting output
+    GeoJSON files that you can open in QGIS, so follow along:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: NetworkX has a nice function called `read_shp` that inputs a Shapefile directly.
+    However, to start doing this, we need to define the `write_geojson` function to
+    output our results as GeoJSON files. The input Shapefile is a completely connected
+    network dataset. Sometimes, you may find that your input is not connected and
+    this function call to `connected_component_subgraphs` finds nodes that are connected,
+    only using these connected nodes. The inner function sets our network to `undirected`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This function does not create a connected network dataset; this job is left
+    for you to perform in QGIS or some other desktop GIS software. One solution is
+    to execute this in PostgreSQL with the tools provided with the pgRouting extension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we'll generate the nodes on our network and export them to GeoJSON. This
+    is, of course, not necessary, but it is nice to see where the nodes are on the
+    map to debug your data. If any problems do occur in generating routes, you can
+    visually identify them quite quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next up, we set the array position of the start and end node to calculate our
+    route. The NetworkX `shortest_path` algorithm requires you to define the source
+    and target nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One thing to pay attention to is the fact that the source and target are coordinate
+    pairs within an array of points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As nice as this array of points are, we need a path and, hence, the `get_path`
+    and `get_full_path` functions are discussed next. Our `get_path` function takes
+    two input nodes, that is, two pairs of coordinates, and returns a NumPy array
+    of edge coordinates along the line. This is followed closely by the `get_full_path`
+    function that internally uses the `get_path` function to output the complete list
+    of all paths and coordinates along all paths.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All the edges and corresponding coordinates are then appended to a new list
+    that needs to be combined—hence, the NumPy `vstack` function. Inside our `for`
+    loop, we go through each path, getting the edges and coordinates to build our
+    list that then gets concatenated together as our final NumPy array output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shapely was built with NumPy compatibility and, therefore, has an `asLineString()`function
+    that can directly input a NumPy array of coordinates. Now we have the geometry
+    of our final LineString route and can export it to GeoJSON with our function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/50790OS_08_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Generating evacuation polygons based on an indoor shortest path
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Architects and transportation planners, for example, need to plan where and
+    how many exits a building will require based on various standards and safety policies.
+    After a building is built, a facility manager and security team usually do not
+    have access to this information. Imagine that there is an event to be planned
+    and you want to see what areas can be evacuated within a certain time, which are
+    constrained by your list of exits in the building.
+  prefs: []
+  type: TYPE_NORMAL
+- en: During this exercise, we want to create some polygons for a specific start point
+    inside a major building, showing which areas can be evacuated in 10, 20, 30, and
+    60 second intervals. We assume that people will walk at 5 km/hr or 1.39 m/s, which
+    is their normal walking speed. If we panic and run, our normal run speed increases
+    to 6.7 m/s or 24.12 km/hr.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our results are going to generate a set of polygons representing our evacuation
+    zones based on the building hallways. We need to define the start position of
+    where the evacuation begins. This starting point of our calculation is equal to
+    the starting point in our route that was discussed in the previous recipe, *Finding
+    the Dijkstra shortest path with NetworkX in pure Python*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Generating evacuation polygons based on an indoor shortest path](img/50790OS_08_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: This image shows the resulting polygons and points that are generated using
+    our script. The results are styled and visualized using QGIS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This example uses the network data loaded by our previous recipe, so make sure
+    that you have loaded this data into your local PostgreSQL database. After you
+    have loaded the data, you will have two tables, `geodata.ch08_e01_networklines_vertices_pgr`
+    and `geodata.ch08_e01_networklines`. In combination with these tables, you need
+    a single new Shapefile for our input polygons located at `/ch08/geodata/shp/e01_hallways_union_3857.shp`,
+    representing the building hallways that are used to clip our resulting distance
+    polygons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are lots of comments in the code for clarity purposes, so read along:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code starts with database boiler plate code plus a function to export the
+    GeoJSON result files. To create an evacuation polygon, we require one input, which
+    is the starting point for the distance calculation polygon on our network. As
+    seen in the previous section, we need to find the node on the network closest
+    to our starting coordinate. Therefore, we run a SQL `select` to find this node
+    that's within one meter of our coordinate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next up, we define the `combined_result` variable that will hold all the points
+    reachable for all specified evacuation times in our list. Hence, it stores the
+    results of each evacuation time in one single output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The hallways Shapefile is then prepared as Shapely geometry because we will
+    need it to clip our output polygons to be inside the hallways. We are only interested
+    in seeing which areas can be evacuated within the specified time scales of 10,
+    20, 30, and 60 seconds. If the area is outside the hallways, you are located outside
+    the building and, well, better said, you are safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we will loop through each of our time intervals to create individual evacuation
+    polygons for each time defined in our list. The `pgRouting` extension includes
+    a function called `pgr_drivingDistance(),` which returns a list of nodes that
+    are reachable within a specified cost. Parameters for this function include the
+    *SQL query* that returns `id`, `source`, `target`, and `cost` columns. Our final
+    four parameters include the start node ID that's represented by the `%s` variable
+    and equals `start_node_id`. Then, the evacuation time in seconds stored within
+    the `evac_time` variable followed by two false values. These last two false values
+    are for the directed route or reverse cost calculation, which we are not using.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In our case, the cost is calculated as a time value in seconds based on distance.
+    We assume that you are walking at 5 km/hr. The cost is then calculated as the
+    segment length in meters divided by 5000 m x 60 min x 60 sec to derive a cost
+    value. Then, we pass in the start node ID along with our specified evacuation
+    time in seconds. If you want to calculate in minutes, simply remove one of the
+    x 60 in the equation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The geometry of each node is then derived through a SQL JOIN between the vertices
+    table and the result list of nodes with node IDs. Now that we have our set of
+    geometry of points for each node reachable within our evacuation time, it's time
+    to parse this result. Parsing is required to create our GeoJSON output, and it
+    also feeds the points into our combined output, the `combined_result` variable,
+    and the individual evacuation time polygons that are created with a convex hull
+    algorithm from Shapely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A better or more realistic polygon could be created using alpha shapes. Alpha
+    shapes form a polygon from a set of points, hugging each point to retain a more
+    realistic polygon that follow the shape of the points. The convex hull simply
+    ensures that all the points are inside the resulting polygon. For a good read
+    on alpha shapes, check out this post by Sean Gillies at [http://sgillies.net/blog/1155/the-fading-shape-of-alpha/](http://sgillies.net/blog/1155/the-fading-shape-of-alpha/)
+    and this post at [http://blog.thehumangeo.com/2014/05/12/drawing-boundaries-in-python/](http://blog.thehumangeo.com/2014/05/12/drawing-boundaries-in-python/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is included in the code is the alpha shapes module called `//ch08/code/alpha_shape.py`
+    that you can try out with the input data points created, if you've followed along
+    so far, to create a more accurate polygon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our `route_results` variable stores the GeoJSON geometry used to create individual
+    convex hull polygons. This variable is then used to populate the list of points
+    for each evacuation set of points. It also provides the source of our GeoJSON
+    export, creating `FeatureCollection`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final calculations include using Shapely to create the convex hull polygon,
+    immediately followed by intersecting this new convex hull polygon with our input
+    Shapefile that represents the building hallways. We are only interested in showing
+    areas to evacuate, which boils down to only areas inside the building, hence the
+    intersection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The remaining code exports our results to the GeoJSON files in your `/ch08/geodata`
+    folder. Go ahead and open this folder and drag and drop the GeoJSON files into
+    QGIS to visualize your new results. You will want to grab the following files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ch08-03_dist_poly_10.geojson`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ch08-03_dist_poly_20.geojson`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ch08-03_dist_poly_30.geojson`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ch08-03_dist_poly_60.geojson`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ch08-03_final_dis_poly.geojson`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating centerlines from polygons
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For any routing algorithm to work, we need a set of network LineStrings to perform
+    our shortest path query on. Here, you, of course, have some options, ones that
+    you can download to the OSM data to clean up the roads. Secondly, you could digitize
+    your own set of network lines or, thirdly, you can try to autogenerate these lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The generation of this network LineString is of utmost importance and determines
+    the quality and types of routes that we can generate. In an indoor environment,
+    we have no roads and street names; instead, we have hallways, rooms, lounges,
+    elevators, ramps, and stairs. These features are our roads, bridges, and highway
+    metaphors where we want to create routes for people to walk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How we can create basic network LineStrings from polygons that represent hallways
+    is what we are going to show you in this recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creating centerlines from polygons](img/50790OS_08_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This exercise requires us to have a plan of some sort in digital form with polygons
+    representing hallways and other open spaces where people could walk. Our hallway
+    polygon is courtesy of the Alpen-Adria-Universität Klagenfurt in Austria. The
+    polygons were simplified to keep the rendering time low. The more complex your
+    input geometry, the longer it will take to process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are using the `scipy`, `shapely`, and `numpy` libraries, so read [Chapter
+    1](ch01.html "Chapter 1. Setting Up Your Geospatial Python Environment"), *Setting
+    Up Your Geospatial Python Environment*, if you have not done so already. Inside
+    the `/ch08/code/` folder, you'll find the `centerline.py` module containing the
+    `Centerline` class. This contains the actual code that generates centerlines and
+    is imported by the `ch08/code/ch08-04_centerline.py` module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s dive into some code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you decide to run the following code straightaway, beware that the creation
+    of centerlines is a slow process and is not optimized for performance. This code
+    could run for 5 min on a slow machine, so be patient and keep an eye on the console
+    until it displays **FINISHED**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first task is to create a function to create our centerlines. This is the
+    modified version of the Filip Todic orginal `centerlines.py` class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now that we have a function that creates centerlines, we need some code to
+    import a Shapefile polygon, run the centerlines script, and export our results
+    to GeoJSON so we that can see it in QGIS:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Starting with `centerlines.py` that contains the `Centerline` class, there is
+    a lot going on inside the class. We use the **Voronoi** polygons and extract **ridges**
+    as centerlines. To create these Voronoi polygons, we need to convert our polygon
+    into LineStrings representing inner and outer polygon edges. These edges then
+    need to be converted to points to feed the Voronoi algorithm. The points are generated
+    based on a *densify* algorithm that creates points every 0.5 m along the edge
+    of a polygon and all the way around it. This helps the `Voronoi` function create
+    a more accurate representation of the polygon, and hence provides a better centerline.
+    On the negative side, the higher this distance is set, the more computing power
+    needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `ch08-04_centerline.py` code then imports this new Centerline class and
+    actually runs it using our hallways polygon. The input polygons are read from
+    a Shapefile using `pyshp`. Our generated shapes are then pumped into the `generate_centerlines`
+    function to output a dictionary of LineStrings representing our centerlines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That output dictionary is then exported to GeoJSON as we loop over the centerlines
+    and use the standard `json.dumps` function to export it to our file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building an indoor routing system in 3D
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: How to route through one or multiple buildings or floors is what this recipe
+    is all about. This is, of course, the most complex situation involving complex
+    data collection, preparation, and implementation processes. We cannot go into
+    all the complex data details of collection and transformation from ACAD to PostGIS,
+    for example; instead, the finished data is provided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To create an indoor routing application, you need an already digitized routing
+    network set of lines representing the areas where people can walk. Our data represents
+    the first and second floor of a university building. The resulting indoor route,
+    shown in the following screenshot, starts from the second floor and travels down
+    the stairs to the first floor, all the way through the building, heading up the
+    stairs again to the second floor, and finally reaching our destination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Building an indoor routing system in 3D](img/50790OS_08_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For this recipe, we will need to complete quite a few tasks to prepare for
+    the indoor 3D routing. Here''s a quick list of requirements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Shapefile for the first floor (`/ch08/geodata/shp/e01_network_lines_3857.shp`).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A Shapefile for the second floor (`/ch08/geodata/shp/e02_network_lines_3857.shp`).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: PostgreSQL DB 9.1 + PostGIS 2.1 and pgRouting 2.0\. These were all installed
+    in the *Finding the Dijkstra shortest path with pgRouting* recipe at the beginning
+    of this chapter.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Python modules, `psycopg2` and `geojson`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Here is the list of tasks that we need to carry out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Import the Shapefile of the first floor networklines (skip this if you''ve
+    completed the earlier recipe that imported this Shapefile) as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Import the Shapefile of the second floor networklines as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Assign routing columns to the first floor networklines (skip this step if you''ve
+    completed it in the previous recipe):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Assign routing columns to the second floor networklines as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Create pgRouting 3D functions that allow you to route over your 3D networklines.
+    These two PostgreSQL functions are critically important as they reflect the original
+    pgRouting 2D functions that have now been converted to allow 3D routing. The order
+    of installation is also very important, so make sure you install `pgr_pointtoid3d.sql`
+    first! Both SQL files are located in your `/ch08/code/` folder:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, install `pgr_createTopology3d.sql`. This is a modified version of the
+    original that now uses our new `pgr_pointtoid3d` functions as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now we need to merge our two floor network lines into a single 3D LineString
+    table that we will perform our 3D routing on. This set of SQL commands is stored
+    for you at:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The exact creation of the 3D routing table is very important to understand
+    as it allows 3D routing queries. Our code is, therefore, listed as follows with
+    SQL comments describing what we are doing at each step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Wow, that was a lot of stuff to get through, and now we are actually ready to
+    run and create some 3D routes. Hurray!
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s dive into some code full of comments for your reading pleasure:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using the `psycopg2` module, we can connect to our fancy new tables in the database
+    and run some queries. The first query set finds the start and end nodes based
+    on the *x*, *y*, and *Z* elevation values. The *Z* value is VERY important; otherwise,
+    the wrong node will be selected. The *Z* value corresponds one to one with a layer/floor
+    value. The 3D elevation data assigned to our `networklines_3857` dataset is simply
+    one meter for floor one and two meters for floor two. This keeps things simple
+    and easy to remember without actually using the real height of the floors, which,
+    of course, you could do if you want to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our 3D routing is then able to run like any other normal 2D routing query because
+    the data is now in 3D, thanks to our two new pgRouting functions. The query goes
+    through, selects our data, and returns a nice GeoJSON string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You have seen the remaining code before. It exports the results to a GeoJSON
+    file on disk so that you can open it in QGIS for viewing. We've managed to add
+    a couple of properties to the new GeoJSON file, including the floor number, cost
+    in terms of distance, and the route segment type that identifies whether a segment
+    is an indoor way or is in the form of stairs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating indoor route walk time
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our indoor routing application would not be complete without letting us know
+    how long it would take to walk to our indoor walk now, would it? We will create
+    a couple of small functions that you can insert into your code in the previous
+    recipe to print out the route walk times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Without further ado, let''s take a look at some code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Your results should show you a dictionary as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Here, it is assumed that you have placed these functions into our previous recipe
+    and have called the function to print the results to the console.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have two simple functions to create walk times for our indoor routes. The
+    first function, called `format_walk_time()`, simply takes the resulting time and
+    converts it to a human-friendly form, showing the minutes and seconds, respectively,
+    that are required for output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second function, `calc_distance_walktime()`, does the work, expecting a
+    list object including the distance. This distance then gets summed for each route
+    segment into a total distance value that's stored in the `route_length` variable.
+    Our `real_time` variable is then created by calling upon the `format_walk_time`
+    function that passes in the `walk_time` value in seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now you have a sophisticated indoor route with specified walk times for your
+    application.
+  prefs: []
+  type: TYPE_NORMAL

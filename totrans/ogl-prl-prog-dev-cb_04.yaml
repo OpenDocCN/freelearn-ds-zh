@@ -1,0 +1,1331 @@
+- en: Chapter 4. Using OpenCL Functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we''ll cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing vectors to an array
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Loading vectors from an array
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using geometric functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using integer functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using floating-point functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using trigonometric functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Arithmetic and rounding in OpenCL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the shuffle function in OpenCL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the select function in OpenCL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to explore how to utilize the common functions
+    provided by OpenCL in your code. The functions we are examining would be mostly
+    mathematical operations applied to the elements, and in particular applied to
+    a vector of elements. Recall that the vectors are OpenCL's primary way to allow
+    multiple elements to be processed on your hardware. As the OpenCL vendor can often
+    produce vectorized hardware instructions to efficiently load and store such elements,
+    try to use them as much as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In detail, we are going to take a dive into how the following works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data load and store functions for vectors
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Geometric functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Integer functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Floating-point functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Trigonometric functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, we will present two sections on how the OpenCL's `shuffle` and `select`
+    functions would work if you choose to use them in your applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing vectors to an array
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapters, you caught glimpses of how we use vectors in various
+    ways from a tool to transport data in an efficient manner to the device and from
+    the device. We have also learned that OpenCL provides a substantial amount of
+    functions that actually work on vectors. In this section, we will explore how
+    we can store vectors to an array (when we use arrays in this context with a vector,
+    we mean an array that contains scalar values).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `vstore<N>` functions, where `<N>` is `2`, `3`, `4`, `8`, and `16`, are
+    the primary functions you will use to actually signal the OpenCL that you wish
+    to store the elements in your vector that has to be transported in a parallel
+    fashion to a destination; this is often a scalar array or another vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We should be clear that `gentypeN` is not a C-like type alias for a data type,
+    but rather a logical placeholder for the types such as `char`, `uchar`, `short`,
+    `ushort`, `int`, `uint`, `long`, `ulong`, `float`, and `double`. The `N` stands
+    for whether it is a data structure that aggregates `2`, `3`, `4`, `8`, or `16`
+    elements. Remember that if you wish to store vectors of the type `double`, then
+    you need to ensure that the directive `#pragma OPENCL EXTENSION cl_khr_fp64 :
+    enable` is in your code before any `double` precision data type is declared in
+    the kernel code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Hence, the `vstoreN` API will write `sizeof(gentypeN)` bytes given by the data
+    to the address `(p + (offset *N))`. The address computed as `(p + (offset * N))`
+    must be 8-bit aligned if `gentype` is `char` or `uchar`; 16-bit aligned if `gentype`
+    is `short` or `ushort`; 32-bit aligned if `gentype` is `int` or `uint`; 64-bit
+    aligned if `gentype` is `long`, `ulong` or `double`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You should notice that the memory writes can span from the global memory space
+    (`__global`) to local (`__local`), or even to a work item private memory space
+    (`__private`) but never to a constant memory space (`__constant` is read-only).
+    Depending on your algorithm, you may need to coordinate the writes to another
+    memory space with memory barriers otherwise known as fences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The reason why you will need memory barriers or fences is that the memory reads
+    and writes, in general, can be out of order, and the main reason for this is that
+    the compiler optimization of the source code re-orders the instructions so that
+    it can take advantage of the hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To expand on that idea a little, you might be aware that C++ has a keyword,
+    `volatile`, which is used to mark a variable so that the compiler optimizations
+    generally do not apply optimized load-stores to any use of that variable; and
+    basically any use of such variable typically involves a load-use-store cycle at
+    every use-site also known as sequence points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Loop unrolling is an optimization technique where the compiler attempts to
+    remove branching in the code and hence, emitting any branch predication instructions
+    so that the code executes efficiently. In the loops that you are accustomed to,
+    you often find an expression as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What happens here is that when this code is compiled, you will notice that
+    the ISA will issue an instruction to compare the value of `i` against that of
+    `n`, and based on the result of that comparison, perform certain actions. Branching
+    occurs when the executing thread takes a path if the condition is true or another
+    path if the condition is false. Typically, a CPU executes both paths concurrently
+    until it knows with a 100 percent certainty that it should take one of these paths,
+    and the CPU can either dump the other unused path or it needs to backtrack its
+    execution. In either case, you will lose several CPU cycles when this happens.
+    Therefore, the developer can help the compiler and in our case, give a hint to
+    the compiler what the value of `n` should be so that the compiler doesn''t have
+    to generate code to check for `i < n`. Unfortunately, OpenCL 1.2 doesn''t support
+    loop unrolling as an extension, but rather the AMD APP SDK and CUDA toolkits provide
+    the following C directives:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Without these functions, the OpenCL kernel would potentially issue a memory
+    load-store for each processed element as illustrated by the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Storing vectors to an array](img/4520OT_04_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Let's build a simple example of how we can use these `vstoreN` functions in
+    a simple example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This recipe will show you a code snippet from `Ch4/simple_vector_store/simple_vector_store.cl`
+    where a vector of 16 elements is loaded in and subsequently copied by using `vstore16(...)`.
+    This API isn't exactly sugar syntax for a loop unrolling of 16 elements, and the
+    reason is the compiler generates instructions that loads a vector of 16 elements
+    from memory; also loop unrolling doesn't exist in OpenCL 1.1 as we know it but,
+    it doesn't hurt to think in terms of that if it helps in understanding the concept
+    behind the `vstoreN` APIs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following is the kernel code where we will demonstrate the data transfers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_vector_store/`.
+    When that happens, you will have a binary executable named `VectorStore`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `VectorStore` and you
+    should either see the output: `Check passed!` or `Check failed!` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This code can be understood from the perspective that a large vector exists
+    in the global memory space, and our attempt is to load the vector into a variable
+    in the private memory, that is, each work item has a unique variable named `t`;
+    do nothing to it and store it back out to another in-memory array that is present
+    in the global memory space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In case you are curious about how this works, the memory writes are actually
+    coalesced so that the writes are issued in bursts of bytes. The size of this burst
+    is dependent on the hardware's internal architecture. As a concrete example in
+    AMD's ATI GPUs, these memory writes are issued once every 16 writes are known
+    to occur and it is related to the implementation of work items in the GPU. You
+    see that it's very inefficient for the GPU to issue a read or write for every
+    work item. When you combine this with the fact that there could be potentially
+    hundreds of thousands of computing threads active in a clustered GPU solution,
+    you can imagine the complexity is unfathomable if the manufacturers were to implement
+    a logic that allows the developer to manage the programs on a work item/per-thread
+    granularity. Hence graphic card manufacturers have decided that it is more efficient
+    to implement the graphical cards to execute a group of threads in lock-step. ATI
+    calls this group of executing threads a wave-front and NVIDIA calls it a warp.
+    This understanding is critical when you start to develop nontrivial algorithms
+    on your OpenCL device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you build the sample application and run it, it doesn't do anything in
+    particularly special from what we have seen but it is useful to see how the underlying
+    code is generated, and in this example the Intel OpenCL SDK is illustrative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_04_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The assembly code snippet in particular is that of the resultant translation
+    to **SSE2/3/4** or **Intel AVX** (**Advanced Vector Extensions**) code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Loading vectors from an array
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `vloadN` functions are typically used to load multiple elements from an
+    in-memory array to a destination in-memory data structure and are often a vector.
+    Similar to the `vstoreN` functions, the `vloadN` functions also load elements
+    from the global (`__global`), local (`__local`), work item private (`__private`),
+    and finally constant memory spaces (`__constant`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We should be clear that `gentypeN` is not a C-like type alias for a data type
+    but rather a logical placeholder for the types: `char`, `uchar`, `short`, `ushort`,
+    `int`, `uint`, `long`, `ulong`, `float`, or `double` and the `N` stands for whether
+    it''s a data structure that aggregates `2`, `3`, `4`, `8`, or `16` elements. Without
+    this function, the kernel needs to issue potentially multiple memory loads as
+    illustrated by the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Loading vectors from an array](img/4520OT_04_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The following is an excerpt from `Ch4/simple_vector_load/simple_vector_load.cl`.
+    We focus our attention to understand how to load vectors of elements from the
+    device memory space for computation within the device, that is, CPU/GPU. But this
+    time round, we use an optimization technique called **prefetching** (its warming
+    up the cache when your code is going to make use of the data soon and you want
+    it to be near also known as spatial and temporal locality), and is typically used
+    to assign to local memory space so that all work items can read the data off the
+    cache without flooding requests onto the bus.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following is the kernel code from which we shall draw our inspiration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_vector_load/`.
+    When that happens, you will have a binary executable named `VectorLoad`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `VectorLoad` and you
+    should either see the output: `Check passed!` or `Check failed!` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The kernel would proceed to prefetch the `16` values of type `float` from the
+    `__global` memory space to the global cache via the first work item in the work
+    group, which would ultimately arrive in the work item's `__private` memory space
+    via the `vload16` API. Once that value is loaded, we can assign individual floats
+    to the array and finally output them to the destination via an explicit write
+    to the `__global` memory space of `out`. This is one method in which you can conduct
+    memory load from a scalar array that resides in the global memory space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding line is an optimization technique used to improve data reuse
+    by making it available before it is required; this prefetch instruction is applied
+    to a work item in a work group and we''ve chosen the first work item in each work
+    group to carry this out. In algorithms where there is heavy data reuse, the benefits
+    would be more significant than the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another thing you may have noticed is that we didn''t write the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason why we did not do this is because OpenCL forbids the implicit/explicit
+    conversion of a vector type to a scalar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_04_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: One interesting thing that is worth pointing out other than the generated SSE
+    instructions is the fact that multiple hardware prefetch instructions are generated,
+    even though the code only mentions one prefetch instruction. This is the sort
+    of façade that allows OpenCL vendors to implement the functionality based on an
+    open standard, while still allowing the vendors to hide the actual implementation
+    details from the developer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using geometric functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The geometric functions are used by the programmers to perform common computation
+    on vectors, for example, cross or dot products, normalizing a vector, and length
+    of a vector. To recap a little about vector cross and dot products, remember that
+    a vector in the mathematical sense represents a quantity that has both direction
+    and magnitude, and these vectors are used extensively in computer graphics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Quite often, we need to compute the distance (in degrees or radians) between
+    two vectors and to do this, we need to compute the dot product, which is defined
+    as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using geometric functions](img/4520OT_04_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'It follows that if *a* is perpendicular to *b* then it must be that *a . b
+    = 0*. The dot product is also used to compute the matrix-vector multiplication
+    which solves a class of problems known as **linear systems**. Cross products of
+    two 3D vectors will produce a vector that is perpendicular to both of them and
+    can be defined as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using geometric functions](img/4520OT_04_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The difference between these products is the fact that the dot product produces
+    a scalar value while the cross product produces a vector value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is a list of OpenCL''s geometric functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Function | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float4 cross(float4 m, float4 n)``float3 cross(float3 m, float3 n)` | Returns
+    the cross product of `m.xyz` and `n.xyz` and the `w` component in the result vector
+    is always zero |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float dot(floatn m, floatn n)` | Returns the dot product of two vectors
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float distance(floatn m, floatn n)` | Returns the distance between `m` and
+    `n`. This is computed as:`length(m – n)` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float length(floatn p)` | Return the length of the vector `p` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `floatn normalize(floatn p)` | Returns a vector in the same direction as
+    `p` but with a length of `1` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float fast_distance(floatn p0, floatn p1)` | Returns `fast_length(p0 – p1)`
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `float fast_length(floatn p)` | Returns the length of vector `p` computed
+    as:`half_sqrt()` |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `floatn fast_normalize(floatn p)` | Returns a vector in the same direction
+    as `p` but with a length of `1`. `fast_normalize` is computed as:`p * half_sqrt()`
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: You should be aware that these functions are implemented in OpenCL using the
+    *round to nearest even* rounding mode also known as **rte-mode**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, let's take a look at an example that utilizes some of these functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code snippet in `Ch4/simple_dot_product/matvecmult.cl` illustrates how to
+    compute the dot product between a 2D vector and a matrix and write back the result
+    of that computation to the output array. When you are starting out with OpenCL,
+    there might be two probable ways in which you will write this functionality, and
+    I think it is instructive to discover what the differences are; however we only
+    show the relevant code snippet that demonstrates the dot API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following is the simplest implementation of the matrix dot product operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile this on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_dot_product/`.
+    When that happens, you will have a binary executable named `MatVecMult`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `MatVecMult` and you
+    should either see the output: `Check passed!` or `Check failed!` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The previous code snippet is probably the simplest you will want to write to
+    implement the matrix dot product operation. The kernel actually reads a vector
+    of `4` floats from the `__global` memory spaces of both inputs, computes the dot
+    product between them, and writes it back out to `__global` memory space of the
+    destination. Previously, we mentioned that there might be another way to write
+    this. Yes, there is and the relevant code is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: When you compare this implementation without using the dot API, you will discover
+    that you not only need to type more but also you will have increased the number
+    of work item variables which happens to be in the `__private` memory space; often
+    you don't want to do this because it hinders the code readability, and also quite
+    importantly scalability because too many registers are consumed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In OpenCL implementations, they would need to manage the available resources
+    on the device, which could be available memory or available compute units. One
+    such resource is the register file that contains a fixed number of general-purpose
+    registers that the device has for executing one or many kernels. During the compilation
+    of the OpenCL kernel, it will be determined how many registers are needed by each
+    kernel for execution. An example would be where we assume that a kernel is developed
+    that uses 10 variables in the `__private` memory space and the register file is
+    `65536`, and that would imply that we can launch 65536 / 10 = 6553 work items
+    to run our kernel. If you rewrite your kernel in such a way that uses more data
+    sharing through the `__local` memory spaces, then you can free more registers
+    and you can scale your kernel better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using integer functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The integer functions in OpenCL primarily provides useful ways in which you
+    can use them to perform the usual mathematical calculations such as obtaining
+    an absolute value, halving a value, locating the minimum or maximum of three values,
+    cyclic shift of a number, and specialized form of multiplication which is designed
+    to work for a certain class of problems. Many of the functions that we have mentioned
+    such as `min` and `max` do not perform the comparisons in an atomic fashion, but
+    if you do like to ensure that, then a class of atomic functions can be used instead
+    and we'll examine them later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A class of integer functions is the atomic functions, which allows the developer
+    to swap values (single-precision floating-point values too) in an atomic fashion,
+    and some of these functions implements **CAS** (**Compare-And-Swap**) semantics.
+    Typically, you may want to ensure some sort of atomicity to certain operations
+    because without that, you will encounter race conditions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using integer functions](img/4520OT_04_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The atomic functions typically take in two inputs (they have to be of integral
+    types, only `atomic_xchg` supports single-precision floating-point types), where
+    the first argument is a pointer to a memory location in the global (`__global`)
+    and local (`__local`) memory spaces ,and they are typically annotated with the
+    `volatile` keyword, which prevents the compiler from optimizing the instructions
+    related to the use of the variable; this is important as the reads and writes
+    could be out of order and could affect the correctness of the program. The following
+    is an illustration of a mental model of how atomic operations serialize the access
+    to a piece of shared data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using integer functions](img/4520OT_04_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The following example, `atomic_add`, has two versions which work on signed
+    or unsigned values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Another observation you need to be aware of is the fact that just because you
+    can apply atomicity to assert the correctness of certain values, it does not necessarily
+    imply program correctness.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reason why this is the case is due to the manner in which work items are
+    implemented as we mentioned earlier in this chapter, that NVIDIA and ATI executes
+    work items in groups known as work groups and each work group would contain multiple
+    chunks of executing threads, otherwise, known as **warp** (32 threads) and **wavefront**
+    (64 threads) respectively. Hence when a work group executes on a kernel, all the
+    work items in that group are executing in lock-step and normally this isn't a
+    problem. The problem arises when the work group is large enough to contain more
+    than one warp/wavefront; then you have a situation where one warp/wavefront executes
+    slower than another and this can be a big issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The real issue is that the memory ordering cannot be enforced across all compliant
+    OpenCL devices; so the only way to tell the kernel that we like the loads and
+    stores to be coordinated is by putting a memory barrier at certain points in your
+    program. When such a barrier is present, the compiler will generate the instructions
+    that will make sure all the loads-stores to the global/local memory space prior
+    to the barrier is done for all the executing work items before executing any instructions
+    that come after the barrier, which will guarantee that the updated data is seen;
+    or in compiler lingo: memory loads and stores will be committed to the memory
+    before any loads and stores follows the barrier/fence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These APIs provide the developer with a much better level of control when it
+    comes to ordering both reads and writes, reads only, or writes only. The argument
+    flags, can take a combination of `CLK_LOCAL_MEM_FENCE` and/or `CLK_GLOBAL_MEM_FENCE`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The recipe will show you the code snippet in `Ch4/par_min/par_min.cl` for finding
+    the minimum value in a large array in the device, that is, GPU or CPU memory space.
+    This example combines a few concepts such as using the OpenCL's atomic directives
+    to enable atomic functions and memory barriers to coordinate memory loads and
+    stores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code demonstrates how you might want to find the minimum number
+    in a large container of integers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/par_min/`. When
+    that happens, you will have a binary executable named `ParallelMin`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `ParallelMin` and you
+    should either see the output: `Check passed!` or `Check failed!` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The way this works is that a work item walks through the source buffer and attempts
+    to locate the minimum value in parallel, and when the kernel is running on the
+    CPU or GPU, the source buffer is chopped evenly between those threads and each
+    thread would walk through the buffer that's assigned to them in `__global memory`
+    and reduces all values into a minimum value in the `__private` memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subsequently, all threads will reduce the minimum values in their `__private`
+    memories to `__local` memory via an atomic operation and this reduced value is
+    flushed to the `_` `_global` memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the work groups have completed the execution, the second kernel, that is,
+    `reduce` will reduce all the work group values into a single value in the `__global`
+    memory using an atomic operation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using floating-point functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, you have seen a couple of functions that takes argument as input or
+    output single-precision or double-precision floating-point values. Given a floating-point
+    value *x*, the OpenCL floating-point functions provide you with the capability
+    to extract the mantissa and exponent from *x* via `frexp()`, decompose *x* via
+    `modf()`, compute the next largest/smallest single-precision floating-point value
+    via `nextafter()`, and others. Considering that there are so many useful floating-point
+    functions, there are two functions which are important to understand because it's
+    very common in OpenCL code. They are the `mad()` and `fma()` functions which is
+    Multiply-Add and Fused Multiply-Add instruction respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **Multiply-Add** (**MAD**) instruction performs a floating-point multiplication
+    followed by a floating-point addition, but whether the product and its intermediary
+    products are rounded is undefined. The **Fused Multiply-Add** (**FMA**) instruction
+    only rounds the product and none of its intermediary products. The implementations
+    typically trade off the precision against the speed of the operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We probably shouldn''t dive into academic studies of this nature; however in
+    times like this, we thought it might be helpful to point out how academia in many
+    situations can help us to make an informed decision. Having said that, a particular
+    study by Delft University of Technology entitled *A Comprehensive Performance
+    Comparison of CUDA* and OpenCL link [http://www.pds.ewi.tudelft.nl/pubs/papers/icpp2011a.pdf](http://www.pds.ewi.tudelft.nl/pubs/papers/icpp2011a.pdf),
+    suggests that FMA has a higher instruction count as compared to MAD implementations,
+    which might lead us to the conclusion that MAD should run faster than FMA. We
+    can guess approximately how much faster by taking a simple ratio between both
+    instruction counts, which we should point out is a really simplistic view since
+    we should not dispense away the fact that compiler vendors play a big role with
+    their optimizing compilers, and to highlight that NVIDIA conducted a study entitled
+    *Precision & Performance: Floating Point and IEEE 754 compliance for NVIDIA GPUs*,
+    which can be read at: [http://developer.download.nvidia.com/assets/cuda/files/NVIDIA-CUDA-Floating-Point.pdf](http://developer.download.nvidia.com/assets/cuda/files/NVIDIA-CUDA-Floating-Point.pdf).
+    The study suggests that FMA can offer performance in addition to precision, and
+    NVIDIA is at least one company that we are aware of who is replacing MAD with
+    FMA in their GPU chips.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following the subject of multiplication, you should be aware that there are
+    instructions for the multiplication of integers instead of floats; examples of
+    those are `mad_hi`, `mad_sat`, and `mad24`, and these functions provide the developer
+    with the fine grain control of effecting a more efficient computation and how
+    it can be realized using these optimized versions. For example, `mad24` only operates
+    on the lower 24-bits of a 32-bit integer because the expected value is in the
+    range of [-223, 223 -1] when operating signed integers or [0, 224 -1] for unsigned
+    integers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code snippet in `Ch4/simple_fma_vs_mad/fma_mad_cmp.cl` demonstrates how
+    we can test the performance between the MAD and FMA instructions, if you so wish,
+    to accomplish the computation. However, what we are going to demonstrate is to
+    simply run each one of the kernels in turn, and we can check that the results
+    are the same in both computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code demonstrates how to use the MAD and FMA functions in OpenCL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_fma_vs_mad/`.
+    When that happens, you will have a binary executable named `FmaMadCmp`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `FmaMadCmp` and you
+    should either see the output: `Check passed!` or `Check failed!` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The driver code uses single-precision floating-point values to compute the
+    value of the equation by running the two kernels in turn on the GPU/CPU. Each
+    kernel would load the values from the `__global` memory space to the work item/thread''s
+    `__private` memory space. The difference between both kernels is that one uses
+    the FMA instruction while the other uses the MAD instruction. The method that
+    is used to detect whether FMA instruction support is available on the device of
+    choice is to detect whether `CP_FP_FMA` is returned after a call to `clGetDeviceInfo`
+    passing in any of the following parameters: `CL_DEVICE_SINGLE_FP_CONFIG`, `CL_DEVICE_DOUBLE_FP_CONFIG`,
+    and `CL_DEVICE_HALF_FP_CONFIG`. We use the flag `CP_FP_FMA` and `FP_FAST_FMA`
+    to load the `fma` functions on our platform by including the header file `#include
+    <math.h>`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The C-macro `FP_FAST_FMA`, if defined is set to the constant of 1 to indicate
+    that the `fma()` generally executes about as fast, or faster than, a multiple
+    and an addition of double operands. If this macro is undefined, then it implies
+    that your hardware doesn't support it.In the GNU GCC compiler suite, the macro
+    you want to detect is `__FP_FAST_FMA`, which links to the `FP_FAST_FMA` if defined
+    or passing `–mfused-madd` to the GCC compiler (on by default, autogenerate the
+    FMA instructions if ISA supports).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using trigonometric functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The trigonometric functions are very useful if you were in the computer graphics
+    industry ,or you are writing a simulation program for weather forecasts, continued
+    fractions, and so on. OpenCL provides the usual suspects when it comes to the
+    trigonometry support with `cos`, `acos`, `sin`, `asin`, `tan`, `atan`, `atanh`
+    (hyperbolic arc tangent), `sinh` (hyperbolic sine), and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we will take a look at the popular trigonometric identity
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: From the Pythagoras's theorem, we understood that a right-angled triangle with
+    sides *a*,*b*,*c* and angle *t* at the vertex where *a* and *c* meet, *cos(t)*
+    is by definition *a*/*c*, *sin(t* `)` is by definition *b*/*c*, and so *cos2(t)
+    + sin2(t) = (a/c)2 + (b/c)2* when combined with the fact that *a2 + b2 = c2* hence
+    *cos2(t) + sin2(t) = 1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having armed ourselves with this knowledge, there are many interesting problems
+    you can solve with this identity but for the sake of illustration let's suppose
+    that we want to find the number of unit circles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unit circles are another way of looking at the identity we just talked about.
+    A contrived example of this would be to determine which values would be valid
+    unit circles from the given two arrays of supposedly values in degrees.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code snippet in `Ch4/simple_trigonometry/simple_trigo.cl` demonstrates the
+    OpenCL kernel that is used to compute which values from the two data sources can
+    correctly form a unit circle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If you recall from basic trigonometry lessons you took, when you add the result
+    of *sin(x) + cos(x)* where *x* is drawn from either positive or negative numbers,
+    it will produce two distinct straight line functions *y = 1* and *y = -1* and
+    when you square the results of *sin(x)* and *cos(x)*, the result of *cos2(t) +
+    sin2(t) = 1* is obvious. See the following diagrams for illustration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting ready](img/4520OT_04_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The preceding diagram and the following diagram reflect the graphs of *sin(x)*
+    and *cos(x)* respectively:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting ready](img/4520OT_04_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The following diagram illustrates how superimposing the previous two graphs
+    would give a straight line that is represented by the equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Getting ready](img/4520OT_04_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code snippet shows you the kernel code that will determine unit
+    circles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_trigonometry/`.
+    When that happens, you will have a binary executable named `SimpleTrigo`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `SimpleTrigo` and you
+    should either see the output shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The driver program conducts its usual operations of loading the two data sources
+    by filling it up with values. Then the data sources is registered on the device
+    command queue along with the kernel program objects that are ready for execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: During the execution of the kernel, the data sources are loaded into the device
+    via a single-precision floating-point 16-element vector. As highlighted in previous
+    chapters, this takes advantage of the device's vectorized hardware. The in-memory
+    vectors are passed into the sine and cosine functions which comes in two versions
+    where one takes a scalar value and second takes a vector value, and we flush the
+    result out to global memory once we are done; and you will notice that the multiplication/addition
+    operator actually does component-wise multiplication and addition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Arithmetic and rounding in OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Rounding is an important topic in OpenCL and we have not really dived into
+    it yet but that''s about to change. OpenCL 1.1 supports four rounding modes: round
+    to nearest (even number), round to zero, round to positive infinity, and round
+    to negative infinity. The only round mode required by OpenCL 1.1 compliant devices
+    is the round to nearest even.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If the result is intermediate between two representable values, the even representation
+    is chosen. Even, here, means that the lowest bit is zero.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You should be aware that these are applicable to single-precision floating-point
+    values supported in OpenCL 1.1; we have to check with the vendors who provide
+    functions that operate on double-precision floating-point values, though the author
+    suspects that they should comply at least to support the round to nearest even
+    mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another point is that, you cannot programmatically configure your kernels to
+    inherit/change the rounding mode used by your calling environment, which most
+    likely is where your program executes on the CPU. In GCC at least, you can actually
+    use the inline assembly directives, for example, `asm("assembly code inside quotes")`
+    to change the rounding mode in your program by inserting appropriate hardware
+    instructions to your program. The next section attempts to demonstrate how this
+    can be done by using the regular C programming with a little help from GCC.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the Intel 64 and IA-32 architectures, the rounding mode is controlled by
+    a 2-bit **rounding control** (**RC**) field, and the implementation is hidden
+    in two hardware registers: **x87 FPU** control register and **MXCSR** register.
+    These two registers have the RC field and the RC in the x87 FPU control register
+    is used by the CPU when computations are performed in the x87 FPU, while the RC
+    field in the MXCSR is used to control rounding for **SIMD** floating-point computations
+    performed with the **SSE/SSE2** instructions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the code snippet found in `Ch4/simple_rounding/simple_rounding.cl`, we demonstrate
+    how *round to nearest even* mode is the default mode in the built-in functions
+    provided by OpenCL 1.1\. The example proceeds to demonstrate how a particular
+    built-in function and remainder, will use the default rounding mode to store the
+    result of a floating-point computation. The next couple of operations is to demonstrate
+    the usage of the following OpenCL built-in functions such as `rint`, `round`,
+    `ceil`, `floor`, and `trunc`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following code snippet examines the various rounding modes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_rounding/`.
+    When that happens, you will have a binary executable named `SimpleRounding`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `SimpleRounding` and
+    you should either see the output shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As before, the in-memory data structures on the host are initialized with values
+    and they are issued to the device once the device's command queue is created;
+    once that's done the kernel is sent off to the command queue for execution. The
+    results is subsequently read back from the device and displayed on the console.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to understand how these functions work, is important that we study
+    their behavior by first probing their method signatures, and subsequently analyzing
+    the results of executing the program to gain insights into how the results came
+    to be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'OpenCL 1.2 brings a wealth of mathematical functions to arm the developer and
+    four of the common ones are computing the floor and ceiling, round-to-integral,
+    truncation, and rounding floating-point values. The floor''s method signature
+    is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function rounds to the integral value using the *round to negative infinity*
+    rounding mode. First of all, your OpenCL device needs to support this mode of
+    rounding, and you can determine this by checking the existence of the value `CL_FP_ROUND_TO_INF`
+    when you pass in `CL_DEVICE_DOUBLE_FP_CONFIG` to `clGetDeviceInfo(device_id, ...)`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next method, ceil''s signature is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function rounds to the integral value using the *round to positive infinity*
+    rounding mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Be aware that when a value between `-1` and `0` is passed to `ceil`, then the
+    result is automatically `-0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The method for rounding to the integral value has a signature like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function rounds to the integral value using the *round to nearest even*
+    rounding mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Be aware that when a value between `-0.5` and `0` is passed to `rint`, then
+    the result is automatically `-0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The truncation function is very useful when precision is not high on your priority
+    list and its method signature is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function rounds to the integral value using the *round to zero* rounding
+    mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rounding method signature is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: This function returns the integral value nearest to *x* rounding halfway cases
+    away from zero, regardless of the current rounding direction. The full list of
+    available functions can be found in the *Section 6.12.2* of the OpenCL 1.2 specification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When you run the program, you should get the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using the shuffle function in OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `shuffle` and `shuffle2` functions were introduced in OpenCL 1.1 to construct
+    a permutation of elements from their inputs (which are either one vector or two
+    vectors), and returns a vector of the same type as its input; the number of elements
+    in the returned vector is determined by the argument, `mask`, that is passed to
+    it. Let''s take a look at its method signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `N` and `M` used in the signatures represents the length of the returned
+    and input vectors and can take values from {`2`,`3`,`4`,`8`,`16`}. The `ugentype`
+    represents an unsigned type, `gentype` represents the integral types in OpenCL,
+    and floating-point types (that is, half, single, or double-precision) too; and
+    if you choose to use the floating-point types then recall the extensions `cl_khr_fp16`
+    or `cl_khr_fp64`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s an example of how it works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let's take a look at a simple implementation where we draw our inspiration from
+    the popular **Fisher-Yates Shuffle**(**FYS**) algorithm. This FYS algorithm generates
+    a random permutation of a finite set and the basic process is similar to randomly
+    picking a numbered ticket from a container, or cards from a deck, one after another
+    until none is left in the container/deck. One of the nicest properties of this
+    algorithm is that it is guaranteed to produce an unbiased result. Our example
+    would focus on how shuffling would work, since what it essentially does is to
+    select a particular element based on a mask that's supposed to be randomly generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code snippet in `Ch4/simple_shuffle/simple_shuffle.cl` pretty much captured
+    most of the ideas we are trying to illustrate. The idea is simple, we want to
+    generate a mask and use the mask to generate permutations of the output array.
+    We are not going to use a pseudo random number generator like the Mersenne twister,
+    but rather rely on C's `stdlib.h` function, a random function with a valid seed
+    from which we generate a bunch of random numbers where each number cannot exceed
+    the maximum size of the array of the output array, that is, `15`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `rand()` function in `stdlib.h` is not really favored because it generates
+    a less random sequence than `random()`, because the lower dozen bits generated
+    by `rand()` go through a cyclic pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Before we begin the shuffling, we need to seed the RNG prior, and we can do
+    that via a simple API call to `srandom()` passing the seed. The next step is to
+    run our kernel a number of times and we achieve this by enclosing the kernel execution
+    in a loop. The following code snippet from the host code in `Ch4/simple_shuffle/simple_shuffle.c`
+    shows this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The following kernel code transports the inputs via *a* and *b* and their combined
+    element size is `16`, the mask is being transported on the constant memory space
+    (that is, read-only).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_shuffle/.`
+    When that happens, you will have a binary executable named `SimpleShuffle`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `SimpleShuffle` and
+    you should see the output shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following diagram suggests that each executing kernel works through a portion
+    of the source array, which contains of *k* elements by fetching the data from
+    the `__global` memory space to the `__private` memory space. The next operation
+    is to run the shuffling using a vector of random numbers, which we have pregenerated
+    on the host and for each partitioned data block, the kernel will produce a resultant
+    array; and once that''s done the kernel flushes out the data to the `__global`
+    memory space. The following diagram illustrates the idea where the resultant array
+    consists of a permutated array made from its individual constituents which are
+    themselves permutations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_04_12.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Using the select function in OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The `select` function is first of all similar to the `shuffle` and `shuffle2`
+    functions we have seen in the previous section and is also known as the **ternary
+    selection**, and it is a member of the relational functions in OpenCL, which is
+    commonly found in the C++ and Java programming languages; but there is a significant
+    difference and that is the `select` function and its variant `bitselect` works
+    not only with single-precision or double-precision floating types, but also vectors
+    of single-precision or double-precision floating-point values. Here''s what it
+    looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: Hence, when the predicate is evaluated to be true the expression on the left-hand
+    side of the colon will be evaluated; otherwise the expression on the right-hand
+    side of the colon is evaluated and in both evaluations, a result is returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using an example in OpenCL, the conditional statement as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'can be rewritten using the `select()` function as:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: And for such a transformation to be correct, the original `if` statement cannot
+    contain any code that calls to I/O.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main advantage `select`/`bitselect` offers is that vendors can choose to
+    eradicate branching and branch predication from its implementation, which means
+    that the resultant program is likely to be more efficient. What this means is
+    that these two functions act as a façade so that vendors such as AMD could implement
+    the actual functionality using the ISA of SSE2 `__mm_cmpeq_pd`, and `__mm_cmpneq_pd`
+    ; similarly, Intel could choose from the ISA of Intel AVX such as `__mm_cmp_pd`,
+    `__mm256_cmp_pd`, or from SSE2 to implement the functionality of `select` or `bitselect`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The following example demonstrates how we can use the function, `select`. The
+    function demonstrates the convenience that it offers since it operates on the
+    abstraction of applying a function to several data values, which happens to be
+    in a vector. The code snippet in `Ch4/simple_select_filter/select_filter.cl` attempts
+    to conduct a selection by picking the elements from each list in turn to establish
+    the result, which in this example happens to be a vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following snippet demonstrates how to do use the `select` function in OpenCL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To compile it on the OS X platform, you will have to run a compile command
+    similar to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Alternatively, you can type `make` in the source directory `Ch4/simple_select/`.
+    When that happens, you will have a binary executable named `SelectFilter`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To run the program on OS X, simply execute the program `SelectFilter` and you
+    should either see the output shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The program proceeds to establish a context to the OpenCL compliant device through
+    the APIs `clGetPlatformIDs` and `clGetDeviceIDs`. Once that is established, we
+    go about creating our in-memory data structures and prepare it for submission
+    to the device's command queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The in-memory data structures on the host are small arrays, which we can submit
+    to the device for consumption by sending it across the system bus to hydrate the
+    structures in the device memory. They stay in the device memory as local variables
+    represented by variables `in1` and `in2`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the data is inflated in the device's memory, the algorithm in `select_filter.cl`
+    will proceed to select each element in turn by conducting a bit comparison where
+    the most significant bit is checked; if the MSB is equal to `1` the corresponding
+    value from **Buffer B** is returned; otherwise the corresponding position from
+    **Buffer A** is returned. Recall from computer science that -1, that is, unary
+    minus 1, works out to be `0xffff` in 2's complement notation and hence the MSB
+    of that value would most definitely be equal to `1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following diagram illustrates this selection process. As before, once the
+    selection process is completed, it is flushed out to the results vector, result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works…](img/4520OT_04_13.jpg)'
+  prefs: []
+  type: TYPE_IMG

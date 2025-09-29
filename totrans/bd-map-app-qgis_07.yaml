@@ -1,0 +1,686 @@
+- en: Chapter 7. Selecting and Editing Features in a PyQGIS Application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When running the QGIS application, the user has a range of tools available to
+    create and manipulate geospatial features. For example, the **Add Feature** tool
+    lets the user create a new feature, while the **Move Feature** tool and the **Node**
+    tool allow the user to move and edit existing geospatial features. However, these
+    tools are only available within QGIS itself—if you want to write an external application
+    on top of the PyQGIS library, these built-in tools aren't available, and you will
+    have to implement these features yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will look at what is involved in adding functionality to
+    a PyQGIS application so that the user can select and edit geospatial features.
+    In particular, we will examine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to work with selections
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How the layer editing mode can be used to save or undo the changes the user
+    has made to a map layer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to create map tools that will allow the user to add and edit Point geometries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to let the user remove a geometry from a map layer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to implement custom map tools that allow the user to add LineString and
+    Polygon geometries to a map layer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to let the user edit a LineString or Polygon geometry
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Working with selections
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The vector layer class, `QgsVectorLayer`, includes support for keeping track
+    of the user''s current selection. Doing this is relatively straightforward: there
+    are methods that set and alter the selection, as well as retrieve the selected
+    features. When features are selected, they are visually highlighted on the screen
+    so that the user can see what has been selected.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you create your own custom symbol layer, you will need to handle the highlighting
+    of the selected features yourself. We saw how to do this in [Chapter 6](part0047_split_000.html#page
+    "Chapter 6. Mastering the QGIS Python API"), *Mastering the QGIS Python API*,
+    in the section titled *Implementing symbol layers in Python*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While there are several ways in which the user can select features, the most
+    straightforward way is to click on them. This can be implemented by using a simple
+    map tool, for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is very similar to the `ExploreTool` we implemented in the previous chapter
+    as part of the Lex application. The only difference is that, instead of displaying
+    information about the clicked-on feature, we tell the map layer to select it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we check to see if the *Shift* key is held down. If so, the clicked-on
+    feature is added to the current selection; otherwise, the current selection will
+    be replaced with the newly selected feature. Also, if the user clicks on the background
+    of the map, the current selection will be removed. These are all standard user
+    interface conventions the user will be familiar with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we have a selection, it is quite straightforward to get the selected features
+    from the map layer. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you want to see all this in action, you can download and run the **SelectionExplorer**
+    program, which is included in the sample code of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the layer editing mode
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To let the user change the contents of a map layer, you first have to turn
+    on the **editing mode** for that layer. The layer editing mode is similar to the
+    way transactions are handled in a database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using the layer editing mode](img/00081.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The changes you make to the layer are held in memory until you decide to either
+    **commit** the changes to the layer, or **roll** **back** the changes to discard
+    them. The following pseudocode is an example of how to implement this using PyQGIS:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, we turn on the editing mode for a given map layer by calling
+    `layer.startEditing()`. As well as set up an internal *editing buffer* to hold
+    the changes you make, this tells the layer to visually highlight the layer''s
+    features by drawing small vertex markers on each of the vertices, as shown in
+    the following image:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Using the layer editing mode](img/00082.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: We then allow the user to make changes to the layer's features. We will learn
+    how this is done in the following sections of this chapter. When the user turns
+    off the editing mode, we check whether any changes have been made, and if so,
+    display a confirmation message box to the user. Depending on the user's response,
+    we either save the changes by calling `layer.commitChanges()` or discard them
+    by calling `layer.rollBack()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both `commitChanges()` and `rollBack()` turn off the editing mode, hiding the
+    vertex markers and erasing the contents of the editing buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When you use the layer's editing mode, you *must* use the various methods in
+    `QgsVectorLayer` to modify the features, rather than using the equivalent methods
+    in the data provider. For example, you should call `layer.addFeature(feature)`
+    instead of `layer.dataProvider().addFeatures([feature])`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The layer's editing methods only work when the layer is in the editing mode.
+    These methods add the changes to the internal editing buffer so that they can
+    be committed or rolled back at the appropriate time. If you make your changes
+    directly to the data provider, you will bypass the editing buffer, so the rollback
+    feature won't work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have seen the overall process used to edit the contents of a map
+    layer, let's create some map tools that will let the user add and edit geospatial
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding Points
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The following map tool allows the user to add a new Point feature to the given
+    layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, this straightforward map tool sets the mouse cursor to a cross
+    shape, and when the user releases the mouse over the map canvas, a new `QgsGeometry`
+    object is created that represents a point at the current mouse position. This
+    point is then added to the layer using `layer.addFeature()`, and the layer's extent
+    is updated in case the newly added point is outside the layer's current extent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, this map tool is only a starting point—you would typically add code
+    to set the feature's attributes and to notify the application that a point has
+    been added. However, as you can see, allowing the user to create a new Point feature
+    is quite straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Editing Points
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Editing a Point feature is also quite straightforward: since the geometry consists
+    of only one point, the user can simply click-and-drag to move the point around
+    within the map layer. The following is a map tool that implements this behavior:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we subclass `QgsMapToolIdentify` for this map tool. This lets
+    us use the `identify()` method to find the geometry that the user clicked on,
+    just like we did in the `SelectTool`, which we implemented earlier in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice that our `canvasMoveEvent()` method keeps track of the user's current
+    mouse position. It also updates the feature's geometry by calling `layer.changeGeometry()`
+    to remember the changed mouse position as the user moves the point around. The
+    `canvasPressEvent()` enables dragging if and only if the user clicked on a Point,
+    and the `canvasReleaseEvent()` method tidies up so that the user can move another
+    point by clicking on it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are writing a standalone PyQGIS application that includes a point-based
+    `QgsVectorLayer`, you can use the `AddPointTool` and `MovePointTool` classes we
+    defined here to allow the user to add and edit Point features within your vector
+    layer. The only thing missing (for Point geometries) is the ability to remove
+    points. Let's implement this now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deleting Points and other features
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Fortunately, the code required to delete a Point feature will also work for
+    other types of geometries, so we don''t need to implement separate `DeletePointTool`,
+    `DeleteLineTool`, and `DeletePolygonTool` classes. Instead, we only need a generic
+    `DeleteTool`. The following code implements this map tool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once again, we are using the `QgsMapToolIdentify` class to let us quickly find
+    the feature the user clicked on. We use the `canvasPressEvent()` and `canvasReleaseEvent()`
+    methods to ensure that the user clicked and released the mouse over the same feature;
+    this ensures that the map tool works in a more user-friendly way than simply deleting
+    the feature when the user clicks on it. If both the mouse click and the mouse
+    release were over the same feature, we would delete it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the help of these map tools, it is quite straightforward to implement a
+    PyQGIS application that allows the user to add, edit, and delete Point features
+    within a map layer. These, however, are the "low hanging fruit"—our next task,
+    where we have to let the user add and edit LineString and Polygon geometries,
+    is more complex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding lines and polygons
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To add a LineString or a Polygon geometry, the user will *draw* the desired
+    shape by clicking on each vertex in turn. Appropriate feedback will be displayed
+    as the user clicks on each vertex. For example, a LineString geometry would be
+    displayed in the following way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Adding lines and polygons](img/00083.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'To draw the outline of a Polygon geometry, the user will once again click on
+    each vertex in turn. This time, however, the polygon itself will be displayed
+    to make the resulting shape clear, as the following image shows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Adding lines and polygons](img/00084.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In both cases, the basic logic of clicking on each vertex and displaying appropriate
+    feedback is the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'QGIS includes a map tool named `QgsMapToolCapture`, which handles exactly this
+    behavior: it allows the user to draw a LineString or the outline of a Polygon
+    geometry by clicking on each vertex in turn. Unfortunately, `QgsMapToolCapture`
+    is not available as part of the PyQGIS library, so we will have to re-implement
+    it ourselves using Python.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's start by looking at the design of our `QgsMapToolCapture` port, which
+    we will call `CaptureTool`. This will be a standard map tool, derived from `QgsMapTool`,
+    which makes use of `QgsRubberBand` objects to draw the visual highlighting of
+    the LineString or Polygon as it is drawn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A `QgsRubberBand` is a map canvas item that draws a geometry on top of the
+    map. Since a rubber band draws its entire geometry in a single color and style,
+    we have to use two rubber bands in our capture tool: one that draws the already
+    captured part of the geometry and a second temporary rubber band that extends
+    the geometry out to the current mouse position. The following illustration shows
+    how this works for both LineString and Polygon geometries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Adding lines and polygons](img/00085.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Here are some additional features that we will include in `CaptureTool`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It will have a *capture mode* that indicates whether the user is creating a
+    LineString or a Polygon geometry.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The user can press the *Backspace* or *Delete* key to remove the last vertex
+    added.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The user can press the *Enter* or *Return* key to finish the capturing process.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If we are capturing a Polygon, the geometry will be *closed* when the user finishes
+    capturing. This means that we add an extra point to the geometry so that the outline
+    begins and ends at the same point.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When the user finishes capturing a geometry, the geometry will be added to the
+    layer, and a callback function will be used to tell the application that a new
+    geometry has been added.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Now that we know what we''re doing, let''s start implementing the `CaptureTool`
+    class. The first part of our class definition will look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At the top of our class, we define two constants, `CAPTURE_LINE` and `CAPTURE_POLYGON`,
+    which define the available capture modes. We then have the class initializer,
+    which will accept the following parameters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`canvas`: This is the `QgsMapCanvas` this map tool will be part of.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`layer`: This is the `QgsVectorLayer` the geometry will be added to.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`onGeometryAdded`: This is a Python-callable object (that is, a method or function)
+    that will be called when a new geometry has been added to the map layer.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`captureMode`: This indicates whether we are capturing a LineString or a Polygon
+    geometry.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We then set the various instance variables to their initial state, and tell
+    the map tool to use a cross cursor, which makes it easier for the user to see
+    exactly where they are clicking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our next task is to implement the various `XXXEvent()` methods to respond to
+    the user's actions. We'll start with `canvasReleaseEvent()`, which responds to
+    a left-click by adding a new vertex to the geometry, and to a right-click by finishing
+    off the capture process and then adding the geometry to the map layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We implement this behavior in the `canvasReleaseEvent()` method, rather than
+    `canvasPressEvent()`, because we want the vertex to be added when the user releases
+    the mouse button, rather than when they initially press it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the implementation of the `canvasReleaseEvent()` method. Note that
+    we make use of several helper methods, which we will define shortly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we have the `canvasMoveEvent()` method, which responds to the action
+    of the user moving the mouse by updating the temporary rubber band to reflect
+    the current mouse position:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The interesting part here is the call to `tempRubberBand.movePoint()`. The `QgsRubberBand`
+    class works in map coordinates, so we first have to convert from the current mouse
+    position, which is in pixels, to map coordinates. We then call `movePoint()`,
+    which moves the current vertex in the rubber band to the new position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is one more event handling method to define: `onKeyEvent()`. This responds
+    to the user pressing the *Backspace* or *Delete* keys by removing the last added
+    vertex, and to the user pressing *Return* or *Enter* by closing and saving the
+    current geometry. Here is the code for this method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we''ve defined our event handling methods, let''s now define the various
+    helper methods that these event handlers rely on. We''ll start with the `transformCoordinates()`
+    method, which converts from a mouse position, which is in canvas coordinates,
+    to map and layer coordinates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: If, for example, the mouse is currently at position `(17,53)` on the canvas,
+    this may translate to a map and layer coordinate of `lat=37.234` and `long=-112.472`.
+    As the map and layer might use different coordinate reference systems, we calculate
+    and return the coordinates for both.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s now define the `startCapturing()` method, which prepares our two rubber
+    bands and sets `self.capturing` to `True`, so we know that we are currently capturing
+    a geometry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that we use another helper method, `bandType()`, to decide on the type
+    of geometry that the rubber band should draw. Let''s define that method now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next up is the `stopCapturing()` method, which removes our two rubber bands
+    from the map canvas, resets our instance variables back to their initial state,
+    and tells the map canvas to refresh itself so that the rubber bands are hidden:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now come to the `addVertex()` method. This adds a new vertex to the current
+    geometry at the clicked-on mouse position, and updates the rubber bands to match:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we add the captured point to the `self.capturedPoints` list. This
+    is the list of points that will define the geometry when we finish capturing.
+    Setting up the temporary rubber band is a bit convoluted, but the basic idea is
+    to define LineString or Polygon so that it covers the currently highlighted portion
+    of the new geometry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s now define the `removeLastVertex()` method, which is called when the
+    user presses *Backspace* or *Delete* to undo their last click. This method is
+    slightly complicated because we have to update both rubber bands to remove the
+    last vertex, as well as the `self.capturedPoints` list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ve now defined quite a few methods for our `CaptureTool`. Fortunately,
+    there are only two methods left. Let''s now define the `getCapturedGeometry()`
+    method. This method checks whether a LineString geometry has at least two points,
+    and whether a Polygon geometry has at least three points. It then closes the polygon
+    and returns the list of points that make up the captured geometry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we have the `geometryCaptured()` method, which responds to the geometry
+    that is captured. This method creates a new geometry of the given type, adds it
+    as a feature to the map layer, and uses the `onGeometryAdded` callable object
+    passed to the initializer of our `CaptureTool`, to tell the rest of the application
+    that a new geometry has been added to the layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: While `CaptureTool` is complicated, it is a very powerful class that allows
+    the user to add new lines and polygons to a map layer. There are a few features
+    we haven't implemented here (coordinate snapping, checking whether the resulting
+    geometry is valid, and adding support for inner rings that form "holes" within
+    a polygon), but even as is, this is a useful tool for adding new features to a
+    map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Editing lines and polygons
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The last major functionality we will examine is the ability to edit LineString
+    and Polygon features. Just as the `CaptureTool` allowed the user to click and
+    drag to create new lines and polygons, we will implement `EditTool`, which lets
+    the user click and drag to move the existing feature''s vertices. The following
+    image shows what the user will see when they use this tool to move a vertex:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Editing lines and polygons](img/00086.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Our editing tool will also let the user add new vertices by double-clicking
+    on a line segment, and delete vertices by right-clicking on the same line segment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s define our `EditTool` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, `EditTool` is a subclass of `QgsMapTool`, and the initializer
+    accepts three parameters: the map canvas, the layer to be edited, and an `onGeometryChanged`
+    callable object, which will be called when the user makes a change to a geometry.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we want to define the `canvasPressEvent()` method. We''ll start by identifying
+    the feature that the user clicked on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll implement the `findFeatureAt()` method shortly. Now that we know which
+    feature the user clicked on, we want to identify the vertex within that feature
+    that is closest to the click point, and how far away from the vertex the user
+    clicked. Here is the relevant code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we're using a copy of the `transformCoordinates()` method (borrowed
+    from our `CaptureTool` class) to convert from canvas coordinates to map and layer
+    coordinates. We then use the `QgsGeometry.closestVertex()` method to identify
+    the closest vertex to the mouse click. This method returns a number of values,
+    including the square of the distance from the closest vertex to the mouse position.
+    We use the `math.sqrt()` function to convert this into a regular distance value,
+    which will be in layer coordinates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we know how far away the mouse click was from the vertex, we have
+    to decide whether the distance was too much. If the user didn''t click anywhere
+    near a vertex, we''ll want to ignore the mouse click. To do this, we''ll calculate
+    a **tolerance** value. The tolerance is determined by how far the click point
+    can be from a vertex while still considering it to be a click on that vertex.
+    As with the distance value we calculated earlier, the tolerance is measured in
+    layer coordinates. We''ll use a helper method, `calcTolerance()`, to calculate
+    this value. Here is the relevant code to add at the end of our `canvasPressEvent()`
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, we ignore the mouse click if it is too far away from the vertex,
+    that is, if the distance is greater than the tolerance. Now that we know that
+    the user did click near the vertex, we want to respond to that mouse click. How
+    we do this depends on whether the user pressed the left or the right mouse button:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, we''re relying on a number of helper methods to do most of
+    the work. We''ll define these methods shortly, but first, let''s finish implementing
+    our event handling methods, starting with `canvasMoveEvent()`. This method responds
+    as the user moves the mouse over the canvas. It does this by moving the dragged
+    vertex (if any) to the current mouse position:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we have `canvasReleaseEvent()`, which moves the vertex to its final position,
+    refreshes the map canvas, and updates our instance variables to reflect the fact
+    that we are no longer dragging a vertex:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our final event-handling method is `canvasDoubleClickEvent()`, which responds
+    to a double-click by adding a new vertex to the feature. This method is similar
+    to the `canvasPressEvent()` method; we have to identify the clicked-on feature,
+    and then identify which line segment the user double-clicked on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, we ignore the double-click if the mouse position is too far
+    away from the line segment. Next, we want to add the new vertex to the geometry,
+    and update the map layer and the map canvas to reflect this change:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This completes all of the event-handling methods for our `EditTool`. Let''s
+    now implement our various helper methods, starting with the `findFeatureAt()`
+    method that identifies the clicked-on feature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We use the tolerance value to define a search rectangle centered around the
+    click point, and identify the first feature that intersects that rectangle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Editing lines and polygons](img/00087.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Next up is the `calcTolerance()` method, which calculates how much distance
+    we can tolerate before a click is considered to be too far away from a vertex
+    or geometry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: We calculate this by identifying two points on the map canvas that are ten pixels
+    apart, and converting both of these coordinates into layer coordinates. We then
+    return the distance between these two points, which will be the tolerance in the
+    layer coordinate system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We now get to the interesting part: moving and deleting vertices. Let''s start
+    with the method to move a vertex to a new location:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we convert the position into layer coordinates, tell the `QgsGeometry`
+    object to move the vertex to this location, and then tell the layer to save the
+    updated geometry. Finally, we use the `onGeometryChanged` callable object to tell
+    the rest of the application that the geometry has been changed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Deleting a vertex is slightly more complicated, as we have to prevent the user
+    from deleting a vertex if there aren''t enough vertices left to make a valid geometry—LineString
+    must have a minimum of two vertices, while a polygon must have at least three.
+    Here is the implementation of our `deleteVertex()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the polygon check has to allow for the fact that the first and last
+    points on the polygon's exterior are the same. This is why we check to see whether
+    a polygon has at least four coordinates rather than three.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This completes our implementation of the `EditTool` class for editing LineString
+    and Polygon geometries. To see this map tool in action along with the other geometry-editing
+    map tools we defined in this chapter, check out the **GeometryEditor** program,
+    which is included in the sample code of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned how to write a PyQGIS application that lets the
+    user select and edit features. We created a map tool that uses the selection-handling
+    methods in `QgsVectorLayer` to let the user select features, and learned how to
+    work with the currently selected features within your program. We then looked
+    at how the layer's editing mode allows the user to make changes and then either
+    commit those changes or discard them. Finally, we created a series of map tools
+    that allow the user to add, edit, and delete Point, LineString, and Polygon geometries
+    within a map layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting all these tools together, your PyQGIS application can sport a complete
+    range of selection- and geometry-editing features. In the final two chapters of
+    this book, we will use these tools together with the knowledge we gained in the
+    previous chapters, to build a complete standalone mapping application using Python
+    and QGIS.
+  prefs: []
+  type: TYPE_NORMAL

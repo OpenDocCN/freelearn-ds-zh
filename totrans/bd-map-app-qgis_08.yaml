@@ -1,0 +1,1075 @@
+- en: Chapter 8. Building a Complete Mapping Application using Python and QGIS
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will design and start building a complete turnkey mapping
+    application. While our example application might seem somewhat specialized, the
+    process of designing and implementing this application, and much of the code that
+    we use, will apply to all sorts of mapping applications that you might like to
+    write yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Due to the complexity of the application we''re creating, we will split the
+    implementation across two chapters. In this chapter, we will lay the groundwork
+    for the mapping application by:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the application
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the high-resolution basemap on which our vector data will be displayed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing the overall structure of the application
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Defining the application's user interface
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the following chapter, we will implement the map tools that let the user
+    enter and manipulate map data, edit attributes, and calculate the shortest path
+    between two points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing ForestTrails
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Imagine that you work for a company responsible for developing and maintaining
+    a large recreational forest. People use the various access roads and purpose-built
+    trails in the forest for walking, biking and horse riding. Your task is to write
+    a computer program that lets the user create a database of access roads and trails
+    to assist with the ongoing maintenance of the forest. For simplicity, we will
+    use the term **track** to refer to either an access road or a trail. Each track
+    will have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Type**: Whether the track is a walking trail, a bike trail, a horse trail,
+    or an access road'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Name**: Not all trails and access roads are named, though some are'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Direction**: Some trails and access roads are one-way, while others can be
+    travelled in both directions'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Status**: Whether the track is currently open or closed'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since the recreational forest is continually being developed, new tracks are
+    being regularly added, while existing tracks are sometimes modified or even removed
+    if they are no longer needed. This means that you can't hardwire the set of tracks
+    into your program; you will need to include a *track editing* mode so that the
+    user can add, edit, and remove tracks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A specific request you have been given is to produce a set of directions that
+    the track maintenance team can follow in order to go from a given starting point
+    to any place in the forest. To implement this, the program will have to let the
+    user choose the starting and ending points, and calculate and display the **shortest
+    available path** between those two points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the ForestTrails application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Based on our set of requirements, it seems clear that tracks can be represented
+    by LineString geometries. We will also need an appropriate basemap on which these
+    geometries will be displayed. This means that our application will have at least
+    the following two map layers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Designing the ForestTrails application](img/00088.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Since we want the data to be persistent, we will use a SpatiaLite database to
+    hold our track data, while the basemap is simply a GeoTIFF raster image that we
+    load and display.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Along with these two main map layers, we will make use of memory-based layers
+    to display the following temporary information on top of the map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The currently selected starting point
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The currently selected ending point
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The shortest available path between these two points
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To keep things easier, we''re going to display each of these in a separate
+    map layer. This means that our application is going to have a total of five map
+    layers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`basemapLayer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`trackLayer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`startPointLayer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`endPointLayer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`shortestPathLayer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Along with the map itself, our application will sport a toolbar and a menu
+    bar, both of which let the user access the various features of the system. The
+    following actions will be available in the toolbar and menu bar:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Zoom in**: This will let the user zoom in on the map.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Zoom out**: This lets the user zoom out.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Pan**: This is the pan mode we implemented earlier, which allows the user
+    to move around on the map.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Edit**: Clicking on this item will turn on the track editing mode. If we
+    are already in the track editing mode, clicking on it again will prompt the user
+    to save their changes before turning off the editing mode.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Add track**: This lets the user add a new track. Note that this item is only
+    available while in the track editing mode.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Edit track**: This lets the user edit an existing track. This is only enabled
+    if the user is in the track editing mode.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Delete track**: This lets the user delete a track. This is only available
+    in the track editing mode.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Get info**: This enables the Get Info map tool. When the user clicks on a
+    track, this tool will display the attributes for that track, and allow the user
+    to make changes to those attributes.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Set start point**: This lets the user set the current starting point for
+    the shortest path calculation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Set end point**: This item lets the user click on the map to set the ending
+    point for the shortest path calculation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Find the shortest path**: This displays the shortest available path between
+    the current starting and ending points. Clicking on this item again will hide
+    the path.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This gives us a good idea of what our application should look like, and how
+    it will work. Let's now start writing our ForestTrails program by implementing
+    the basic logic for the application and its main window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our application is going to be a standalone Python program built using PyQt
+    and the PyQGIS library. Taking the Lex application we implemented in [Chapter
+    5](part0033_split_000.html#page "Chapter 5. Using QGIS in an External Application"),
+    *Using QGIS in an External Application*, as a starting point, let''s see how we
+    can organize the source files for the ForestTrails system. We''ll start with the
+    following basic structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Creating the application](img/00089.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This is very similar to the structure we used for the Lex application, so most
+    of this should be familiar to you. The main difference is that we''re using two
+    subdirectories to hold additional files. Let''s take a look at what each of these
+    files and directories will be used for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`constants.py`: This module will hold various constants used throughout the
+    ForestTrails system.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`data`: This is a directory that we will use to hold our raster basemap as
+    well as the SpatiaLite database that holds our tracks.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`forestTrails.py`: This is the main program for our application.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Makefile`: This file tells the make tool how to compile the `resources.qrc`
+    file into a `resources.py` module that our application can use.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`mapTools.py`: This module implements our various map tools.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`resources`: This is a directory where we will place our various icons and
+    other resources. Since we have so many icon files, it makes sense to put these
+    into a subdirectory rather than cluttering up the main directory with all these
+    files.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`resources.qrc`: This is the resource description file for our application.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`run_lin.sh`: This bash shell script is used to run our application on Linux
+    systems.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`run_mac.sh`: This bash shell script is used to run our application on Mac
+    OS X systems.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`run_win.bat`: This batch file is used to run our application on MS Windows
+    machines.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ui_mainWindow.py`: This Python module defines the user interface for our main
+    window.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Laying out the application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s implement the ForestTrails system one small step at a time. Create a
+    directory to hold the source code for the ForestTrails system, and then create
+    the `data` and `resources` subdirectories within it. As many of the files in the
+    main directory are straightforward, let''s just go ahead and create the following
+    files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `Makefile` should look like this:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that if your `pyrcc4` command is in a nonstandard location, you might need
+    to modify this file so that `make` can find it.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Create the `resources.qrc` file as follows:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note that we've included various image files that will be used for our toolbar
+    actions. All these files are in our `resources` subdirectory. We'll look at how
+    to obtain these image files shortly.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The `run-lin.sh` file should look like this:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Similarly, `run-mac.sh` should contain the following:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `run-win.bat` file should contain:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If your QGIS installation is in a nonstandard place, you might need to modify
+    the appropriate script so that the required libraries can be found.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Since the `resources.qrc` file imports our various toolbar icons and makes them
+    available to the application, we'll want to set up those icon files. Let's do
+    that now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the toolbar icons
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are a total of 11 toolbar actions that we will want to display icons
+    for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Defining the toolbar icons](img/00090.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Feel free to create or download your own icons for these toolbar actions, or
+    you can use the icon files included in the source code provided with this chapter.
+    The file format isn't important, just as long as you include the right suffix
+    in the `resoures.qrc` file, and in `ui_mainWindow.py` when the toolbar action
+    is initialized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Make sure you place these files into the `resources` subdirectory, and run `make`
+    to build the `resources.py` module so that these icons are available for your
+    application to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this groundwork done, we're ready to start defining the application code
+    itself. Let's start with the `constants.py` module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The constants.py module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This module will hold various constants that we use to represent the track
+    attribute values; by defining them in one place, we make sure that the attribute
+    values are used consistently, and we don''t have to remember exactly what the
+    values are. For example, the `type` attribute for the tracks layer can have the
+    following values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ROAD`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`WALKING`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`BIKE`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`HORSE`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Rather than hardwiring these values every time we need them, we''re going to
+    define these values in the `constants.py` module. Create this module and enter
+    the following code into it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: We'll be adding a few more constants as we go along, but this is enough to get
+    us started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The forestTrails.py module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This module defines the main program for the ForestTrails application. It looks
+    very similar to the `lex.py` module we defined in [Chapter 5](part0033_split_000.html#page
+    "Chapter 5. Using QGIS in an External Application"), *Using QGIS in an External
+    Application*. Create your `forestTrails.py` file, and enter the following `import`
+    statements into it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we want to define the main window for our application in a class, which
+    we will call `ForestTrailsWindow`. This is where the bulk of the application code
+    will be implemented; this class will get quite complicated, but we're going to
+    start easy and just define the window itself, and have empty placeholder methods
+    for all the toolbar actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s define the class itself and the `__init__()` method to initialize a
+    new window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is very similar to the `__init__()` method for the Lex application; we'll
+    define the `Ui_MainWindow` class in the `ui_mainWindow.py` module to set up the
+    application's user interface. This is where all those `actionXXX` instance variables
+    will be defined. In our `__init__()` method, we're connecting these actions to
+    various methods, which will respond when the user selects the action from the
+    toolbar or menu bar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rest of the `__init__()` method simply sets up a map canvas and lays it
+    out within the window. With this method behind us, we can now define all those
+    action-handling methods. We can borrow two of these directly from `lex.py`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the rest, we''ll hold off on implementing them until the application is
+    a bit more complete. To allow our program to run, we''ll set up empty placeholder
+    methods for the remaining action handlers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last part of the `forestTrails.py` module is the `main()` function, which
+    is called when the program is run:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once again, this is almost identical to the code we saw earlier in the Lex application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This completes our initial implementation of the `forestTrails.py` module. Our
+    next step is to create the module that will hold all our map tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The mapTools.py module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We used `mapTools.py` in the Lex application to define our various map tools
+    separately from the main program. We''re going to do the same here. For now, though,
+    our `mapTools.py` module is almost empty:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Obviously, we'll be adding to this as we start to implement our various map
+    tools, but for now, this is enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ui_mainWindow.py module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This is the last module we need to define for our initial implementation of
+    the ForestTrails system. As in the Lex application, this module defines a `Ui_MainWindow`
+    class, which implements the application''s user interface, and defines `QAction`
+    objects for the various menu and toolbar items. We''ll start by importing the
+    modules that our class will need:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we''ll define the `Ui_MainWindow` class and the `setupUi()` method that
+    will do all the work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first part of the `setupUi()` method sets the title for the window, creates
+    a `centralWidget` instance variable to hold the map view, and initializes the
+    application''s menus and toolbar:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we want to define all the `QAction` objects for the various toolbar and
+    menu items. For each action, we''ll define the action''s icon and keyboard shortcut,
+    and check whether or not the action is **checkable** (that is, stays on when the
+    user clicks on it):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then add the various actions to our application''s menus:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we''ll add the actions to our toolbar and tell the window to resize
+    itself to fit its contents:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: This completes our implementation of the `ui_mainWindow.py` module. We now have
+    a complete mini application that should be able to run. Let's try it out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that you've entered all this code, it's time to check whether it works.
+    Let's try to run the application using the appropriate startup script. Open a
+    terminal or command-line window, navigate into the `forestTrails` directory, and
+    run the appropriate startup script.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If all goes well, you should see the application''s main window along with
+    the toolbar and menu items:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Running the application](img/00091.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Of course, the main window's map view is empty, and none of the toolbar or menu
+    items do anything yet, but at least we have a working framework for our application.
+    Our next steps are to obtain the basemap for our application, set up our map layers,
+    and then start implementing the various toolbar and menu bar items.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Obtaining the basemap
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To follow through this section of the chapter, you are going to need access
+    to the GDAL command-line tools. GDAL is probably already installed on your computer,
+    as QGIS makes use of it. If you don't already have GDAL installed, go to [www.gdal.org](http://www.gdal.org)
+    and click on the **Downloads** link to download and install a copy onto your machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the challenges of writing a mapping application is to obtain a high-quality
+    basemap on top of which your geospatial data will be displayed. In our case, we
+    want our basemap to show an aerial photograph of the forest. We're going to use
+    the Whakarewarewa Forest in Rotorua, New Zealand, for our ForestTrails application.
+    Fortunately, suitable aerial photographs are available from the *Land Information
+    New Zealand* website.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Go to the following web page, which provides high-resolution aerial photos
+    for the Bay of Plenty, New Zealand:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://data.linz.govt.nz/layer/1760-bay-of-plenty-025m-rural-aerial-photos-2011-2012/](https://data.linz.govt.nz/layer/1760-bay-of-plenty-025m-rural-aerial-photos-2011-2012/)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We want to download a basemap that covers the Whakarewarewa forest, which is
+    just south of the city of Rotorua. In the map on the right-hand side of the page,
+    pan and zoom until the following area of the map is visible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Obtaining the basemap](img/00092.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The dark circular area in the center of the map is Lake Rotorua. Zoom in further
+    and pan down to the area just south of Rotorua:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Obtaining the basemap](img/00093.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This map shows the Whakarewarewa forest image we want to download. Next, click
+    on the **crop** tool (![Obtaining the basemap](img/00094.jpeg)) in the upper right-hand
+    corner and select the following area of the map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Obtaining the basemap](img/00095.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'With the appropriate area of the map selected, click on the **"Download or
+    Order"** link in the upper right-hand corner. The window that appears gives you
+    the option to download the basemap. Make sure you select the following options:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Map Projection will be NZGD2000
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Image format will be TIFF in the original resolution
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You will need to register to download the file, but the registration process
+    only takes a few seconds, and it doesn't cost anything.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The resulting download should be about 2.8 GB, just under the 3 GB limit for
+    file downloads from this site. If it's too big, you'll have to select a smaller
+    area to download.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you''ve downloaded the file, you will end up with a ZIP archive that contains
+    a number of TIFF format raster image files. Next, we need to combine these images
+    into a single `.tif` file for our basemap. To do this, we''ll use the `gdal_merge.py`
+    command that comes with GDAL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Choose an appropriate destination for the `basemap.tif` file (by replacing `/dst/path`
+    with a sensible location, for example, the path to your desktop). If the current
+    directory is not set to the folder that contains the downloaded `.tif` files,
+    you'll need to also specify the source path in the command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It will take a while for this command to stitch together the various images,
+    but the result should be a single large file named `basemap.tif`. This is a TIFF-format
+    raster image that contains the aerial photograph you selected, geo referenced
+    to the appropriate portion of the Earth's surface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Unfortunately, we can''t use this file directly. To see why, run the `gdalinfo`
+    command on the downloaded file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Among other things, this tells us which coordinate reference system the file
+    is using:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the downloaded basemap uses the **New Zealand Transverse Mercator
+    2000** coordinate system. We need to translate this into the WGS84 (geographic
+    latitude/longitude coordinate) coordinate system so that we can use it in the
+    ForestTrails program. To do this, we''ll use the `gdalwarp` command, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you look at the resulting image using `gdalinfo`, you''ll see that it has
+    been converted into the lat/long coordinate system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You might wonder why we didn't download the file directly in the WGS84 coordinate
+    system. We downloaded the file in its original CRS because this gives us more
+    control over the final image. Reprojecting the image ourselves also makes it easier
+    to see how the image was changed when it was reprojected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So far, so good. However, if we look at the resulting image, we''ll see another
+    problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Obtaining the basemap](img/00096.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The translation from NZGD2000 into WGS84 rotated the basemap slightly, so the
+    borders of the map don''t look good. Now, we need to trim the map to get rid of
+    the unwanted borders. To do this, we''ll use the `gdal_warp` command again, this
+    time with a target extent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You might need to adjust the lat/long values if you have selected slightly different
+    bounds when downloading the basemap. The corner coordinate values displayed by
+    `gdalinfo` will give you a clue as to what values have to be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The resulting file is a good raster basemap for us to use for our ForestTrails
+    program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Obtaining the basemap](img/00097.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Copy the final image into your `forestTrails/data` directory and rename it back
+    to `basemap.tif`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the map layers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We know that we want to have a total of five map layers in our application.
+    The basemap layer will display the `basemap.tif` file we just downloaded, while
+    the track layer will use a SpatiaLite database to store and display the track
+    data entered by the user. The remaining map layers will display temporary features
+    held in memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s start by defining a new method in our `forestTrails.py` module to initialize
+    the SpatiaLite database we will use for the track layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we check to see whether the SpatiaLite database file exists
+    in our `data` subdirectory, and create a new database if necessary. We define
+    the various fields that will hold the various track attributes, and use a `QgsVectorFileWriter`
+    object to create the database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will also need to modify the `main()` function to call the `setupDatabase()`
+    method. Add the following line to this function after the call to `window.raise_()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we''ve set up our database for the track layer, we can define our
+    various map layers. We''ll create a new method called `setupMapLayers()` to do
+    this. Let''s start by defining a `layers` variable to hold the various map layers,
+    and initialize our base map layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we want to set up our **tracks** layer. Since this is stored in a SpatiaLite
+    database, we have to use a `QgsDataSourceURI` object to connect the database to
+    the map layer. The following code shows how this is done:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now set up a memory-based map layer to display the shortest path:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: We saw how to create memory-based map layers in [Chapter 6](part0047_split_000.html#page
+    "Chapter 6. Mastering the QGIS Python API"), *Mastering the QGIS Python API*,
+    so there shouldn't be any surprises here; we're simply defining the shortest path
+    layer to hold a LineString geometry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we want to set up another memory-based map layer to show the user''s
+    selected starting point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Also, we want to set another map layer for the ending point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This completes all five of our map layers. The final part of the `setupMapLayers()`
+    method adds these various layers to the map canvas. Note that because we defined
+    the map layers in back-to-front order (in other words, the first entry in `layers`
+    is the basemap, which should appear at the back), we have to reverse the layers
+    before we add them to the map canvas. Here is the relevant code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last thing we have to do is add a call to `setupMapLayers()` from within
+    our `main()` function. Add the following immediately after the `window.setupDatabase()`
+    line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that our map layers are set up, we can run our program again. There''s
+    no vector data yet, but the basemap should be visible, and we can zoom in and
+    out using the toolbar icons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Defining the map layers](img/00098.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Defining the map renderers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that we have the map layers, we''ll want to set up appropriate symbols
+    and renderers to draw the vector data onto the map. Let''s start by defining a
+    method called `setupRenderers()`, which creates the renderers for our various
+    map layers. Our first renderer will display the track layer, where we use a `QgsRuleBasedRendererV2`
+    object to display the tracks in different ways depending on the type of track,
+    whether or not the track is open, and whether it is bidirectional or can only
+    be used in one direction. Here is the relevant code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we iterate over all the possible track types. Based on the track
+    type, we choose a suitable line width. We also choose a color to use for the line
+    and the arrowheads—for now, we're simply using the same color for every type of
+    track. We then iterate over all the possible status and direction values, and
+    call a helper method named `createTrackSymbol()` to create a suitable symbol for
+    this track type, status, and direction. We then create a `QgsRuleBasedRendererV2.Rule`
+    object that uses that symbol for those tracks with the given type, status, and
+    direction. Finally, we define an "else" rule for the renderer, displaying the
+    track as a simple black line if the track doesn't have any of the expected attribute
+    values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our remaining map layers will use straightforward line or marker symbols to
+    display the shortest path, and the starting and ending points. Here''s the remainder
+    of the `setupRenderers()` method, which defines these map renderers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we''ve defined the `setupRenderers()` method itself, let''s modify
+    our `main()` function to call it. Add the following line immediately after the
+    call to `setupMapLayers()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are a few more things we need to do to finish implementing our map renderers.
+    Firstly, we need to define the `createTrackSymbol()` helper method that we used
+    to set up the track renderer. Add the following to your `ForestTrailsWindow` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The complex part of this method is the code to draw an arrowhead onto the track
+    to indicate the track's direction. Apart from this, we simply draw a line to represent
+    the track using the specified color and width, and if the track is closed, we
+    draw the track as a dotted line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our final task here is to add some more entries to our `constants.py` module
+    to represent the various sizes and line widths used by our renderers. Add the
+    following to the end of this module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: All of these values are in map units.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, we can't see these renderers being used yet, as we don't have
+    any vector features to display, but we need to implement them now so that our
+    code will work when the time comes. We won't see these renderers in action until
+    the next chapter, when the user starts adding tracks and selecting start/end points
+    on the map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Pan Tool
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To let the user move around the map, we''ll make use of the `PanTool` class
+    we implemented in an earlier chapter. Add the following class definition to the
+    `mapTools.py` module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Back in our `forestTrails.py` module, add the following new method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This method will initialize the various map tools that our application will
+    use; we''ll add to this method as we go along. For now, add the following to your
+    `main()` function, after the call to `window.setupRenderers()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now replace our dummy implementation of `setPanMode()` with the real
+    thing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you run your program now, you'll see that the user can now zoom in and out
+    and use the pan tool to move around the basemap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the track editing mode
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our final task for this chapter is to implement the track editing mode. We learned
+    in the previous chapter how we can turn on the editing mode for a map layer and
+    then use various map tools to let the user add, edit, and delete features. We'll
+    start to implement the actual map tools in [Chapter 9](part0072_split_000.html#page
+    "Chapter 9. Completing the ForestTrails Application"), *Completing the ForestTrails
+    Application*, but for now, let's define our track editing mode itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `setEditMode()` method is used to enter and leave the track editing mode.
+    Replace the placeholder method you defined earlier with this new implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the user is currently editing the tracks and has made some changes, we ask
+    the user whether they want to save their changes, and either commit the changes
+    or roll them back. If no changes have been made, we roll back (to turn off the
+    vector layer's editing mode) and switch back to the panning mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are a couple of instance variables that we use here to monitor the state
+    of our track editing: `self.editing` will be set to `True` if we''re currently
+    editing the tracks, and `self.modified` is set to `True` if the user has changed
+    anything in the track layer. We''ll have to add the following to our `ForestTrailsWindow.__init__()`
+    method to initialize these two instance variables:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There''s another method that we haven''t seen before: `adjustActions()`. This
+    method will enable/disable and check/uncheck the various actions: depending on
+    the application''s current state. For example, when we enter the track editing
+    mode, our `adjustActions()` method will enable the add, edit, and delete tools,
+    and these tools will be disabled again when the user leaves the track-editing
+    mode.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can''t implement all of `adjustActions()`at the moment because we haven''t
+    yet defined the various map tools that our application will use. For now, we''ll
+    write the first half of this method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We''ll also need to add a call to `adjustActions()` in our `main()` function
+    after the call to `setPanMode()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the track editing mode implemented, the user can click on the **Edit**
+    toolbar icon to enter the track editing mode, and click on it again to leave that
+    mode. Of course, we can't make any changes yet, but the code itself is in place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There''s one more feature we''d like to add to our application; if the user
+    makes some changes to the track layer and then tries to quit the application,
+    we''d like to give the user the chance to save their changes. To do this, we''ll
+    implement the `quit()` method, which we linked to the `actionQuit` action:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is very similar to the part of the `setEditMode()` method that lets the
+    user leave the track editing mode, except that we call `qApp.quit()` to quit the
+    application at the end. We have one more method to define, which intercepts an
+    attempt to close the window and calls `self.quit()`. This prompts the user to
+    save their changes if they close the window while editing. Here is the definition
+    for this method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we designed and started to implement a complete mapping application
+    for maintaining a map of tracks and roads within a recreational forest. We implemented
+    the application itself, defined our map layers, obtained a high-resolution basemap
+    for our application, and implemented zooming, panning, and the code necessary
+    for editing the track layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will round out the implementation of our ForestTrails
+    system by implementing the map tools to let the user add, edit, and delete tracks.
+    We will also implement the code for editing track attributes and finding the shortest
+    available path between two points.
+  prefs: []
+  type: TYPE_NORMAL

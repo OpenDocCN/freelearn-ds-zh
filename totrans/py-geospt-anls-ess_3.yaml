@@ -1,0 +1,944 @@
+- en: Chapter 3. Spatial Databases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will look at how you can use a database to store, analyze,
+    and manipulate geospatial data. While spatial databases can be quite complex,
+    and the process of optimizing spatial queries can be challenging, they can be
+    used in a straightforward way without too much fuss and are an important part
+    of the geospatial analyst's toolkit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learn the important concepts you'll need to know before using a spatial database
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Install the PostgreSQL relational database system onto your computer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Install the PostGIS extension to PostgreSQL to support spatial databases
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Install the `psycopg2` database adapter to allow you to access Postgres from
+    your Python programs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learn how to create a spatial database using PostGIS
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Discover how to import data into your spatial database using Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learn how to query your spatial database using Python code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: See how you can manipulate your spatial data from Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learn how to export data out of a spatial database
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let's start by looking at the concept of spatial databases and how they work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spatial database concepts
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As mentioned in the previous chapter, spatial databases are databases which
+    can store and query spatial data. Each record in a spatially-enabled database
+    table has one or more **geometry fields** which position that record somewhere
+    on the Earth''s surface. How the geometry field(s) are used will depend on what
+    type of information you are storing in the database table. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A record representing a delivery vehicle might include a Point geometry reflecting
+    the vehicle's current location.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A record representing a road might include a LineString geometry representing
+    the shape of the road.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A record representing a forest fire might include a Polygon geometry representing
+    the area affected by the fire.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Some spatial databases allow you to have multiple geometry fields, while others
+    are limited to just one per record.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: By itself, a geometry field is simply a database *blob* which can hold the encoded
+    geometry data. The data is usually stored in **Well-Known Binary** (**WKB**) format.
+    This allows you to store and retrieve geometry data from the database. However,
+    by itself, this isn't very useful—what defines a spatial database is the ability
+    to build a **spatial index** using the stored geometry values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A spatial index is what allows you to search for records in the database based
+    on their position on the Earth''s surface. A spatial index does not index the
+    geometry directly. Instead, it calculates the **bounding box** for each geometry,
+    and then indexes that bounding box. The following illustration shows how this
+    works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spatial database concepts](img/4102_03_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'A common task for spatial indexes is to identify the geometry (or geometries)
+    that contain a given point. For example, if the user clicks on a location on a
+    map, you might want to know which country, if any, the user clicked on. This is
+    represented by a spatial database query such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The `ST_Contains` function is an example of a database query function. This
+    function is provided by the PostGIS spatial database. Different spatial databases
+    use different names for their various query functions; all the query functions
+    listed in this chapter come from PostGIS, as that is the database we'll be working
+    with in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To perform this query, the database first uses the spatial index to identify
+    those records that have a bounding box containing the desired point. This process
+    is shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spatial database concepts](img/4102_03_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The crosshairs represent the desired point, and the rectangles represent the
+    bounding boxes. As you can see, there are two bounding boxes which contain the
+    desired point. These bounding boxes correspond to the records labeled `France`
+    and `Germany` in the database. The database uses this information to load each
+    of the matching geometries into memory and checks each one in turn to see if it
+    contains the desired point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Spatial database concepts](img/4102_03_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In this way, the database was able to determine that the click point was inside
+    Germany.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s review this process, as it is a very important concept. The database
+    *first* identifies the potentially matching records using the bounding boxes stored
+    in the spatial index and *then* loads each potential geometry into memory to check
+    it. This two-step process is surprisingly efficient: by using the bounding boxes
+    in the spatial index, it immediately discards the vast majority of records which
+    are not a potential match. It then performs the relatively time-consuming task
+    of loading the geometry into memory only for the few potential matches, and then
+    checks each of these in turn.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is important that you understand this two-step process of performing spatial
+    queries because you have to do certain things to make sure it works. In particular:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You have to ensure that the geometries you want to query against are included
+    in a spatial index.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You have to carefully phrase your query so that the database can actually use
+    the index you have set up. If, for example, the database has to transform your
+    geometry from one spatial reference system to another, or perform some sort of
+    spatial manipulation on the data before it can be queried against, then your spatial
+    index will be ignored and the database will revert to performing a sequential
+    scan of all your data. This can be extremely slow, taking hours or even days to
+    complete a single query.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you have an extremely complex geometry with a large bounding box, for example,
+    a detailed outline of the United States, you may find that your queries are still
+    taking a long time to complete. This is because the bounding box covers such a
+    large area of the Earth's surface that it is being included in many queries, and
+    the complexity of the outline means that the query is still taking a long time
+    to process. One way to solve this problem is to split a large and complex geometry
+    into smaller pieces, so the database only has to process one small piece rather
+    than the whole thing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Despite these potential issues, a spatial database is a wonderful tool for
+    storing and analyzing geospatial data. Of course, spatial databases are not limited
+    to just searching for records using `ST_Contains()`. They can be used for all
+    sorts of spatial queries as seen in the following table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Spatial query function | Description |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ST_Within` | This matches the records that have a geometry completely enclosed
+    by a given polygon. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ST_Intersects` | This matches the records where the record''s geometry intersects
+    with a given geometry. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ST_Crosses` | This matches the records where the record''s geometry crosses
+    over a given line or polygon. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `ST_DWithin` | This matches the records that are within a given distance
+    of a given location or geometry. |'
+  prefs: []
+  type: TYPE_TB
+- en: There are some subtleties in these spatial query functions which you will need
+    to become familiar with—these are described in detail in the PostGIS documentation.
+    However, this table should give you an idea of the power of a spatial database
+    and tell you how a spatial database (using the appropriate spatial indexes) can
+    be a great tool for working with geospatial data, especially when you have many
+    records to process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that you have some idea of how a spatial database works, let's install one
+    on your computer and then see how we can access it from within your Python programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing a spatial database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this book, we are going to use one of the most popular and powerful geospatial
+    databases: PostGIS. PostGIS is an extension to the freely available PostgreSQL
+    relational database. To use it in our Python programs, we need to install three
+    separate pieces of software:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The PostgreSQL database server itself
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The PostGIS extension to PostgreSQL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `psycopg2` database adapter for Python
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: PostgreSQL is often referred to simply as **Postgres**. We will use this more
+    colloquial name regularly throughout this book.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Let's work through the process of installing each of these pieces of software
+    in turn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing PostgreSQL
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: PostgreSQL ([http://postgresql.org](http://postgresql.org)) is one of the most
+    powerful open source relational databases available. While it has a reputation
+    for being difficult to set up and use, it's not too tricky, and with prebuilt
+    installers available for every major operating system the setup process is now
+    quite straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s go ahead and get PostgreSQL installed on your computer. How you do this
+    depends on which operating system you are running:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If your computer runs Microsoft Windows, you can download an installer for PostgreSQL
+    from [http://www.enterprisedb.com/products-services-training/pgdownload](http://www.enterprisedb.com/products-services-training/pgdownload).
+    Select the appropriate installer for your version of Windows (32-bit or 64-bit),
+    and download the installer file. Then simply double-click on the downloaded installer
+    and follow the instructions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you are running Mac OS X, you can download a working version of PostgreSQL
+    from the KyngChaos web site, [http://www.kyngchaos.com/software/postgres](http://www.kyngchaos.com/software/postgres).
+    Simply download the disk image, open it, and double-click on the **PostgreSQL.pkg**
+    package file to install PostgreSQL on your computer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you are using a Linux machine, you can follow the instructions on the PostgreSQL
+    download page, [http://www.postgresql.org/download](http://www.postgresql.org/download).
+    Choose the appropriate link for the Linux distribution you are using, and you
+    will be presented with the appropriate installation instructions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Once you have installed PostgreSQL, you can check that it is running by typing
+    the `psql` command into a terminal or command-line window. If all going well,
+    you should see the Postgres command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'If the `psql` command complains about user authentication, you may need to
+    specify a user account to use when connecting to Postgres. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Many Postgres installations have a `postgres` user, which you need to select
+    (using the `–U` command-line option) when accessing the database. Alternatively,
+    you may need to use `sudo` to switch to the root user, or open the command prompt
+    as an administrator if you are running Microsoft Windows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing PostGIS
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we've installed Postgres itself, we next need to install the PostGIS
+    spatial database extension. The main website for PostGIS can be found at [http://postgis.net](http://postgis.net).
+    You should go to this website, click on the **Documentation** tab, and download
+    the user manual for the latest version of PostGIS. You'll find this manual very
+    helpful, as it explains PostGIS in great detail, including all the various sorts
+    of queries you can make.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How you install PostGIS depends on which operating system you are running:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If your computer is running MS Windows, you can download an installer for PostGIS
+    from [http://download.osgeo.org/postgis/windows](http://download.osgeo.org/postgis/windows).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For Mac OS X, download and run the PostGIS installer from [http://kyngchaos.com/software/postgres](http://kyngchaos.com/software/postgres).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_IND
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that you will also need to have installed the GDAL Complete package, which
+    you should have already done when working through the previous chapter.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'If you are using a Linux-based operating system, follow the instructions on
+    the PostGIS installation page: [http://postgis.net/install](http://postgis.net/install).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To check that PostGIS has been successfully installed, try typing the following
+    sequence of commands into your terminal window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You'll need to add a `–U postgres` option or use `sudo` for each of these commands
+    if you need to run PostgreSQL under a different user account.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can probably guess, the `createdb` command creates a new database. We
+    then use the `psql` command to initialize that database with the PostGIS extension,
+    and finally the `dropdb` command deletes the database again. If this sequence
+    of commands runs without error, your PostGIS installation (and Postgres itself)
+    is set up and running properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing psycopg2
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we've got a spatial database, let's install the `psycopg2` library
+    so we can access it using Python.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`psycopg2` is a standard Python database adapter—that is, it''s a library that
+    conforms to the Python Database API specified in PEP 249 ([https://www.python.org/dev/peps/pep-0249](https://www.python.org/dev/peps/pep-0249)).
+    We will look at how to use `psycopg2` to store and query against spatial data,
+    but if you have not worked with a Python database adapter before, you may want
+    to look at one of the available tutorials on the subject. A good tutorial on the
+    subject can be found at [http://halfcooked.com/presentations/osdc2006/python_databases.html](http://halfcooked.com/presentations/osdc2006/python_databases.html).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The website for `psqcopg2` can be found at [http://initd.org/psycopg](http://initd.org/psycopg).
+    As usual, how you install this library depends on which operating system you are
+    using:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For MS Windows, you can download a double-clickable installer from [http://www.stickpeople.com/projects/python/win-psycopg](http://www.stickpeople.com/projects/python/win-psycopg).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If your computer runs Mac OS X, a double-clickable installer can be found at
+    [http://www.kyngchaos.com/software/python](http://www.kyngchaos.com/software/python).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For a Linux machine, you will need to install `psycopg2` from source. For instructions
+    on how to do this, please refer to [http://initd.org/psycopg/docs/install.html](http://initd.org/psycopg/docs/install.html).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To check that it worked, start up your Python interpreter and type the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: If `psycopg2` was installed correctly, you should see the Python interpreter
+    prompt reappear with no error message, as shown in this example. If an error message
+    does appear, you may need to follow the troubleshooting instructions on the `psycopg2`
+    website.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Accessing PostGIS from Python
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, we have installed some tools and libraries onto your computer. Now it's
+    time to use those tools and libraries to do something interesting. In the remainder
+    of this chapter, we are going to import the World Borders Dataset into a PostGIS
+    database, which we will call `world_borders`, and then use Python to perform various
+    queries against that data. We will also see how we can manipulate that dataset
+    using PostGIS and Python.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To start with, create a new directory named `world_borders` and place it somewhere
+    convenient. You will use this directory to store the various files you create.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up a spatial database
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When accessing a database using `psycopg2`, we first have to specify which
+    database we are going to use. This means that the database must exist before your
+    Python code can use it. To set everything up, we''ll use the Postgres command-line
+    utilities. Type the following into your terminal or command-line window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Don't forget to include the `-U postgres` option, or `sudo`, if you need to
+    access Postgres under a different user account.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This creates the database itself. We next want to enable the PostGIS spatial
+    extension for our database. To do this, enter the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we''ve set up the database itself, let''s create the table within
+    the database which will hold our spatial data. To do this, we''re going to create
+    a Python program called `create_table.py`. Go ahead and create this file within
+    your `world_borders` directory, and enter the following into the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now want to open up a connection to the database. To do this, we have to
+    tell `psycopg2` which database to use and which user account (and possibly, which
+    password) to use to access that database. This is done by providing keyword parameters
+    to the `psycopg2.connect()` function, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: You'll only need the `user` parameter if you needed to supply a `-U` command-line
+    argument when running the Postgres command-line tools. You'll also only need the
+    `password` if that user account is password-protected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we have a database connection, we then set up a `cursor` object, which
+    we''ll use to issue commands to the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step may be a bit counter-intuitive: rather than creating the database
+    table, we''re going to delete it if it already exists. Doing this lets us run
+    the `create_table.py` script multiple times without causing any errors. Here is
+    the relevant code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `execute()` statement tells the cursor to run the given SQL command. In
+    this case, the command is `DROP TABLE IF EXISTS`, which tells the database to
+    delete (drop) the table if it already exists.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can now create our database table using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that we have split this command across multiple lines to make it easier
+    to read. With the exception of the last line, this is a standard SQL database
+    table definition: we''re creating a table where each record has a unique `id`
+    value automatically allocated by the database, a `name` value, and an `iso_code`
+    value. In the final line, we create the `outline` field and give it a type of
+    `GEOGRAPHY`. Geography fields are specific to PostGIS; they are a variant of the
+    `GEOMETRY` field type and are designed to work with spatial data that uses unprojected
+    latitude and longitude coordinates.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we''ve created our database table, let''s set up a spatial index on
+    this data. As we have seen, a spatial index will greatly speed up queries against
+    our database. Let''s create a spatial index for our `outline` field:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, because Postgres is a transactional database, we need to *commit*
+    the changes we have made, to make them permanent. Here is the necessary code to
+    do this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This finishes our `create_table.py` program, which should look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you run this program, your database table and the associated spatial index
+    will be created. Let's now import the contents of the World Borders Dataset into
+    our newly created table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Importing spatial data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Take a copy of the `TM_WORLD_BORDERS-0.3` directory you downloaded earlier,
+    and place it inside your `world_borders` directory. Then create another Python
+    script named `import_data.py`. This is where you will place the code to import
+    the data into your database.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to use the OGR library to import the data from the shapefile,
+    and `psycopg2` to insert it into the database. So the first two lines in our program
+    should look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We next need to open up a connection to the database. The code to do this is
+    identical to the code that we used in the `create_table.py` script:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Don't forget to adjust the keyword parameters to `psycopg2.connect()` to match
+    the user account you need to connect to PostgreSQL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are now ready to start importing the data from the shapefile. First, though,
+    we are going to delete the existing contents of our database table; this will
+    let us run our `import_data.py` program multiple times, wiping out the existing
+    records before adding new ones, so that we start each time with a blank slate:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We are now ready to import the data from the shapefile into the database. Let''s
+    start this by opening the shapefile and extracting the information we want from
+    it, one feature at a time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This should be familiar to you, since we worked with OGR to read the contents
+    of a shapefile in the previous chapter. Now that we have the geometry, we can
+    convert it into WKT format, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now have all the information we need to insert the feature into the database.
+    Here is the code to perform the actual insertion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is a lot going on here, so let''s take a closer look at this command.
+    We are using `INSERT` here, which is a standard SQL command. The `INSERT` command
+    has the following basic structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we specify the name of the database table, a list of fields,
+    and the values to store into those fields.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a standard Python database adapter, `psycopg2` will automatically translate
+    Python values, such as integers, floating point numbers, strings, `datetime` objects
+    and the like, into their SQL equivalents. This is where those `%s` placeholders
+    come in—we use `%s` in our SQL command string at each point where we want to provide
+    a value, and then supply the actual values themselves as the second parameter
+    to the `cursor.execute()` command. Consider, for example, the following Postgres
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command would insert a record into the `users` table, setting the `name`
+    field to the value of the `user_name` variable, and the `age` field to the value
+    of the `user_age` variable. This conversion of Python values to SQL string literals
+    is extremely powerful and is one of the major benefits of using a database adapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is one final complexity in the `INSERT` statement we are using to import
+    the shapefile''s contents into our `borders` table: we are using the `ST_GeogFromText()`
+    function to convert our WKT-format string into a geography value before inserting
+    it into the `outline` field. We have to do this because OGR and Postgres use different
+    internal representations for geometry data. WKT format strings are the *lingua
+    franca* that converts between these two internal representations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After we have finished importing the various features from the shapefile, we
+    have to commit our changes so that they are written to the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Putting all of this together, here''s what our `import_data.py` program looks
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we run this program, all the records from the World Borders Dataset shapefile
+    should be imported into the database. Notice that it only takes a few seconds
+    to complete—even though we have to convert the outlines from OGR geometries into
+    WKT, and then convert from WKT into PostGIS geography objects, it does not take
+    long to do this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want, you can run the `psql` command-line client and type commands such
+    as `SELECT id,name,iso_code FROM borders` to see the data that you have imported.
+    But of course we really want to use Python to query against our spatial database.
+    Let's do this now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Querying spatial data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let''s write another Python program to perform various queries against the
+    contents of our database. Start by creating another Python file named `query_data.py`
+    and place it into the `world_borders` directory. We start by importing the `psycopg2`
+    library, opening up a connection to our database, and creating a database cursor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This should all be familiar from the `create_table.py` program we created earlier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s now perform a simple (non-spatial) database query, just to see how it
+    works. Add the following to the end of your program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When you run your `query_data.py` program, you should see a list of the record
+    IDs and associated names, taken from your `borders` table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that you use `cursor.execute()` to execute your query, and then iterate
+    over the cursor to get the matching rows. The value for each row is a tuple containing
+    the fields you requested.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Of course, you can also use `%s` to include Python values in your query, for
+    example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So far, we have been using the non-spatial aspects of PostgreSQL. Let''s now
+    make a spatial query against this data. We''re going to ask the database to identify
+    all countries within 1,000 kilometers of Paris. Using the `GEOGRAPHY` data type
+    in PostGIS, this is easy to do:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ST_DWithin` command identifies the countries that are within `radius`
+    meters of the specified point; running the program should return a list of the
+    countries that are within 1,000 kilometers of Paris:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: This gives you an idea of how powerful PostGIS is, and the types of queries
+    you can make using the `psycopg2` database adapter. Make sure you study the *PostGIS
+    Reference* section of the PostGIS manual to learn about the various sorts of spatial
+    queries you can make.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Manipulating spatial data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You are not limited to just using static data in your spatial analysis. You
+    can also create new geometries and manipulate existing geometries directly within
+    a PostGIS database. While it's easy to create a brand new geometry using functions
+    such as the `ST_GeogFromText()` function we used earlier, you can also use the
+    PostGIS geometry editing and geometry processing functions to create new geography
+    values derived from old ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: There are some limitations on the functions available when you use the PostGIS
+    `GEOGRAPHY` type. PostGIS originally only supported the `GEOMETRY` data type,
+    which was designed to only work with spatial data projected onto a flat Cartesian
+    plane. When using the `GEOGRAPHY` field, check the PostGIS manual to see which
+    functions are supported.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To get an idea of how we can calculate new spatial values based on our existing
+    data, let's write a program to buffer our outlines, and store them into a new
+    `GEOGRAPHY` column in our database table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We saw the `buffer()` operation in the previous chapter, where we saw that
+    it can often be used to fix an invalid geometry. If you remember, the `buffer()`
+    operation constructs a new geometry that includes all points within a certain
+    distance of the existing geometry. The following image shows the outline of the
+    United Kingdom, and the same outline after it has been buffered:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Manipulating spatial data](img/4102_03_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Let''s write a program to calculate these buffered outlines. Create a new Python
+    script in your `world_borders` directory, and name it `buffer.py`. Enter the following
+    into this file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now want to create a new field to hold the buffered outline. To do this,
+    add the following to the end of your file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `ALTER TABLE` command is a standard Postgres command to change the structure
+    of a database table; in this case, we add a new `GEOGRAPHY` column named `buffered_outline`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Notice that we wrapped our `ALTER TABLE` command in a `try...except` statement.
+    This is because `psycopg2` will raise `ProgrammingError` if the column already
+    exists. By catching this error, we can run our `buffer.py` program multiple times
+    without it failing because the `buffered_outline` field has already been added
+    to the table.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because of transaction issues with exceptions in `psycopg2`, we have to call
+    `connection.rollback()` when an exception occurs. This allows the program to continue
+    even though an exception has been raised.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our next task is to calculate the buffered outlines. Using PostGIS, this is
+    very easy:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this SQL statement, we are setting the value of the `buffered_outline` field
+    to the result of the `ST_Buffer()` command. The `ST_Buffer()` command accepts
+    a geography value and a distance in meters; it returns a new geography that contains
+    all points that are within the given distance from the existing geography.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our final task is to commit the changes we have made to the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: This actually completes our `buffer.py` program, and if we run it, we will get
+    a buffered version of each outline stored in the `buffered_outline` field. However,
+    because this program does not show anything, there's no way of knowing if it actually
+    worked. To get around this, let's add a final spatial query to calculate and display
+    the area of each outline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The basic structure of our query will look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result of the `ST_Area()` function is the area of the geography measured
+    in square meters. Because these numbers can be huge, we''ll want to convert them
+    into square kilometers for display. However, there is a slight problem: when we
+    buffer a geometry, it can sometimes become invalid because the buffered geometry
+    lies outside the range of valid latitude and longitude values. Even though we
+    only buffered the geographies by a kilometer, any geographies that lie close to
+    the north or south pole, or close to the limits of -180 or +180 degrees of longitude,
+    will have an invalid buffered outline. When we try to calculate the area of these
+    invalid outlines, the result will be a `NaN` (Not a Number) value.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s add some code to check for invalid areas and handle them gracefully;
+    replace the `...` line in the previous code listing with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: You will also need to add an `import math` statement to the top of your program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running this program will take a minute or so to calculate all the buffers,
+    after which the calculated areas will be displayed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the buffered area is somewhat larger than the original one,
+    which is what you would expect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exporting spatial data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our introduction to spatial databases is almost complete; the only thing left
+    to examine is how to get spatial data out of PostGIS again, for example to save
+    it back into a shapefile. To extract a spatial value from a `GEOGRAPHY` field,
+    use the `ST_AsText()` function. For example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can then use the OGR geometry to write the spatial data into a shapefile,
+    or do anything else you wish to do with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we looked at how spatial databases can be a powerful tool for
+    geospatial data analysis. We covered the important concepts behind spatial databases,
+    and installed PostgreSQL, PostGIS, and `psycopg2` onto your computer. We then
+    got our hands dirty by creating a spatial database, importing data into that database,
+    performing spatial queries, manipulating spatial data using PostGIS, and exporting
+    data from a spatial database, all using Python code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will explore how to use the Mapnik library to produce
+    great-looking maps based on our geospatial data.
+  prefs: []
+  type: TYPE_NORMAL

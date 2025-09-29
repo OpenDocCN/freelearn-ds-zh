@@ -1,0 +1,1175 @@
+- en: Chapter 8. Sharing Models with Prediction Services
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Thus far, we have examined how to build a variety of models with data sources
+    ranging from standard ''tabular'' data to text and images. However, this only
+    accomplishes part of our goal in business analysis: we can generate predictions
+    from a dataset, but we cannot easily share the results with colleagues or with
+    other software systems within a company. We also cannot easily replicate the results
+    as new data becomes available without manually re-running the sorts of analyses
+    discussed in previous chapters or scale it to larger datasets over time. We will
+    also have difficulty to use our models in a public setting, such as a company''s
+    website, without revealing the details of the analysis through the model parameters
+    exposed in our code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To overcome these challenges, the following chapter will describe how to build
+    'prediction services', web applications that encapsulate and automate the core
+    components of data transformation, model fitting, and scoring of new observations
+    that we have discussed in the context of predicative algorithms in prior sections.
+    By packaging our analysis into a web application, we can both easily scale the
+    modeling system and change implementations in the underlying algorithm, all the
+    while making such changes invisible to the consumer (whether a human or other
+    software system), who interacts with our predictive models by making requests
+    to our application through web URLs and a standard REST **application programmer
+    interface** (**API**). It also allows initialization and updates to the analysis
+    to be automated through calls to the service, making the predictive modeling task
+    consistent and replicable. Finally, by carefully parameterizing many of the steps,
+    we can use the same service to interact with interchangeable data sources computation
+    frameworks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In essences, building a prediction service involves linking several of the
+    components we have already discussed, such as data transformation and predictive
+    modeling, with a set of new components that we will discuss in this chapter for
+    the first time. To this end, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to instrument a basic web application and server using the Cherrypy and
+    Flask frameworks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to automate a generic modeling framework using a RESTful API
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Scaling our system using a Spark computation framework
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Storing the results of our predictive model in database systems for reporting
+    applications we will discuss in [Chapter 9](ch09.html "Chapter 9. Reporting and
+    Testing – Iterating on Analytic Systems"), *Reporting and Testing – Iterating
+    on Analytic Systems*
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The architecture of a prediction service
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now with a clear goal in mind—to share and scale the results of our predictive
+    modeling using a web application—what are the components required to accomplish
+    this objective?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first is the *client*: this could be either a web browser or simply a user
+    entering a `curl` command in the terminal (see Aside). In either case, the client
+    sends requests using **hypertext transfer protocol** (**HTTP**), a standard transport
+    convention to retrieve or transmit information over a network (Berners-Lee, Tim,
+    Roy Fielding, and Henrik Frystyk. *Hypertext transfer protocol--HTTP/1.0*. No.
+    RFC 1945\. 1996). An important feature of the HTTP standard is that the client
+    and server do not have to ''know'' anything about how the other is implemented
+    (for example, which programming language is used to write these components) because
+    the message will remain consistent between them regardless by virtue of following
+    the HTTP standard.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next component is the *server*, which receives HTTP requests from a client
+    and forwards them to the application. You can think of it as the gateway for the
+    requests from the client to our actual predictive modeling application. In Python,
+    web servers and applications each conform to the **Web Server Gateway Interface**
+    (**WSGI**), which specifies how the server and application should communicate.
+    Like the HTTP requests between client and server, this standard allows the server
+    and application to be modular as long as both consistently implement the interface.
+    In fact, there could even be intervening middleware between the server and application
+    that further modifies communication between the two: as long as the format of
+    this communication remains constant, the details of each side of the interface
+    are flexible. While we will use the Cherrypy library to build a server for our
+    application, other common choices are Apache Tomcat and Nginx, both written in
+    the Java programming language.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the client request has been received and forwarded by the server, the
+    application performs operations in response to the requests, and returns a value
+    indicating the success or failure of the task. These requests could, for example,
+    obtain for the predicted score for a particular user, update to the training dataset,
+    or perform a round of model training.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Aside: The curl command**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As part of testing our prediction service, it is useful to have a way to quickly
+    issue commands to the server and observe the response we receive back. While we
+    could do some of this interactively using the address bar of a web browser, it
+    is not easy to script browser activities in cases where we want to run a number
+    of tests or replicate a particular command. The `curl` command, found in most
+    Linux command line terminals, is very useful for this purpose: the same requests
+    (in terms of a URL) can be issued to the prediction service using the `curl` command
+    as would be given in the browser, and this call can be automated using shell scripting.
+    The `curl` application can be installed from [https://curl.haxx.se/](https://curl.haxx.se/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The web application relies upon server-side code to perform commands in response
+    to requests from the web server. In our example, this server-side code is divided
+    into several components: the first is a generic interface for the modeling logic,
+    which specifies a standard way to construct predictive models, train them with
+    an input dataset, and score incoming data. The second is an implementation of
+    this framework using the logistic regression algorithm from [Chapter 5](ch05.html
+    "Chapter 5. Putting Data in its Place – Classification Methods and Analysis"),
+    *Putting Data in its Place – Classification Methods and Analysis*. This code relies
+    upon executing Spark jobs, which could be carried out either locally (on the same
+    machine as the web application) or remotely (on a separate cluster).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final piece of this chain is database systems that can persist information
+    used by the prediction service This database could be as simple as file system
+    on the same machine as the web server or as complex as a distributed database
+    software. In our example we will use both Redis (a simple key-value store) and
+    MongoDB (a NoSQL database) to store the data used in modeling, transient information
+    about our application, and the model results themselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we have emphasized, an important feature of these three components is that
+    they are largely independent: because the WGSI standard defines how the web server
+    and application communicate, we could change server and predictive model implementation,
+    and as long as the commands used in the web application are the same, the code
+    will still work since these commands are formatted in a consistent way.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have covered the basic components of a prediction service and how
+    they communicate with one another, let us examine each in greater detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clients and making requests
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When a client issues requests to the server and the downstream application,
+    we might potentially have a major design problem: how do we know in advance what
+    kind of requests we might receive? If we had to re-implement a new set of standard
+    requests every time we developed a web application, it would be difficult to reuse
+    code and write generic services that other programs could call, since their requests
+    would potentially have to change for every web application a client might interact
+    with.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the problem solved by the HTTP standard, which describes a standard
+    language and format in which requests are sent between servers and clients, allowing
+    us to rely upon a common command syntax, which could be consumed by many different
+    applications. While we could, in theory, issue some of these commands to our prediction
+    service by pasting a URL into the address bar of our browser (such as GET, described
+    below), this will only cover a subset of the kinds of requests we want to issue.
+    The standard sorts of requests we typically implement in a web application are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The GET requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `GET` requests only retrieve information, which will then be rendered in
+    our web browser depending upon the kind of response. We could receive back an
+    actual `html` page, or simply a piece of text. In order to specify what information
+    we want to receive, a GET request will include variables in the URL in the form
+    `url?key1=value1&key2=value2`. URL is the web address given to the prediction
+    service, which in our example will just be the local machine, but could also be
+    any valid IP address or URL. This URL is separated by a question mark (**?**)
+    from the (key, value) pairs that define the parameters of our request for information.
+    Multiple parameters may be specified: for example, we could indicate a pair of
+    parameters for a user and item dataset using the string `userid=12894&itemid=93819`,
+    with each key, value pair separated by the ampersand symbol (`&`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can directly issue a `GET` request by pasting the URL format described previously
+    into the address bar of a browser or by issuing a `curl` command to the same address
+    by typing the following into a terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also use the Python requests library ([http://docs.python-requests.org/en/master/](http://docs.python-requests.org/en/master/)),
+    which allows us to not worry about the details of formatting the URL. Using this
+    library, the same GET request is called in the following way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, `params` is a dictionary of key-value pairs that we would have passed
+    in the URL. The requests library performs this formatting for us, as we can see
+    by printing the resulting URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once we have issued the request, we can check the result using either of the
+    following two commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also check the status code of the response to see if there was an error
+    or not (see aside on standard response codes):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Aside: HTTP Status Codes**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we issue a request to a web application using the methods discussed in
+    this chapter, one way to check the success of the request is to examine the response
+    code, which gives a standard number corresponding to the response of the web application
+    to the request. You may have even seen these codes before without realizing it,
+    such as the 404 error that is returned when a webpage cannot be displayed in your
+    browser. The standard codes to be aware of are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '200: success, we usually check this value to make sure we received a correct
+    response.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '404: not found, indicating that the web application could not find the resource
+    we requested.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '500: server error, which we will often receive if the code run by our web application
+    runs into problems.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a more comprehensive list please, see (Nottingham, Mark, and Roy Fielding.
+    "Additional HTTP Status Codes." (2012); Berners-Lee, Tim, Roy Fielding, and Henrik
+    Frystyk. Hypertext transfer protocol--HTTP/1.0\. No. RFC 1945\. 1996).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The POST request
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Unlike the GET command, the POST request does not use data contained in the
+    URL, but rather transmits information separate from the URL. If you have ever
+    entered your credit card information in an online store, this information is probably
+    transmitted using a POST request, which is fortunate since it then remains hidden.
+    However, the fact that the information for the request is not contained in the
+    URL means that we cannot simply paste the request into the address bar of our
+    web browser: we would need a form on the webpage that issues the POST request
+    or make the request programmatically ourselves. Without an actual form on a webpage,
+    we can use a `curl` command to issue a POST request using the following syntax:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also use the Python requests library:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, `data` is a Python dictionary of information that the
+    web application can access in fulfilling the POST request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The HEAD request
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Like the GET request, HEAD retrieves information, but instead of the body of
+    the response (such as a webpage or JSON), it only retrieves metadata about the
+    response (such as the encoding). We can issue a HEAD request using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we have added the `–i` flag to this request; normally, the `curl`
+    command will not print header information without this option. Using the Python
+    requests library we would use the command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The PUT request
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In cases where our web application has access to a database system, we issue
+    PUT commands in order to store new information. Using `curl`, we make this request
+    using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also make this request using the requests library:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, data is a dictionary of the arguments we wish to place in the applications
+    storage system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The DELETE request
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The opposite of the PUT command, DELETE requests are issued to remove a piece
+    of data from the application''s storage system. The curl command is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'While the same request using the requests library is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, data is a dictionary of the arguments we wish to remove from the applications
+    storage system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While there are other requests types available, we will not cover them in this
+    discussion; for more details please see (Berners-Lee, Tim, Roy Fielding, and Henrik
+    Frystyk. Hypertext transfer protocol--HTTP/1.0\. No. RFC 1945\. 1996). Note that
+    since we can issue these requests using the Python request library, we can actually
+    test our web application in the Python notebooks we have been using in the exercises
+    in this volume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For our purposes, the client will be the Jupyter notebook itself or the command
+    line of the terminal; however, we could imagine other cases where the client is
+    actually another web application that issues these commands and acts on the response.
+    Again, since the server only needs to guarantee a particular message format rather
+    than the details of the sender, either option is interchangeable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know how to issue HTTP requests to our service, let us look at the
+    server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Server – the web traffic controller
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To run our prediction service, we need to communicate with external systems
+    to receive requests to train a model, score new data, evaluate existing performance,
+    or provide model parameter information. The web server performs this function,
+    accepting incoming HTTP requests and forwarding them on to our web application
+    either directly or through whatever middleware may be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though we could have made many different choices of server in illustrating this
+    example, we have chosen the CherryPy library because unlike other popular servers
+    such as Apache Tomcat or Nginx, it is written in Python (allowing us to demonstrate
+    its functionality inside a notebook) and is scalable, processing many requests
+    in only a few milliseconds ([http://www.aminus.org/blogs/index.php/2006/12/23/cherrypy_3_has_fastest_wsgi_server_yet](http://www.aminus.org/blogs/index.php/2006/12/23/cherrypy_3_has_fastest_wsgi_server_yet).).
+    The server is attached to a particular port, or endpoint (this is usually given
+    in the format `url:port`), to which we direct requests that are then forwarded
+    to the web application. The use of ports means that we could in theory have multiple
+    servers on a given URL, each listening to requests on a different endpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we discussed previously, the server uses the WGSI specification to communicate
+    with the application itself. In concrete terms, the server has a function known
+    as a callable (for example, any object with a `__call__` method) that is executed
+    every time it receives a request, whose result is handed off to the application.
+    In our example in this chapter, the WGSI is already implemented by CherryPy, and
+    we will simply illustrate how it does so. Complete documentation of the interface
+    is available at ([https://www.python.org/dev/peps/pep-0333/](https://www.python.org/dev/peps/pep-0333/)).
+    In a way, the WGSI solves the same problem as HTTP in the communication between
+    servers and applications: it provides a common way in which the two systems exchange
+    information, allowing us to swap the components or event place intervening components
+    without altering the fundamental way in which information is transferred.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In cases where we might wish to scale the application to a larger load, we could
+    imagine middleware such as a load balancer between the server and the application.
+    The middleware would receive the callable output and pass it along to the web
+    application. In the case of a load balancer, this could potentially redistribute
+    requests to many separate instances of the same predictive service, allowing us
+    to scale the service horizontally (see Aside). Each of these services would then
+    return their response to the server before it is sent back to the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Aside: horizontal and vertical scaling**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the volume of data or computational complexity of our prediction services
+    increases, we have two primary ways to increase the performance of the service.
+    The first, known as horizontal scaling, might involve adding more instances of
+    our application. Separately, we might also increase the number of resources in
+    our underlying computing layer, such as Spark. In contrast, vertical scaling involves
+    improving the existing resources by adding more RAM, CPU, or disk space. While
+    horizontal scaling is more easily implemented using software alone, the right
+    solution for such resources constraints will depend on the problem domain and
+    organizational budget.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Application – the engine of the predictive services
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once a request has made its way from the client to the application, we need
+    to provide the logic that will execute these commands and return a response to
+    the server and subsequently client upstream. To do so, we must attach a function
+    to the particular endpoint and requests we anticipate receiving.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will be using the Flask framework to develop our web application
+    ([http://flask.pocoo.org/](http://flask.pocoo.org/)). While Flask can also support
+    template generation of HTML pages, in this chapter we will be using it purely
+    to implement various requests to the underlying predictive algorithm code through
+    URL endpoints corresponding to the HTTP requests discussed previously. Implementing
+    these endpoints allows a consistent interface through which many other software
+    systems could interact with our application—they just need to point to the appropriate
+    web address and process the response returned from our service. In case you are
+    concerned we will not generate any actual ''webpages'' in our application, do
+    not be worried: we will use the same Flask framework in [Chapter 9](ch09.html
+    "Chapter 9. Reporting and Testing – Iterating on Analytic Systems"), *Reporting
+    and Testing – Iterating on Analytic Systems*, to develop a dashboard system based
+    on the data we will generate through the predictive modeling service in this chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In writing the logic for our predictive modeling application, it is important
+    to keep in mind that the functions that are called in response to client requests
+    can themselves be interfaces specifying a generic, modular service. While we could
+    directly implement a particular machine learning algorithm in the code for the
+    web application itself, we have chosen to abstract this design, with the web application
+    instead making a generic call to construct a model with some parameters, train,
+    and score using an algorithm, regardless of the data or particular model used
+    in the application. This allows us to reuse the web application code with many
+    different algorithms while also affording the flexibility to implement these algorithms
+    in different ways over time. It also forces us to determine a consistent set of
+    operations for our algorithms since the web application will only interact with
+    them through this abstraction layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we have the algorithm itself, which is called by the web application
+    code. This program needs to implement functions, such as training a model and
+    scoring records using a set of data, specified in the web application. The details
+    can change substantially over time without need to modify the web application,
+    allowing us to flexibly develop new models or experiment with different libraries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Persisting information with database systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our prediction service will use data in a number of ways. When we start the
+    service, we have standard configurations we would like to retrieve (for example,
+    the model parameters), and we might also like to log records of the requests that
+    the application responds to for debugging purposes. As we score data or prepare
+    trained models, we would ideally like to store these somewhere in case the prediction
+    service needs to be restarted. Finally, as we will discuss in more detail, a database
+    can allow us to keep track of application state (such as which tasks are in progress).
+    For all these uses, a number of database systems can be applied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Databases are generally categorized into two groups: relational and non-relational.
+    Relational databases are probably familiar to you, as they are used in most business
+    data warehouses. Data is stored in the form of tables, often with facts (such
+    as purchases or search events) containing columns (such as user account IDs or
+    an item identifier) that may be joined to dimensional tables (containing information
+    on an item or user) or relational information (such as a hierarchy of items IDs
+    that define the contents of an online store). In a web application, a relational
+    system can be used behind the scenes to retrieve information (for example, in
+    response to a GET request for user information), to insert new information, or
+    delete rows from the database. Because the data in a relational system is stored
+    in tables, it needs to follow a common series of columns, and these sorts of systems
+    are not designed with nested structures such as JSON in mind. If we know there
+    are columns we will frequently query (such as an item ID), we can design indices
+    on the tables in these systems that speed up retrieval. Some common popular (and
+    open source) relational systems are MySQL, PostGreSQL, and SQLite.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-relational databases, also known as 'NoSQL', follow a very different data
+    model. Instead of being formed of tables with multiple columns, these systems
+    are designed as with alternative layouts such as key-value stores, where a row
+    of information (such as a customer account) has a key (such as an item index)
+    and an arbitrary amount of information in the value field. For example, the value
+    could be a single item or a nested series of other key-values. This flexibility
+    means that NoSQL databases can store information with diverse schema even in the
+    same table, since the fields in the value do not need to be specifically defined.
+    Some of these applications allow us to create indices on particular fields within
+    the value, just as for relational systems. In addition to key-value databases
+    (such as Redis) and document stores (such as MongoDB), NoSQL systems also include
+    columnar stores where data are co-located in files based primarily on column chunks
+    rather than rows (examples include Cassandra and Druid), and graph databases such
+    as Neo4j which are optimized for data composed of nodes and edges (such as what
+    we studied in the context of spectral clustering in [Chapter 3](ch03.html "Chapter 3. Finding
+    Patterns in the Noise – Clustering and Unsupervised Learning"), *Finding Patterns
+    in the Noise – Clustering and Unsupervised Learning*). We will use MongoDB and
+    Redis in our example in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to storing data with flexible schema, such as the nested JSON strings
+    we might encounter in REST API calls, key-value stores can server another function
+    in a web application by allowing us to persist the state of a task. For quickly
+    answered requests such as a GET class for information, this is not necessary.
+    However, prediction services might frequently have long-running tasks that are
+    launched by a POST request and take time to compute a response. Even if the task
+    is not complete though, we want to return an immediate response to the client
+    that initiated the task. Otherwise, the client will stall waiting for the server
+    to complete, and this can potentially affect performance of the client and is
+    very much against the philosophy of decoupling the components of the system described
+    previously. Instead, we want to return a task identifier to the client immediately,
+    which will allow the client to poll the service to check on the progress of the
+    task and retrieve the result when it is available. We can store the state of a
+    task using a key-value database and provide both update methods to allow us to
+    provide information on intermediate progress by editing the task records and GET
+    methods to allow clients to retrieve the current status of the task. In our example,
+    we will be using Redis as the backend to store task results for long-running applications,
+    and also as the message queue by which tasks can communicate, a role known as
+    a "broker".
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have covered the basic structure of our prediction service, let
+    us examine a concrete example that ties together many of the patterns we have
+    developed in predictive modeling tasks over the previous sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Case study – logistic regression service
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As an illustration of the architecture covered previously, let us look at an
+    example of a prediction service that implements a logistic regression model. The
+    model is both trained and scores new data using information passed through URLs
+    (either through the web browser or invoking curl on the command line), and illustrates
+    how these components fit together. We will also examine how we can interactively
+    test these components using the same IPython notebooks as before, while also allowing
+    us to seamlessly deploying the resulting code in an independent application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our first task is to set up the databases used to store the information used
+    in modeling, as well as the result and model parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the database
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As a first step in our application, we will set up the database to store our
+    training data and models, and scores obtained for new data. The examples for this
+    exercise consist of data from a marketing campaign, where the objective was to
+    convince customers to subscribe for a term deposit (Moro, Sérgio, Paulo Cortez,
+    and Paulo Rita. "A data-driven approach to predict the success of bank telemarketing."Decision
+    Support Systems 62 (2014): 22-31). Thus, the objective with this data is to predict
+    based on a customer''s feature variables whether they are likely to pay for this
+    service. The data is contained in the `bank-full.csv` file, which we need to load
+    into MongoDB ([https://www.mongodb.org/](https://www.mongodb.org/)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After installing MongoDB for your system, you can test the database by running
+    the following command in your terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command should start the database. Now, to import our training
+    data, we can use the following command in a separate terminal window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will allow us to import the data into a database called ''datasets'',
+    in a collection called bank. We can test if the data has been successfully loaded
+    by opening a mongo client in the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we run the following command, we should be able to see our dataset listed
+    under the datasets database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can verify that the data has been correctly parsed by examining one record:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The code here is inspired by examples in [https://github.com/jadianes/spark-movie-lens](https://github.com/jadianes/spark-movie-lens)
+    and [http://fgimian.github.io/blog/2012/12/08/setting-up-a-rock-solid-python-development-web-server](http://fgimian.github.io/blog/2012/12/08/setting-up-a-rock-solid-python-development-web-server).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can see that record appears like a Python dictionary. To retrieve elements
+    with particular values, we can use findOne with key:values set to the filters
+    we want to apply:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have the data loaded, we can interact with it through Python using
+    the pymongo client. We initialize a client with access to the database we just
+    created using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the `mongod` command still needs to be running in a separate terminal
+    window for you to access the database through Python. The customers object will
+    then contain each customer's records. While for the current example we will primarily
+    access MongoDB using the SparkConnector, the commands above will be useful in
+    [Chapter 9](ch09.html "Chapter 9. Reporting and Testing – Iterating on Analytic
+    Systems"), *Reporting and Testing – Iterating on Analytic Systems* when we analyze
+    the output of our model. Indeed, the MongoDB database allows us to store information
+    used by our model service, but also can be a source of shared information for
+    the reporting service we will build in [Chapter 9](ch09.html "Chapter 9. Reporting
+    and Testing – Iterating on Analytic Systems"), *Reporting and Testing – Iterating
+    on Analytic Systems*, by visualizing the results of our modeling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we mentioned previously, we will also use the Redis ([http://redis.io/](http://redis.io/))
+    key-value store to log the intermediate state of long-running tasks, and also
+    to store the serialized output from training models in Spark. After installing
+    Redis DB on your system, you should be able to start the server by typing the
+    following command in the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Which, if successful, should give and output like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Setting up the database](img/B04881_08_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The Python interface for Redis in the redis-py package (which, like many of
+    the libraries we have seen in prior chapters, may be installed using `pip` or
+    `easy_install`) is comparable to MongoDB. If we wanted to retrieve a record from
+    our redis database, we could the following commands to start a client and issue
+    a query or store data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we start a new client using 'StrictRedis', we specify the port the redis-server
+    is listening on (default of 6379) and the database identifier. By issuing get
+    and set commands, we can respectively retrieve prior results or update the database
+    with new information. As with the Python mongo client, we will need to have the
+    redis-server command running in a separate command line window to allow us to
+    issue commands to the database in Python.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have our databases set up, let us look at the server that will manage
+    requests for the applications using this data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The web server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As described previously, the web server receives requests and forwards them
+    to the web application. For our example, we start the server using the main function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are three steps: we read the parameters for this service (here, just
+    the name of the algorithm used), which is passed as command line argument, create
+    the web application (using the same parameter file passed in during creation in
+    the constructor), and then start the server. As you can see, the algorithm run
+    by the prediction service is specified using a string argument. Later we will
+    examine how this allows us to write a generic prediction service class, rather
+    than a specific web application for each new algorithm we might use. When we start
+    the server; it is registered on localhost on port 5000, as you can see by examining
+    the body of the `run_server` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are a few key things happening in this function. Firstly, we see middleware
+    in action since the TransLogger class from the paste library passes requests between
+    the server and the application. The TransLogger object then represents a valid
+    WGSI application since it has a callable (the application). We use the `tree.graft`
+    command to attach the application (the model service itself) so that the object
+    is called by the CherryPy modelserver whenever it receives an HTTP request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we start the cherrypy server, we provide a few configurations. The enable.autoreload.on
+    parameter controls whether the application will refresh when we change the source
+    files it is pointing to, in this case our Flask application. Log.screen directs
+    the output of error and access message to the stdout, which is useful when we
+    are still debugging. Finally, the last two settings specify the URL and endpoint
+    where we will send requests to the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we start the application, we also set it to block, which means it must
+    finish processing one request before considering another. If we want to tune performance,
+    we could remove this configuration, which would allow the application to receive
+    multiple requests without waiting for the first to finish. The URL for this server
+    is thus accessed by `http://0.0.0.0:5000` once it is running—this is the address
+    where we will send our various commands to the prediction service. To start the
+    server, type the following in the command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `parameters.json` file could contain parameters for the `modelservice`
+    application that will be used when starting the modeling application, but for
+    now we actually place nothing in this file. If successful, you should see the
+    following output in the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The web server](img/B04881_08_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: As we issue `curl` commands to the server, we will see the responses displayed
+    in this output as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The web application
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we have started the server and can begin receiving commands from the
+    client, let us look at the commands that will be executed by our application,
+    such as HTTP requests issued through the Python notebook or curl commands. The
+    code that is executed when we send requests to the `CherryPy` server is contained
+    in the `modelservice.py` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The constructor for the application, called by the `CherryPy` server when we
+    started it, returns an app object specified using the Flask framework:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: In addition to creating the Flask object app, we also generate a celery object.
+    What is this celery object? As mentioned previously, we do not want to have our
+    clients wait on long-running tasks to respond, as this would cause the client
+    applications to potentially hang or timeout. Thus, our application needs to be
+    non-blocking and return an immediate value for a long-running task, which is an
+    ID that allows us to access the progress and results of the task through a REST
+    API. We want to run the long-running task in a secondary process and have it report
+    back the results or intermediate state as they become available. For our application,
+    we will be using the `Celery` library ([http://www.celeryproject.org/](http://www.celeryproject.org/)),
+    an asynchronous task queuing system that is ideal for this sort of application.
+    Celery consists of a client that submits jobs to a queue, and worker tasks, which
+    read from this queue, perform work, and return the results to the client. The
+    client and workers communicate via a messaging queue, such as the Redis key-value
+    store we mentioned previously, and results are also persisted to this database.
+    The arguments `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` are used to specify,
+    respectively, where the worker tasks retrieve information on scheduled tasks,
+    and where we can look up information on the status of currently running tasks.
+    In our example, both functions are served by Redis, but we could substitute other
+    systems, such as the message queue system RabbitMQ ([https://www.rabbitmq.com/](https://www.rabbitmq.com/)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order for us to issue HTTP requests to the Celery worker tasks, we need
+    to make sure that redis is already running, and then start the Celery workers
+    using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: This starts celery worker processes with access to the commands specified in
+    `modelservice.py` which we will cover below. If successful, you will see the following
+    in your terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![The web application](img/B04881_08_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: As we later send requests to the service which are passed off to the Celery
+    workers, information (such as Spark outputs) will be printed in this window as
+    well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The flow of a prediction service – training a model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: So now that we have the Celery process running along with the Flask application,
+    how can we define the functions executed by the workers in response to our HTTP
+    requests? How can we specify the URLs to which we will issue curl commands? We
+    will illustrate the flow of events by showing how a call to the training function
+    will kick off a series of Spark jobs to perform cross validation and store a LogisticRegression
+    model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start by issuing a curl command to the `train` function with the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We could have similarly used the Python requests library to transmit the information
+    in `job.json` to the model training task. The `job.json` file contains all the
+    parameters we might need to use in the various stages of parsing the data and
+    training the model, as we will see as we walk through the flow of this request
+    through our application. When this command is received by the CherryPy modelserver,
+    it is forwarded to the Flask app defined in `modelservice.py`. How can we make
+    the Flask application respond to this request? It is as easy as providing a decorator
+    specifying a function to run in response to requests to this URL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `@app.route` decorator indicates that the Flask object app listens for POST
+    commands to a URL given as an argument to route. In responses, it extracts the
+    dictionary of parameters from the POST request and passes them to a `train_task`,
+    which will be run on a Celery worker process through the `apply_async` function.
+    We then immediately return a task identifier associated with this task, which
+    we can use to check the status or, as we will see, identify the output of the
+    resulting model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How do we specify the Celery task `train_task`? Similarly, we provide a decorator
+    indicating that this function will be run on a worker process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are a few important details here. First, along with annotating the function
+    with `@celery.task`, we provide the argument `bind=True`. This ensures that the
+    function has a ''self'' argument. Why would we need a self argument? In our example,
+    we attach a `MessangeHandler` object to the training task using a reference to
+    the function (self), allowing us to inject updates on the status of the task as
+    it proceeds, and also retrieve the identifier for the task which was returned
+    after we issued the POST request. The `MessageHandler` class is relatively simple
+    and defined as follows in the `messagehandler.py` file in the code examples for
+    this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: When we construct the `MessageHandler` object, we retrieve the ID associated
+    with the tasks from the `request.id` field. If we had not used the `bind=True`
+    argument above, we would not be able to access this field, since we would not
+    have a reference (self) to the task object to pass to the `MessageHandler`. This
+    is also needed for the `update` function, which allows us to inject status updates
+    about the progress of the task using the reference to the train task above. Finally,
+    if we need to access the training task identifier anywhere else in our application,
+    we can do so using `get_id`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How could we access the tasks status modified by update? If you recall, when
+    we initialized the Celery application, we provided the Redis database as a storage
+    location for task status information. Using the identifier returned in response
+    to our POST request, we could use a GET method to look up the status of this task,
+    which we specify through another Flask app endpoint:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Thus, using a `curl` command, we could issue a GET to obtain the status of our
+    training task, either printing it to the console or, if we made this application
+    more complex, using it to generate a dashboard of job states in a pipeline or
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have a way to inject updates about the status of our tasks, let
+    us return to the `train_task` definition. In addition to creating the `MessageHandler`
+    for this task, we also generate a `SparkConfiguration` and initialize a model
+    object. The SparkConfiguration will probably look familiar from some of the examples
+    in previous chapters, and is returned from the following function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Note that the arguments to the `SparkConfiguration` are used by the Spark mongo
+    connector. This connector is an external dependency that needs to be downloaded
+    and added at runtime to the system path of our Spark application, which can be
+    accomplished by adding the following to your system parameters (assuming a Linux
+    command line environment):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we set the application name by which we will identify the train task in
+    the Spark UI on port 4040, and allow multiple contexts through `"spark.driver.allowMultipleContexts"`
+    such that several Spark applications could be potentially run in parallel. Finally,
+    we provide the `mongodb` input and output locations where Spark will read the
+    data for training and store scored results. Note that these are both given as
+    defaults, but could be changed by modifying parameters in the `job.json` file,
+    allowing our application to operate on different inputs and store to different
+    output locations by only changing the arguments to the POST request.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have the configuration to pass to the Spark job, let us look at
+    the model object which will receive these parameters. We construct it as a global
+    object at the beginning of the `modelservice` file in the line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you examine the definition of the `ModelFactory` class in the `modelfactory.py`
+    file supplied with the code example for this chapter, you see can see that it
+    provides a generic interface for wrapping the training and prediction functions
+    of different machine learning algorithms:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, nowhere in this class do we specify the particular implementation
+    of train or prediction tasks. Rather, we create an object with an internal member
+    (`self_model`) that we can set using `set_model`, by dynamically retrieving code
+    associated with a particular algorithm using `importlib`. The `"name"` argument
+    also comes from `job.json`, meaning we could load different algorithms in our
+    application and run training tasks simply by changing the parameters of our POST
+    request. In this example, we specify the model as `LogisticRegressionWrapper`,
+    which will cause this model (and the class of the same name) to be loaded and
+    inserted into the `self_model` of the `ModelFactory` when we call `train_task`.
+    ModelFactory also has a generic method for loading an existing model, `get_model`,
+    which takes as input a task ID such as the one generated in response to our train
+    request and sets `self_model` to be a previously trained model object which is
+    retrieved using this task ID as a reference. In addition, this class has methods
+    for predict (to give the predicted response for a single row of data) or `predict_all`
+    (to perform bulk scoring using Spark).
+  prefs: []
+  type: TYPE_NORMAL
+- en: To recap, now we see that in response to our POST request, the CherryPy server
+    hands off the information in `data.json` to the `train` function of our Flask
+    service, which starts a background process on a Celery worker. This worker process
+    sets the generic model object of our Flask app to a Logistic Regression, creates
+    a Spark configuration to run the training task, and returns a task ID that we
+    can use to monitor the progress of the model training. In the final step in the
+    journey of this POST request, let us see how the Logistic Regression model implements
+    the training task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `LogisticRegressionWrapper.py` file, you can see the specifications
+    of the train task:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First of all, we start a SparkContext using the parameters we defined in the
+    SparkConfiguration we passed to this function. The parameters in our `job.json`
+    file also include the algorithm parameters, which we parse. We then read the input
+    data which we specified in the SparkConfiguration in a distributed fashion from
+    mongodb into a Spark DataFrame, using a lambda function to parse the input. The
+    parsing logic is defined in `dataparser.py`, in the `parse_line` function of the
+    `DataParser` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `DataParser` class takes as input a parameters dictionary containing the
+    schema of the data that—once again—we specified in our `job.json` data we included
+    in our POST request. This information is stored in the `self._schema` property
+    of the parser. Using this information, the parse_line function extracts the label
+    (the response column) and encodes it as a numeric value if necessary. Similarly,
+    the features of each record are parsed and, if necessary, one-hot encoded using
+    information in the POST request. If the data is to be used in training (`train=True`),
+    the parser returns the label and a vector of features. Otherwise, it just returns
+    the features to be used in scoring new records. In either case, the features are
+    encoded as a dense Vector from the Spark ml library (which is required for the
+    logistic regression algorithm), and the row is returned as a Row object to be
+    compatible with the Spark DataFrame needed for the training code. Because the
+    fields we use as features are specified in our `job.json` data, we could train
+    models using different columns from the same dataset without changing the underlying
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once the data is parsed, we construct a Spark Pipeline object to handle the
+    stages of the model training. In our example, the only step is the model training
+    itself, but we could potentially have transformations like the Vectorizers we
+    examined in [Chapter 6](ch06.html "Chapter 6. Words and Pixels – Working with
+    Unstructured Data"), *Words and Pixels – Working with Unstructured Data* in the
+    context of text data as part of such as pipeline. We then create a ParamGrid to
+    perform a grid search of the regularization parameter of our model, and pass it
+    to a CrossValidator, which will peform n-fold validation to determine the best
+    model. Once we have fit this model, we retrieve the optimal model from the CrossValidator
+    results and determine the number of features and classes used in the model. Finally,
+    we open a connection to the Redis database and store the parameters of this model
+    after serializing it with the function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that we use the MessageHandler attached to this task to retrieve the
+    task ID, which is used as the key to store the serialized model in Redis. Also,
+    though we store the result in the same Redis instance listening on port 6379 that
+    is used by Celery to queue tasks and update the status of background tasks, we
+    save to db 1 instead of the default 0 to separate the information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By tracing through the steps above, you should now be able to see how a POST
+    request can be translated into a series of commands that parse data, perform cross-validated
+    grid-search to train a model, and then serialize that model for later use. You
+    should also appreciate how the parameterizations at each layer allow us to modify
+    the behavior of this training task purely by modifying the contents of the POST
+    request, and how the modularity of the application will make it easy to extend
+    to other models. We also have utilized Spark, which will allow us to easily scale
+    our calculations to larger datasets over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have illustrated the logical flow of data in our prediction service,
+    let us finish by examining the prediction functions, whose output we will use
+    in [Chapter 9](ch09.html "Chapter 9. Reporting and Testing – Iterating on Analytic
+    Systems"), *Reporting and Testing – Iterating on Analytic Systems*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On-demand and bulk prediction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Now that we have a trained model saved in our system, how can we utilize it
+    to score new data? Our Flask app has two endpoints for this service. In the first,
+    we make a POST request giving a row of data as a json, along with a model ID,
+    and ask for a score from the logistic regression model:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: This time, instead of calling the `set_model` method of ModelFactory, we use
+    `get_model` to load a previously trained model, then use it to predict the label
+    of the input record and return the value. In the case of Logistic Regression,
+    this will be a 0 or 1 value. While we do not provide a user interface in this
+    example, we could imagine a simple form in which the user specifies a number of
+    features of a record and submits them through a POST request, receiving back a
+    prediction in realtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking at the implementation of `get_model` in LogisticRegressionWrapper,
+    we see that we can retrieve and de-serialize the model we generated in the train
+    task, and assign it to the `self._model` member of ModelFactory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Subsequently, when we score a new record, we call the `predict` function to
+    parse this record and use the de-serialized model to generate a prediction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This sort of functionality will be useful for interactive applications, such
+    as a human user submitting a few records of interest to obtain predictions, or
+    for real time applications in which we might receive streaming input and provide
+    predictions for immediate use. Note that thought we do not use Spark in this particular
+    instance, we still have a nice opportunity for horizontal scaling. Once we have
+    trained the model, we could de-serialize the resulting parameters in several copies
+    of the modelservice, which will allow use to potentially avoid timeouts if we
+    receive many requests. However, in cases where the volume of predictions required
+    is large and the necessary latency is *not* realtime, it may be more effective
+    to utilize Spark to perform bulk-scoring of records in our database. We implement
+    this bulk-scoring capability using a Celery task in a manner similar to the `train_task`,
+    specifying a `predictall` endpoint in the Flask app:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The associated Celery task is show below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Again, we create a SparkConfiguration and MessageHandler, and like the predict
+    method, we use a prior model ID specified in `job.json` to load a previous train
+    model. We then call the `predict_all` method of this model to start a bulk scoring
+    routine that will generate predictions for a large collection of data, and store
+    the resulting in the `mongodb` collection specified by the output location parameter
+    of the SparkConfiguration. For the `LogisticRegressionWrapper`, the `predict_all`
+    method is shown below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As with the training task, we start a SparkContext using the SparkConfiguration
+    we defined in the Celery task, and load the input from mongodb using the Spark
+    connector. Instead of simply parsing the data, we score the parsed records using
+    the de-serialized model we loaded using the `get_model` command, and pass both
+    it and the original record into a new Row object, which now has two columns: the
+    score and the input. We then save this data back to mongodb.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you open the mongo client and examine the `bankResults` collection, you can
+    verify that it now contains the bulk-scored input data. We will utilize these
+    results in [Chapter 9](ch09.html "Chapter 9. Reporting and Testing – Iterating
+    on Analytic Systems"), *Reporting and Testing – Iterating on Analytic Systems*
+    where we will expose these scores in a reporting application to visualize the
+    ongoing performance of our model and diagnose potential issues in model performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we described the three components of a basic prediction service:
+    a client, the server, and the web application. We discussed how this design allows
+    us to share the results of predictive modelling with other users or software systems,
+    and scale our modeling horizontally and modularly to meet the demands of various
+    use cases. Our code examples illustrate how to create a prediction service with
+    generic model and data parsing functions that can be reused as we try different
+    algorithms for a particular business use case. By utilizing background tasks through
+    Celery worker threads and distributed training and scoring on Spark, we showed
+    how to potentially scale this application to large datasets while providing intermediate
+    feedback to the client on task status. We also showed how an on-demand prediction
+    utility could be used to generate real-time scores for streams of data through
+    a REST API.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using this prediction service framework, in the next chapter we will extend
+    this application to provide ongoing monitoring and reporting about the performance
+    and health of our predictive models.
+  prefs: []
+  type: TYPE_NORMAL

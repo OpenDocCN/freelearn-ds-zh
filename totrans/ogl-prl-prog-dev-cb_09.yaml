@@ -1,0 +1,605 @@
+- en: Chapter 9. Developing the Bitonic Sort with OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding sorting networks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding bitonic sorting
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Developing bitonic sorting in OpenCL
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sorting is one of the most important problems in computer science and the ability
+    to sort large amounts of data efficiently is absolutely critical. Sorting algorithms
+    were traditionally been implemented on CPUs and they work very well there, but
+    on the flipside implementing them on GPUs can be challenging. In the OpenCL programming
+    model, we have both task and data parallelism and getting a sorting algorithm
+    to work on the OpenCL model can be challenging, but mostly from the algorithm
+    point of view, that is, how to create an algorithm that takes advantage of the
+    massive data and task parallelism that OpenCL offers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sorting methods can largely be categorized into two types: data-driven and
+    data-independent. Data-driven sorting algorithms execute the next step of the
+    algorithm depending on the value of the key under consideration, for example,
+    the QuickSort. Data-independent sorting algorithms is rigid from this perspective
+    because they do not change the order of processing according to the values of
+    the key, so in that sense it doesn''t behave like data-driven sorting algorithms.
+    They can be implemented in GPUs to exploit the massive data and task parallelism
+    it offers. Hence we are going to explore the bitonic sort, as it''s a classic
+    example of data-independent sorting algorithm and we''ll see how it can be represented
+    by sorting networks, and eventually how they can be implemented efficiently in
+    OpenCL to execute on GPUs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Ken Batcher invented bitonic sort in 1968\. And for n items it would have a
+    size of ![Introduction](img/4520OT_09_16.jpg) and a depth of ![Introduction](img/4520OT_09_17.jpg).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bitonic sort works effectively by comparing two elements at any point in
+    time and what this means is that it consumes two inputs and decides whether a
+    is equal to b, a is less than b, or a is greater than b, that is, the algorithm
+    primarily operates on two elements, given an input. The bitonic sort is an example
+    of a non-adaptive sorting algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A non-adaptive sorting algorithm is the one where the sequence of operations
+    performed is independent of the order of the data also known as data-independent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To give you a more concrete idea of what non-adaptive sorting methods are like,
+    let's create a fictitious instruction `cmpxchg`, which has the semantics of comparing
+    two elements and exchanging them when necessary. This is how it would look if
+    we were to implement a compare-swap operation between two elements. In the following
+    example, we illustrate the fact that non-adaptive methods are equivalent to straight
+    line programs for sorting and they can be expressed as a list of compare-exchange
+    operations to be performed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: For example, the preceding sequence is a straight line program for sorting three
+    elements; and quite often the goal of developing such an algorithm is to define
+    for each *n*, a fixed sequence of the `cmpxchg` operations that can sort any set
+    of *n* keys. To put it in another way, the algorithm doesn't take into account
+    whether the data to be sorted is sorted prior or partially sorted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding sorting networks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we looked at a non-adaptive sorting algorithm and what
+    it's nature is in its fundamental form. In this section, let's look at a model
+    frequently used to study non-adaptive sorting algorithms. Technical literature
+    has called this model, the sorting network. This form of sorting is also known
+    as comparator networks, and is the idea behind the bitonic sort.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sorting networks are the simplest model for this study, as they represent an
+    abstract machine which accesses the data only through compare-exchange operations,
+    and it comprises of atomic compare-exchanges also known as comparators which are
+    wired together to implement the capability of general sorting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following is an illustration for sorting four keys. By convention, we draw
+    a sorting network for *n* items as a sequence of *n* horizontal lines, with comparators
+    connecting a pair of lines. We also imagine that the keys to be sorted pass from
+    right to left through the network, with a pair of numbers exchanged if necessary
+    to put the smaller on the top whenever the comparator is encountered:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_09_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: From the preceding diagram, you will notice that the keys move from left to
+    right on the lines in the network. The comparators that they encounter would exchange
+    the keys if necessary and continually push the smaller key towards the top of
+    this network. An astute reader will notice that no exchanges were done on the
+    fourth comparator. This sorting network will sort any permutation of four keys.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are other sorting networks other than this and the following network also
+    sorts the same input as before, but it takes two more compare-exchange operations
+    as compared to the previous sorting network. It is interesting to study and that's
+    why this is left as an exercise for you to research on your own.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_09_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This sorting network exhibits a particular property and that is as long as
+    the comparators do not overlap, then we can actually conduct the compare-exchange
+    operations in parallel. Next, we need to understand how we can exact parallelism
+    from this by grouping what can be done in parallel and needs to be performed in
+    the next stage. Here''s the sorting network that is optimal for sorting any four
+    keys and we show the operations that can be conducted in parallel which are broken
+    into three stages of sorting:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Although it is not the most efficient, the earlier diagram illustrates a possible
+    parallel sorting network for any four keys. In this parallel sorting network,
+    we could potentially launch threads where it will conduct the compare-exchange
+    operations in three stages, and the result is that the input is sorted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Notice that this sorting network for sorting four keys is optimal from a computational
+    point of view, as it has only to perform five compare-exchange operations in three
+    stages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding bitonic sorting
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Previously we have discussed sorting networks and it closely relates to bitonic
+    sorting, because sorting networks are employed to implement non-adaptive sorting
+    algorithms, for example, bitonic sort. In bitonic sorting, we basically have an
+    input (defined elsewhere) that's a bitonic sequence. A bitonic sequence is one
+    that monotonically increases (decreases), reaches a single maximum (minimum),
+    and then monotonically decreases (increases). A sequence is considered bitonic
+    if it can be made so by cyclically shifting the sequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, we consider a few scenarios for determining whether the input is
+    suitable for sorting (after all processor cycles are precious and it is a good
+    idea not to waste them doing needless work). In fact, when we wish to sort some
+    input based on a particular sorting algorithm, we would always consider whether
+    the input is already sorted based on our criteria. In the context of bitonic sorting,
+    we could possibly receive a bitonic sequence, and what we do for that is apply
+    what is known as a bitonic split sequence or an arbitrary sequence, in the case
+    of an operation on the input sequence and keep doing this until we reach the final
+    sorted state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A bitonic split is an operation on a bitonic sequence, such that if ![Understanding
+    bitonic sorting](img/4520OT_09_15.jpg) the two elements are exchanged, ![Understanding
+    bitonic sorting](img/4520OT_09_18.jpg) and the operation produces two bitonic
+    sequences A and B, such that the elements in A are less than the elements in B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The diagram shows how two bitonic sequences (at the top of the diagram) can
+    be conceptually combined to a larger sequence (at the bottom of the diagram) by
+    repeated application of this sorting algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_09_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In the situation where we receive an arbitrary sequence, that is, unsorted
+    and not in bitonic order, we have to basically produce a bitonic sequence from
+    this unsorted input and then apply the same trick as before using the bitonic
+    splits until we reach the final sorted state. The following diagram illustrates
+    how a bitonic split or merge (as it''s often called) operates on separate sequences
+    and produces the final sorted sequence either in ascending or descending order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How to do it...](img/4520OT_09_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: In either case, we will know when to terminate if the split sizes have reached
+    two, because at this point, it's a comparison operation between a and b, where
+    either a is greater than or equal to b or b is greater than or equal to a. And
+    it holds and depending on the sorting order, we will place them into their appropriate
+    position in the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Bitonic Sorting uses a principle created by Donald Knuth and it''s known as
+    the Knuth''s 0/1 principle, which is: If a sorting algorithm that performs only
+    element comparisons and exchanges on all sequences of zeros and ones, and then
+    it sorts all sequences of arbitrary numbers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we proceed to develop the bitonic sort algorithm using OpenCL, it's proper
+    that we only introduce it through its sequential form from which we can begin
+    to look for opportunities for parallelism.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code snippet is from `src/Ch9/BitonicSort_CPU_02/BitonicSort.c`
+    and the relevant portions of the code are shown. This implementation is a translation
+    of Batcher''s algorithm, that for illustration purpose is a recursive one and
+    looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This recursive program works is by repeatedly splitting its original input
+    by half and it proceeds to sort each of the halves and merges those halves into
+    bigger segments. This process is continued until the segment reaches the original
+    size. Notice that it uses two other supporting functions to accomplish this and
+    they''re called `shuffle` and `unshuffle`. They work similarly to the same functions
+    in OpenCL (which isn''t a wonder because the same functions in OpenCL drew inspiration
+    from them). Here are those functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And what they do is this: shuffling actually splits the input into halves again
+    and picks each element from each half and place them side-by-side until it reaches
+    the end of both halves. Unshuffling does exactly the opposite by removing those
+    elements and placing them into their original positions and for those algorithm
+    geeks in you, you would recognize that this is the program implementation of the
+    top-down mergesort algorithm and belongs to the class of algorithms that uses
+    the divide-and-conquer approach. As a refresher, an illustration is shown in the
+    *How it works…* section of this recipe, which depicts how both shuffling and un-shuffling
+    works in this algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The concept of shuffling and unshuffling was explored in [Chapter 4](ch04.html
+    "Chapter 4. Using OpenCL Functions"), *Using OpenCL Functions* and we invite you
+    to head back there and refresh yourself with the concepts. The following diagram
+    illustrates how `shuffle` and `unshuffle` (as defined before) would work given
+    an imaginary input: **8**, **12**, **4**, **15**, **2**, **11**, **6**, **3**,
+    **5**, **14**, **16**, **10**, **1**, **9**, **13**, **7**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Recursive algorithms similar to the one we have just presented are good for
+    understanding the general flow of the algorithm, but it doesn't work well when
+    you wish to run this algorithm on OpenCL GPUs because recursion isn't fully supported
+    on GPUs. Even though you were to choose an implementation that runs on the CPU
+    via OpenCL, it'll work but it won't be portable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need an iterative version of this algorithm we just discussed, and fortunately
+    for us we can convert this recursive algorithm to an iterative one. We will look
+    at the following solution from `src/Ch9/BitonicSort_CPU_02/BitonicSort.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This algorithm is divided into phases indexed by the `p` variable. The last
+    phase, which is when `p` is `N`, and each phase applies the sorting and merging
+    to segments of sizes `N / 2`, `N / 4`, `N / 8` to ![How it works...](img/4520OT_09_20.jpg).
+    When examining this code deeper by tracing the execution flow, you would notice
+    that it is actually computing the sorting network that accepts 32 inputs (corresponding
+    to the number of inputs in our input buffer), and when you read the diagram from
+    left to right, you will notice that it approaches solving this problem in a bottom-up
+    manner:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'What I meant by bottom-up approach is that figure should be read from left
+    to right (that''s also the flow of the data through this sorting network). When
+    you draw columns around the first column, you''ll notice that the algorithm creates
+    segments of sizes two. Then the second and third columns form segments of sizes
+    4, then the fourth, fifth, and sixth columns form segments of size eight. They
+    continue to form to sort/merge segments of sizes that are a power of two up to
+    the point where it sorts and merges all the `N` elements in the input array. You
+    will probably have realized that the algorithm doesn''t create any temporary data
+    structures to hold temporary values and it''s actually sorting in-place. The immediate
+    consequence of a sorting algorithm that sorts in-place is that it is memory efficient,
+    since the output is written into the input and doesn''t create any memory storage
+    at all. The following is an illustration of the partition sizes that the algorithm
+    works on while at every stage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: To develop our understanding of the bitonic sort and sorting networks, it is
+    important to understand how parallelism can be subsequently extracted from.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing bitonic sorting in OpenCL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will walk through an implementation of sorting an arbitrary
+    input by using the bitonic sort in OpenCL which runs better on a GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We recall that bitonic sorting recursively sorts elements in the input by building
+    up sequences and merging those into bigger sized sequences and then repeats the
+    cycle, and the two key operations performs it really does is to conduct: a pairwise
+    comparison to determine the greater/smaller of the two elements in a sequence,
+    and merging the two sequences by applying the bitonic sort between them.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far we have seen how we can apply the bitonic sort to bitonic sequences.
+    The question we need to address next is what do we do with an input that is entirely
+    arbitrary? The answer to that question is to make it into a bitonic sequence and
+    then apply a series of bitonic splits/merge. At the beginning, pairwise compare-exchange
+    operations are conducted for elements in the input, and at the end of this stage
+    we have sorted segments of size two. The next stage is to group two segments of
+    size two and perform compare-exchange producing segments of size four. The cycle
+    repeats itself and the algorithm keeps creating bigger segments of size ![Getting
+    ready](img/4520OT_09_14.jpg).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall from the previous section, where we saw the iterative version of the
+    bitonic sort (the algorithm is repeated here) which uses an array index, `p`,
+    to denote the phases in which the sort will take place and with each phase of
+    the algorithm, the algorithm sorts and merges segments of sizes two, four, eight,
+    and so on. And building up on that idea, each phase of the sort is going to be
+    parallel. Also remember that we need to do two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Build a comparator network (bitonic split/sort) that sorts two smaller bitonic
+    sequences into a large one, remembering the fact that sizes are powers of two.
+    This pairwise comparison between two elements will be conducted by a single executing
+    thread/work item.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Build bitonic sequences on each half, such that one half is monotonically increasing
+    and the other half is monotonically decreasing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Our strategy focuses on using a single executable thread performing the compare-exchange
+    operation, and following is the Bitonic Sort OpenCL kernel which uses this simple
+    strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code excerpt is taken from `Ch9/BitonicSort_GPU/BitonicSort.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using the preceding OpenCL kernel code we need to build an executable, so that
+    it can execute on our platform. As before, the compilation will look familiar
+    to you. On my setup with an Intel Core i7 CPU and AMD HD6870x2 GPU running Ubuntu
+    12.04 LTS, the compilation looks as follows, and it''ll create an executable called
+    `BitonicSort` into the working directory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, you should have an executable deposited in that directory. All
+    you need to do now is to run the program, simply execute the `BitonicSort` program
+    in the directory and you should have noticed an output that resembles this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: How it works...
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The algorithm starts from the basic strategy of using a thread to conduct the
+    pairwise comparison-exchange operation. The details is that the host code will
+    break down the original input into its respective phases, and for our testing
+    purposes we have an input of 16 million elements which works out to 24 phases.
+    In the host code, we use the `stage` variable to indicate that. Next at each phase,
+    the algorithm will apply the bitonic split/sort and merge segments of sizes progressively
+    from the least power of two to the greatest power of two, smaller or equal to
+    the phases, for example if we are sorting for elements of size eight, then we
+    would sort to produce segments of size two, then four, and finally we will sort
+    and merge 4-by-4 sequences to get eight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In detail when the kernel starts executing, it has to start building the bitonic
+    subsequences by using the bitonic split. And to do that the kernel needs to know
+    where to split the array, taking into account the current stage of the sort and
+    it does this with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, the kernel loads the data values from the array by using the `leftId`
+    and `rightId` indices and stores them in the thread''s local register memory.
+    The next part of the algorithm is to build bitonic sequences, such that one half
+    is monotonically increasing and the other half is monotonically decreasing. And
+    we use the variable, `sameDirectionBlockWidth`, as a heuristic to guide whether
+    we are going to sort increasingly or decreasingly. The following code does that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As an example, let''s assume that stage is three which implies that `sameDirectionBlockWidth`
+    is eight. The following figure demonstrates what will eventually happen when the
+    `sortIncreasing` variable flips based on the (above) computation, and hence creates
+    the desired effect of bitonic sequencing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: The rest of the kernel code is concerned with the pairwise comparison-exchange
+    operation, which we are familiar with by now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another aspect of this implementation is that the algorithm is compute bound
+    and it''s executed iteratively on the OpenCL GPU via the CPU, and the kernel is
+    notified of which stage it''s at including its substages. This can be accomplished
+    in the host code like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code basically iterates over all the stages and its substages, and invokes
+    the GPU to work on the same input buffer notifying the kernel which stage and
+    substage the kernel is executing by invoking `clSetKernelArg` for the appropriate
+    parameter. And then waits until the sorting is done in that phase before starting
+    work on another (this is critical, otherwise the input buffer would be corrupted).
+    In order to make the input buffer be both readable and writeable by the algorithm,
+    it was created like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The execution of this algorithm will see the execution flow entering the host,
+    and then leaving for the GPU and continuing to do this until the stages run out.
+    This process is illustrated in the following diagram, though it cannot be scaled:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We can actually apply an optimization on this kernel by employing a technique
+    we have understood quite well so far, and that is using the shared memory. Shared
+    memory, as you probably know by now, allows the developer to reduce global memory
+    traffic since the program does not have to repeatedly request elements from the
+    global memory space, but instead use what has been stored in its internal memory.
+    Here''s a refresher on how the memory model in OpenCL looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Applying the techniques we have learnt so far, we actually have one possible
+    point in which we can apply shared memory techniques by looking out for code that
+    is fetching data from the global memory. We will develop a solution using shared
+    memory and expanding it slightly to have our program load it in strides. We''ll
+    get into that in a short while. Let''s start at a plausible point for reworking
+    our `bitonicSort` program taking into account the presence of shared memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We present the following kernel that uses shared memory, we''ll explain how
+    it works, found in `Ch9/BitonicSort_GPU/BitonicSort.cl`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What we did basically was to introduce a variable called `sharedMem` and the
+    strategy for loading those values is simple: each thread will store two values
+    (adjacent) in the shared memory data store, where it will be read out in the subsequent
+    section and all reads which used to refer to the global memory is now conducted
+    in the local/shared memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The host code that is responsible for allocating this memory space is the following
+    code snippet from `Ch9/BitonicSort_GPU/BitonicSort.c` taking into account that
+    each thread writes two adjacent values. And hence it requires twice the amount
+    of memory for a work group of 256 threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And to see it in action you can compile the program like this (invoking `gcc`
+    directly):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This deposits the `BitonicSort_GPU` program into that directory; another way
+    is to invoke `cmake` at the root of this code base like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And navigate to `Ch9/BitonicSort_GPU/` and invoke `make` like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following is a diagram of how the writes to the shared memory are done
+    with respect to the scheme we just described. Remember that all subsequent reads
+    is through `sharedMem` instead of the global memory traffic, which means that
+    a significant amount of bandwidth is saved:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_12.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'We can explore the algorithm a little further by examining the original kernel,
+    `bitonicSort`, where the last part of the algorithm involves essentially a comparison-exchange
+    operation before writing that result back out to global memory. In this situation,
+    we can extrapolate the shared memory concept further by applying it again and
+    our strategy is rather simple here: we have each executing thread writing two
+    pairs, where each pair is this [![How it works...](img/4520OT_09_19.jpg)], and
+    referenced by a key and a value. And in our algorithm the key refers to the output
+    index (that is, `leftId`, `rightId`) and the value refers to the sorted value
+    (that is, `lesser`, `greater`) that will reside at that key. The following diagram
+    illustrates how each thread would have written the two pairs into the `aux` shared
+    memory, and how they could be laid out in memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![How it works...](img/4520OT_09_13.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The following kernel modifications are found at `Ch9/BitonicSort_GPU/BitonicSort.cl`
+    in the kernel named `bitonicSort_sharedmem_2`. We will look at the portions where
+    the changes were different relative to the `bitonicSort_sharedmem` kernel:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The final section of the kernel illustrates how we allow only one executing
+    thread, that is, the thread with ID zero, from each work group to conduct the
+    actual write back to global memory from the shared memory, `aux`. Do note that
+    the memory fence is necessary, since the memory in `aux` may not have been filled
+    by the time the thread with ID zero has begun execution. Therefore, it's placed
+    there to ensure memory coherency.
+  prefs: []
+  type: TYPE_NORMAL

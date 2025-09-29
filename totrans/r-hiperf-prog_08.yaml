@@ -1,0 +1,784 @@
+- en: Chapter 8. Multiplying Performance with Parallel Computing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will learn how to write and execute a parallel R code, where
+    different parts of the code run simultaneously. So far, we have learned various
+    ways to optimize the performance of R programs running serially, that is in a
+    single process. This does not take full advantage of the computing power of modern
+    CPUs with multiple cores. Parallel computing allows us to tap into all the computational
+    resources available and to speed up the execution of R programs by many times.
+    We will examine the different types of parallelism and how to implement them in
+    R, and we will take a closer look at a few performance considerations when designing
+    the parallel architecture of R programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter covers the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data parallelism versus task parallelism
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing data parallel algorithms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing task parallel algorithms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Executing tasks in parallel on a cluster of computers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shared memory versus distributed memory parallelism
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Optimizing parallel performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Data parallelism versus task parallelism
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Many modern software applications are designed to run computations in parallel
+    in order to take advantage of the multiple CPU cores available on almost any computer
+    today. Many R programs can similarly be written in order to run in parallel. However,
+    the extent of possible parallelism depends on the computing task involved. On
+    one side of the scale are **embarrassingly parallel** tasks, where there are no
+    dependencies between the parallel subtasks; such tasks can be made to run in parallel
+    very easily. An example of this is, building an ensemble of decision trees in
+    a random forest algorithm—randomized decision trees can be built independently
+    from one another and in parallel across tens or hundreds of CPUs, and can be combined
+    to form the random forest. On the other end of the scale are tasks that cannot
+    be parallelized, as each step of the task depends on the results of the previous
+    step. One such example is a depth-first search of a tree, where the subtree to
+    search at each step depends on the path taken in previous steps. Most algorithms
+    fall somewhere in between with some steps that must run serially and some that
+    can run in parallel. With this in mind, careful thought must be given when designing
+    a parallel code that works correctly and efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Often an R program has some parts that have to be run serially and other parts
+    that can run in parallel. Before making the effort to parallelize any of the R
+    code, it is useful to have an estimate of the potential performance gains that
+    can be achieved. **Amdahl''s law** provides a way to estimate the best attainable
+    performance gain when you convert a code from serial to parallel execution. It
+    divides a computing task into its serial and potentially-parallel parts and states
+    that the time needed to execute the task in parallel will be no less than this
+    formula:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*T(n) = T(1)(P + (1-P)/n)*, where:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*T(n)* is the time taken to execute the task using *n* parallel processes'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*P* is the proportion of the whole task that is strictly serial'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The theoretical best possible speed up of the parallel algorithm is thus:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*S(n) = T(1) / T(n) = 1 / (P + (1-P)/n)*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, given a task that takes 10 seconds to execute on one processor,
+    where half of the task can be run in parallel, then the best possible time to
+    run it on four processors is *T(4) = 10(0.5 + (1-0.5)/4) = 6.25* seconds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The theoretical best possible speed up of the parallel algorithm with four processors
+    is *1 / (0.5 + (1-0.5)/4) = 1.6x*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following figure shows you how the theoretical best possible execution time
+    decreases as more CPU cores are added. Notice that the execution time reaches
+    a limit that is just above five seconds. This corresponds to the half of the task
+    that must be run serially, where parallelism does not help.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Data parallelism versus task parallelism](img/9263OS_08_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Best possible execution time versus number of CPU cores
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, Amdahl's law means that the fastest execution time for any parallelized
+    algorithm is limited by the time needed for the serial portions of the algorithm.
+    Bear in mind that Amdahl's law provides only a theoretical estimate. It does not
+    account for the overheads of parallel computing (such as starting and coordinating
+    tasks) and assumes that the parallel portions of the algorithm are infinitely
+    scalable. In practice, these factors might significantly limit the performance
+    gains of parallelism, so use Amdahl's law only to get a rough estimate of the
+    maximum speedup possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two main classes of parallelism: data parallelism and task parallelism.
+    Understanding these concepts helps to determine what types of tasks can be modified
+    to run in parallel.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In **data parallelism**, a dataset is divided into multiple partitions. Different
+    partitions are distributed to multiple processors, and the same task is executed
+    on each partition of data. Take for example, the task of finding the maximum value
+    in a vector dataset, say one that has one billion numeric data points. A serial
+    algorithm to do this would look like the following code, which iterates over every
+    element of the data in sequence to search for the largest value. (This code is
+    intentionally verbose to illustrate how the algorithm works; in practice, the
+    `max()` function in R, though also serial in nature, is much faster.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'One way to parallelize this algorithm is to split the data into partitions.
+    If we have a computer with eight CPU cores, we can split the data into eight partitions
+    of 125 million numbers each. Here is the pseudocode for how to perform the same
+    task in parallel:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This pseudocode runs eight instances of `serialmax()`in parallel—one for each
+    data partition—to find the local maximum value in each partition. Once all the
+    partitions have been processed, the algorithm finds the global maximum value by
+    finding the largest value among the local maxima. This parallel algorithm works
+    because the global maximum of a dataset must be the largest of the local maxima
+    from all the partitions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following figure depicts data parallelism pictorially. The key behind data
+    parallel algorithms is that each partition of data can be processed independently
+    of the other partitions, and the results from all the partitions can be combined
+    to compute the final results. This is similar to the mechanism of the MapReduce
+    framework from Hadoop. Data parallelism allows algorithms to scale up easily as
+    data volume increases—as more data is added to the dataset, more computing nodes
+    can be added to a cluster to process new partitions of data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Data parallelism versus task parallelism](img/9263OS_08_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Data parallelism
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Other examples of computations and algorithms that can be run in a data parallel
+    way include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Element-wise matrix operations such as addition and subtraction**: The matrices
+    can be partitioned and the operations are applied to each pair of partitions.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Means**: The sums and number of elements in each partition can be added to
+    find the global sum and number of elements from which the mean can be computed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**K-means clustering**: After data partitioning, the K centroids are distributed
+    to all the partitions. Finding the closest centroid is performed in parallel and
+    independently across the partitions. The centroids are updated by first, calculating
+    the sums and the counts of their respective members in parallel, and then consolidating
+    them in a single process to get the global means.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Frequent itemset mining using the Partition algorithm**: In the first pass,
+    the frequent itemsets are mined from each partition of data to generate a global
+    set of candidate itemsets; in the second pass, the supports of the candidate itemsets
+    are summed from each partition to filter out the globally infrequent ones.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The other main class of parallelism is **task parallelism**, where tasks are
+    distributed to and executed on different processors in parallel. The tasks on
+    each processor might be the same or different, and the data that they act on might
+    also be the same or different. The key difference between task parallelism and
+    data parallelism is that the data is not divided into partitions. An example of
+    a task parallel algorithm performing the same task on the same data is the training
+    of a random forest model. A random forest is a collection of decision trees built
+    independently on the same data. During the training process for a particular tree,
+    a random subset of the data is chosen as the training set, and the variables to
+    consider at each branch of the tree are also selected randomly. Hence, even though
+    the same data is used, the trees are different from one another. In order to train
+    a random forest of say 100 decision trees, the workload could be distributed to
+    a computing cluster with 100 processors, with each processor building one tree.
+    All the processors perform the same task on the same data (or exact copies of
+    the data), but the data is not partitioned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The parallel tasks can also be different. For example, computing a set of summary
+    statistics on the same set of data can be done in a task parallel way. Each process
+    can be assigned to compute a different statistic—the mean, standard deviation,
+    percentiles, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Pseudocode of a task parallel algorithm might look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Implementing data parallel algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Several R packages allow code to be executed in parallel. The `parallel` package
+    that comes with R provides the foundation for most parallel computing capabilities
+    in other packages. Let's see how it works with an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This example involves finding documents that match a regular expression. Regular
+    expression matching is a fairly computational expensive task, depending on the
+    complexity of the regular expression. The corpus, or set of documents, for this
+    example is a sample of the Reuters-21578 dataset for the topic corporate acquisitions
+    (`acq`) from the `tm` package. Because this dataset contains only 50 documents,
+    they are replicated 100,000 times to form a corpus of 5 million documents so that
+    parallelizing the code will lead to meaningful savings in execution times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The task is to find documents that match the regular expression `\d+(,\d+)?
+    mln dlrs`, which represents monetary amounts in millions of dollars. In this regular
+    expression, `\d+` matches a string of one or more digits, and `(,\d+)?` optionally
+    matches a comma followed by one more digits. For example, the strings `12 mln
+    dlrs`, `1,234 mln dlrs` and `123,456,789 mln dlrs` will match the regular expression.
+    First, we will measure the execution time to find these documents serially with
+    `grepl()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will modify the code to run in parallel and measure the execution
+    time on a computer with four CPU cores:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, the `detectCores()` function reveals how many CPU cores are available
+    on the machine, where this code is executed. Before running any parallel code,
+    `makeCluster()` is called to create a local cluster of processing nodes with all
+    four CPU cores. The corpus is then split into four partitions using the `clusterSplit()`
+    function to determine the ideal split of the corpus such that each partition has
+    roughly the same number of documents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The actual parallel execution of `grepl()` on each partition of the corpus is
+    carried out by the `parSapply()` function. Each processing node in the cluster
+    is given a copy of the partition of data that it is supposed to process along
+    with the code to be executed and other variables that are needed to run the code
+    (in this case, the `pattern` argument). When all four processing nodes have completed
+    their tasks, the results are combined in a similar fashion to `sapply()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the cluster is destroyed by calling `stopCluster()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'It is good practice to ensure that `stopCluster()` is always called in production
+    code, even if an error occurs during execution. This can be done as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, running the task in parallel on four processors resulted in
+    a 23 percent reduction in the execution time. This is not in proportion to the
+    amount of compute resources used to perform the task; with four times as many
+    CPU cores working on it, a perfectly parallelizable task might experience as much
+    as a 75 percent runtime reduction. However, remember Amdahl's law—the speed of
+    parallel code is limited by the serial parts, which includes the overheads of
+    parallelization. In this case, calling `makeCluster()` with the default arguments
+    creates a **socket-based cluster**. When such a cluster is created, additional
+    copies of R are run as workers. The workers communicate with the master R process
+    using network sockets, hence the name. The worker R processes are initialized
+    with the relevant packages loaded, and data partitions are serialized and sent
+    to each worker process. These overheads can be significant, especially in data
+    parallel algorithms where large volumes of data needs to be transferred to the
+    worker processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Besides `parSapply()`, `parallel` also provides the `parApply()` and `parLapply()`
+    functions; these functions are analogous to the standard `sapply()`, `apply()`,
+    and `lapply()` functions, respectively. In addition, the `parLapplyLB()` and `parSapplyLB()`
+    functions provide load balancing, which is useful when the execution of each parallel
+    task takes variable amounts of time. Finally, `parRapply()` and `parCapply()`
+    are parallel row and column `apply()` functions for matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On non-Windows systems, `parallel` supports another type of cluster that often
+    incurs less overheads—**forked clusters**. In these clusters, new worker processes
+    are forked from the parent R process with a copy of the data. However, the data
+    is not actually copied in the memory unless it is modified by a child process.
+    This means that, compared to socket-based clusters, initializing child processes
+    is quicker and the memory usage is often lower.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another advantage of using forked clusters is that `parallel` provides a convenient
+    and concise way to run tasks on them via the `mclapply()`, `mcmapply()`, and `mcMap()`
+    functions. (These functions start with `mc` because they were originally a part
+    of the `multicore` package) There is no need to explicitly create and destroy
+    the cluster, as these functions do this automatically. We can simply call `mclapply()`
+    and state the number of worker processes to fork via the `mc.cores` argument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This shows a 49 percent reduction in execution time compared to the serial version,
+    and 35 percent reduction compared to parallelizing using a socket-based cluster.
+    For this example, forked clusters provide the best performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Due to differences in system configuration, you might see very different results
+    when you try the examples in this chapter in your own environment. When you develop
+    parallel code, it is important to test the code in an environment that is similar
+    to the one that it will eventually run in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing task parallel algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's now see how to implement a task parallel algorithm using both socket-based
+    and forked clusters. We will look at how to run the same task and different tasks
+    on workers in a cluster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the same task on workers in a cluster
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To demonstrate how to run the same task on a cluster, the task for this example
+    is to generate 500 million Poisson random numbers. We will do this by using L'Ecuyer's
+    combined multiple-recursive generator, which is the only random number generator
+    in base R that supports multiple streams to generate random numbers in parallel.
+    The random number generator is selected by calling the `RNGkind()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We cannot just use any random number generator in parallel because the randomness
+    of the data depends on the algorithm used to generate random data and the seed
+    value given to each parallel task. Most other algorithms were not designed to
+    produce random numbers in multiple parallel streams, and might produce multiple
+    highly correlated streams of numbers, or worse, multiple identical streams!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we will measure the execution time of the serial algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: To generate the random numbers on a cluster, we will first distribute the task
+    evenly among the workers. In the following code, the integer vector `samples.per.process`
+    contains the number of random numbers that each worker needs to generate on a
+    four-core CPU. The `seq()` function produces `ncores+1` numbers evenly distributed
+    between `0` and `nsamples`, with the first number being `0` and the next `ncores`
+    numbers indicating the approximate cumulative number of samples across the worker
+    processes. The `round()` function rounds off these numbers into integers and `diff()`
+    computes the difference between them to give the number of random numbers that
+    each worker process should generate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we can generate the random numbers on a cluster, each worker needs a
+    different seed from which it can generate a stream of random numbers. The seeds
+    need to be set on all the workers before running the task, to ensure that all
+    the workers generate different random numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a socket-based cluster, we can call `clusterSetRNGStream()` to set the
+    seeds for the workers, then run the random number generation task on the cluster.
+    When the task is completed, we call `stopCluster()` to shut down the cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using four parallel processes in a socket-based cluster reduces the execution
+    time by 48 percent. The performance of this type of cluster for this example is
+    better than that of the data parallel example because there is less data to copy
+    to the worker processes—only an integer that indicates how many random numbers
+    to generate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we run the same task on a forked cluster (again, this is not supported
+    on Windows). The `mclapply()` function can set the random number seeds for each
+    worker for us, when the `mc.set.seed` argument is set to `TRUE`; we do not need
+    to call `clusterSetRNGStream()`. Otherwise, the code is similar to that of the
+    socket-based cluster:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: On our test machine, the execution time of the forked cluster is slightly faster,
+    but close to that of the socket-based cluster, indicating that the overheads for
+    this task are similar for both types of clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running different tasks on workers in a cluster
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So far, we have executed the same tasks on each parallel process. The *parallel*
+    package also allows different tasks to be executed on different workers. For this
+    example, the task is to generate not only Poisson random numbers, but also uniform,
+    normal, and exponential random numbers. As before, we start by measuring the time
+    to perform this task serially:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: In order to run different tasks on different workers on socket-based clusters,
+    a list of function calls and their associated arguments must be passed to `parLapply()`.
+    This is a bit cumbersome, but `parallel` unfortunately does not provide an easier
+    interface to run different tasks on a socket-based cluster. In the following code,
+    the function calls are represented as a list of lists, where the first element
+    of each sublist is the name of the function that runs on a worker, and the second
+    element contains the function arguments. The function `do.call()` is used to call
+    the given function with the given arguments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: On forked clusters on non-Windows machines, the `mcparallel()` and `mccollect()`
+    functions offer a more intuitive way to run different tasks on different workers.
+    For each task, `mcparallel()` sends the given task to an available worker. Once
+    all the workers have been assigned their tasks, `mccollect()` waits for the workers
+    to complete their tasks and collects the results from all the workers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that we also had to call `mc.reset.stream()` to set the seeds for random
+    number generation in each worker. This was not necessary when we used `mclapply()`,
+    which calls `mc.reset.stream()` for us. However, `mcparallel()` does not, so we
+    need to call it ourselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executing tasks in parallel on a cluster of computers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By using the `parallel` package, we are not limited to running parallel code
+    on a single computer; we can also do it on a cluster of computers. This allows
+    much larger computational tasks to be performed, irrespective of whether we use
+    data parallelism or task parallelism. Only socket-based clusters can be used for
+    this purpose, as processes cannot be forked onto a different computer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many ways to set up a cluster of computers to work with R. To keep
+    things simple, all computers in the cluster should have the same configuration
+    for R—the same version of R, installed in the same directories, installed with
+    the same versions of any packages required, and running on the same operating
+    system. The examples in this section have been tested on a cluster of three computers
+    running Ubuntu 14.04—one master node and two worker nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The master and worker nodes should be on the same network and able to communicate
+    with each other via SSH (port 22) and one other port for exchanging data and code.
+    This communications port can be set with the `R_PARALLEL_PORT` environment variable.
+    If it is not set, R will randomly choose a port in the range 11000 to 11999.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, SSH is used to launch R on the workers. First, ensure that the SSH
+    server is set up and running on all the worker nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For Windows worker nodes, download and install Cygwin from [http://www.cygwin.com](http://www.cygwin.com).
+    When prompted to install additional packages, install the `openssh` package. Then,
+    right-click on the **Cygwin** icon and select **Run as Administrator**. In the
+    terminal window that opens, run the following code to set up the SSH server. The
+    `ssh-host-config` command configures the SSH server with the default settings.
+    The `chmod 400` command sets the permissions on the generated security keys so
+    that only the user who owns the keys can read them, and `cygrunsrv -S sshd` starts
+    the SSH server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Other operating systems like Linux normally come with an installed SSH server.
+    Consult the documentation of your operating system for how to set it up.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The master node should be able to connect to the worker nodes using key-based
+    authentication, as using password-based authentication to run a cluster might
+    not always work. Use the following commands to set up key-based authentication.
+    Windows users should run this from within a Cygwin terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once all the computers are set up, we can run parallel tasks on the cluster
+    just as before. The only change needed is in the call to `makeCluster()`, where
+    the IP addresses or domain names of the worker nodes must be provided instead
+    of the number of workers to create local workers. In the following example, replace
+    the IP addresses with the IP addresses of your master and worker nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you are having trouble to start the cluster by automatically using `makeCluster()`,
+    add the `manual=TRUE` argument to the call to `makeCluster()`, then follow the
+    instructions given, to start the worker processes on each of the worker nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code that sends the tasks to the workers for execution is then the same
+    as before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because a cluster of computers has to communicate over a network, the bandwidth
+    and latency of the network connections play a critical role in the performance
+    of the whole cluster. It is best that the nodes are in the same location, connected
+    by a high-speed network where data and code can be exchanged between the master
+    and worker nodes speedily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shared memory versus distributed memory parallelism
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the examples that we have seen so far, data is copied from the master process
+    or node to each worker. This is called **distributed memory** parallelism, where
+    each process has its own memory space. In other words, each process needs to have
+    its own copy of the data that it needs to work on, even if multiple processes
+    are working on the same data. This is the typical way to distribute data in a
+    cluster of computers because the workers in the cluster cannot access each other's
+    RAM, so they need their own copy of the data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, this can result in huge redundancies when you run a parallel code on
+    multiple processes on a single computer. If a dataset takes up 5 GB of memory,
+    then running four parallel processes could result in five copies of the data in
+    memory—one for the master and four for the workers—occupying a total of 25 GB.
+    Earlier, we saw that forked clusters might not suffer from this problem, as most
+    operating systems do not make copies of the data in the memory unless it is modified
+    by one of the workers. However, this is not guaranteed. On socket-based clusters,
+    because new instances of R are created, new copies of the data are made for each
+    worker.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Contrast this with **shared memory** parallelism, where all the workers share
+    a single copy of the data. This not only saves the memory, but also reduces the
+    time needed to initialize and shut down the cluster, as the data does not need
+    to be copied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the `parallel` package does not provide support for shared memory parallelism
+    by default, we can achieve it by using the right data structures. One example
+    for this is `big.matrix` from the `bigmemory` package that we learned about in
+    the previous chapter (not available for Windows at the time of writing). In [Chapter
+    7](ch07.html "Chapter 7. Processing Large Datasets with Limited RAM"), *Processing
+    Large Datasets with Limited RAM*, we used `big.matrix` for its memory-mapped file
+    capabilities; in this chapter, we will take advantage of it as a shared memory
+    object for parallel workers. Besides taking the form of memory-mapped files on
+    disk, `big.matrix` objects can also be fully in-memory objects that behave just
+    like standard R matrices. The key difference is that `big.matrix` objects are
+    not copied according to the usual R rules for copying objects that we examined
+    in [Chapter 6](ch06.html "Chapter 6. Simple Tweaks to Use Less RAM"), *Simple
+    Tweaks to Use Less RAM*. Instead, they are only copied when a call to `deepcopy()`
+    is made. Let's see what this looks like in practice. First, we will create a `big.matrix`
+    `a`, then a new variable `b` that points to `a`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will modify the contents of `b`. Under R''s normal data copying rules,
+    the data should be copied in the memory so that the contents of `a` are not modified.
+    However, that is not the case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Clearly, `a` and `b` are the same object. A peek under their hoods at their
+    pointers to the data confirms this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let''s see how this impacts the performance of parallel code. This example
+    uses a matrix with two variables and 50 million observations and the equivalent
+    `big.matrix`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The task here is to compute the absolute difference for each pair of numbers.
+    First, we will measure the execution time using a socket-based cluster on the
+    matrix:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It took 10.6 seconds on four CPU cores, and each thread consumed 1.01 GB of
+    RAM, as shown in the following screenshot taken from Mac OS X''s Activity Monitor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Shared memory versus distributed memory parallelism](img/9263OS_08_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Memory consumption of socket-based cluster using matrix data
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let's use `big.matrix` to see if there is a difference in speed and memory
+    efficiency. In order to pass `big.matrix` to each worker process, we need to use
+    `describe()` to pass the metadata of `big.matrix` to each process. Within each
+    process, `attach.big.matrix()` must be called to access `big.matrix`. Also notice
+    that `library(bigmemory)` is called within the function. This is required because
+    each worker is a new R process so any packages required to run the task must be
+    loaded on the workers as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This version ran must faster with a 72 percent saving in the execution time
+    from not making copies of the matrix! Furthermore, each R process took up only
+    about 373 MB of memory, as shown in the following figure in the `Private Mem`
+    column. 774 MB of the memory was shared from the parent process, most of which
+    was the `big.matrix` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Shared memory versus distributed memory parallelism](img/9263OS_08_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Memory consumption of forked cluster using big.matrix data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Shared memory parallelism worked in this case because the worker processed only
+    read from the data but did not write to it. Designing parallel algorithms that
+    write to shared memory is much trickier and outside the scope of this book. Much
+    care must be take to avoid **race conditions**, which are conflicts and programming
+    errors that arise when worker processes that read from and write to the same memory
+    locations are not properly coordinated. This can lead to the data being corrupted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Optimizing parallel performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Throughout the examples in this chapter, we saw various factors that affect
+    the performance of parallel code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One overhead in running a parallel R code is in setting up the cluster. By default,
+    `makeCluster()` instructs the worker processes to load the `methods` package when
+    they start. This can take a good amount of time, so if the task to be run does
+    not require *methods*, this behavior can be disabled by passing `methods=FALSE`
+    to `makeCluster()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the biggest obstacles to parallel performance is the copying and transmission
+    of data between the master process and the worker process. This obstacle can be
+    large when you run parallel tasks on a cluster of computers, as many factors such
+    as limited network bandwidth, and data encryption slow down the transmission of
+    data even before any computations can be done. Even on a single computer, unnecessary
+    copying of data in memory takes up precious seconds that can multiply as the data
+    grows. This can also happen the other way around, for example in the random number
+    generation examples, where the input data is small but the output is large.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One way to minimize these data communication overheads is to use shared memory
+    objects, as we saw in the preceding section. Data compression can also help in
+    some circumstances, provided the computational time to compress and decompress
+    the data is relatively short. Another option is to store the data, including the
+    results of any intermediate computations, at each worker node, and reserve internode
+    data communication to only what is required to coordinate the tasks. An example
+    of this is MapReduce from Hadoop, which we will explore in [Chapter 10](ch10.html
+    "Chapter 10. R and Big Data"), *R and Big Data*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although there are ways to minimize the costs of data communication, sometimes
+    these overheads far exceed the gains from parallelization, and we are better off
+    running the code in series. It can be difficult to calculate the trade-offs between
+    the performance gains and increased overheads of parallelizing code. When in doubt,
+    conduct small experiments like we have done in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we learned about two classes of parallelism: data parallelism
+    and task parallelism. Data parallelism is good for tasks that can be performed
+    in parallel on partitions of a dataset. The dataset to be processed is split into
+    partitions and each partition is processed on a different worker processes. Task
+    parallelism, on the other hand, divides a set of similar or different tasks to
+    amongst the worker processes. In either case, Amdahl''s law states that the maximum
+    improvement in speed that can be achieved by parallelizing code is limited by
+    the proportion of that code that can be parallelized.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: R supports both types of parallelism using the *parallel* package. We learned
+    how to implement both data parallel and task parallel algorithms using socket-based
+    clusters and forked clusters. We also learned how to run tasks in parallel on
+    a cluster of computers using socket-based clusters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The examples in this chapter demonstrated that the improvement in performance
+    by parallelizing code depends on a great variety of factors—the type of cluster,
+    whether the task is run on a single computer or on a cluster, the volume of data
+    exchanged between nodes, the complexity of the individual subtasks, and so on.
+    While techniques such as shared-memory parallelism can mitigate some of the bottlenecks,
+    parallel computing is a complex discipline that takes much experience and skill
+    to get well executed. Used correctly, the payoffs in speed and efficiency can
+    be significant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a deeper look at parallel computing in R, see *Parallel R* by Q. Ethan McCallum
+    and Stephen Weston.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will look beyond the boundaries of R to tap on the processing
+    power of specialized data processing platforms like analytical databases.
+  prefs: []
+  type: TYPE_NORMAL
