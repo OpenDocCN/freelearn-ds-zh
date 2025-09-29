@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Cassandra 数据建模与分析
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/b2d5422a8123d40b9326590e1bd1f2be`](https://zh.annas-archive.org/md5/b2d5422a8123d40b9326590e1bd1f2be)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

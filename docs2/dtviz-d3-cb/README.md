@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# D3.js 数据可视化秘籍
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/1571f6e0e9a2f7682afdc737455b0a69`](https://zh.annas-archive.org/md5/1571f6e0e9a2f7682afdc737455b0a69)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
