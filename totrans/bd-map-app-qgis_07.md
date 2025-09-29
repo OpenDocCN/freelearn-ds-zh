@@ -1,8 +1,8 @@
-# 第7章. 在PyQGIS应用程序中选择和编辑要素
+# 第七章. 在 PyQGIS 应用程序中选择和编辑要素
 
-当运行QGIS应用程序时，用户有一系列工具可用于创建和操作地理要素。例如，**添加要素**工具允许用户创建新要素，而**移动要素**工具和**节点**工具允许用户移动和编辑现有的地理要素。然而，这些工具仅在QGIS本身内可用——如果您想在PyQGIS库之上编写外部应用程序，这些内置工具不可用，您将必须自己实现这些功能。
+当运行 QGIS 应用程序时，用户有一系列工具可用于创建和操作地理要素。例如，**添加要素**工具允许用户创建新要素，而**移动要素**工具和**节点**工具允许用户移动和编辑现有的地理要素。然而，这些工具仅在 QGIS 本身内可用——如果您想在 PyQGIS 库之上编写外部应用程序，这些内置工具不可用，您将必须自己实现这些功能。
 
-在本章中，我们将探讨向PyQGIS应用程序添加功能所涉及的内容，以便用户可以选择和编辑地理要素。特别是，我们将检查：
+在本章中，我们将探讨向 PyQGIS 应用程序添加功能所涉及的内容，以便用户可以选择和编辑地理要素。特别是，我们将检查：
 
 +   如何处理选择
 
@@ -22,19 +22,50 @@
 
 ### 小贴士
 
-如果你创建了自己的自定义符号层，你需要自己处理所选要素的高亮显示。我们已经在[第6章](part0047_split_000.html#page "第6章. 掌握QGIS Python API")，*掌握QGIS Python API*，标题为*在Python中实现符号层*的部分中看到了如何做到这一点。
+如果你创建了自己的自定义符号层，你需要自己处理所选要素的高亮显示。我们已经在第六章，*掌握 QGIS Python API*，标题为*在 Python 中实现符号层*的部分中看到了如何做到这一点。
 
 虽然用户有多种选择要素的方法，但最直接的方法是点击它们。这可以通过使用一个简单的地图工具来实现，例如：
 
-[PRE0]
+```py
+class SelectTool(QgsMapToolIdentify):
+    def __init__(self, window):
+        QgsMapToolIdentify.__init__(self, window.mapCanvas)
+        self.window = window
+        self.setCursor(Qt.ArrowCursor)
 
-这与我们在上一章Lex应用程序中实现的`ExploreTool`非常相似。唯一的区别是，我们不是显示关于点击的要素的信息，而是告诉地图层选择它。
+    def canvasReleaseEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                         self.TopDownStopAtFirst,
+                         self.VectorLayer)
+        if len(found_features) > 0:
+            layer = found_features[0].mLayer
+            feature = found_features[0].mFeature
+
+            if event.modifiers() & Qt.ShiftModifier:
+                layer.select(feature.id())
+            else:
+                layer.setSelectedFeatures([feature.id()])
+        else:
+            self.window.layer.removeSelection()
+```
+
+这与我们在上一章 Lex 应用程序中实现的`ExploreTool`非常相似。唯一的区别是，我们不是显示关于点击的要素的信息，而是告诉地图层选择它。
 
 注意，我们检查是否按下了*Shift*键。如果是，则将点击的要素添加到当前选择中；否则，当前选择将被新选中的要素替换。此外，如果用户点击地图的背景，当前选择将被移除。这些都是用户熟悉的标准的用户界面约定。
 
 一旦我们有了选择，从地图层中获取所选要素就相当简单。例如：
 
-[PRE1]
+```py
+if layer.selectedFeatureCount() == 0:
+    QMessageBox.information(self, "Info",
+                            "There is nothing selected.")
+else:
+    msg = []
+    msg.append("Selected Features:")
+    for feature in layer.selectedFeatures():
+        msg.append("   " + feature.attribute("NAME"))
+    QMessageBox.information(self, "Info", "\n".join(msg))
+```
 
 如果您想看到所有这些功能在实际中的应用，您可以下载并运行本章示例代码中包含的 **SelectionExplorer** 程序。
 
@@ -46,7 +77,23 @@
 
 您对图层所做的更改将保留在内存中，直到您决定将更改**提交**到图层，或者**回滚**更改以丢弃它们。以下伪代码是使用 PyQGIS 实现此功能的示例：
 
-[PRE2]
+```py
+layer.startEditing()
+
+# ...make changes...
+
+if modified:
+    reply = QMessageBox.question(window, "Confirm",
+                                 "Save changes to layer?",
+                                 QMessageBox.Yes | QMessageBox.No,
+                                 QMessageBox.Yes)
+    if reply == QMessageBox.Yes:
+        layer.commitChanges()
+    else:
+        line.rollBack()
+else:
+     layer.rollBack()
+```
 
 如您所见，我们通过调用 `layer.startEditing()` 打开特定地图图层的编辑模式。除了设置一个内部 *编辑缓冲区* 来保存您所做的更改外，这还告诉图层通过在每个顶点上绘制小顶点标记来视觉上突出显示图层的要素，如下面的图像所示：
 
@@ -68,7 +115,22 @@
 
 以下地图工具允许用户向给定图层添加新的点要素：
 
-[PRE3]
+```py
+class AddPointTool(QgsMapTool):
+    def __init__(self, canvas, layer):
+        QgsMapTool.__init__(self, canvas)
+        self.canvas = canvas
+        self.layer  = layer
+        self.setCursor(Qt.CrossCursor)
+
+    def canvasReleaseEvent(self, event):
+        point = self.toLayerCoordinates(self.layer, event.pos())
+
+        feature = QgsFeature()
+        feature.setGeometry(QgsGeometry.fromPoint(point))
+        self.layer.addFeature(feature)
+        self.layer.updateExtents()
+```
 
 如您所见，这个简单的地图工具将鼠标光标设置为十字形，当用户在地图画布上释放鼠标时，会创建一个新的 `QgsGeometry` 对象，该对象代表当前鼠标位置的一个点。然后，使用 `layer.addFeature()` 将此点添加到图层中，并更新图层的范围，以防新添加的点位于图层的当前范围之外。
 
@@ -78,7 +140,40 @@
 
 编辑点特征也相当简单：由于几何形状只包含一个点，用户可以简单地点击并拖动来在地图层中移动点。以下是一个实现此行为的地图工具：
 
-[PRE4]
+```py
+class MovePointTool(QgsMapToolIdentify):
+    def __init__(self, mapCanvas, layer):
+        QgsMapToolIdentify.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer    = layer
+        self.dragging = False
+        self.feature  = None
+
+    def canvasPressEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) > 0:
+            self.dragging = True
+            self.feature  = found_features[0].mFeature
+        else:
+            self.dragging = False
+            self.feature  = None
+
+    def canvasMoveEvent(self, event):
+        if self.dragging:
+            point = self.toLayerCoordinates(self.layer,
+                                            event.pos())
+
+            geometry = QgsGeometry.fromPoint(point)
+
+            self.layer.changeGeometry(self.feature.id(), geometry)
+            self.canvas().refresh()
+
+    def canvasReleaseEvent(self, event):
+        self.dragging = False
+        self.feature  = None
+```
 
 正如你所见，我们为这个地图工具继承自 `QgsMapToolIdentify`。这让我们可以使用 `identify()` 方法找到用户点击的几何形状，就像我们在本章前面实现的 `SelectTool` 一样。
 
@@ -90,7 +185,31 @@
 
 幸运的是，删除点特征所需的代码也适用于其他类型的几何形状，因此我们不需要实现单独的 `DeletePointTool`、`DeleteLineTool` 和 `DeletePolygonTool` 类。相反，我们只需要一个通用的 `DeleteTool`。以下代码实现了这个地图工具：
 
-[PRE5]
+```py
+class DeleteTool(QgsMapToolIdentify):
+    def __init__(self, mapCanvas, layer):
+        QgsMapToolIdentify.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer   = layer
+        self.feature = None
+
+    def canvasPressEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) > 0:
+            self.feature = found_features[0].mFeature
+        else:
+            self.feature = None
+
+    def canvasReleaseEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       [self.layer],
+                                       self.TopDownAll)
+        if len(found_features) > 0:
+            if self.feature.id() == found_features[0].mFeature.id():
+                self.layer.deleteFeature(self.feature.id())
+```
 
 再次强调，我们使用 `QgsMapToolIdentify` 类来快速找到用户点击的特征。我们使用 `canvasPressEvent()` 和 `canvasReleaseEvent()` 方法来确保用户在同一个特征上点击和释放鼠标；这确保了地图工具比简单地删除用户点击的特征更加用户友好。如果鼠标点击和释放都在同一个特征上，我们会删除它。
 
@@ -130,7 +249,24 @@ QGIS 包含一个名为 `QgsMapToolCapture` 的地图工具，它正好处理这
 
 既然我们知道我们在做什么，让我们开始实现 `CaptureTool` 类。我们类定义的第一部分将看起来如下：
 
-[PRE6]
+```py
+class CaptureTool(QgsMapTool):
+    CAPTURE_LINE    = 1
+    CAPTURE_POLYGON = 2
+
+    def __init__(self, canvas, layer, onGeometryAdded,
+                 captureMode):
+        QgsMapTool.__init__(self, canvas)
+        self.canvas          = canvas
+        self.layer           = layer
+        self.onGeometryAdded = onGeometryAdded
+        self.captureMode     = captureMode
+        self.rubberBand      = None
+        self.tempRubberBand  = None
+        self.capturedPoints  = []
+        self.capturing       = False
+        self.setCursor(Qt.CrossCursor)
+```
 
 在我们类的顶部，我们定义了两个常量，`CAPTURE_LINE` 和 `CAPTURE_POLYGON`，它们定义了可用的捕获模式。然后我们有类初始化器，它将接受以下参数：
 
@@ -152,59 +288,187 @@ QGIS 包含一个名为 `QgsMapToolCapture` 的地图工具，它正好处理这
 
 这是 `canvasReleaseEvent()` 方法的实现。注意我们使用了几个辅助方法，我们将在稍后定义：
 
-[PRE7]
+```py
+    def canvasReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            if not self.capturing:
+                self.startCapturing()
+            self.addVertex(event.pos())
+        elif event.button() == Qt.RightButton:
+            points = self.getCapturedGeometry()
+            self.stopCapturing()
+            if points != None:
+                self.geometryCaptured(points)
+```
 
 接下来，我们有 `canvasMoveEvent()` 方法，它响应用户移动鼠标的动作，通过更新临时橡皮筋以反映当前鼠标位置：
 
-[PRE8]
+```py
+    def canvasMoveEvent(self, event):
+        if self.tempRubberBand != None and self.capturing:
+            mapPt,layerPt = self.transformCoordinates(event.pos())
+            self.tempRubberBand.movePoint(mapPt)
+```
 
 这里有趣的部分是对 `tempRubberBand.movePoint()` 的调用。`QgsRubberBand` 类在地图坐标中工作，因此我们首先必须将当前鼠标位置（以像素为单位）转换为地图坐标。然后我们调用 `movePoint()`，它将橡皮筋中的当前顶点移动到新位置。
 
 还有一个事件处理方法需要定义：`onKeyEvent()`。该方法响应用户按下 *Backspace* 或 *Delete* 键，通过移除最后一个添加的顶点，以及用户按下 *Return* 或 *Enter* 键通过关闭并保存当前几何形状。以下是此方法的代码：
 
-[PRE9]
+```py
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Backspace or \
+           event.key() == Qt.Key_Delete:
+            self.removeLastVertex()
+            event.ignore()
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            points = self.getCapturedGeometry()
+            self.stopCapturing()
+            if points != None:
+                self.geometryCaptured(points)
+```
 
 现在我们已经定义了事件处理方法，接下来定义这些事件处理器所依赖的各种辅助方法。我们将从 `transformCoordinates()` 方法开始，该方法将鼠标位置（在画布坐标中）转换为地图和层坐标：
 
-[PRE10]
+```py
+    def transformCoordinates(self, canvasPt):
+        return (self.toMapCoordinates(canvasPt),
+                self.toLayerCoordinates(self.layer, canvasPt))
+```
 
 例如，如果鼠标当前位于画布上的 `(17,53)` 位置，这可能转换为地图和层坐标 `lat=37.234` 和 `long=-112.472`。由于地图和层可能使用不同的坐标参考系统，我们计算并返回两者的坐标。
 
 现在让我们定义 `startCapturing()` 方法，它准备我们的两个橡皮筋并将 `self.capturing` 设置为 `True`，这样我们知道我们目前正在捕获几何形状：
 
-[PRE11]
+```py
+    def startCapturing(self):
+        color = QColor("red")
+        color.setAlphaF(0.78)
+
+        self.rubberBand = QgsRubberBand(self.canvas,
+                                        self.bandType())
+        self.rubberBand.setWidth(2)
+        self.rubberBand.setColor(color)
+        self.rubberBand.show()
+
+        self.tempRubberBand = QgsRubberBand(self.canvas,
+                                            self.bandType())
+        self.tempRubberBand.setWidth(2)
+        self.tempRubberBand.setColor(color)
+        self.tempRubberBand.setLineStyle(Qt.DotLine)
+        self.tempRubberBand.show()
+
+        self.capturing = True
+```
 
 注意，我们使用另一个辅助方法 `bandType()` 来决定橡皮筋应该绘制的几何类型。现在让我们定义这个方法：
 
-[PRE12]
+```py
+    def bandType(self):
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            return QGis.Polygon
+        else:
+            return QGis.Line
+```
 
 接下来是 `stopCapturing()` 方法，它从地图画布中移除我们的两个橡皮筋，将实例变量重置到初始状态，并告诉地图画布刷新自身，以便隐藏橡皮筋：
 
-[PRE13]
+```py
+    def stopCapturing(self):
+        if self.rubberBand:
+            self.canvas.scene().removeItem(self.rubberBand)
+            self.rubberBand = None
+        if self.tempRubberBand:
+            self.canvas.scene().removeItem(self.tempRubberBand)
+            self.tempRubberBand = None
+        self.capturing = False
+        self.capturedPoints = []
+        self.canvas.refresh()
+```
 
 现在我们来到`addVertex()`方法。此方法在点击的鼠标位置向当前几何形状添加一个新的顶点，并更新橡皮筋以匹配：
 
-[PRE14]
+```py
+    def addVertex(self, canvasPoint):
+        mapPt,layerPt = self.transformCoordinates(canvasPoint)
 
-注意，我们将捕获的点添加到`self.capturedPoints`列表中。这是我们完成捕获后定义几何形状的点列表。设置临时橡皮筋有点复杂，但基本思想是定义LineString或Polygon，使其覆盖新几何形状当前高亮显示的部分。
+        self.rubberBand.addPoint(mapPt)
+        self.capturedPoints.append(layerPt)
+
+        self.tempRubberBand.reset(self.bandType())
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            self.tempRubberBand.addPoint(mapPt)
+        elif self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            firstPoint = self.rubberBand.getPoint(0, 0)
+            self.tempRubberBand.addPoint(firstPoint)
+            self.tempRubberBand.movePoint(mapPt)
+            self.tempRubberBand.addPoint(mapPt)
+```
+
+注意，我们将捕获的点添加到`self.capturedPoints`列表中。这是我们完成捕获后定义几何形状的点列表。设置临时橡皮筋有点复杂，但基本思想是定义 LineString 或 Polygon，使其覆盖新几何形状当前高亮显示的部分。
 
 现在让我们定义`removeLastVertex()`方法，当用户按下*退格*或*删除*键撤销上一次点击时，该方法会被调用。这个方法稍微复杂一些，因为我们必须更新两个橡皮筋以移除最后一个顶点，以及更新`self.capturedPoints`列表：
 
-[PRE15]
+```py
+    def removeLastVertex(self):
+        if not self.capturing: return
 
-我们现在已经为我们的`CaptureTool`定义了相当多的方法。幸运的是，只剩下两个方法。现在让我们定义`getCapturedGeometry()`方法。此方法检查LineString几何形状是否至少有两个点，以及Polygon几何形状是否至少有三个点。然后关闭多边形并返回组成捕获几何形状的点列表：
+        bandSize     = self.rubberBand.numberOfVertices()
+        tempBandSize = self.tempRubberBand.numberOfVertices()
+        numPoints    = len(self.capturedPoints)
 
-[PRE16]
+        if bandSize < 1 or numPoints < 1:
+            return
+
+        self.rubberBand.removePoint(-1)
+
+        if bandSize > 1:
+            if tempBandSize > 1:
+                point = self.rubberBand.getPoint(0, bandSize-2)
+                self.tempRubberBand.movePoint(tempBandSize-2,
+                                              point)
+        else:
+            self.tempRubberBand.reset(self.bandType())
+
+        del self.capturedPoints[-1]
+```
+
+我们现在已经为我们的`CaptureTool`定义了相当多的方法。幸运的是，只剩下两个方法。现在让我们定义`getCapturedGeometry()`方法。此方法检查 LineString 几何形状是否至少有两个点，以及 Polygon 几何形状是否至少有三个点。然后关闭多边形并返回组成捕获几何形状的点列表：
+
+```py
+    def getCapturedGeometry(self):
+        points = self.capturedPoints
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            if len(points) < 2:
+                return None
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            if len(points) < 3:
+                return None
+        if self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            points.append(points[0]) # Close polygon.
+        return points
+```
 
 最后，我们有`geometryCaptured()`方法，它响应捕获的几何形状。此方法创建给定类型的新几何形状，将其作为要素添加到地图层，并使用传递给我们的`CaptureTool`初始化器的`onGeometryAdded`可调用对象，通知应用程序其余部分已向层添加了新几何形状：
 
-[PRE17]
+```py
+    def geometryCaptured(self, layerCoords):
+        if self.captureMode == CaptureTool.CAPTURE_LINE:
+            geometry = QgsGeometry.fromPolyline(layerCoords)
+        elif self.captureMode == CaptureTool.CAPTURE_POLYGON:
+            geometry = QgsGeometry.fromPolygon([layerCoords])
+
+        feature = QgsFeature()
+        feature.setGeometry(geometry)
+        self.layer.addFeature(feature)
+        self.layer.updateExtents()
+        self.onGeometryAdded()
+```
 
 虽然`CaptureTool`很复杂，但它是一个非常强大的类，允许用户向地图层添加新的线和多边形。这里还有一些我们没有实现的功能（坐标捕捉、检查生成的几何形状是否有效，以及添加对形成多边形内环的支持），但即使如此，这也是一个有用的工具，可以用来向地图添加新要素。
 
 # 编辑线和多边形
 
-我们将要考察的最后一项主要功能是编辑LineString和Polygon要素的能力。正如`CaptureTool`允许用户点击并拖动来创建新的线和多边形一样，我们将实现`EditTool`，它允许用户点击并拖动来移动现有要素的顶点。以下图片显示了当用户使用此工具移动顶点时将看到的内容：
+我们将要考察的最后一项主要功能是编辑 LineString 和 Polygon 要素的能力。正如`CaptureTool`允许用户点击并拖动来创建新的线和多边形一样，我们将实现`EditTool`，它允许用户点击并拖动来移动现有要素的顶点。以下图片显示了当用户使用此工具移动顶点时将看到的内容：
 
 ![编辑线和多边形](img/00086.jpeg)
 
@@ -212,47 +476,136 @@ QGIS 包含一个名为 `QgsMapToolCapture` 的地图工具，它正好处理这
 
 让我们定义我们的`EditTool`类：
 
-[PRE18]
+```py
+class EditTool(QgsMapTool):
+    def __init__(self, mapCanvas, layer, onGeometryChanged):
+        QgsMapTool.__init__(self, mapCanvas)
+        self.setCursor(Qt.CrossCursor)
+        self.layer             = layer
+        self.onGeometryChanged = onGeometryChanged
+        self.dragging          = False
+        self.feature           = None
+        self.vertex            = None
+```
 
 如您所见，`EditTool`是`QgsMapTool`的子类，初始化器接受三个参数：地图画布、要编辑的图层，以及一个`onGeometryChanged`可调用对象，当用户对几何形状进行更改时，将调用此对象。
 
 接下来，我们想要定义`canvasPressEvent()`方法。我们首先将识别用户点击的要素：
 
-[PRE19]
+```py
+    def canvasPressEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return
+```
 
 我们将在稍后实现`findFeatureAt()`方法。现在我们知道用户点击了哪个要素，我们想要识别该要素中离点击点最近的顶点，以及用户点击离顶点有多远。以下是相关代码：
 
-[PRE20]
+```py
+        mapPt,layerPt = self.transformCoordinates(event.pos())
+        geometry = feature.geometry()
+
+        vertexCoord,vertex,prevVertex,nextVertex,distSquared = \
+            geometry.closestVertex(layerPt)
+
+        distance = math.sqrt(distSquared)
+```
 
 如您所见，我们正在使用`transformCoordinates()`方法的副本（从我们的`CaptureTool`类中借用）来将画布坐标转换为地图和图层坐标。然后，我们使用`QgsGeometry.closestVertex()`方法来识别鼠标点击位置最近的顶点。此方法返回多个值，包括从最近顶点到鼠标位置的距离的平方。我们使用`math.sqrt()`函数将其转换为常规距离值，该值将在图层坐标中。
 
 现在我们知道鼠标点击离顶点有多远，我们必须决定距离是否太远。如果用户没有在顶点附近点击任何地方，我们将想要忽略鼠标点击。为此，我们将计算一个**容差**值。容差是指点击点可以离顶点多远，同时仍然将其视为对该顶点的点击。与之前计算的距离值一样，容差是以图层坐标来衡量的。我们将使用一个辅助方法`calcTolerance()`来计算这个值。以下是需要在我们的`canvasPressEvent()`方法末尾添加的相关代码：
 
-[PRE21]
+```py
+        tolerance = self.calcTolerance(event.pos())
+        if distance > tolerance: return
+```
 
 如您所见，如果鼠标点击位置离顶点太远，即距离大于容差，我们将忽略鼠标点击。现在我们知道用户确实在顶点附近点击了，我们想要对此鼠标点击做出响应。我们如何做这取决于用户是否按下了左键或右键：
 
-[PRE22]
+```py
+        if event.button() == Qt.LeftButton:
+            # Left click -> move vertex.
+            self.dragging = True
+            self.feature  = feature
+            self.vertex   = vertex
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()
+        elif event.button() == Qt.RightButton:
+            # Right click -> delete vertex.
+            self.deleteVertex(feature, vertex)
+            self.canvas().refresh()
+```
 
 如您所见，我们依赖于许多辅助方法来完成大部分工作。我们将在稍后定义这些方法，但首先，让我们完成我们的事件处理方法实现，从`canvasMoveEvent()`开始。此方法响应用户将鼠标移过画布。它是通过将拖动的顶点（如果有）移动到当前鼠标位置来实现的：
 
-[PRE23]
+```py
+    def canvasMoveEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.canvas().refresh()
+```
 
 接下来，我们有`canvasReleaseEvent()`，它将顶点移动到其最终位置，刷新地图画布，并更新我们的实例变量以反映我们不再拖动顶点的事实：
 
-[PRE24]
+```py
+    def canvasReleaseEvent(self, event):
+        if self.dragging:
+            self.moveVertexTo(event.pos())
+            self.layer.updateExtents()
+            self.canvas().refresh()
+            self.dragging = False
+            self.feature  = None
+            self.vertex   = None
+```
 
 我们最终的事件处理方法是`canvasDoubleClickEvent()`，它通过向要素添加新顶点来响应双击。此方法与`canvasPressEvent()`方法类似；我们必须识别被点击的要素，然后识别用户双击的是哪条线段：
 
-[PRE25]
+```py
+    def canvasDoubleClickEvent(self, event):
+        feature = self.findFeatureAt(event.pos())
+        if feature == None:
+            return
+
+        mapPt,layerPt = self.transformCoordinates(event.pos())
+        geometry      = feature.geometry()
+
+        distSquared,closestPt,beforeVertex = \
+            geometry.closestSegmentWithContext(layerPt)
+
+        distance = math.sqrt(distSquared)
+        tolerance = self.calcTolerance(event.pos())
+        if distance > tolerance: return
+```
 
 如您所见，如果鼠标位置离线段太远，我们将忽略双击。接下来，我们想要将新顶点添加到几何形状中，并更新地图图层和地图画布以反映这一变化：
 
-[PRE26]
+```py
+        geometry.insertVertex(closestPt.x(), closestPt.y(),
+                              beforeVertex)
+        self.layer.changeGeometry(feature.id(), geometry)
+        self.canvas().refresh()
+```
 
 这完成了我们 `EditTool` 的所有事件处理方法。现在让我们实现我们的各种辅助方法，从识别点击的要素的 `findFeatureAt()` 方法开始：
 
-[PRE27]
+```py
+    def findFeatureAt(self, pos):
+        mapPt,layerPt = self.transformCoordinates(pos)
+        tolerance = self.calcTolerance(pos)
+        searchRect = QgsRectangle(layerPt.x() - tolerance,
+                                  layerPt.y() - tolerance,
+                                  layerPt.x() + tolerance,
+                                  layerPt.y() + tolerance)
+
+        request = QgsFeatureRequest()
+        request.setFilterRect(searchRect)
+        request.setFlags(QgsFeatureRequest.ExactIntersect)
+
+        for feature in self.layer.getFeatures(request):
+            return feature
+
+        return None
+```
 
 我们使用容差值来定义一个以点击点为中心的搜索矩形，并识别与该矩形相交的第一个要素：
 
@@ -260,19 +613,53 @@ QGIS 包含一个名为 `QgsMapToolCapture` 的地图工具，它正好处理这
 
 接下来是 `calcTolerance()` 方法，它计算在点击被认为太远于顶点或几何形状之前我们可以容忍的距离：
 
-[PRE28]
+```py
+    def calcTolerance(self, pos):
+        pt1 = QPoint(pos.x(), pos.y())
+        pt2 = QPoint(pos.x() + 10, pos.y())
+
+        mapPt1,layerPt1 = self.transformCoordinates(pt1)
+        mapPt2,layerPt2 = self.transformCoordinates(pt2)
+        tolerance = layerPt2.x() - layerPt1.x()
+
+        return tolerance
+```
 
 我们通过识别地图画布上相距十像素的两个点，并将这两个坐标都转换为层坐标来计算这个值。然后我们返回这两个点之间的距离，这将是层坐标系中的容差。
 
 现在我们来到了有趣的部分：移动和删除顶点。让我们从将顶点移动到新位置的方法开始：
 
-[PRE29]
+```py
+    def moveVertexTo(self, pos):
+        geometry = self.feature.geometry()
+        layerPt = self.toLayerCoordinates(self.layer, pos)
+        geometry.moveVertex(layerPt.x(), layerPt.y(), self.vertex)
+        self.layer.changeGeometry(self.feature.id(), geometry)
+        self.onGeometryChanged()
+```
 
 如您所见，我们将位置转换为层坐标，告诉 `QgsGeometry` 对象将顶点移动到这个位置，然后告诉层保存更新的几何形状。最后，我们使用 `onGeometryChanged` 可调用对象告诉应用程序的其他部分几何形状已被更改。
 
 删除一个顶点稍微复杂一些，因为我们必须防止用户在没有足够的顶点来构成有效几何形状的情况下删除顶点——LineString 至少需要两个顶点，而多边形至少需要三个。以下是我们的 `deleteVertex()` 方法的实现：
 
-[PRE30]
+```py
+    def deleteVertex(self, feature, vertex):
+        geometry = feature.geometry()
+
+        if geometry.wkbType() == QGis.WKBLineString:
+            lineString = geometry.asPolyline()
+            if len(lineString) <= 2:
+                return
+        elif geometry.wkbType() == QGis.WKBPolygon:
+            polygon = geometry.asPolygon()
+            exterior = polygon[0]
+            if len(exterior) <= 4:
+                return
+
+        if geometry.deleteVertex(vertex):
+            self.layer.changeGeometry(feature.id(), geometry)
+            self.onGeometryChanged()
+```
 
 注意，多边形检查必须考虑到多边形外部的第一个和最后一个点实际上是相同的。这就是为什么我们检查多边形是否至少有四个坐标而不是三个。
 
@@ -282,4 +669,4 @@ QGIS 包含一个名为 `QgsMapToolCapture` 的地图工具，它正好处理这
 
 在本章中，我们学习了如何编写一个 PyQGIS 应用程序，允许用户选择和编辑要素。我们创建了一个地图工具，它使用 `QgsVectorLayer` 中的选择处理方法来让用户选择要素，并学习了如何在程序内部处理当前选定的要素。然后我们探讨了层的编辑模式如何允许用户进行更改，然后要么提交这些更改，要么丢弃它们。最后，我们创建了一系列地图工具，允许用户在地图层内添加、编辑和删除点、线字符串和多边形几何形状。
 
-将所有这些工具整合在一起，您的PyQGIS应用程序将具备一套完整的选区和几何编辑功能。在本书的最后两章中，我们将使用这些工具，结合前几章所获得的知识，利用Python和QGIS构建一个完整的独立地图应用程序。
+将所有这些工具整合在一起，您的 PyQGIS 应用程序将具备一套完整的选区和几何编辑功能。在本书的最后两章中，我们将使用这些工具，结合前几章所获得的知识，利用 Python 和 QGIS 构建一个完整的独立地图应用程序。

@@ -1,4 +1,4 @@
-# 第4章。衡量尺度
+# 第四章。衡量尺度
 
 在本章中，我们将涵盖：
 
@@ -18,15 +18,15 @@
 
 # 简介
 
-作为数据可视化开发者，你需要反复执行的一个关键任务是不断地将数据域中的值映射到视觉域中，例如，将你最近购买的一块价值453.00美元的平板电脑映射为653像素长的条形，以及将你昨晚酒吧的消费23.59美元映射为34像素长的条形，分别。从某种意义上说，这就是数据可视化的全部——以高效和准确的方式将数据元素映射到它们的视觉隐喻。因为这是数据可视化和动画（动画将在[第6章](ch06.html "第6章。以风格过渡")，“以风格过渡”中详细讨论）中绝对必要的任务，D3提供了丰富且强大的支持，这是本章的重点。
+作为数据可视化开发者，你需要反复执行的一个关键任务是不断地将数据域中的值映射到视觉域中，例如，将你最近购买的一块价值 453.00 美元的平板电脑映射为 653 像素长的条形，以及将你昨晚酒吧的消费 23.59 美元映射为 34 像素长的条形，分别。从某种意义上说，这就是数据可视化的全部——以高效和准确的方式将数据元素映射到它们的视觉隐喻。因为这是数据可视化和动画（动画将在第六章，“以风格过渡”中详细讨论）中绝对必要的任务，D3 提供了丰富且强大的支持，这是本章的重点。
 
 ## 什么是尺度？
 
-D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对这些结构概念上的正确理解对于成为一名有效的可视化开发者至关重要。这是因为尺度不仅用于执行我们之前提到的映射，而且还作为许多其他D3结构（如过渡和坐标轴）的基本构建块。
+D3 提供了各种称为**尺度**的结构来帮助您执行此类映射。对这些结构概念上的正确理解对于成为一名有效的可视化开发者至关重要。这是因为尺度不仅用于执行我们之前提到的映射，而且还作为许多其他 D3 结构（如过渡和坐标轴）的基本构建块。
 
 这些尺度究竟是什么？
 
-简而言之，尺度可以被视为数学**函数**。数学函数与在命令式编程语言（如JavaScript函数）中定义的函数不同。在数学中，函数被定义为两个集合之间的映射：
+简而言之，尺度可以被视为数学**函数**。数学函数与在命令式编程语言（如 JavaScript 函数）中定义的函数不同。在数学中，函数被定义为两个集合之间的映射：
 
 > 设 A 和 B 为非空集合。从 A 到 B 的函数 *f* 是将 B 中恰好一个元素分配给 A 中每个元素的赋值。我们写 *f*(a) = b，如果 b 是函数 *f* 分配给 A 中元素 a 的唯一元素。
 > 
@@ -62,13 +62,73 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/quantitative-scales.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/quantitative-scales.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/quantitative-scales.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/quantitative-scales.html)
 
 ## 如何做...
 
 让我们看看以下代码示例：
 
-[PRE0]
+```py
+<div id="linear" class="clear"><span>n</span></div>
+<div id="linear-capped" class="clear">
+    <span>1 &lt;= a*n + b &lt;= 20</span>
+</div>
+<div id="pow" class="clear"><span>n²</span></div>
+<div id="pow-capped" class="clear">
+    <span>1 &lt;= a*n² + b &lt;= 10</span>
+</div>
+<div id="log" class="clear"><span>log(n)</span></div>
+<div id="log-capped" class="clear">
+    <span>1 &lt;= a*log(n) + b &lt;= 10</span>
+</div>
+
+<script type="text/javascript">
+    var max = 11, data = [];
+    for (var i = 1; i < max; ++i) data.push(i);
+
+ var linear = d3.scale.linear() // <-A
+ .domain([1, 10]) // <-B
+ .range([1, 10]); // <-C 
+ var linearCapped = d3.scale.linear()
+ .domain([1, 10]) 
+ .range([1, 20]); // <-D
+
+ var pow = d3.scale.pow().exponent(2); // <-E
+ var powCapped = d3.scale.pow() // <-F
+ .exponent(2)
+ .domain([1, 10])
+ .rangeRound([1, 10]); // <-G
+
+ var log = d3.scale.log(); // <-H
+ var logCapped = d3.scale.log() // <-I
+ .domain([1, 10])
+ .rangeRound([1, 10]);
+
+    function render(data, scale, selector) {
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+                .enter().append("div").classed("cell", true);
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+                .exit().remove();
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+                .style("display", "inline-block")
+ .text(function (d) {
+ return d3.round(scale(d), 2);
+ });
+    }
+
+    render(data, linear, "#linear");
+    render(data, linearCapped, "#linear-capped");
+    render(data, pow, "#pow");
+    render(data, powCapped, "#pow-capped");
+    render(data, log, "#log");
+    render(data, logCapped, "#log-capped");
+</script>
+```
 
 以下代码在你的浏览器中生成以下输出：
 
@@ -84,7 +144,11 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 在前面的代码示例中，我们的数据数组填充了从 `0` 到 `10` 的整数——如标记为 `A` 的行所示——我们通过调用 `d3.scale.linear()` 函数创建了一个 **线性尺度**。这个函数返回一个默认域设置为 `[0, 1]`、默认范围设置为 `[0, 1]` 的线性定量尺度。因此，默认尺度本质上就是数字的 **恒等函数**。因此，这个默认函数对我们来说并不那么有用，但通常需要通过使用其 `domain` 和 `range` 函数在行 `B` 和 `C` 上进行进一步定制。在这种情况下，我们将它们都设置为 `[1, 10]`。这个尺度基本上定义了函数 *f(n) = n*。
 
-[PRE1]
+```py
+    var linear = d3.scale.linear() // <-A
+        .domain([1, 10]) // <-B
+        .range([1, 10]); // <-C        
+```
 
 ![它是如何工作的...](img/2162OS_04_03.jpg)
 
@@ -98,7 +162,11 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 这无疑是使用 D3 尺度时最常见的情况，因为你的数据集将与你的视觉集完全匹配。
 
-[PRE2]
+```py
+    var linearCapped = d3.scale.linear()
+        .domain([1, 10])        
+        .range([1, 20]); // <-D
+```
 
 ![它是如何工作的...](img/2162OS_04_04.jpg)
 
@@ -112,9 +180,11 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 **幂尺度**
 
-我们创建的第二种尺度是一种 **幂尺度**。在线 `E` 上，我们定义了一个指数为 2 的幂尺度。`d3.scale.pow()` 函数返回一个默认的幂尺度函数，其 `指数` 设置为 `1`。此尺度有效地定义了函数 *f(n) = n^2*。
+我们创建的第二种尺度是一种 **幂尺度**。在线 `E` 上，我们定义了一个指数为 2 的幂尺度。`d3.scale.pow()` 函数返回一个默认的幂尺度函数，其 `指数` 设置为 `1`。此尺度有效地定义了函数 *f(n) = n²*。
 
-[PRE3]
+```py
+    var pow = d3.scale.pow().exponent(2); // <-E
+```
 
 ![如何工作...](img/2162OS_04_05.jpg)
 
@@ -122,9 +192,14 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 在线 `F` 上定义了第二个幂尺度，这次在 `G` 线上设置了不同的范围并进行四舍五入；`rangeRound()` 函数基本上与 `range()` 函数相同，它为尺度设置范围。然而，`rangeRound` 函数将输出数字四舍五入，以便没有小数部分。这非常方便，因为尺度通常用于将数据域中的元素映射到视觉域。因此，尺度的输出很可能是一个描述某些视觉特征的数字，例如像素数。避免亚像素数是一种有用的技术，可以防止渲染时的反走样。
 
-第二个幂尺度定义了以下函数 *f(n) = a*n^2 + b, 1 <= f(n) <= 10*。
+第二个幂尺度定义了以下函数 *f(n) = a*n² + b, 1 <= f(n) <= 10*。
 
-[PRE4]
+```py
+    var powCapped = d3.scale.pow() // <-F
+        .exponent(2)
+        .domain([1, 10])
+        .rangeRound([1, 10]); // <-G
+```
 
 ![如何工作...](img/2162OS_04_06.jpg)
 
@@ -136,7 +211,9 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 在线 `H` 上，使用 `d3.scale.log()` 函数创建了一种第三种类型的定量尺度。默认对数尺度的基础值为 `10`。线 H 实质上定义了以下数学函数 *f(n) = log(n)*。
 
-[PRE5]
+```py
+    var log = d3.scale.log(); // <-H
+```
 
 ![如何工作...](img/2162OS_04_07.jpg)
 
@@ -144,7 +221,11 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 在线 `I` 上，我们自定义了对数尺度，使其域为 `[1, 10]`，范围四舍五入为 `[1, 10]`，这定义了以下约束数学函数 *f(n) = a*log(n) + b, 1 <= f(n) <= 10*。
 
-[PRE6]
+```py
+    var logCapped = d3.scale.log() // <-I
+        .domain([1, 10])
+        .rangeRound([1, 10]);
+```
 
 ![如何工作...](img/2162OS_04_08.jpg)
 
@@ -152,7 +233,7 @@ D3提供了各种称为**尺度**的结构来帮助您执行此类映射。对�
 
 ## 更多...
 
-D3 还提供了其他额外的定量尺度，包括量化、阈值、分位数和恒等尺度。由于本书的范围有限且它们的使用相对较少，这里没有讨论，然而，对这里讨论和解释的尺度的基本理解将肯定有助于您理解 D3 库提供的其他额外定量尺度。有关其他类型定量尺度的更多信息，请访问 [https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantitative](https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantitative)。
+D3 还提供了其他额外的定量尺度，包括量化、阈值、分位数和恒等尺度。由于本书的范围有限且它们的使用相对较少，这里没有讨论，然而，对这里讨论和解释的尺度的基本理解将肯定有助于您理解 D3 库提供的其他额外定量尺度。有关其他类型定量尺度的更多信息，请访问 [`github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantitative`](https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantitative)。
 
 # 使用时间尺度
 
@@ -162,13 +243,57 @@ D3 还提供了其他额外的定量尺度，包括量化、阈值、分位数�
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/time-scale.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/time-scale.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/time-scale.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/time-scale.html)
 
 ## 如何操作...
 
 首先，让我们看一下以下代码示例：
 
-[PRE7]
+```py
+<div id="time" class="clear">
+    <span>Linear Time Progression<br></span>
+    <span>Mapping [01/01/2013, 12/31/2013] to [0, 900]<br></span>
+</div>
+
+<script type="text/javascript">
+ var start = new Date(2013, 0, 1), // <-A 
+ end = new Date(2013, 11, 31),
+ range = [0, 1200],
+ time = d3.time.scale().domain([start, end]) // <-B
+ .rangeRound(range), // <-C
+        max = 12,
+        data = [];
+
+ for (var i = 0; i < max; ++i){ // <-D
+ var date = new Date(start.getTime());
+ date.setMonth(start.getMonth() + i);
+ data.push(date);
+ }
+
+    function render(data, scale, selector) { // <-E
+        d3.select(selector).selectAll("div.fixed-cell")
+                    .data(data)
+                .enter()
+                    .append("div").classed("fixed-cell", true);
+
+        d3.select(selector).selectAll("div.fixed-cell")
+                    .data(data)
+                .exit().remove();
+
+        d3.select(selector).selectAll("div.fixed-cell")
+                    .data(data)
+ .style("margin-left", function(d){ // <-F
+ return scale(d) + "px";
+ })
+ .html(function (d) { // <-G
+ var format = d3.time.format("%x"); // <-H
+ return format(d) + "<br>" + scale(d) + "px";
+ });
+    }
+
+    render(data, time, "#time");
+</script>
+```
 
 此菜谱生成了以下视觉输出：
 
@@ -178,33 +303,54 @@ D3 还提供了其他额外的定量尺度，包括量化、阈值、分位数�
 
 ## 它是如何工作的...
 
-在这个菜谱中，我们在行 `A` 上定义了一个日期范围，从2013年1月1日到2013年12月31日。
+在这个菜谱中，我们在行 `A` 上定义了一个日期范围，从 2013 年 1 月 1 日到 2013 年 12 月 31 日。
 
-[PRE8]
+```py
+var start = new Date(2013, 0, 1), // <-A 
+        end = new Date(2013, 11, 31),
+        range = [0, 900],
+        time = d3.time.scale().domain([start, end]) // <-B
+            .rangeRound(range), // <-C
+```
 
 ### 小贴士
 
-JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`new Date(2013, 0, 1)` 给你2013年1月1日，而 `new Date(2013, 0, 0)` 实际上给你2012年12月31日。
+JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`new Date(2013, 0, 1)` 给你 2013 年 1 月 1 日，而 `new Date(2013, 0, 0)` 实际上给你 2012 年 12 月 31 日。
 
-然后使用 `d3.time.scale` 函数在行 `B` 上创建了一个D3 **时间尺度**，这个范围被用来创建时间尺度。与定量尺度类似，时间尺度也支持单独的 `domain` 和 `range` 定义，用于将基于日期和时间的点映射到视觉范围。在此示例中，我们将尺度的范围设置为 `[0, 900]`。这实际上定义了从2013年1月1日到2013年12月31日之间的任何日期和时间值到0到900之间的数字的映射。
+然后使用 `d3.time.scale` 函数在行 `B` 上创建了一个 D3 **时间尺度**，这个范围被用来创建时间尺度。与定量尺度类似，时间尺度也支持单独的 `domain` 和 `range` 定义，用于将基于日期和时间的点映射到视觉范围。在此示例中，我们将尺度的范围设置为 `[0, 900]`。这实际上定义了从 2013 年 1 月 1 日到 2013 年 12 月 31 日之间的任何日期和时间值到 0 到 900 之间的数字的映射。
 
 定义了时间尺度后，我们现在可以通过调用尺度函数将任何给定的 `Date` 对象映射，例如，`time(new Date(2013, 4, 1))` 将返回 `395`，`time(new Date(2013, 11, 15))` 将返回 `1147`，依此类推。
 
-在行 `D` 上，我们创建了一个数据数组，包含2013年1月到12月的12个月份：
+在行 `D` 上，我们创建了一个数据数组，包含 2013 年 1 月到 12 月的 12 个月份：
 
-[PRE9]
+```py
+    for (var i = 0; i < max; ++i){ // <-D
+        var date = new Date(start.getTime());
+        date.setMonth(start.getMonth() + i);
+        data.push(date);
+    }
+```
 
-然后，在行 `E` 上，我们使用 `render` 函数创建了12个单元格，代表一年中的每个月份。
+然后，在行 `E` 上，我们使用 `render` 函数创建了 12 个单元格，代表一年中的每个月份。
 
-为了水平展开单元格，行 `F` 使用我们定义的时间尺度将月份映射到 `margin-left` CSS样式：
+为了水平展开单元格，行 `F` 使用我们定义的时间尺度将月份映射到 `margin-left` CSS 样式：
 
-[PRE10]
+```py
+.style("margin-left", function(d){ // <-F
+    return scale(d) + "px";
+})
+```
 
 行 `G` 生成标签以展示在此示例中基于缩放的映射产生的结果：
 
-[PRE11]
+```py
+.html(function (d) { // <-G
+    var format = d3.time.format("%x"); // <-H
+    return format(d) + "<br>" + scale(d) + "px";
+});
+```
 
-要从JavaScript `Date`对象生成可读的字符串，我们在行 `H` 上使用了D3时间格式化器。D3附带了一个强大且灵活的时间格式化库，当处理`Date`对象时非常有用。
+要从 JavaScript `Date`对象生成可读的字符串，我们在行 `H` 上使用了 D3 时间格式化器。D3 附带了一个强大且灵活的时间格式化库，当处理`Date`对象时非常有用。
 
 ## 还有更多...
 
@@ -222,9 +368,9 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 +   `%e`: 这是以空格填充的月份天数，以十进制数字表示 [ 1,31]
 
-+   `%H`: 这是以十进制数字表示的小时（24小时制）[00,23]
++   `%H`: 这是以十进制数字表示的小时（24 小时制）[00,23]
 
-+   `%I`: 这是以十进制数字表示的小时（12小时制）[01,12]
++   `%I`: 这是以十进制数字表示的小时（12 小时制）[01,12]
 
 +   `%j`: 这是以十进制数字表示的年份中的天数 [001,366]
 
@@ -248,13 +394,13 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 ## 参见
 
-+   要查看D3时间格式模式的完整参考，请访问以下链接：
++   要查看 D3 时间格式模式的完整参考，请访问以下链接：
 
     [时间格式化](https://github.com/mbostock/d3/wiki/Time-Formatting#wiki-format)
 
 # 使用序数等级
 
-在某些情况下，我们可能需要将我们的数据映射到某些序数值，例如，`["a", "b", "c"]`或`["#1f77b4", "#ff7f0e", "#2ca02c"]`。那么，我们如何使用D3等级来执行这种映射？本食谱旨在回答这类问题。
+在某些情况下，我们可能需要将我们的数据映射到某些序数值，例如，`["a", "b", "c"]`或`["#1f77b4", "#ff7f0e", "#2ca02c"]`。那么，我们如何使用 D3 等级来执行这种映射？本食谱旨在回答这类问题。
 
 ## 准备工作
 
@@ -264,9 +410,65 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 ## 如何做到这一点...
 
-这种序数映射在数据可视化中相当常见。例如，你可能想要通过分类将某些数据点映射到某些文本值或RGB颜色代码，这反过来又可以用于CSS样式。D3提供了一种专门的等级实现来处理这种映射。我们将在下面探讨其用法。以下是`ordinal.scale.html`文件的代码：
+这种序数映射在数据可视化中相当常见。例如，你可能想要通过分类将某些数据点映射到某些文本值或 RGB 颜色代码，这反过来又可以用于 CSS 样式。D3 提供了一种专门的等级实现来处理这种映射。我们将在下面探讨其用法。以下是`ordinal.scale.html`文件的代码：
 
-[PRE12]
+```py
+<div id="alphabet" class="clear">
+    <span>Ordinal Scale with Alphabet</span>
+    <span>Mapping [1..10] to ["a".."j"]</span>
+</div>
+<div id="category10" class="clear">
+    <span>Ordinal Color Scale Category 10</span>
+    <span>Mapping [1..10] to category 10 colors</span>
+</div>
+<div id="category20" class="clear">
+    <span>Ordinal Color Scale Category 20</span>
+    <span>Mapping [1..10] to category 20 colors</span>
+</div>
+<div id="category20b" class="clear">
+    <span>Ordinal Color Scale Category 20b</span>     <span>Mapping [1..10] to category 20b colors</span>
+</div>
+<div id="category20c" class="clear">
+    <span>Ordinal Color Scale Category 20c</span>
+    <span>Mapping [1..10] to category 20c colors</span>
+</div>
+
+<script type="text/javascript">
+    var max = 10, data = [];
+
+    for (var i = 0; i < max; ++i) data.push(i); // <-A
+
+ var alphabet = d3.scale.ordinal() // <-B
+ .domain(data)
+ .range(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
+
+    function render(data, scale, selector) { // <-C
+        d3.select(selector).selectAll("div.cell")
+                  .data(data)
+              .enter().append("div").classed("cell", true);
+
+        d3.select(selector).selectAll("div.cell")
+                  .data(data)
+              .exit().remove();
+
+        d3.select(selector).selectAll("div.cell")
+                  .data(data)
+              .style("display", "inline-block")
+ .style("background-color", function(d){  // <-D
+ return scale(d).indexOf("#")>=0?scale(d):"white";
+ })
+ .text(function (d) { // <-E
+ return scale(d);
+ });
+    }
+
+    render(data, alphabet, "#alphabet"); // <-F
+    render(data, d3.scale.category10(), "#category10");
+    render(data, d3.scale.category20(), "#category20");
+    render(data, d3.scale.category20b(), "#category20b");
+    render(data, d3.scale.category20c(), "#category20c"); // <-G
+</script>
+```
 
 上述代码在你的浏览器中输出以下内容：
 
@@ -278,19 +480,32 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 在上述代码示例中，第`A`行定义了一个简单的数据数组，包含从`0`到`9`的整数：
 
-[PRE13]
+```py
+for (var i = 0; i < max; ++i) data.push(i); // <-A    
+var alphabet = d3.scale.ordinal() // <-B
+    .domain(data)
+.range(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]);
+```
 
 然后在第`B`行使用`d3.scale.ordinal`函数创建了一个序数等级。这个等级的定义域被设置为我们的整数数组数据，而范围被设置为从`a`到`j`的字母列表。
 
 定义了这个等级后，我们可以通过简单地调用等级函数来进行映射，例如，`alphabet(0)`将返回`a`，`alphabet(4)`将返回`e`，依此类推。
 
-在第`C`行，定义了`render`函数以在页面上生成多个`div`元素来表示数据数组中的10个元素。每个`div`的`background-color`被设置为等级函数的输出或`white`，如果输出不是RGB颜色字符串：
+在第`C`行，定义了`render`函数以在页面上生成多个`div`元素来表示数据数组中的 10 个元素。每个`div`的`background-color`被设置为等级函数的输出或`white`，如果输出不是 RGB 颜色字符串：
 
-[PRE14]
+```py
+.style("background-color", function(d){  // <-D
+    return scale(d).indexOf("#")>=0 ? scale(d) : "white";
+})
+```
 
 在第`E`行，我们还设置了每个单元格的文本以显示等级函数的输出：
 
-[PRE15]
+```py
+.text(function (d) { // <-E
+    return scale(d);
+});
+```
 
 现在，所有结构都已就绪，从第`F`行到第`G`行，`render`函数被重复调用，使用不同的序数等级来产生不同的视觉输出。在第`F`行，调用`render`与`alphabet`序数等级产生以下输出：
 
@@ -304,11 +519,14 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 颜色序数等级
 
-由于在可视化中将不同颜色分配给不同的元素是一个常见任务，例如，在饼图和气泡图中分配不同的颜色，D3提供了一系列不同的内置序数颜色等级，正如我们在本食谱中看到的。
+由于在可视化中将不同颜色分配给不同的元素是一个常见任务，例如，在饼图和气泡图中分配不同的颜色，D3 提供了一系列不同的内置序数颜色等级，正如我们在本食谱中看到的。
 
 构建自己的简单自定义序数颜色尺度相当容易。只需创建一个范围设置为所需颜色的序数尺度，例如：
 
-[PRE16]
+```py
+d3.scale.ordinal()
+.range(["#1f77b4", "#ff7f0e", "#2ca02c"]);
+```
 
 # 字符串插值
 
@@ -326,11 +544,19 @@ JavaScript `Date`对象从 `0` 开始月份，从 `1` 开始日期。因此，`n
 
 插值不仅在规模实现中很重要，而且对于许多其他核心 D3 功能也是必不可少的，例如动画和布局管理。正因为这个基本作用，D3 设计了一个单独且可重用的结构，称为 **插值器**，以便这个常见的跨功能问题可以集中和一致地解决。让我们以一个简单的插值器为例：
 
-[PRE17]
+```py
+var interpolate = d3.interpolateNumber(0, 100);
+interpolate(0.1); // => 10
+interpolate(0.99); //=> 99
+```
 
 在这个简单的例子中，我们创建了一个范围在 `[0, 100]` 的 D3 数字插值器。`d3.interpolateNumber` 函数返回一个 `interpolate` 函数，我们可以使用它来执行基于数字的插值。`interpolate` 函数等同于以下代码：
 
-[PRE18]
+```py
+function interpolate(t) {
+    return a * (1 - t) + b * t;
+}
+```
 
 在这个函数中，`a` 代表范围的起始值，`b` 代表范围的结束值。传递给 `interpolate()` 函数的参数 `t` 是一个介于 0 到 1 之间的浮点数，它表示返回值与 `a` 的距离。
 
@@ -338,7 +564,7 @@ D3 提供了许多内置的插值器。由于本书的范围有限，我们将�
 
 ### 注意
 
-关于数字和四舍五入插值的更多详细信息，请参阅 D3 参考文档[https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolateNumber](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolateNumber)
+关于数字和四舍五入插值的更多详细信息，请参阅 D3 参考文档[`github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolateNumber`](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolateNumber)
 
 现在我们已经了解了通用的插值概念，让我们来看看 D3 中字符串插值器是如何工作的。
 
@@ -346,13 +572,52 @@ D3 提供了许多内置的插值器。由于本书的范围有限，我们将�
 
 在您的网页浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/string-interpolation.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/string-interpolation.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/string-interpolation.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/string-interpolation.html)
 
 ## 如何操作...
 
 字符串插值器会找到字符串中嵌入的数字，然后使用 D3 数字插值器进行插值：
 
-[PRE19]
+```py
+<div id="font" class="clear">
+    <span>Font Interpolation<br></span>
+</div>
+
+<script type="text/javascript">
+    var max = 11, data = [];
+
+ var sizeScale = d3.scale.linear() // <-A
+ .domain([0, max])
+ .range([  // <-B
+ "italic bold 12px/30px Georgia, serif", 
+ "italic bold 120px/180px Georgia, serif"
+ ]);
+
+    for (var i = 0; i < max; ++i){ data.push(i); }
+
+    function render(data, scale, selector) { // <-C
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .enter().append("div").classed("cell", true)
+                .append("span");
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .exit().remove();
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .style("display", "inline-block")
+            .select("span")
+ .style("font", function(d,i){ 
+ return scale(d); // <-D
+ })
+ .text(function(d,i){return i;}); // <-E
+    }
+
+    render(data, sizeScale, "#font");
+</script>
+```
 
 上述代码产生了以下输出：
 
@@ -364,19 +629,33 @@ D3 提供了许多内置的插值器。由于本书的范围有限，我们将�
 
 在这个例子中，我们在行 `A` 上创建了一个线性比例尺，其范围由表示起始和结束 `font` 样式的两个字符串指定：
 
-[PRE20]
+```py
+var sizeScale = d3.scale.linear() // <-A
+        .domain([0, max])
+        .range([  // <-B
+            "italic bold 12px/30px Georgia, serif", 
+            "italic bold 120px/180px Georgia, serif"
+        ]);
+```
 
 如您在 `string-interpolation.html` 文件中的代码所见，`font` 样式字符串包含 `font-size` 数字 `12px/30px` 和 `120px/180px`，这是我们在这个菜谱中想要插值的。
 
 在行 `C` 上，`render()` 函数简单地创建了包含每个索引数字（行 `E`）的 10 个单元格，这些单元格使用在行 `D` 上计算的插值 `font` 样式字符串进行样式化。
 
-[PRE21]
+```py
+.style("font", function(d,i){ 
+    return scale(d); // <-D
+})
+.text(function(d,i){return i;}); // <-E
+```
 
 ## 更多内容...
 
 尽管我们使用 CSS 字体样式作为示例演示了 D3 中的字符串插值，但 D3 字符串插值器不仅限于处理 CSS 样式。它可以基本上处理任何字符串，并且只要数字与以下 **正则表达式模式** 匹配，就会插值嵌入的数字：
 
-[PRE22]
+```py
+/[-+]?(?:\d+\.?\d*|\.?\d+)(?:[eE][-+]?\d+)?/g
+```
 
 ### 小贴士
 
@@ -390,7 +669,7 @@ D3 提供了许多内置的插值器。由于本书的范围有限，我们将�
 
 在您的网页浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/color-interpolation.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/color-interpolation.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/color-interpolation.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/color-interpolation.html)
 
 ## 如何操作...
 
@@ -400,7 +679,56 @@ D3 提供了许多内置的插值器。由于本书的范围有限，我们将�
 
 D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始颜色空间是什么，因为并非所有浏览器都支持 HSL 或 L*a*b* 颜色空间。
 
-[PRE23]
+```py
+<div id="color" class="clear">
+    <span>Linear Color Interpolation<br></span>
+</div>
+<div id="color-diverge" class="clear">
+    <span>Poly-Linear Color Interpolation<br></span>
+</div>
+
+<script type="text/javascript">
+    var max = 21, data = [];
+
+ var colorScale = d3.scale.linear() // <-A
+ .domain([0, max])
+ .range(["white", "#4169e1"]);
+
+ function divergingScale(pivot) { // <-B
+ var divergingColorScale = d3.scale.linear()
+ .domain([0, pivot, max]) // <-C
+ .range(["white", "#4169e1", "white"]);
+ return divergingColorScale;
+ }
+
+    for (var i = 0; i < max; ++i) data.push(i);
+
+    function render(data, scale, selector) { // <-D
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .enter()
+                .append("div")
+                    .classed("cell", true)
+                .append("span");
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .exit().remove();
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+            .style("display", "inline-block")
+ .style("background-color", function(d){
+ return scale(d); // <-E
+ })
+            .select("span")
+                .text(function(d,i){return i;});
+    }
+
+    render(data, colorScale, "#color");
+    render(data, divergingScale(5), "#color-diverge");
+</script>
+```
 
 上述代码产生了以下视觉输出：
 
@@ -412,21 +740,37 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 这个菜谱的第一步是在行 `A` 上定义一个线性颜色比例尺，其范围设置为 `["white", "#4169e1"]`。
 
-[PRE24]
+```py
+var colorScale = d3.scale.linear() // <-A
+    .domain([0, max])
+    .range(["white", "#4169e1"]);
+```
 
 在这个菜谱中使用了我们尚未遇到的一种新技术，即 **多线性刻度**，它在行 `B` 上的 `divergingScale` 函数中定义。
 
-[PRE25]
+```py
+function divergingScale(pivot) { // <-B
+    var divergingColorScale = d3.scale.linear()
+        .domain([0, pivot, max]) // <-C
+        .range(["white", "#4169e1", "white"]);
+    return divergingColorScale;
+}
+```
 
 多线性刻度是一个具有非均匀线性进度的刻度。它通过在线性刻度上提供一个多线性域来实现，正如我们在行 `C` 上所看到的。你可以将多线性刻度视为将具有不同域的两个线性刻度拼接在一起。因此，这个多线性颜色刻度实际上是以下两个线性刻度的组合。
 
-[PRE26]
+```py
+d3.scale.linear()
+    .domain([0, pivot]).range(["white", "#4169e1"]);
+d3.scale.linear()
+.domain([pivot, max]).range(["#4169e1", "white "]);
+```
 
 在菜谱的其余部分没有惊喜。在行 `D` 上定义的 `render()` 函数生成 20 个单元格，这些单元格按其索引编号，并使用我们之前定义的两个颜色刻度的输出进行着色。点击网页上的按钮（例如 **在 5 处旋转**）将显示在多线性颜色刻度中不同位置旋转的效果。
 
 ## 参见
 
-+   有关 CSS3 中支持的完整颜色关键字列表，请参阅 W3C 官方参考 [http://www.w3.org/TR/css3-color/#html4](http://www.w3.org/TR/css3-color/#html4)
++   有关 CSS3 中支持的完整颜色关键字列表，请参阅 W3C 官方参考 [`www.w3.org/TR/css3-color/#html4`](http://www.w3.org/TR/css3-color/#html4)
 
 # 复合对象插值
 
@@ -436,13 +780,56 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/compound-interpolation.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/compound-interpolation.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/compound-interpolation.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/compound-interpolation.html)
 
 ## 如何做...
 
 在这个菜谱中，我们将探讨如何在 D3 中执行复合对象插值。`compound-interpolation.html` 文件的代码如下：
 
-[PRE27]
+```py
+<div id="compound" class="clear">
+    <span>Compound Interpolation<br></span>
+</div>
+
+<script type="text/javascript">
+    var max = 21, data = [];
+
+ var compoundScale = d3.scale.pow()
+ .exponent(2)
+ .domain([0, max])
+ .range([
+ {color:"#add8e6", height:"15px"}, // <-A
+ {color:"#4169e1", height:"150px"} // <-B
+ ]);
+
+    for (var i = 0; i < max; ++i) data.push(i);
+
+    function render(data, scale, selector) { // <-C
+        d3.select(selector).selectAll("div.v-bar")
+                .data(data)
+                .enter().append("div").classed("v-bar", true)
+                .append("span");
+
+        d3.select(selector).selectAll("div.v-bar")
+                .data(data)
+                .exit().remove();
+
+        d3.select(selector).selectAll("div.v-bar")
+                .data(data)
+                .classed("v-bar", true)
+ .style("height", function(d){ // <-D
+ return scale(d).height;
+ }) 
+ .style("background-color", function(d){ // <-E
+ return scale(d).color;
+ })
+                .select("span")
+                .text(function(d,i){return i;});
+    }
+
+    render(data, compoundScale, "#compound");
+</script>
+```
 
 上述代码生成了以下视觉输出：
 
@@ -454,7 +841,15 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 这个菜谱与本章前面的菜谱不同之处在于，我们在这个菜谱中使用的刻度范围是由两个对象定义的，而不是简单的原始数据类型：
 
-[PRE28]
+```py
+var compoundScale = d3.scale.pow()
+            .exponent(2)
+            .domain([0, max])
+            .range([
+                {color:"#add8e6", height:"15px"}, // <-A
+                {color:"#4169e1", height:"150px"} // <-B
+            ]);
+```
 
 我们可以在行 `A` 和 `B` 上看到，刻度范围的起始和结束是包含两种不同类型值的两个对象；一个用于 RGB 颜色，另一个用于 CSS 高度样式。当你插值这种包含复合范围的刻度时，D3 将遍历对象内的每个字段，并递归地对每个字段应用简单的插值规则。换句话说，对于这个例子，D3 将使用颜色插值从 `#add8e6` 到 `#4169e1` 插值 `color` 字段，同时在高度字段上使用字符串插值从 `15px` 到 `150px`。
 
@@ -462,11 +857,26 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 该算法的递归性质允许 D3 在嵌套对象上进行插值。因此，你可以对如下对象进行插值：
 
-[PRE29]
+```py
+{
+  color:"#add8e6", 
+  size{ 
+height:"15px", 
+width: "25px"
+  }
+}
+```
 
 当调用复合比例函数时，它返回一个与给定范围定义相匹配的复合对象：
 
-[PRE30]
+```py
+.style("height", function(d){
+  return scale(d).height; // <-D
+}) 
+.style("background-color", function(d){
+  return scale(d).color; // <-E
+})
+```
 
 如我们在行 `D` 和 `E` 上所见，返回值是一个复合对象，这就是为什么我们可以访问其属性来检索插值值。
 
@@ -474,7 +884,15 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 虽然这不是一个常见的案例，但如果你的复合比例范围的起始和结束没有相同的属性，D3 不会抱怨，而是将缺失的属性视为一个常数。以下比例将使所有 `div` 元素的高度渲染为 `15px`：
 
-[PRE31]
+```py
+var compoundScale = d3.scale.pow()
+            .exponent(2)
+            .domain([0, max])
+            .range([
+                {color:"#add8e6", height:"15px"}, // <-A
+                {color:"#4169e1"} // <-B
+            ]);
+```
 
 # 实现自定义插值器
 
@@ -484,13 +902,80 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/custom-interpolator.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/custom-interpolator.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/custom-interpolator.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter4/custom-interpolator.html)
 
 ## 如何做...
 
 让我们看看两个不同自定义插值器实现的例子。在第一个例子中，我们将实现一个能够插值美元价格的自定义函数，而在第二个例子中，我们将实现字母的自定义插值器。以下是实现此功能的代码：
 
-[PRE32]
+```py
+<div id="dollar" class="clear">
+    <span>Custom Dollar Interpolation<br></span>
+</div>
+<div id="alphabet" class="clear">
+    <span>Custom Alphabet Interpolation<br></span>
+</div>
+
+<script type="text/javascript">
+ d3.interpolators.push(function(a, b) { // <-A
+ var re = /^\$([0-9,.]+)$/, // <-B
+ ma, mb, f = d3.format(",.02f"); 
+ if ((ma = re.exec(a)) && (mb = re.exec(b))) { // <-C
+ a = parseFloat(ma[1]);
+ b = parseFloat(mb[1]) - a;  // <-D
+ return function(t) {  // <-E
+ return "$" + f(a + b * t); // <-F
+ };
+ }
+ });
+
+ d3.interpolators.push(function(a, b) { // <-G
+ var re = /^([a-z])$/, ma, mb; // <-H
+ if ((ma = re.exec(a)) && (mb = re.exec(b))) { // <-I
+ a = a.charCodeAt(0);
+ var delta = a - b.charCodeAt(0); // <-J
+ return function(t) { // <-K
+ return String.fromCharCode(Math.ceil(a - delta * t));
+ };
+ }
+ });
+
+ var dollarScale = d3.scale.linear()
+ .domain([0, 11])
+ .range(["$0", "$300"]); // <-L
+
+ var alphabetScale = d3.scale.linear()
+ .domain([0, 27])
+ .range(["a", "z"]); // <-M
+
+    function render(scale, selector) {        
+        var data = [];
+        var max = scale.domain()[1];
+
+        for (var i = 0; i < max; ++i) data.push(i);      
+
+        d3.select(selector).selectAll("div.cell")
+                    .data(data)
+                .enter()
+                    .append("div")
+                        .classed("cell", true)
+                    .append("span");
+
+        d3.select(selector).selectAll("div.cell")
+                    .data(data)
+                .exit().remove();
+
+        d3.select(selector).selectAll("div.cell")
+                .data(data)
+                .style("display", "inline-block")
+                .select("span")
+ .text(function(d,i){return scale(d);}); // <-N
+    }
+
+    render(dollarScale, "#dollar");
+    render(alphabetScale, "#alphabet");
+</script>
+```
 
 上述代码生成了以下视觉输出：
 
@@ -502,13 +987,25 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 在这个菜谱中，我们遇到的第一个自定义插值器是在行 `A` 上定义的。自定义插值器函数稍微复杂一些，所以，让我们更仔细地看看它是如何工作的：
 
-[PRE33]
+```py
+d3.interpolators.push(function(a, b) { // <-A
+      var re = /^\$([0-9,.]+)$/, // <-B
+        ma, mb, f = d3.format(",.02f"); 
+      if ((ma = re.exec(a)) && (mb = re.exec(b))) { // <-C
+        a = parseFloat(ma[1]);
+        b = parseFloat(mb[1]) - a;  // <-D
+        return function(t) {  // <-E
+          return "$" + f(a + b * t); // <-F
+        };
+      }
+    });
+```
 
 ### 注意
 
 以下链接中的自定义插值器直接从 D3 Wiki 中提取：
 
-[https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolators](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolators)
+[`github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolators`](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_interpolators)
 
 在行 `A` 上，我们将一个插值函数推入 `d3.interpolators`。这是一个全局插值器注册数组，包含所有已知的注册插值器。默认情况下，此注册表中包含以下插值器：
 
@@ -522,13 +1019,17 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 +   数组插值器
 
-任何新的自定义插值器实现都可以推送到插值器数组的末尾，这使得它成为全局可用的。预期的插值器函数是一个工厂函数，它接受范围的起始值（`a`）和结束值（`b`）作为输入参数，并返回插值函数的实现，正如第`E`行所示。你可能想知道当呈现某个字符串值时，D3是如何知道使用哪个插值器的。这个问题的关键在于第`B`行。通常我们使用一个名为`re`的变量，它被定义为正则表达式模式`/^\$([0-9,.]+)$/`，然后用于匹配任何以美元符号开头的数字的参数`a`和`b`。如果这两个参数都匹配给定的模式，则构建并返回匹配的插值函数；否则，D3将继续迭代`d3.interpolators`数组以找到合适的插值器。
+任何新的自定义插值器实现都可以推送到插值器数组的末尾，这使得它成为全局可用的。预期的插值器函数是一个工厂函数，它接受范围的起始值（`a`）和结束值（`b`）作为输入参数，并返回插值函数的实现，正如第`E`行所示。你可能想知道当呈现某个字符串值时，D3 是如何知道使用哪个插值器的。这个问题的关键在于第`B`行。通常我们使用一个名为`re`的变量，它被定义为正则表达式模式`/^\$([0-9,.]+)$/`，然后用于匹配任何以美元符号开头的数字的参数`a`和`b`。如果这两个参数都匹配给定的模式，则构建并返回匹配的插值函数；否则，D3 将继续迭代`d3.interpolators`数组以找到合适的插值器。
 
-与数组不同，`d3.interpolators`实际上更应被视为一个FILO栈（尽管并非完全按栈实现），新插值器可以被推送到栈顶。当选择插值器时，D3会从顶部弹出并检查每个合适的插值器。因此，在这种情况下，后来推送到栈中的插值器具有优先权。
+与数组不同，`d3.interpolators`实际上更应被视为一个 FILO 栈（尽管并非完全按栈实现），新插值器可以被推送到栈顶。当选择插值器时，D3 会从顶部弹出并检查每个合适的插值器。因此，在这种情况下，后来推送到栈中的插值器具有优先权。
 
 在第`E`行创建的匿名`interpolate()`函数接受一个名为`t`的单个参数，其值介于`0`到`1`之间，表示插值值与基础值`a`的偏差程度。
 
-[PRE34]
+```py
+return function(t) {  // <-E
+          return "$" + f(a + b * t); // <-F
+        };
+```
 
 你可以将其视为从`a`到`b`的期望值所经过距离的百分比。考虑到这一点，就可以清楚地看出，在第`F`行它执行插值并基于偏移量`t`计算期望值，这实际上插值了一个价格字符串。
 
@@ -536,26 +1037,51 @@ D3 颜色插值函数总是返回在 RGB 空间中的插值颜色，无论原始
 
 在这里需要注意的一点是，第`D`行中`b`参数的值已经被从范围的末尾更改为`a`和`b`之间的差值。
 
-[PRE35]
+```py
+b = parseFloat(mb[1]) - a;  // <-D
+```
 
 这通常被认为是一种不便于阅读的坏做法。因此，在你的实现中，你应该避免在函数中修改输入参数的值。
 
 在第`G`行，注册了一个第二个自定义插值器来处理从`a`到`z`的单个字符小写字母：
 
-[PRE36]
+```py
+d3.interpolators.push(function(a, b) { // <-G
+      var re = /^([a-z])$/, ma, mb; // <-H
+      if ((ma = re.exec(a)) && (mb = re.exec(b))) { // <-I
+        a = a.charCodeAt(0);
+        var delta = a - b.charCodeAt(0); // <-J
+        return function(t) { // <-K
+          return String.fromCharCode(Math.ceil(a - delta * t));
+        };
+      }
+});
+```
 
 我们很快注意到这个插值器函数与之前的非常相似。首先，它在第`H`行定义了一个正则表达式模式，用于匹配单个小写字母。在执行匹配操作的第`I`行之后，范围的起始和结束值`a`和`b`都被从`字符`值转换为`整数`值。在第`J`行计算了`a`和`b`之间的差值。插值函数再次严格遵循与第一个插值器相同的公式，如第`K`行所示。
 
-一旦这些自定义插值器被注册到D3中，我们就可以定义具有相应范围的刻度，而无需做任何额外的工作，我们还将能够插值它们的值：
+一旦这些自定义插值器被注册到 D3 中，我们就可以定义具有相应范围的刻度，而无需做任何额外的工作，我们还将能够插值它们的值：
 
-[PRE37]
+```py
+var dollarScale = d3.scale.linear()
+        .domain([0, 11])
+        .range(["$0", "$300"]); // <-L
+
+var alphabetScale = d3.scale.linear()
+        .domain([0, 27])
+        .range(["a", "z"]); // <-M
+```
 
 如预期，`dollarScale`函数将自动使用价格插值器，而`alphabetScale`函数将分别使用我们的字母插值器。在调用缩放函数以获取所需值时，不需要做额外的工作，正如在行`N`中所示：
 
-[PRE38]
+```py
+.text(function(d,i){
+  return scale(d);} // <-N
+); 
+```
 
-在孤立状态下，自定义插值器似乎不是一个非常重要的概念；然而，在后续探索第6章中其他D3概念的[第6章](ch06.html "第6章。以风格进行转换")，*以风格进行转换*时，我们将探讨当自定义插值器与其他D3结构结合时，实现有趣的自定义效果时更强大的技术。
+在孤立状态下，自定义插值器似乎不是一个非常重要的概念；然而，在后续探索第六章中其他 D3 概念的第六章，*以风格进行转换*时，我们将探讨当自定义插值器与其他 D3 结构结合时，实现有趣的自定义效果时更强大的技术。
 
 ## 参见
 
-+   如果本章中使用的正则表达式是一个新概念或你工具箱中的已知工具，并且你需要一点点的复习，你可以在[http://www.regular-expressions.info](http://www.regular-expressions.info)找到很多有用的资源。
++   如果本章中使用的正则表达式是一个新概念或你工具箱中的已知工具，并且你需要一点点的复习，你可以在[`www.regular-expressions.info`](http://www.regular-expressions.info)找到很多有用的资源。

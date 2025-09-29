@@ -16,15 +16,22 @@ Crossfilter 也是一个由 D3 的作者 *Mike Bostock* 创建的库，最初用
 
 > Crossfilter 是一个用于在浏览器中探索大型多变量数据的 JavaScript 库。Crossfilter 支持与协调视图进行极快的（<30ms）交互，即使是在包含百万或更多记录的数据集中也是如此。
 > 
-> -Crossfilter Wiki (2013年8月)
+> -Crossfilter Wiki (2013 年 8 月)
 
 换句话说，Crossfilter 是一个库，你可以用它在大型的通常平坦的多变量数据集上生成数据维度。那么，什么是数据维度呢？数据维度可以被视为一种数据分组或分类，而每个维度的数据元素是一个分类变量。由于这仍然是一个相当抽象的概念，让我们看一下以下 JSON 数据集，看看它是如何通过 Crossfilter 转换为维度数据集的。假设我们有一个以下扁平的 JSON 数据集，描述了酒吧中的支付交易：
 
-[PRE0]
+```py
+[
+  {"date": "2011-11-14T01:17:54Z", "quantity": 2, "total": 190, "tip": 100, "type": "tab"},
+  {"date": "2011-11-14T02:20:19Z", "quantity": 2, "total": 190, "tip": 100, "type": "tab"},
+  {"date": "2011-11-14T02:28:54Z", "quantity": 1, "total": 300, "tip": 200, "type": "visa"},
+..
+]
+```
 
 ### 注意
 
-从 Crossfilter Wiki 借用的样本数据集：[https://github.com/square/crossfilter/wiki/API-Reference](https://github.com/square/crossfilter/wiki/API-Reference)。
+从 Crossfilter Wiki 借用的样本数据集：[`github.com/square/crossfilter/wiki/API-Reference`](https://github.com/square/crossfilter/wiki/API-Reference)。
 
 在这个样本数据集中，我们看到了多少维度？答案是：它有与你可以对数据进行分类的不同方式一样多的维度。例如，由于这些数据是关于客户支付的，这是一种时间序列的观察，显然“日期”是一个维度。其次，支付类型是自然地对数据进行分类的方式；因此，“类型”也是一个维度。下一个维度有点棘手，因为从技术上讲，我们可以将数据集中的任何字段建模为维度或其导数；然而，我们不想将任何不帮助我们更有效地切片数据或提供更多洞察数据试图表达的内容的东西作为维度。总计和小费字段具有非常高的基数，这通常是一个维度较差的指标（尽管小费/总计，即小费百分比可能是一个有趣的维度）；然而，“数量”字段可能具有相对较小的基数，假设人们不会在这个酒吧购买成千上万杯饮料，因此，我们选择使用数量作为我们的第三个维度。现在，这就是维度逻辑模型看起来像什么：
 
@@ -44,25 +51,41 @@ Crossfilter 也是一个由 D3 的作者 *Mike Bostock* 创建的库，最初用
 
 ## 如何做到这一点...
 
-现在，我们理解了为什么我们想要使用我们的数据集建立维度；让我们看看如何使用Crossfilter来实现这一点：
+现在，我们理解了为什么我们想要使用我们的数据集建立维度；让我们看看如何使用 Crossfilter 来实现这一点：
 
-[PRE1]
+```py
+var timeFormat = d3.time.format.iso;
+var data = crossfilter(json); // <-A
+
+var hours = data.dimension(function(d){
+  return d3.time.hour(timeFormat.parse(d.date)); // <-B
+});
+var totalByHour = hours.group().reduceSum(function(d){
+  return d.total;
+});
+
+var types = data.dimension(function(d){return d.type;});
+var transactionByType = types.group().reduceCount();
+
+var quantities = data.dimension(function(d){return d.quantity;});
+var salesByQuantity = quantities.group().reduceCount();
+```
 
 ## 它是如何工作的...
 
-如前所述，在Crossfilter中创建维度和组相当直接。在我们能够创建任何内容之前的第一步是，通过调用`crossfilter`函数将使用D3加载的JSON数据集通过Crossfilter进行传递（行A）。一旦完成，你可以通过调用`dimension`函数并传入一个访问器函数来创建你的维度，该函数将检索用于定义维度的数据元素。对于`type`，我们只需传入`function(d){return d.type;}`。你还可以在维度函数中执行数据格式化或其他任务（例如，行B上的日期格式化）。在创建维度之后，我们可以使用维度进行分类或分组，因此`totalByHour`是对每个小时的销售额进行求和的分组，而`salesByQuantity`是对按数量计数的交易进行分组的分组。为了更好地理解`group`的工作方式，我们将查看组对象的外观。如果你在`transactionsByType`组上调用`all`函数，你将得到以下对象：
+如前所述，在 Crossfilter 中创建维度和组相当直接。在我们能够创建任何内容之前的第一步是，通过调用`crossfilter`函数将使用 D3 加载的 JSON 数据集通过 Crossfilter 进行传递（行 A）。一旦完成，你可以通过调用`dimension`函数并传入一个访问器函数来创建你的维度，该函数将检索用于定义维度的数据元素。对于`type`，我们只需传入`function(d){return d.type;}`。你还可以在维度函数中执行数据格式化或其他任务（例如，行 B 上的日期格式化）。在创建维度之后，我们可以使用维度进行分类或分组，因此`totalByHour`是对每个小时的销售额进行求和的分组，而`salesByQuantity`是对按数量计数的交易进行分组的分组。为了更好地理解`group`的工作方式，我们将查看组对象的外观。如果你在`transactionsByType`组上调用`all`函数，你将得到以下对象：
 
 ![如何工作...](img/2162OS_Appendix_05.jpg)
 
-Crossfilter组对象
+Crossfilter 组对象
 
 我们可以清楚地看到，`transactionByType`组本质上是对数据元素按其类型进行分组，并在每个组内计数数据元素的总数，因为我们创建组时调用了`reduceCount`函数。
 
 以下是我们在这个示例中使用的函数的描述：
 
-+   `crossfilter`：如果指定，创建一个新的带有给定记录的crossfilter。记录可以是任何对象数组或原始数据类型。
++   `crossfilter`：如果指定，创建一个新的带有给定记录的 crossfilter。记录可以是任何对象数组或原始数据类型。
 
-+   `dimension`：使用给定的值访问器函数创建一个新的维度。该函数必须返回自然排序的值，即，与JavaScript的<、<=、>=和>运算符正确行为的值。这通常意味着原始数据类型：布尔值、数字或字符串。
++   `dimension`：使用给定的值访问器函数创建一个新的维度。该函数必须返回自然排序的值，即，与 JavaScript 的<、<=、>=和>运算符正确行为的值。这通常意味着原始数据类型：布尔值、数字或字符串。
 
 +   `dimension.group`：基于给定的`groupValue`函数创建给定维度的新的分组，该函数接受维度值作为输入并返回相应的舍入值。
 
@@ -76,13 +99,13 @@ Crossfilter组对象
 
 ## 还有更多...
 
-我们只接触了Crossfilter函数的一小部分。当涉及到如何创建维度和组时，Crossfilter提供了更多的功能；更多信息请查看其API参考：[https://github.com/square/crossfilter/wiki/API-Reference](https://github.com/square/crossfilter/wiki/API-Reference)。
+我们只接触了 Crossfilter 函数的一小部分。当涉及到如何创建维度和组时，Crossfilter 提供了更多的功能；更多信息请查看其 API 参考：[`github.com/square/crossfilter/wiki/API-Reference`](https://github.com/square/crossfilter/wiki/API-Reference)。
 
 ## 参见
 
-+   数据维度：[http://en.wikipedia.org/wiki/Dimension_(data_warehouse)](http://en.wikipedia.org/wiki/Dimension_(data_warehouse))
++   数据维度：[`en.wikipedia.org/wiki/Dimension_(data_warehouse)`](http://en.wikipedia.org/wiki/Dimension_(data_warehouse))
 
-+   基数：[http://en.wikipedia.org/wiki/Cardinality](http://en.wikipedia.org/wiki/Cardinality)
++   基数：[`en.wikipedia.org/wiki/Cardinality`](http://en.wikipedia.org/wiki/Cardinality)
 
 # 维度图表 – dc.js
 
@@ -92,7 +115,7 @@ Crossfilter组对象
 
 打开以下文件的本地副本作为参考：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/appendix-a/dc.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/appendix-a/dc.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/appendix-a/dc.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/appendix-a/dc.html)
 
 ## 如何做...
 
@@ -106,7 +129,44 @@ Crossfilter组对象
 
 以下是代码的样子：
 
-[PRE2]
+```py
+<div id="area-chart"></div>
+<div id="donut-chart"></div>
+<div id="bar-chart"></div>
+…
+dc.lineChart("#area-chart")
+                .width(500)
+                .height(250)
+                .dimension(hours)
+                .group(totalByHour)
+                .x(d3.time.scale().domain([
+                 timeFormat.parse("2011-11-14T01:17:54Z"), 
+                  timeFormat.parse("2011-11-14T18:09:52Z")
+]))
+                .elasticY(true)
+                .xUnits(d3.time.hours)
+                .renderArea(true)
+                .xAxis().ticks(5);
+
+        dc.pieChart("#donut-chart")
+                .width(250)
+                .height(250)
+                .radius(125)
+                .innerRadius(50)
+                .dimension(types)
+                .group(transactionByType);
+
+        dc.barChart("#bar-chart")
+                .width(500)
+                .height(250)
+                .dimension(quantities)
+                .group(salesByQuantity)
+                .x(d3.scale.linear().domain([0, 7]))
+                .y(d3.scale.linear().domain([0, 12]))
+                .centerBar(true);
+
+        dc.renderAll();
+```
 
 这会生成一组协调的交互式图表：
 
@@ -126,25 +186,42 @@ Crossfilter组对象
 
 1.  第一步是通过调用一个图表创建函数并传入其锚点元素的 D3 选择来创建一个图表对象，在我们的例子中是用于托管图表的 `div` 元素：
 
-    [PRE3]
+    ```py
+    <div id="area-chart"></div>
+    ...
+    dc.lineChart("#area-chart")
+    ```
 
 1.  然后我们为每个图表设置 `width`、`height`、`dimension` 和 `group`：
 
-    [PRE4]
+    ```py
+    chart.width(500)
+         .height(250)
+         .dimension(hours)
+         .group(totalByHour)
+    ```
 
     对于在笛卡尔平面上渲染的坐标图表，你还需要设置 `x` 和 `y` 尺度：
 
-    [PRE5]
+    ```py
+    chart.x(d3.time.scale().domain([
+      timeFormat.parse("2011-11-14T01:17:54Z"), 
+      timeFormat.parse("2011-11-14T18:09:52Z")
+    ])).elasticY(true)
+    ```
 
     在这个第一种情况下，我们明确设置了 x 轴尺度，同时让图表自动为我们计算 y 尺度。而在下一个例子中，我们明确设置了 x 和 y 尺度。
 
-    [PRE6]
+    ```py
+    chart.x(d3.scale.linear().domain([0, 7]))
+            .y(d3.scale.linear().domain([0, 12]))
+    ```
 
 ## 还有更多...
 
-不同的图表有不同的自定义外观和感觉的功能，你可以在 [https://github.com/NickQiZhu/dc.js/wiki/API](https://github.com/NickQiZhu/dc.js/wiki/API) 查看完整的 API 参考文档。
+不同的图表有不同的自定义外观和感觉的功能，你可以在 [`github.com/NickQiZhu/dc.js/wiki/API`](https://github.com/NickQiZhu/dc.js/wiki/API) 查看完整的 API 参考文档。
 
-利用 `crossfilter.js` 和 `dc.js` 可以让你快速构建复杂的数据分析仪表板。以下是对过去 20 年 NASDAQ 100 指数进行分析的演示仪表板 [http://nickqizhu.github.io/dc.js/](http://nickqizhu.github.io/dc.js/)：
+利用 `crossfilter.js` 和 `dc.js` 可以让你快速构建复杂的数据分析仪表板。以下是对过去 20 年 NASDAQ 100 指数进行分析的演示仪表板 [`nickqizhu.github.io/dc.js/`](http://nickqizhu.github.io/dc.js/)：
 
 ![还有更多...](img/2162OS_Appendix_04.jpg)
 
@@ -168,12 +245,12 @@ dc.js NASDAQ 演示
 
 +   气泡叠加图
 
-关于`dc.js`库的更多信息，请查看我们的Wiki页面 [https://github.com/NickQiZhu/dc.js/wiki](https://github.com/NickQiZhu/dc.js/wiki)。
+关于`dc.js`库的更多信息，请查看我们的 Wiki 页面 [`github.com/NickQiZhu/dc.js/wiki`](https://github.com/NickQiZhu/dc.js/wiki)。
 
 ## 参考阅读
 
-以下是一些其他有用的基于D3的可重用图表库。尽管，与`dc.js`不同，它们不是原生设计用于与Crossfilter一起工作，但它们在应对一般的可视化挑战时往往更加丰富和灵活：
+以下是一些其他有用的基于 D3 的可重用图表库。尽管，与`dc.js`不同，它们不是原生设计用于与 Crossfilter 一起工作，但它们在应对一般的可视化挑战时往往更加丰富和灵活：
 
-+   NVD3: [http://nvd3.org/](http://nvd3.org/)
++   NVD3: [`nvd3.org/`](http://nvd3.org/)
 
-+   手推车: [http://code.shutterstock.com/rickshaw/](http://code.shutterstock.com/rickshaw/)
++   手推车: [`code.shutterstock.com/rickshaw/`](http://code.shutterstock.com/rickshaw/)

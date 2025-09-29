@@ -1,4 +1,4 @@
-# 第10章. 与你的可视化交互
+# 第十章. 与你的可视化交互
 
 在本章中，我们将涵盖：
 
@@ -16,29 +16,70 @@
 > 
 > Ware C. (2012)
 
-数据可视化的目标是帮助观众通过隐喻、心智模型对齐和认知放大，快速有效地从大量原始数据中获取信息。到目前为止，在这本书中，我们已经介绍了各种技术，利用D3库实现多种类型的可视化。然而，我们还没有触及可视化的一个关键方面：人机交互。各种研究已经得出结论，人机交互在信息可视化中具有独特的价值。
+数据可视化的目标是帮助观众通过隐喻、心智模型对齐和认知放大，快速有效地从大量原始数据中获取信息。到目前为止，在这本书中，我们已经介绍了各种技术，利用 D3 库实现多种类型的可视化。然而，我们还没有触及可视化的一个关键方面：人机交互。各种研究已经得出结论，人机交互在信息可视化中具有独特的价值。
 
 > 将可视化与计算引导相结合，可以更快地分析更复杂的场景...本案例研究充分证明了复杂模型与引导和交互式可视化之间的相互作用可以扩展建模的应用范围，而不仅仅是研究。
 > 
 > Barrass I. & Leng J (2011)
 
-在本章中，我们将专注于D3的人机可视化交互支持，或者如前所述，学习如何将计算引导能力添加到你的可视化中。
+在本章中，我们将专注于 D3 的人机可视化交互支持，或者如前所述，学习如何将计算引导能力添加到你的可视化中。
 
 # 与鼠标事件交互
 
-鼠标是大多数桌面和笔记本电脑上最常见和最受欢迎的人机交互控制。即使今天，随着多点触控设备逐渐占据主导地位，触摸事件通常仍然被模拟成鼠标事件；因此，使设计用于通过鼠标交互的应用程序可以通过触摸使用。在本食谱中，我们将学习如何处理D3中的标准鼠标事件。
+鼠标是大多数桌面和笔记本电脑上最常见和最受欢迎的人机交互控制。即使今天，随着多点触控设备逐渐占据主导地位，触摸事件通常仍然被模拟成鼠标事件；因此，使设计用于通过鼠标交互的应用程序可以通过触摸使用。在本食谱中，我们将学习如何处理 D3 中的标准鼠标事件。
 
 ## 准备工作
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/mouse.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/mouse.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/mouse.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/mouse.html)
 
 ## 如何做到这一点...
 
-在以下代码示例中，我们将探讨在D3中注册和处理鼠标事件的技术。尽管在这个特定的例子中我们只处理了`click`和`mousemove`，但这里使用的技术可以轻松应用于现代浏览器支持的所有其他标准鼠标事件：
+在以下代码示例中，我们将探讨在 D3 中注册和处理鼠标事件的技术。尽管在这个特定的例子中我们只处理了`click`和`mousemove`，但这里使用的技术可以轻松应用于现代浏览器支持的所有其他标准鼠标事件：
 
-[PRE0]
+```py
+<script type="text/javascript">
+    var r = 400;
+
+    var svg = d3.select("body")
+            .append("svg");
+
+    var positionLabel = svg.append("text")
+            .attr("x", 10)
+            .attr("y", 30);
+
+    svg.on("mousemove", function () { //<-A
+        printPosition();
+    });
+
+    function printPosition() { //<-B
+        var position = d3.mouse(svg.node()); //<-C
+        positionLabel.text(position);
+    }  
+
+    svg.on("click", function () { //<-D
+        for (var i = 1; i < 5; ++i) {
+            var position = d3.mouse(svg.node());
+
+            var circle = svg.append("circle")
+                    .attr("cx", position[0])
+                    .attr("cy", position[1])
+                    .attr("r", 0)
+                    .style("stroke-width", 5 / (i))
+                    .transition()
+                        .delay(Math.pow(i, 2.5) * 50)
+                        .duration(2000)
+                        .ease('quad-in')
+                    .attr("r", r)
+                    .style("stroke-opacity", 0)
+                    .each("end", function () {
+                        d3.select(this).remove();
+                    });
+        }
+    });
+</script>
+```
 
 本食谱生成以下交互式可视化：
 
@@ -48,15 +89,45 @@
 
 ## 它是如何工作的...
 
-在D3中，要注册事件监听器，我们需要在特定选择上调用`on`函数。给定的事件监听器将被附加到所有选定的元素上，用于指定的事件（行A）。本食谱中的以下代码附加了一个`mousemove`事件监听器，用于显示当前鼠标位置（行B）：
+在 D3 中，要注册事件监听器，我们需要在特定选择上调用`on`函数。给定的事件监听器将被附加到所有选定的元素上，用于指定的事件（行 A）。本食谱中的以下代码附加了一个`mousemove`事件监听器，用于显示当前鼠标位置（行 B）：
 
-[PRE1]
+```py
+svg.on("mousemove", function () { //<-A
+    printPosition();
+});
 
-在第C行，我们使用了`d3.mouse`函数来获取相对于给定容器元素的当前鼠标位置。此函数返回一个包含两个元素的数组[x, y]。之后，我们也在第D行使用相同的`on`函数注册了对鼠标`click`事件的监听器：
+function printPosition() { //<-B
+    var position = d3.mouse(svg.node()); //<-C
+    positionLabel.text(position);
+}  
+```
 
-[PRE2]
+在第 C 行，我们使用了`d3.mouse`函数来获取相对于给定容器元素的当前鼠标位置。此函数返回一个包含两个元素的数组[x, y]。之后，我们也在第 D 行使用相同的`on`函数注册了对鼠标`click`事件的监听器：
 
-再次，我们使用`d3.mouse`函数检索当前鼠标位置，然后生成五个同心扩大的圆来模拟涟漪效果。涟漪效果是通过几何级数增加的延迟（第F行）和减少的`stroke-width`（第E行）来模拟的。最后，当过渡效果完成后，使用过渡`end`监听器（第G行）移除圆圈。如果您不熟悉这种类型的过渡控制，请查阅[第6章](ch06.html "第6章。以风格进行转换"), *以风格进行转换*，以获取更多详细信息。
+```py
+svg.on("click", function () { //<-D
+        for (var i = 1; i < 5; ++i) {
+            var position = d3.mouse(svg.node());
+
+        var circle = svg.append("circle")
+                .attr("cx", position[0])
+                .attr("cy", position[1])
+                .attr("r", 0)
+                .style("stroke-width", 5 / (i)) // <-E
+                .transition()
+                    .delay(Math.pow(i, 2.5) * 50) // <-F
+                    .duration(2000)
+                    .ease('quad-in')
+                .attr("r", r)
+                .style("stroke-opacity", 0)
+                .each("end", function () {
+                    d3.select(this).remove(); // <-G
+                });
+        }
+});
+```
+
+再次，我们使用`d3.mouse`函数检索当前鼠标位置，然后生成五个同心扩大的圆来模拟涟漪效果。涟漪效果是通过几何级数增加的延迟（第 F 行）和减少的`stroke-width`（第 E 行）来模拟的。最后，当过渡效果完成后，使用过渡`end`监听器（第 G 行）移除圆圈。如果您不熟悉这种类型的过渡控制，请查阅第六章, *以风格进行转换*，以获取更多详细信息。
 
 ## 还有更多...
 
@@ -82,27 +153,101 @@
 
 ## 参考内容
 
-+   [第6章](ch06.html "第6章。以风格进行转换"), *以风格进行转换*，了解更多关于在此食谱中使用的涟漪效果技术
++   第六章, *以风格进行转换*，了解更多关于在此食谱中使用的涟漪效果技术
 
-+   W3C DOM Level 3 事件规范，以获取完整的事件类型列表：[http://www.w3.org/TR/DOM-Level-3-Events/](http://www.w3.org/TR/DOM-Level-3-Events/)
++   W3C DOM Level 3 事件规范，以获取完整的事件类型列表：[`www.w3.org/TR/DOM-Level-3-Events/`](http://www.w3.org/TR/DOM-Level-3-Events/)
 
-+   d3.mouse API 文档，以获取有关鼠标检测的更多详细信息：[https://github.com/mbostock/d3/wiki/Selections#wiki-d3_mouse](https://github.com/mbostock/d3/wiki/Selections#wiki-d3_mouse)
++   d3.mouse API 文档，以获取有关鼠标检测的更多详细信息：[`github.com/mbostock/d3/wiki/Selections#wiki-d3_mouse`](https://github.com/mbostock/d3/wiki/Selections#wiki-d3_mouse)
 
 # 与多触点设备交互
 
-现在，随着多触点设备的普及，任何面向大众消费的可视化都需要考虑其交互性，不仅通过传统的指向设备，还要通过多触点和手势。在本食谱中，我们将探索D3提供的触摸支持，看看它如何被利用来生成一些非常有趣的与多触点设备交互。
+现在，随着多触点设备的普及，任何面向大众消费的可视化都需要考虑其交互性，不仅通过传统的指向设备，还要通过多触点和手势。在本食谱中，我们将探索 D3 提供的触摸支持，看看它如何被利用来生成一些非常有趣的与多触点设备交互。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/touch.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/touch.html).
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/touch.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/touch.html).
 
 ## 如何做...
 
 在这个菜谱中，我们将在用户触摸周围生成一个进度圆，一旦进度完成，则会在圆周围触发后续的波纹效果。然而，如果用户提前结束触摸，则我们应停止进度圆而不生成波纹：
 
-[PRE3]
+```py
+<script type="text/javascript">
+    var initR = 100, 
+        r = 400, 
+        thickness = 20;
+
+    var svg = d3.select("body")
+            .append("svg");
+
+    d3.select("body")
+            .on("touchstart", touch)
+            .on("touchend", touch);
+
+    function touch() {
+        d3.event.preventDefault();
+
+        var arc = d3.svg.arc()
+                .outerRadius(initR)
+                .innerRadius(initR - thickness);
+
+        var g = svg.selectAll("g.touch")
+                .data(d3.touches(svg.node()), function (d) {
+                    return d.identifier;
+                });
+
+        g.enter()
+            .append("g")
+            .attr("class", "touch")
+            .attr("transform", function (d) {
+                return "translate(" + d[0] + "," + d[1] + ")";
+            })
+            .append("path")
+                .attr("class", "arc")
+                .transition().duration(2000)
+                .attrTween("d", function (d) {
+                    var interpolate = d3.interpolate(
+                            {startAngle: 0, endAngle: 0},
+                            {startAngle: 0, endAngle: 2 * Math.PI}
+                        );
+                    return function (t) {
+                        return arc(interpolate(t));
+                    };
+                })
+                .each("end", function (d) {
+                    if (complete(g))
+                        ripples(d);
+                    g.remove();
+                });
+
+        g.exit().remove().each(function () {
+            this.__stopped__ = true;
+        });
+    }
+
+    function complete(g) {
+        return g.node().__stopped__ != true;
+    }
+
+    function ripples(position) {
+        for (var i = 1; i < 5; ++i) {
+            var circle = svg.append("circle")
+                    .attr("cx", position[0])
+                    .attr("cy", position[1])
+                    .attr("r", initR - (thickness / 2))
+                    .style("stroke-width", thickness / (i))
+                .transition().delay(Math.pow(i, 2.5) * 50).duration(2000).ease('quad-in')
+                    .attr("r", r)
+                    .style("stroke-opacity", 0)
+                    .each("end", function () {
+                        d3.select(this).remove();
+                    });
+        }
+    }
+</script>
+```
 
 此菜谱在触摸设备上生成以下交互式可视化：
 
@@ -112,17 +257,28 @@
 
 ## 它是如何工作的...
 
-通过D3选择器的`on`函数注册触摸事件监听器，类似于我们在前一个菜谱中处理鼠标事件的方式：
+通过 D3 选择器的`on`函数注册触摸事件监听器，类似于我们在前一个菜谱中处理鼠标事件的方式：
 
-[PRE4]
+```py
+d3.select("body")
+            .on("touchstart", touch)
+            .on("touchend", touch);
+```
 
 这里的一个关键区别是我们将触摸事件监听器注册在`body`元素上而不是`svg`元素上，因为在许多操作系统和浏览器中定义了默认的触摸行为，我们希望用我们的自定义实现来覆盖它。这是通过以下函数调用来完成的：
 
-[PRE5]
+```py
+d3.event.preventDefault();
+```
 
 一旦触发触摸事件，我们使用`d3.touches`函数检索多个触摸点数据，如下面的代码片段所示：
 
-[PRE6]
+```py
+var g = svg.selectAll("g.touch")
+    .data(d3.touches(svg.node()), function (d) {
+        return d.identifier;
+    }); 
+```
 
 与`d3.mouse`函数返回的二维数组不同，`d3.touches`返回一个二维数组的数组，因为每个触摸事件可能有多个触摸点。每个触摸位置数组的数据结构如下所示：
 
@@ -132,13 +288,41 @@
 
 除了触摸点的[x, y]位置外，每个位置数组还携带一个标识符，以帮助您区分每个触摸点。我们在此菜谱中使用此标识符来建立对象恒常性。一旦触摸数据绑定到选择，就会为每个触摸点在用户手指周围生成进度圆：
 
-[PRE7]
+```py
+        g.enter()
+            .append("g")
+            .attr("class", "touch")
+            .attr("transform", function (d) {
+                return "translate(" + d[0] + "," + d[1] + ")";
+            })
+            .append("path")
+                .attr("class", "arc")
+                .transition().duration(2000).ease('linear')
+                .attrTween("d", function (d) { // <-A
+                    var interpolate = d3.interpolate(
+                            {startAngle: 0, endAngle: 0},
+                            {startAngle: 0, endAngle: 2 * Math.PI}
+                        );
+                    return function (t) {
+                        return arc(interpolate(t));
+                    };
+                })
+                .each("end", function (d) { // <-B
+                    if (complete(g))
+                        ripples(d);
+                    g.remove();
+                });
+```
 
-这是通过标准弧形过渡和属性插值（行A）来完成的，正如在[第7章](ch07.html "第7章。进入形状")“进入形状”中所述。一旦过渡完成，如果进度圆尚未被用户取消，则在线B上生成类似于我们在前一个菜谱中所做的波纹效果。由于我们在`touchstart`和`touchend`事件上注册了相同的`touch`事件监听器，我们可以使用以下行来移除进度圆并设置一个标志来指示此进度圆已被提前停止：
+这是通过标准弧形过渡和属性插值（行 A）来完成的，正如在第七章“进入形状”中所述。一旦过渡完成，如果进度圆尚未被用户取消，则在线 B 上生成类似于我们在前一个菜谱中所做的波纹效果。由于我们在`touchstart`和`touchend`事件上注册了相同的`touch`事件监听器，我们可以使用以下行来移除进度圆并设置一个标志来指示此进度圆已被提前停止：
 
-[PRE8]
+```py
+        g.exit().remove().each(function () {
+            this.__stopped__ = true;
+        });
+```
 
-我们需要设置这个状态标志，因为没有方法可以取消已经开始的过渡；因此，即使在从DOM树中移除进度圆元素之后，过渡仍然会完成并触发行B。
+我们需要设置这个状态标志，因为没有方法可以取消已经开始的过渡；因此，即使在从 DOM 树中移除进度圆元素之后，过渡仍然会完成并触发行 B。
 
 ## 还有更多...
 
@@ -154,13 +338,13 @@
 
 ## 相关内容
 
-+   [第 6 章](ch06.html "第 6 章。以风格进行过渡")，*以风格进行过渡*，了解更多关于在此食谱中使用对象恒常性和涟漪效果技术
++   第六章，*以风格进行过渡*，了解更多关于在此食谱中使用对象恒常性和涟漪效果技术
 
-+   [第 7 章](ch07.html "第 7 章。进入形状")，*进入形状*，了解更多关于在此食谱中使用进度圆环属性缓动过渡技术
++   第七章，*进入形状*，了解更多关于在此食谱中使用进度圆环属性缓动过渡技术
 
-+   W3C 触摸事件提出了触摸事件类型的完整列表建议：[http://www.w3.org/TR/touch-events/](http://www.w3.org/TR/touch-events/)
++   W3C 触摸事件提出了触摸事件类型的完整列表建议：[`www.w3.org/TR/touch-events/`](http://www.w3.org/TR/touch-events/)
 
-+   d3.touch API 文档，了解更多关于多指检测的详细信息：[https://github.com/mbostock/d3/wiki/Selections#wiki-d3_touches](https://github.com/mbostock/d3/wiki/Selections#wiki-d3_touches)
++   d3.touch API 文档，了解更多关于多指检测的详细信息：[`github.com/mbostock/d3/wiki/Selections#wiki-d3_touches`](https://github.com/mbostock/d3/wiki/Selections#wiki-d3_touches)
 
 # 实现缩放和平移行为
 
@@ -170,13 +354,48 @@
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/zoom.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/zoom.html).
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/zoom.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/zoom.html).
 
 ## 如何做...
 
 在这个食谱中，我们将使用 D3 的缩放支持来实现几何缩放和平移。让我们看看代码中是如何实现的：
 
-[PRE9]
+```py
+<script type="text/javascript">
+    var width = 960, height = 500, r = 50;
+
+    var data = [
+        [width / 2 - r, height / 2 - r],
+        [width / 2 - r, height / 2 + r],
+        [width / 2 + r, height / 2 - r],
+        [width / 2 + r, height / 2 + r]
+    ];
+
+    var svg = d3.select("body").append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .call(
+                d3.behavior.zoom()
+                    .scaleExtent([1, 10])
+                    .on("zoom", zoom)
+            )
+            .append("g");
+
+    svg.selectAll("circle")
+            .data(data)
+            .enter().append("circle")
+            .attr("r", r)
+            .attr("transform", function (d) {
+                return "translate(" + d + ")";
+            });
+
+    function zoom() {
+        svg.attr("transform", "translate(" 
+            + d3.event.translate 
++ ")scale(" + d3.event.scale + ")");
+    }
+</script>
+```
 
 此食谱生成了以下缩放和平移效果：
 
@@ -196,11 +415,28 @@ Zoom
 
 在这一点上，你可能会对使用 D3 实现这个完全功能的缩放和平移效果所需的代码如此之少而感到惊讶。如果你在浏览器中打开了这份食谱，你也会注意到缩放和平移对鼠标滚轮和多指手势都反应得非常好。大部分的重活都是由 D3 库完成的。我们在这里需要做的就是简单地定义缩放行为。让我们看看代码中是如何实现的。首先，我们需要在 SVG 容器上定义缩放行为：
 
-[PRE10]
+```py
+var svg = d3.select("body").append("svg")
+            .attr("style", "1px solid black")
+            .attr("width", width)
+            .attr("height", height)
+            .call( // <-A
+                d3.behavior.zoom() // <-B
+                    .scaleExtent([1, 10]) // <-C
+                    .on("zoom", zoom) // <-D
+            )
+            .append("g");
+```
 
 正如我们在行 A 中看到的，创建了一个 `d3.behavior.zoom` 函数（行 B），并在 `svg` 容器上调用它。`d3.behavior.zoom` 将自动创建事件监听器来处理关联 SVG 容器（在我们的情况下是 `svg` 元素本身）上的低级缩放和平移手势。低级缩放手势随后将被转换为高级 D3 缩放事件。默认事件监听器支持鼠标和触摸事件。在行 C 中，我们使用一个包含两个元素 [1, 10] 的数组定义 `scaleExtent`（一个范围）。缩放范围定义了允许缩放的程度（在我们的情况下我们允许 10 倍缩放）。最后，在行 D 中，我们注册了一个自定义的缩放事件处理器来处理 D3 缩放事件。现在，让我们看看这个缩放事件处理器执行了哪些任务：
 
-[PRE11]
+```py
+function zoom() {
+        svg.attr("transform", "translate(" 
+            + d3.event.translate 
+            + ")scale(" + d3.event.scale + ")");
+}
+```
 
 在 `zoom` 函数中，我们只是简单地将实际的缩放和平移委托给 SVG 变换。为了进一步简化这个任务，D3 缩放事件也计算了必要的平移和缩放。因此，我们所需做的就是将它们嵌入到 SVG 变换属性中。以下是缩放事件中包含的属性：
 
@@ -216,11 +452,11 @@ Zoom
 
 ## 参考信息
 
-+   [第二章](ch02.html "第二章. 选择性"), *选择性*，了解更多关于 `d3.selection.call` 函数和选择操作的信息
++   第二章, *选择性*，了解更多关于 `d3.selection.call` 函数和选择操作的信息
 
-+   W3C SVG 坐标系变换规范，了解更多关于在 SVG 中如何实现缩放和平移效果的信息：[http://www.w3.org/TR/SVG/coords.html#EstablishingANewUserSpace](http://www.w3.org/TR/SVG/coords.html#EstablishingANewUserSpace)
++   W3C SVG 坐标系变换规范，了解更多关于在 SVG 中如何实现缩放和平移效果的信息：[`www.w3.org/TR/SVG/coords.html#EstablishingANewUserSpace`](http://www.w3.org/TR/SVG/coords.html#EstablishingANewUserSpace)
 
-+   d3.behavior.zoom API 文档，了解更多关于 D3 缩放支持的信息：[https://github.com/mbostock/d3/wiki/Zoom-Behavior#wiki-zoom](https://github.com/mbostock/d3/wiki/Zoom-Behavior#wiki-zoom)
++   d3.behavior.zoom API 文档，了解更多关于 D3 缩放支持的信息：[`github.com/mbostock/d3/wiki/Zoom-Behavior#wiki-zoom`](https://github.com/mbostock/d3/wiki/Zoom-Behavior#wiki-zoom)
 
 # 实现拖动行为
 
@@ -230,13 +466,57 @@ Zoom
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/drag.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/drag.html).
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/drag.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter10/drag.html).
 
 ## 如何操作...
 
 在这里，我们将生成四个可以使用 D3 拖动行为支持拖动的圆圈，并且还带有 SVG 边界检测。现在，让我们看看如何在代码中实现它：
 
-[PRE12]
+```py
+<script type="text/javascript">
+    var width = 960, height = 500, r = 50;
+
+    var data = [
+        [width / 2 - r, height / 2 - r],
+        [width / 2 - r, height / 2 + r],
+        [width / 2 + r, height / 2 - r],
+        [width / 2 + r, height / 2 + r]
+    ];
+
+    var svg = d3.select("body").append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .append("g");
+
+    var drag = d3.behavior.drag()
+            .on("drag", move);
+
+    svg.selectAll("circle")
+            .data(data)
+            .enter().append("circle")
+            .attr("r", r)
+            .attr("transform", function (d) {
+                return "translate(" + d + ")";
+            })
+            .call(drag);
+
+    function move(d) {
+        var x = d3.event.x, 
+            y = d3.event.y;
+
+        if(inBoundaries(x, y))
+            d3.select(this) 
+                .attr("transform", function (d) {
+                    return "translate(" + x + ", " + y + ")";
+                });
+    }
+
+    function inBoundaries(x, y){
+        return (x >= (0 + r) && x <= (width - r)) 
+            && (y >= (0 + r) && y <= (height - r));
+    }
+</script>
+```
 
 这个菜谱在以下四个圆圈上生成拖动行为：
 
@@ -252,19 +532,47 @@ Zoom
 
 如我们所见，与 D3 缩放支持类似，拖动支持遵循类似的模式。主要的拖动能力由 `d3.behavior.drag` 函数（行 A）提供。D3 拖动行为自动创建适当的低级事件监听器来处理给定元素上的拖动手势，然后将低级事件转换为高级的 D3 拖动事件。支持鼠标和触摸事件：
 
-[PRE13]
+```py
+var drag = d3.behavior.drag() // <-A
+            .on("drag", move);
+```
 
 在这个菜谱中，我们关注的是 `drag` 事件，它由我们的 `move` 函数处理。与缩放行为类似，D3 拖动行为支持是事件驱动的，因此允许在实现中具有最大的灵活性，不仅支持 SVG，还支持 HTML5 画布。一旦定义，该行为可以通过在给定的选择上调用它来附加到任何元素：
 
-[PRE14]
+```py
+svg.selectAll("circle")
+            .data(data)
+            .enter().append("circle")
+            .attr("r", r)
+            .attr("transform", function (d) {
+                return "translate(" + d + ")";
+            })
+            .call(drag); // <-B
+```
 
 接下来，在 `move` 函数中，我们简单地使用 SVG 变换来将拖动的元素移动到正确的位置（行 D），根据拖动事件（行 C）传达的信息：
 
-[PRE15]
+```py
+   function move(d) {
+        var x = d3.event.x, // <-C
+            y = d3.event.y;
+
+        if(inBoundaries(x, y))
+            d3.select(this) 
+                .attr("transform", function (d) { // <-D
+                    return "translate(" + x + ", " + y + ")";
+                });
+}
+```
 
 我们在这里检查的一个额外条件是计算 SVG 边界约束，以确保用户不能将元素拖动到 SVG 之外。这是通过以下检查实现的：
 
-[PRE16]
+```py
+    function inBoundaries(x, y){
+        return (x >= (0 + r) && x <= (width - r)) 
+            && (y >= (0 + r) && y <= (height - r));
+}
+```
 
 ## 还有更多...
 
@@ -278,6 +586,6 @@ Zoom
 
 ## 参见
 
-+   [第二章](ch02.html "第二章. 选择性"), *选择性*，了解更多关于 `d3.selection.call` 函数和选择操作的详细信息
++   第二章, *选择性*，了解更多关于 `d3.selection.call` 函数和选择操作的详细信息
 
-+   d3.behavior.drag API 文档，更多关于 D3 拖动支持的信息 [https://github.com/mbostock/d3/wiki/Drag-Behavior#wiki-drag](https://github.com/mbostock/d3/wiki/Drag-Behavior#wiki-drag)
++   d3.behavior.drag API 文档，更多关于 D3 拖动支持的信息 [`github.com/mbostock/d3/wiki/Drag-Behavior#wiki-drag`](https://github.com/mbostock/d3/wiki/Drag-Behavior#wiki-drag)

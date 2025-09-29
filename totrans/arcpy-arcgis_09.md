@@ -1,4 +1,4 @@
-# 第9章。更多 ArcPy 映射技术
+# 第九章。更多 ArcPy 映射技术
 
 能够控制地图文档的制图，同时运行地理空间分析，增加了 ArcPy 的功能和实用性。`arcpy.mapping` 的属性和方法可以用来操作图层对象、地图比例尺和数据帧范围，甚至可以设置定义查询。通过将自动地理空间分析与动态地图制作相结合，可以实现脚本化映射系统。本章将涵盖以下主题：
 
@@ -14,9 +14,17 @@
 
 `Arcpy.mapping` 图层对象用于控制地图文档数据帧中图层的属性。通过图层对象属性可以开启和关闭图层可见性、添加新图层以及调整图层顺序。
 
-创建图层对象涉及向 `arcpy.mapping.ListLayers()` 方法传递参数。如[第8章](ch08.html "第8章。ArcPy映射简介")所述，在引用 `arcpy.mapping.MapDocument` 对象时，可以使用基于零的索引访问地图文档中的图层。此代码将打印出在MXD中名为“Layers”的数据帧中包含的图层对象列表：
+创建图层对象涉及向 `arcpy.mapping.ListLayers()` 方法传递参数。如第八章所述，在引用 `arcpy.mapping.MapDocument` 对象时，可以使用基于零的索引访问地图文档中的图层。此代码将打印出在 MXD 中名为“Layers”的数据帧中包含的图层对象列表：
 
-[PRE0]
+```py
+import arcpy
+mxdPath = r'C:\Projects\MXDs\Chapter9\MapDocument1.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+dataFrame = arcpy.mapping.ListDataFrames(mxdObject, "Layers")[0]
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+print layersList
+
+```
 
 被称为“Layers”的数据帧中的图层已使用 `ListLayers()` 方法分配给变量 `layersList`。`layersList` 中的每个图层都可以使用基于零的索引进行访问。一旦在列表中访问了图层并将其分配给变量或放入 `for` 循环中，就可以利用图层对象的属性和方法。
 
@@ -30,55 +38,126 @@
 
 # 定义查询
 
-图层对象的一个重要属性是能够动态设置定义查询。定义查询是一个SQL语句的`where`子句，它将可用于显示、查询或其他数据操作（缓冲区、交集等）的数据限制为仅匹配`where`子句的行。定义查询可以通过在MXD中打开图层属性菜单并使用定义查询选项卡来设置，但在这里我们关注的是如何以编程方式添加它们。以下是如何做到这一点的示例：
+图层对象的一个重要属性是能够动态设置定义查询。定义查询是一个 SQL 语句的`where`子句，它将可用于显示、查询或其他数据操作（缓冲区、交集等）的数据限制为仅匹配`where`子句的行。定义查询可以通过在 MXD 中打开图层属性菜单并使用定义查询选项卡来设置，但在这里我们关注的是如何以编程方式添加它们。以下是如何做到这一点的示例：
 
-[PRE1]
+```py
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+busStops = layersList[0]
+busStops.definitionQuery = "NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza'"
 
-这个有价值的属性可以用来重新格式化[第8章](ch08.html "第8章。ArcPy映射简介") *ArcPy映射简介* 中的代码。记得`Chapter8_6.py`脚本的复杂第二部分，其中选择了沿`71 Inbound`线路的每个公交车站，并将它的几何形状写入另一个要素类？相反，我们可以使用图层对象和定义查询来执行相同类型的几何操作。让我们检查当使用定义查询时，该操作的第一部分（选择公交车站几何形状并在其周围创建缓冲区）看起来是什么样的：
+```
 
-[PRE2]
+这个有价值的属性可以用来重新格式化第八章 *ArcPy 映射简介* 中的代码。记得`Chapter8_6.py`脚本的复杂第二部分，其中选择了沿`71 Inbound`线路的每个公交车站，并将它的几何形状写入另一个要素类？相反，我们可以使用图层对象和定义查询来执行相同类型的几何操作。让我们检查当使用定义查询时，该操作的第一部分（选择公交车站几何形状并在其周围创建缓冲区）看起来是什么样的：
+
+```py
+import arcpy
+bufferDist = 400
+mxdPath = r'C:\Projects\MXDs\Chapter9\MapDocument1.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+dataFrame= arcpy.mapping.ListDataFrames(mxdObject, "Layers")[0]
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+busStops = layersList[0]
+defQuery = "NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza'"
+busStops.definitionQuery = defQuery
+idList =[]
+with arcpy.da.SearchCursor(busStops,['OID@']) as cursor:
+ for row in cursor:
+ idList.append(row[0])
+for oid in idList:
+ newQuery = "OBJECTID = {0}".format(oid)
+ print newQuery
+ busStops.definitionQuery = newQuery
+ with arcpy.da.SearchCursor(busStops,['SHAPE@','STOPID','NAME','BUS_SIGNAG','OID@','SHAPE@XY']) as cursor:
+ for row in cursor:
+ stopPointGeometry = row[0]
+ stopBuffer = stopPointGeometry.buffer(bufferDist)
+
+```
 
 在这个例子中，定义查询被用来将`SearchCursor`的潜在结果限制为查询指定的公交车站。然而，这过于繁琐，并且定义查询并没有增加太多价值，因为首先还需要另一个`SearchCursor`来从`busStops`图层中提取`ObjectID`信息。这使代码变得更加复杂，而实际上只需要一个`SearchCursor`。
 
-定义查询应该用来选择与缓冲区相交的块，因为这将消除使用复杂搜索光标和插入光标设置的需要，这种设置在[第8章](ch08.html "第8章。ArcPy映射简介") *ArcPy映射简介* 中被采用。让我们重新编写代码，以便在人口普查块图层对象上正确使用定义查询。
+定义查询应该用来选择与缓冲区相交的块，因为这将消除使用复杂搜索光标和插入光标设置的需要，这种设置在第八章 *ArcPy 映射简介* 中被采用。让我们重新编写代码，以便在人口普查块图层对象上正确使用定义查询。
 
-第一步是添加一些代码来生成将用作定义查询的SQL语句：
+第一步是添加一些代码来生成将用作定义查询的 SQL 语句：
 
-[PRE3]
+```py
+import arcpy
+bufferDist = 400
+mxdPath = r'C:\Projects\MXDs\Chapter9\MapDocument1.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+dataFrame = arcpy.mapping.ListDataFrames(mxdObject, 
+ "Layers")[0]
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+busStops = layersList[0]
+censusBlocks = layersList[3]
+sql = "NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza'"
+with arcpy.da.SearchCursor(busStops,['SHAPE@', 'STOPID', 'NAME', 'BUS_SIGNAG','OID@'],sql) as cursor: 
+ for row in cursor:
+ bus Query = 'OBJECTID = {0}'.format(row[-1])
+ busStops.definitionQuery = bus Query
+ stopPointGeometry = row[0]
+ stop Buffer = stopPointGeometry. Buffer(bufferDist)
+ arcpy.SelectLayerByLocation_management(censusBlocks,'intersect',stopBuffer,"","NEW_SELECTION")
+ blockList = []
+ with arcpy.da.SearchCursor(censusBlocks,
+ ['OID@']) as bcursor:
+ for brow in bcursor:
+ blockList.append(brow[0])
+ newQuery = 'OBJECTID IN ('for COUNTER, oid in enumerate(blockList):
+ if COUNTER < len(blockList)-1:
+ newQuery += str(oid) + ','
+ else:
+ newQuery += str(oid)+ ')'
+ print newQuery
 
-在本节中，代码将MXD中的人口普查块图层分配给变量`censusBlocks`。然后创建公交车站`SearchCursor`，并为每一行生成400英尺的缓冲区以选择围绕公交车站的普查块。一旦选择了正确的块，就在`censusBlocks`图层对象上使用第二个`SearchCursor`来找到所选块的`ObjectID`（使用`OID@`令牌）。然后将`ObjectIDs`附加到名为`blockList`的列表中。
+```
 
-此列表随后在`for`循环中进行迭代，以生成一个字符串SQL语句。使用分配给变量`newQuery`的初始字符串，`for`循环将每个选择区块的`ObjectIDs`添加到字符串中，以创建一个有效的SQL语句。`for`循环使用`enumerate`函数来计数`for`循环执行的循环次数；这允许使用`if/then`语句。`if/then`语句确定字符串中`ObjectID`之后的内容，因为每个`ObjectID`必须由逗号分隔，除了最后的`ObjectID`，它必须后跟一个闭括号。`for`循环生成一个类似于以下示例的SQL语句：
+在本节中，代码将 MXD 中的人口普查块图层分配给变量`censusBlocks`。然后创建公交车站`SearchCursor`，并为每一行生成 400 英尺的缓冲区以选择围绕公交车站的普查块。一旦选择了正确的块，就在`censusBlocks`图层对象上使用第二个`SearchCursor`来找到所选块的`ObjectID`（使用`OID@`令牌）。然后将`ObjectIDs`附加到名为`blockList`的列表中。
 
-[PRE4]
+此列表随后在`for`循环中进行迭代，以生成一个字符串 SQL 语句。使用分配给变量`newQuery`的初始字符串，`for`循环将每个选择区块的`ObjectIDs`添加到字符串中，以创建一个有效的 SQL 语句。`for`循环使用`enumerate`函数来计数`for`循环执行的循环次数；这允许使用`if/then`语句。`if/then`语句确定字符串中`ObjectID`之后的内容，因为每个`ObjectID`必须由逗号分隔，除了最后的`ObjectID`，它必须后跟一个闭括号。`for`循环生成一个类似于以下示例的 SQL 语句：
 
-结尾的`print`语句用于展示此段代码的结果，并带来看到代码工作结果的温暖舒适感。一旦我们确信代码正在生成有效的SQL语句（闭括号和逗号分隔的`ObjectIDs`），下一步是将定义查询分配给`censusBlocks`层对象，并使用结果生成该区域的地图。
+```py
+OBJECTID IN (910,1664,1812,1813,2725,6382)
+
+```
+
+结尾的`print`语句用于展示此段代码的结果，并带来看到代码工作结果的温暖舒适感。一旦我们确信代码正在生成有效的 SQL 语句（闭括号和逗号分隔的`ObjectIDs`），下一步是将定义查询分配给`censusBlocks`层对象，并使用结果生成该区域的地图。
 
 # 控制数据帧窗口的范围和比例
 
-在[第8章](ch08.html "第8章。ArcPy映射简介") *ArcPy映射简介*中，我们开始探索数据帧的属性和方法。使用`arcpy.Extent`对象，我们能够将数据帧的范围设置为脚本中硬编码的范围。然而，这并不总是能够捕捉到大型普查区块的整个范围。通过结合定义查询和数据帧的范围和比例属性，我们可以避免这些不希望的结果。
+在第八章 *ArcPy 映射简介*中，我们开始探索数据帧的属性和方法。使用`arcpy.Extent`对象，我们能够将数据帧的范围设置为脚本中硬编码的范围。然而，这并不总是能够捕捉到大型普查区块的整个范围。通过结合定义查询和数据帧的范围和比例属性，我们可以避免这些不希望的结果。
 
 有两种数据帧对象方法用于将数据帧窗口移动到感兴趣的区域，在这种情况下是选定的普查区块。第一个，我们在这里没有使用，是`dataFrame.zoomToSelectedFeatures`。第二个是将数据帧的范围属性分配给定义查询后分配给它的普查区块层范围。
 
 我更喜欢第二种方法，因为它即使在没有选定的普查区块的情况下也能工作。此外，由于此脚本生成的地图不应该显示区块的选择，我们不得不添加代码来明确清除已识别的正确普查区块的选择：
 
-[PRE5]
+```py
+ censusBlocks.definitionQuery = newQuery
+ dataFrame.extent = censusBlocks.getExtent()
+ arcpy.SelectLayerByAttribute_management(censusBlocks,
+ "CLEAR_SELECTION")
+
+```
 
 定义查询使得将数据帧窗口移动到感兴趣的区域变得容易，因为层的范围矩形（或边界）现在仅围绕指定的区块，并且可以将`dataFrame`的范围属性设置为范围矩形。然而，这并不总是地图学上所希望的，因为看起来将数据帧窗口从范围矩形移回更好。为了做到这一点，我们将访问数据帧对象的缩放属性。
 
 缩放属性可以设置为当前缩放的倍数，以避免在调整数据框架范围时硬编码任何特定距离。当使用缩放属性时，重要的是要记住使用`arcpy.RefreshActiveView()`方法，因为它将数据框架窗口刷新到新的缩放。
 
-[PRE6]
+```py
+dataFrame.scale = dataFrame.scale * 1.1
+arcpy.RefreshActiveView()
 
-由于数据框架范围在之前的几行中已设置，当前缩放表示所选普查区块的范围。要调整它，评估属性并应用一个乘数。在这种情况下，乘数是1.1，但它可以是任何值。这使得生成的地图看起来更好，因为它为分析结果提供了一些背景上下文。
+```
+
+由于数据框架范围在之前的几行中已设置，当前缩放表示所选普查区块的范围。要调整它，评估属性并应用一个乘数。在这种情况下，乘数是 1.1，但它可以是任何值。这使得生成的地图看起来更好，因为它为分析结果提供了一些背景上下文。
 
 ## 添加图层对象
 
-在导出地图之前，最后一步是将上面创建的400英尺缓冲区作为一个图层添加到数据框架对象中。为了完成这个任务，我们需要提前创建一个符号化图层并复制其符号化，以确保其看起来符合预期。这将作为一个占位符图层添加到**MXD**中，并分配给脚本中的`bufferLayer`变量。
+在导出地图之前，最后一步是将上面创建的 400 英尺缓冲区作为一个图层添加到数据框架对象中。为了完成这个任务，我们需要提前创建一个符号化图层并复制其符号化，以确保其看起来符合预期。这将作为一个占位符图层添加到**MXD**中，并分配给脚本中的`bufferLayer`变量。
 
 1.  打开一个**MXD**并添加**公交车站要素类**。
 
-1.  在**ArcToolbox**的**分析工具集**中的**邻近工具集**中运行**缓冲工具**，将**公交车站要素类**作为输入，并将缓冲区大小设置为**400英尺**。工具运行完成后，打开缓冲图层属性并按需符号化图层。
+1.  在**ArcToolbox**的**分析工具集**中的**邻近工具集**中运行**缓冲工具**，将**公交车站要素类**作为输入，并将缓冲区大小设置为**400 英尺**。工具运行完成后，打开缓冲图层属性并按需符号化图层。
 
 1.  一旦图层被符号化，右键单击图层并选择**另存为图层文件**。
 
@@ -92,21 +171,97 @@
 
 1.  在脚本较低的部分，在公交车站的`SearchCursor`中，在生成缓冲区周围的代码下方添加以下行：
 
-    [PRE7]
+    ```py
+    arcpy.CopyFeatures_management(stopBuffer, r"C:\Projects\Output\400Buffer.shp") 
+    bufferLayer.replaceDataSource(r"C:\Projects\Output","SHAPEFILE_WORKSPACE","400Buffer")
 
-这两条线将生成的缓冲区作为shapefile复制到磁盘上，然后替换`bufferLayer`图层对象的源数据。注意，shapefile的名称不包括`.shp`扩展名；`SHAPEFILE_WORKSPACE`参数使得这一点变得不必要。
+    ```
+
+这两条线将生成的缓冲区作为 shapefile 复制到磁盘上，然后替换`bufferLayer`图层对象的源数据。注意，shapefile 的名称不包括`.shp`扩展名；`SHAPEFILE_WORKSPACE`参数使得这一点变得不必要。
 
 ### 备注
 
-为了确保每个新的缓冲区shapefile可以覆盖现有的shapefile，在`import arcpy`行下方添加以下行，以确保文件可以被覆盖：
+为了确保每个新的缓冲区 shapefile 可以覆盖现有的 shapefile，在`import arcpy`行下方添加以下行，以确保文件可以被覆盖：
 
-[PRE8]
+```py
+ arcpy.env.overwriteOutput = 1
+
+```
 
 ## 导出地图
 
-此脚本的最后一步是导出每个公交车站周围的地图。为此，我们将从`Chapter8_6_AdjustMap.py`脚本中借用一些代码，并将整个脚本添加到名为`Chapter9.py`的文件中。此代码将识别并调整标题和副标题元素，使得可以自定义每个生成的PDF：
+此脚本的最后一步是导出每个公交车站周围的地图。为此，我们将从`Chapter8_6_AdjustMap.py`脚本中借用一些代码，并将整个脚本添加到名为`Chapter9.py`的文件中。此代码将识别并调整标题和副标题元素，使得可以自定义每个生成的 PDF：
 
-[PRE9]
+```py
+import arcpy
+arcpy.env.overwriteOutput = 1
+bufferDist = 400
+pdfFolder = r'C:\Projects\PDFs\Chapter9\Map_{0}'
+mxdPath = r'C:\Projects\MXDs\Chapter9\MapDocument1.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+dataFrame = arcpy.mapping.ListDataFrames(mxdObject,"Layers")[0]
+elements = arcpy.mapping.ListLayoutElements(mxdObject)
+for el in elements:
+ if el.type =="TEXT_ELEMENT":
+ if el.text == 'Title Element':
+ titleText = el
+ elif el.text == 'Subtitle Element':
+ subTitleText = el 
+layersList = arcpy.mapping.ListLayers(mxdObject,
+ "",dataFrame)
+
+busStops = layersList[0]
+bufferLayer = layersList[2]
+censusBlocks = layersList[4]
+sql = "NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza'"
+with arcpy.da.SearchCursor(busStops,['SHAPE@',
+ 'STOPID',
+ 'NAME',
+ 'BUS_SIGNAG',
+ 'OID@'],sql) as cursor: 
+ for row in cursor:
+ busQuery = 'OBJECTID = {0}'.format(row[-1])
+ busStops.definitionQuery = busQuery
+ stopPointGeometry = row[0]
+ stopBuffer = stopPointGeometry.buffer(bufferDist)
+ arcpy.CopyFeatures_management(stopBuffer,r"C:\Projects\Output\400Buffer.shp")
+ bufferLayer.replaceDataSource(r"C:\Projects\Output",
+ "SHAPEFILE_WORKSPACE",
+ "400Buffer")
+ arcpy.SelectLayerByLocation_management(censusBlocks,
+ 'intersect',
+ stopBuffer,
+ "",
+ "NEW_SELECTION")
+ blockList = []
+ with arcpy.da.SearchCursor(censusBlocks,
+ ['OID@']) as bcursor:
+ for brow in bcursor:
+ blockList.append(brow[0])
+ newQuery = 'OBJECTID IN ('
+ for COUNTER, oid in enumerate(blockList):
+ if COUNTER < len(blockList)-1:
+ newQuery += str(oid) + ','
+ else:
+ newQuery += str(oid)+ ')'
+ print newQuery
+ censusBlocks.definitionQuery = newQuery
+ dataFrame.extent = censusBlocks.getExtent()
+ arcpy.SelectLayerByAttribute_management(censusBlocks,
+ "CLEAR_SELECTION")
+ dataFrame.scale = dataFrame.scale * 1.1
+ arcpy.RefreshActiveView()
+ subTitleText.text = "Route {0}".format(row[2])
+ titleText.text = "Bus Stop {0}".format(row[1])
+ outPath  = pdfFolder.format( str(row[1])) + '.pdf'
+ print outPath
+ arcpy.mapping.ExportToPDF(mxdObject,outPath)
+ titleText.text = 'Title Element'
+ subTitleText.text = 'Subtitle Element'
+ censusBlocks.definitionQuery = ''
+ busStops.definitionQuery = ''
+
+```
 
 # 摘要
 

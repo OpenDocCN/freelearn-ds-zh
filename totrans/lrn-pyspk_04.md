@@ -1,4 +1,4 @@
-# 第4章 准备数据以进行建模
+# 第四章 准备数据以进行建模
 
 所有数据都是脏的，无论数据的来源可能让您相信什么：可能是您的同事、一个监控您环境的遥测系统、您从网络上下载的数据集，或者其他来源。直到您已经测试并证明自己数据处于干净状态（我们将在下一节中解释干净状态的含义），您都不应该信任它或将其用于建模。
 
@@ -6,7 +6,7 @@
 
 如果您的数据集中没有发现上述任何问题，则您的数据集被认为是技术上干净的。然而，为了建模目的清理数据集，您还需要检查您特征的分布，并确认它们符合预定义的标准。
 
-作为数据科学家，您可以预期将花费80-90%的时间对数据进行“按摩”并熟悉所有特征。本章将引导您通过这个过程，利用Spark的能力。
+作为数据科学家，您可以预期将花费 80-90%的时间对数据进行“按摩”并熟悉所有特征。本章将引导您通过这个过程，利用 Spark 的能力。
 
 在本章中，您将学习以下内容：
 
@@ -14,7 +14,7 @@
 
 +   计算描述性统计和相关性
 
-+   使用matplotlib和Bokeh可视化您的数据
++   使用 matplotlib 和 Bokeh 可视化您的数据
 
 # 检查重复项、缺失观测值和异常值
 
@@ -24,23 +24,36 @@
 
 重复项是在您的数据集中作为独立行出现的观测值，但在仔细检查后看起来是相同的。也就是说，如果您将它们并排查看，这两行（或更多）中的所有特征将具有完全相同的值。
 
-另一方面，如果您的数据具有某种形式的ID来区分记录（或将其与某些用户关联，例如），那么最初可能看起来是重复项的，可能不是；有时系统会失败并产生错误的ID。在这种情况下，您需要检查相同的ID是否是真正的重复项，或者您需要提出一个新的ID系统。
+另一方面，如果您的数据具有某种形式的 ID 来区分记录（或将其与某些用户关联，例如），那么最初可能看起来是重复项的，可能不是；有时系统会失败并产生错误的 ID。在这种情况下，您需要检查相同的 ID 是否是真正的重复项，或者您需要提出一个新的 ID 系统。
 
 考虑以下示例：
 
-[PRE0]
+```py
+df = spark.createDataFrame([
+        (1, 144.5, 5.9, 33, 'M'),
+        (2, 167.2, 5.4, 45, 'M'),
+        (3, 124.1, 5.2, 23, 'F'),
+        (4, 144.5, 5.9, 33, 'M'),
+        (5, 133.2, 5.7, 54, 'F'),
+        (3, 124.1, 5.2, 23, 'F'),
+        (5, 129.2, 5.3, 42, 'M'),
+    ], ['id', 'weight', 'height', 'age', 'gender'])
+```
 
 如您所见，我们这里有几个问题：
 
-+   我们有两行ID等于`3`，它们完全相同
++   我们有两行 ID 等于`3`，它们完全相同
 
-+   ID为`1`和`4`的行是相同的——唯一不同的是它们的ID，因此我们可以安全地假设它们是同一个人
++   ID 为`1`和`4`的行是相同的——唯一不同的是它们的 ID，因此我们可以安全地假设它们是同一个人
 
-+   我们有两行ID等于`5`，但看起来这似乎是一个录音问题，因为它们似乎不是同一个人
++   我们有两行 ID 等于`5`，但看起来这似乎是一个录音问题，因为它们似乎不是同一个人
 
 这是一个非常简单的数据集，只有七行。当你有数百万个观察值时，你该怎么办？我通常做的第一件事是检查是否有任何重复：我将完整数据集的计数与运行 `.distinct()` 方法后得到的计数进行比较：
 
-[PRE1]
+```py
+print('Count of rows: {0}'.format(df.count()))
+print('Count of distinct rows: {0}'.format(df.distinct().count()))
+```
 
 这是我们的 DataFrame 返回的内容：
 
@@ -48,7 +61,9 @@
 
 如果这两个数字不同，那么你就知道你有了，我喜欢称之为，纯重复：彼此完全相同的行。我们可以通过使用 `.dropDuplicates(...)` 方法来删除这些行：
 
-[PRE2]
+```py
+df = df.dropDuplicates()
+```
 
 您的数据集将如下所示（一旦运行 `df.show()`）：
 
@@ -56,7 +71,14 @@
 
 我们删除了具有 ID `3` 的一行。现在让我们检查数据中是否存在任何与 ID 无关的重复项。我们可以快速重复之前所做的操作，但仅使用除 ID 列之外的其他列：
 
-[PRE3]
+```py
+print('Count of ids: {0}'.format(df.count()))
+print('Count of distinct ids: {0}'.format(
+    df.select([
+        c for c in df.columns if c != 'id'
+    ]).distinct().count())
+)
+```
 
 我们应该看到一行额外的重复项：
 
@@ -64,7 +86,11 @@
 
 我们仍然可以使用 `.dropDuplicates(...)`, 但会添加一个 `subset` 参数，该参数指定除了 `id` 列之外的其他列：
 
-[PRE4]
+```py
+df = df.dropDuplicates(subset=[
+    c for c in df.columns if c != 'id'
+])
+```
 
 `subset` 参数指示 `.dropDuplicates(...)` 方法仅使用通过 `subset` 参数指定的列来查找重复行；在上面的例子中，我们将删除具有相同 `weight`、`height`、`age` 和 `gender` 但不是 `id` 的重复记录。运行 `df.show()`，我们得到以下更干净的数据集，因为我们删除了 `id = 1` 的行，因为它与 `id = 4` 的记录完全相同：
 
@@ -72,7 +98,14 @@
 
 现在我们知道没有完整的行重复，或者只有 ID 不同的相同行，让我们检查是否有任何重复的 ID。为了在一步中计算总数和不同 ID 的数量，我们可以使用 `.agg(...)` 方法：
 
-[PRE5]
+```py
+import pyspark.sql.functions as fn
+
+df.agg(
+    fn.count('id').alias('count'),
+    fn.countDistinct('id').alias('distinct')
+).show()
+```
 
 这是前面代码的输出：
 
@@ -82,29 +115,31 @@
 
 ### 提示
 
-这使我们能够访问各种函数，太多以至于无法在此列出。然而，我们强烈建议您研究 PySpark 的文档，网址为 [http://spark.apache.org/docs/2.0.0/api/python/pyspark.sql.html#module-pyspark.sql.functions](http://spark.apache.org/docs/2.0.0/api/python/pyspark.sql.html#module-pyspark.sql.functions)。
+这使我们能够访问各种函数，太多以至于无法在此列出。然而，我们强烈建议您研究 PySpark 的文档，网址为 [`spark.apache.org/docs/2.0.0/api/python/pyspark.sql.html#module-pyspark.sql.functions`](http://spark.apache.org/docs/2.0.0/api/python/pyspark.sql.html#module-pyspark.sql.functions)。
 
 接下来，我们使用 `.count(...)` 和 `.countDistinct(...)` 分别计算 DataFrame 中的行数和不同 `ids` 的数量。`.alias(...)` 方法允许我们为返回的列指定一个友好的名称。
 
 如您所见，我们总共有五行，但只有四个不同的 ID。由于我们已经删除了所有重复项，我们可以安全地假设这可能是 ID 数据中的一个偶然错误，因此我们将为每一行分配一个唯一的 ID：
 
-[PRE6]
+```py
+df.withColumn('new_id', fn.monotonically_increasing_id()).show()
+```
 
 前面的代码片段生成了以下输出：
 
 ![Duplicates](img/B05793_04_06.jpg)
 
-`.monotonicallymonotonically_increasing_id()`方法为每条记录分配一个唯一且递增的ID。根据文档，只要你的数据被放入少于大约10亿个分区，每个分区少于80亿条记录，ID就可以保证是唯一的。
+`.monotonicallymonotonically_increasing_id()`方法为每条记录分配一个唯一且递增的 ID。根据文档，只要你的数据被放入少于大约 10 亿个分区，每个分区少于 80 亿条记录，ID 就可以保证是唯一的。
 
 ### 注意
 
-一个警告：在Spark的早期版本中，`.monotonicallymonotonically_increasing_id()`方法在多次评估同一个DataFrame时可能不会返回相同的ID。然而，这已经在Spark 2.0中得到了修复。
+一个警告：在 Spark 的早期版本中，`.monotonicallymonotonically_increasing_id()`方法在多次评估同一个 DataFrame 时可能不会返回相同的 ID。然而，这已经在 Spark 2.0 中得到了修复。
 
 ## 缺失的观测值
 
 你经常会遇到包含*空白*的数据集。缺失值可能由多种原因造成：系统故障、人为错误、数据模式变更，仅举几例。
 
-如果你的数据可以承受，处理缺失值的最简单方法是在发现任何缺失值时删除整个观测值。你必须小心不要删除太多：根据缺失值在你数据集中的分布，这可能会严重影响数据集的可用性。如果删除行后，我最终得到一个非常小的数据集，或者发现数据量减少了50%以上，我开始检查我的数据，看看哪些特征有最多的空缺，也许可以完全排除它们；如果一个特征的大部分值都是缺失的（除非缺失值有特定的含义），从建模的角度来看，它几乎是毫无用处的。
+如果你的数据可以承受，处理缺失值的最简单方法是在发现任何缺失值时删除整个观测值。你必须小心不要删除太多：根据缺失值在你数据集中的分布，这可能会严重影响数据集的可用性。如果删除行后，我最终得到一个非常小的数据集，或者发现数据量减少了 50%以上，我开始检查我的数据，看看哪些特征有最多的空缺，也许可以完全排除它们；如果一个特征的大部分值都是缺失的（除非缺失值有特定的含义），从建模的角度来看，它几乎是毫无用处的。
 
 处理具有缺失值的观测值的另一种方法是，用某些值代替那些`Nones`。根据你的数据类型，你有几个选项可以选择：
 
@@ -116,15 +151,24 @@
 
 考虑一个与我们之前展示的类似的例子：
 
-[PRE7]
+```py
+df_miss = spark.createDataFrame([         (1, 143.5, 5.6, 28,   'M',  100000),
+        (2, 167.2, 5.4, 45,   'M',  None),
+        (3, None , 5.2, None, None, None),
+        (4, 144.5, 5.9, 33,   'M',  None),
+        (5, 133.2, 5.7, 54,   'F',  None),
+        (6, 124.1, 5.2, None, 'F',  None),
+        (7, 129.2, 5.3, 42,   'M',  76000),
+    ], ['id', 'weight', 'height', 'age', 'gender', 'income'])
+```
 
 在我们的例子中，我们处理了多个缺失值类别。
 
 分析*行*，我们可以看到以下：
 
-+   ID为`3`的行只有一个有用的信息——`身高`
++   ID 为`3`的行只有一个有用的信息——`身高`
 
-+   ID为`6`的行只有一个缺失值——`年龄`
++   ID 为`6`的行只有一个缺失值——`年龄`
 
 分析*列*，我们可以看到以下：
 
@@ -136,17 +180,23 @@
 
 要找到每行的缺失观测值数量，我们可以使用以下代码片段：
 
-[PRE8]
+```py
+df_miss.rdd.map(
+    lambda row: (row['id'], sum([c == None for c in row]))
+).collect()
+```
 
 它生成了以下输出：
 
 ![缺失的观测值](img/B05793_04_07.jpg)
 
-它告诉我们，例如，ID为`3`的行有四个缺失观测值，正如我们之前观察到的。
+它告诉我们，例如，ID 为`3`的行有四个缺失观测值，正如我们之前观察到的。
 
 让我们看看哪些值是缺失的，这样当我们计算列中的缺失观测值时，我们可以决定是否删除整个观测值或对某些观测值进行插补：
 
-[PRE9]
+```py
+df_miss.where('id == 3').show()
+```
 
 我们得到以下结果：
 
@@ -154,7 +204,12 @@
 
 现在我们来检查每列中缺失观测值的百分比是多少：
 
-[PRE10]
+```py
+df_miss.agg(*[
+    (1 - (fn.count(c) / fn.count('*'))).alias(c + '_missing')
+    for c in df_miss.columns
+]).show()
+```
 
 这生成了以下输出：
 
@@ -164,29 +219,44 @@
 
 `.count(...)`方法的`*`参数（代替列名）指示该方法计算所有行。另一方面，列表声明前的`*`指示`.agg(...)`方法将列表视为一组单独的参数传递给函数。
 
-因此，我们在`weight`和`gender`列中有14%的缺失观测值，在`height`列中有两倍于此，在`income`列中有近72%的缺失观测值。现在我们知道该做什么了。
+因此，我们在`weight`和`gender`列中有 14%的缺失观测值，在`height`列中有两倍于此，在`income`列中有近 72%的缺失观测值。现在我们知道该做什么了。
 
 首先，我们将删除`'income'`特征，因为其中大部分值是缺失的。
 
-[PRE11]
+```py
+df_miss_no_income = df_miss.select([
+    c for c in df_miss.columns if c != 'income'
+])
+```
 
-我们现在看到，我们不需要删除ID为`3`的行，因为在`'weight'`和`'age'`列中的观测值覆盖足够（在我们的简化示例中）来计算平均值并将其插补到缺失值的位置。
+我们现在看到，我们不需要删除 ID 为`3`的行，因为在`'weight'`和`'age'`列中的观测值覆盖足够（在我们的简化示例中）来计算平均值并将其插补到缺失值的位置。
 
-然而，如果你决定删除观测值，你可以使用`.dropna(...)`方法，如下所示。在这里，我们还将使用`thresh`参数，它允许我们指定每行缺失观测值的阈值，以确定该行是否应该被删除。这对于你拥有具有数十或数百个特征的dataset来说很有用，你只想删除那些超过一定缺失值阈值的行：
+然而，如果你决定删除观测值，你可以使用`.dropna(...)`方法，如下所示。在这里，我们还将使用`thresh`参数，它允许我们指定每行缺失观测值的阈值，以确定该行是否应该被删除。这对于你拥有具有数十或数百个特征的 dataset 来说很有用，你只想删除那些超过一定缺失值阈值的行：
 
-[PRE12]
+```py
+df_miss_no_income.dropna(thresh=3).show()
+```
 
 上述代码产生以下输出：
 
 ![缺失观测值](img/B05793_04_10.jpg)
 
-另一方面，如果你想插补观测值，你可以使用`.fillna(...)`方法。此方法接受单个整数（长整型也接受），浮点数或字符串；然后整个dataset中的所有缺失值都将用该值填充。你也可以传递一个形式为`{'<colName>': <value_to_impute>}`的字典。这有一个相同的限制，即，作为`<value_to_impute>`，你只能传递整数、浮点数或字符串。
+另一方面，如果你想插补观测值，你可以使用`.fillna(...)`方法。此方法接受单个整数（长整型也接受），浮点数或字符串；然后整个 dataset 中的所有缺失值都将用该值填充。你也可以传递一个形式为`{'<colName>': <value_to_impute>}`的字典。这有一个相同的限制，即，作为`<value_to_impute>`，你只能传递整数、浮点数或字符串。
 
 如果你想要插补平均值、中位数或其他计算值，你需要首先计算该值，创建一个包含这些值的字典，然后将它传递给`.fillna(...)`方法。
 
 这是我们的做法：
 
-[PRE13]
+```py
+means = df_miss_no_income.agg(
+    *[fn.mean(c).alias(c) 
+        for c in df_miss_no_income.columns if c != 'gender']
+).toPandas().to_dict('records')[0]
+
+means['gender'] = 'missing'
+
+df_miss_no_income.fillna(means).show()
+```
 
 上述代码将产生以下输出：
 
@@ -194,31 +264,56 @@
 
 我们省略了`性别`列，因为显然无法对分类变量计算平均值。
 
-我们在这里使用双重转换。首先将`.agg(...)`方法的输出（一个PySpark DataFrame）转换为pandas DataFrame，然后再将其转换为字典。
+我们在这里使用双重转换。首先将`.agg(...)`方法的输出（一个 PySpark DataFrame）转换为 pandas DataFrame，然后再将其转换为字典。
 
 ### 提示
 
-注意，调用`.toPandas()`可能会有问题，因为这个方法基本上与RDD中的`.collect()`方法以相同的方式工作。它会从工作者那里收集所有信息，并将其带到驱动器上。除非你有成千上万的特征，否则这不太可能成为前一个数据集的问题。
+注意，调用`.toPandas()`可能会有问题，因为这个方法基本上与 RDD 中的`.collect()`方法以相同的方式工作。它会从工作者那里收集所有信息，并将其带到驱动器上。除非你有成千上万的特征，否则这不太可能成为前一个数据集的问题。
 
-pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
+pandas 的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 ![缺失观测值](img/B05793_04_12.jpg)
 
-由于我们无法计算分类变量的平均值（或任何其他数值指标），我们在`gender`特征的字典中添加了`missing`类别。注意，尽管年龄列的平均值是40.40，但在插补时，`df_miss_no_income.age`列的类型仍然被保留——它仍然是一个整数。
+由于我们无法计算分类变量的平均值（或任何其他数值指标），我们在`gender`特征的字典中添加了`missing`类别。注意，尽管年龄列的平均值是 40.40，但在插补时，`df_miss_no_income.age`列的类型仍然被保留——它仍然是一个整数。
 
 ## 异常值
 
-异常值是那些与你的样本中其余部分分布显著偏离的观测值。*显著性*的定义各不相同，但最一般的形式，你可以接受如果没有异常值，所有值都大致在Q1−1.5IQR和Q3+1.5IQR范围内，其中IQR是四分位距；IQR定义为上四分位数和下四分位数的差，即75百分位数（Q3）和25百分位数（Q1）。
+异常值是那些与你的样本中其余部分分布显著偏离的观测值。*显著性*的定义各不相同，但最一般的形式，你可以接受如果没有异常值，所有值都大致在 Q1−1.5IQR 和 Q3+1.5IQR 范围内，其中 IQR 是四分位距；IQR 定义为上四分位数和下四分位数的差，即 75 百分位数（Q3）和 25 百分位数（Q1）。
 
 让我们再次考虑一个简单的例子：
 
-[PRE14]
+```py
+df_outliers = spark.createDataFrame([
+        (1, 143.5, 5.3, 28),
+        (2, 154.2, 5.5, 45),
+        (3, 342.3, 5.1, 99),
+        (4, 144.5, 5.5, 33),
+        (5, 133.2, 5.4, 54),
+        (6, 124.1, 5.1, 21),
+        (7, 129.2, 5.3, 42),
+    ], ['id', 'weight', 'height', 'age'])
+```
 
 现在我们可以使用我们之前概述的定义来标记异常值。
 
 首先，我们计算每个特征的上下限。我们将使用`.approxQuantile(...)`方法。指定的第一个参数是列名，第二个参数可以是`0`到`1`之间的数字（其中`0.5`表示计算中位数）或列表（如我们的情况），第三个参数指定每个指标的容错水平（如果设置为`0`，它将为指标计算一个精确值，但这可能非常昂贵）：
 
-[PRE15]
+```py
+cols = ['weight', 'height', 'age']
+bounds = {}
+
+for col in cols:
+    quantiles = df_outliers.approxQuantile(
+        col, [0.25, 0.75], 0.05
+    )
+
+    IQR = quantiles[1] - quantiles[0]
+
+    bounds[col] = [
+        quantiles[0] - 1.5 * IQR, 
+        quantiles[1] + 1.5 * IQR
+]
+```
 
 `bounds`字典包含每个特征的上下限：
 
@@ -226,7 +321,15 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 让我们现在使用它来标记我们的异常值：
 
-[PRE16]
+```py
+outliers = df_outliers.select(*['id'] + [
+    (
+        (df_outliers[c] < bounds[c][0]) | 
+        (df_outliers[c] > bounds[c][1])
+    ).alias(c + '_o') for c in cols
+])
+outliers.show()
+```
 
 之前的代码产生以下输出：
 
@@ -234,7 +337,11 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 我们在`weight`特征和`age`特征中各有两个异常值。到现在你应该知道如何提取这些值，但这里有一个列出与整体分布显著不同的值的代码片段：
 
-[PRE17]
+```py
+df_outliers = df_outliers.join(outliers, on='id')
+df_outliers.filter('weight_o').select('id', 'weight').show()
+df_outliers.filter('age_o').select('id', 'age').show()
+```
 
 之前的代码将给出以下输出：
 
@@ -248,7 +355,7 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 ### 注意
 
-在本节中，我们将使用我们从 [http://packages.revolutionanalytics.com/datasets/ccFraud.csv](http://packages.revolutionanalytics.com/datasets/ccFraud.csv) 下载的数据集。我们没有更改数据集本身，但它被 GZipped 并上传到 [http://tomdrabas.com/data/LearningPySpark/ccFraud.csv.gz](http://tomdrabas.com/data/LearningPySpark/ccFraud.csv.gz)。请首先下载文件，并将其保存在包含你本章笔记本的同一文件夹中。
+在本节中，我们将使用我们从 [`packages.revolutionanalytics.com/datasets/ccFraud.csv`](http://packages.revolutionanalytics.com/datasets/ccFraud.csv) 下载的数据集。我们没有更改数据集本身，但它被 GZipped 并上传到 [`tomdrabas.com/data/LearningPySpark/ccFraud.csv.gz`](http://tomdrabas.com/data/LearningPySpark/ccFraud.csv.gz)。请首先下载文件，并将其保存在包含你本章笔记本的同一文件夹中。
 
 数据集的头部看起来如下所示：
 
@@ -262,31 +369,52 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 然而，首先的事情是——让我们加载数据并将其转换为 Spark DataFrame：
 
-[PRE18]
+```py
+import pyspark.sql.types as typ
+```
 
 首先，我们加载我们需要的唯一模块。`pyspark.sql.types` 暴露了我们可以使用的数据类型，例如 `IntegerType()` 或 `FloatType()`。
 
 ### 注意
 
-要查看可用类型的完整列表，请检查[http://spark.apache.org/docs/latest/api/python/pyspark.sql.html#module-pyspark.sql.types](http://spark.apache.org/docs/latest/api/python/pyspark.sql.html#module-pyspark.sql.types)。
+要查看可用类型的完整列表，请检查[`spark.apache.org/docs/latest/api/python/pyspark.sql.html#module-pyspark.sql.types`](http://spark.apache.org/docs/latest/api/python/pyspark.sql.html#module-pyspark.sql.types)。
 
 接下来，我们使用 `.filter(...)` 方法读取数据并删除标题行。这之后，我们将行按每个逗号分割（因为这是一个 `.csv` 文件），并将每个元素转换为整数：
 
-[PRE19]
+```py
+fraud = sc.textFile('ccFraud.csv.gz')
+header = fraud.first()
+
+fraud = fraud \
+    .filter(lambda row: row != header) \
+    .map(lambda row: [int(elem) for elem in row.split(',')])
+```
 
 接下来，我们为我们的 DataFrame 创建模式：
 
-[PRE20]
+```py
+fields = [
+    *[
+        typ.StructField(h[1:-1], typ.IntegerType(), True)
+        for h in header.split(',')
+    ]
+]
+schema = typ.StructType(fields)
+```
 
 最后，我们创建我们的 DataFrame：
 
-[PRE21]
+```py
+fraud_df = spark.createDataFrame(fraud, schema)
+```
 
 在创建我们的 `fraud_df` DataFrame 之后，我们可以计算数据集的基本描述性统计。然而，你需要记住，尽管我们的所有特征在本质上都表现为数值型，但其中一些是分类的（例如，`gender` 或 `state`）。
 
 这是我们的 DataFrame 的模式：
 
-[PRE22]
+```py
+fraud_df.printSchema()
+```
 
 表示如下所示：
 
@@ -296,7 +424,9 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 为了更好地理解分类列，我们将使用 `.groupby(...)` 方法计算其值的频率。在这个例子中，我们将计算 `gender` 列的频率：
 
-[PRE23]
+```py
+fraud_df.groupby('gender').count().show()
+```
 
 上述代码将产生以下输出：
 
@@ -306,11 +436,15 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 ### 注意
 
-这超出了本章的范围，但如果我们在构建统计模型，就需要注意这些类型的偏差。您可以在[http://www.va.gov/VETDATA/docs/SurveysAndStudies/SAMPLE_WEIGHT.pdf](http://www.va.gov/VETDATA/docs/SurveysAndStudies/SAMPLE_WEIGHT.pdf)了解更多信息。
+这超出了本章的范围，但如果我们在构建统计模型，就需要注意这些类型的偏差。您可以在[`www.va.gov/VETDATA/docs/SurveysAndStudies/SAMPLE_WEIGHT.pdf`](http://www.va.gov/VETDATA/docs/SurveysAndStudies/SAMPLE_WEIGHT.pdf)了解更多信息。
 
 对于真正的数值特征，我们可以使用`.describe()`方法：
 
-[PRE24]
+```py
+numerical = ['balance', 'numTrans', 'numIntlTrans']
+desc = fraud_df.describe(numerical)
+desc.show()
+```
 
 `.show()`方法将产生以下输出：
 
@@ -324,7 +458,9 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 以下是检查`偏度`（我们只为`'balance'`特征做此操作）的方法：
 
-[PRE25]
+```py
+fraud_df.agg({'balance': 'skewness'}).show()
+```
 
 上述代码产生以下输出：
 
@@ -338,15 +474,28 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 ### 注意
 
-我在我的另一本书中更多地讨论了多重共线性，*《实用数据分析食谱，Packt出版社》* ([https://www.packtpub.com/big-data-and-business-intelligence/practical-data-analysis-cookbook](https://www.packtpub.com/big-data-and-business-intelligence/practical-data-analysis-cookbook))，在第5章[介绍MLlib](ch05.html "第5章。介绍MLlib")中，标题为*识别和解决多重共线性*的部分。
+我在我的另一本书中更多地讨论了多重共线性，*《实用数据分析食谱，Packt 出版社》* ([`www.packtpub.com/big-data-and-business-intelligence/practical-data-analysis-cookbook`](https://www.packtpub.com/big-data-and-business-intelligence/practical-data-analysis-cookbook))，在第五章介绍 MLlib 中，标题为*识别和解决多重共线性*的部分。
 
-一旦您的数据以DataFrame形式存在，在PySpark中计算相关系数非常简单。唯一的困难是`.corr(...)`方法目前只支持皮尔逊相关系数，并且它只能计算成对的相关性，如下所示：
+一旦您的数据以 DataFrame 形式存在，在 PySpark 中计算相关系数非常简单。唯一的困难是`.corr(...)`方法目前只支持皮尔逊相关系数，并且它只能计算成对的相关性，如下所示：
 
-[PRE26]
+```py
+fraud_df.corr('balance', 'numTrans')
+```
 
 为了创建相关系数矩阵，您可以使用以下脚本：
 
-[PRE27]
+```py
+n_numerical = len(numerical)
+
+corr = []
+
+for i in range(0, n_numerical):
+    temp = [None] * i
+
+    for j in range(i, n_numerical):
+        temp.append(fraud_df.corr(numerical[i], numerical[j]))
+    corr.append(temp)
+```
 
 上述代码将产生以下输出：
 
@@ -362,7 +511,16 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 这两个包都预装在 Anaconda 中。首先，让我们加载模块并设置它们：
 
-[PRE28]
+```py
+%matplotlib inline
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+
+import bokeh.charts as chrt
+from bokeh.io import output_notebook
+
+output_notebook()
+```
 
 `%matplotlib inline` 和 `output_notebook()` 命令将使 `matplotlib` 或 Bokeh 生成的每个图表都出现在笔记本中，而不是作为单独的窗口。
 
@@ -378,11 +536,22 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 如果你的数据集的行数以亿计，那么第二种方法可能不可行。因此，你需要首先聚合数据：
 
-[PRE29]
+```py
+hists = fraud_df.select('balance').rdd.flatMap(
+    lambda row: row
+).histogram(20)
+```
 
 要绘制直方图，你可以简单地调用 `matplotlib`，如下面的代码所示：
 
-[PRE30]
+```py
+data = {
+    'bins': hists[0][:-1],
+    'freq': hists[1]
+}
+plt.bar(data['bins'], data['freq'], width=2000)
+plt.title('Histogram of \'balance\'')
+```
 
 这将生成以下图表：
 
@@ -390,7 +559,13 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 以类似的方式，可以使用 Bokeh 创建直方图：
 
-[PRE31]
+```py
+b_hist = chrt.Bar(
+    data, 
+    values='freq', label='bins', 
+    title='Histogram of \'balance\'')
+chrt.show(b_hist)
+```
 
 由于 Bokeh 在后台使用 D3.js，生成的图表是交互式的：
 
@@ -398,7 +573,21 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 如果你的数据足够小，可以放在驱动程序上（尽管我们会争论通常使用前一种方法会更快），你可以将数据带进来，并使用 `.hist(...)`（来自 `matplotlib`）或 `.Histogram(...)`（来自 Bokeh）方法：
 
-[PRE32]
+```py
+data_driver = {
+    'obs': fraud_df.select('balance').rdd.flatMap(
+        lambda row: row
+    ).collect()
+}
+plt.hist(data_driver['obs'], bins=20)
+plt.title('Histogram of \'balance\' using .hist()')
+b_hist_driver = chrt.Histogram(
+    data_driver, values='obs', 
+    title='Histogram of \'balance\' using .Histogram()', 
+    bins=20
+)
+chrt.show(b_hist_driver)
+```
 
 这将为 `matplotlib` 生成以下图表：
 
@@ -424,20 +613,32 @@ pandas的`.to_dict(...)`方法的`records`参数指示它创建以下字典：
 
 在这个例子中，我们将以 0.02% 的比例对欺诈数据集进行抽样，给定 `'gender'` 作为分层：
 
-[PRE33]
+```py
+data_sample = fraud_df.sampleBy(
+    'gender', {1: 0.0002, 2: 0.0002}
+).select(numerical)
+```
 
 要一次性放入多个二维图表，你可以使用以下代码：
 
-[PRE34]
+```py
+data_multi = dict([
+    (elem, data_sample.select(elem).rdd \
+        .flatMap(lambda row: row).collect()) 
+    for elem in numerical
+])
+sctr = chrt.Scatter(data_multi, x='balance', y='numTrans')
+chrt.show(sctr)
+```
 
 上一段代码将生成以下图表：
 
 ![特征之间的交互](img/B05793_04_26.jpg)
 
-如你所见，有许多欺诈交易余额为0，但许多交易——即新卡和交易的大幅增加。然而，除了在$1,000间隔发生的一些*带状*之外，没有特定的模式可以展示。
+如你所见，有许多欺诈交易余额为 0，但许多交易——即新卡和交易的大幅增加。然而，除了在$1,000 间隔发生的一些*带状*之外，没有特定的模式可以展示。
 
 # 摘要
 
-在本章中，我们探讨了如何通过识别和解决数据集中缺失值、重复值和异常值来清洁和准备数据集以进行建模。我们还探讨了如何使用PySpark工具（尽管这绝对不是如何分析数据集的完整手册）来更熟悉你的数据。最后，我们展示了如何绘制数据图表。
+在本章中，我们探讨了如何通过识别和解决数据集中缺失值、重复值和异常值来清洁和准备数据集以进行建模。我们还探讨了如何使用 PySpark 工具（尽管这绝对不是如何分析数据集的完整手册）来更熟悉你的数据。最后，我们展示了如何绘制数据图表。
 
 在接下来的两章中，我们将使用这些（以及更多）技术来构建机器学习模型。

@@ -1,14 +1,14 @@
-# 第6章. 掌握QGIS Python API
+# 第六章. 掌握 QGIS Python API
 
-在本章中，我们将探讨PyQGIS库的许多更高级的方面，以及使用Python操作QGIS的各种技术。特别是，我们将学习：
+在本章中，我们将探讨 PyQGIS 库的许多更高级的方面，以及使用 Python 操作 QGIS 的各种技术。特别是，我们将学习：
 
 +   如何与符号层一起工作
 
 +   使用符号在地图上绘制矢量数据的高级方法
 
-+   如何在Python中实现自己的符号和渲染器
++   如何在 Python 中实现自己的符号和渲染器
 
-+   如何使用Python创建自定义地图层
++   如何使用 Python 创建自定义地图层
 
 +   如何实现自己的自定义地图画布项
 
@@ -32,7 +32,7 @@
 
 ### 注意
 
-符号层按它们添加到符号中的顺序绘制。因此，在这个例子中，**符号层1**将在**符号层2**之前绘制。这会导致第二个符号层在第一个符号层之上绘制。确保你正确地排列了符号层的顺序，否则你可能会发现符号层被另一个层完全遮挡。
+符号层按它们添加到符号中的顺序绘制。因此，在这个例子中，**符号层 1**将在**符号层 2**之前绘制。这会导致第二个符号层在第一个符号层之上绘制。确保你正确地排列了符号层的顺序，否则你可能会发现符号层被另一个层完全遮挡。
 
 虽然我们迄今为止所使用的符号只有一个层，但你可以使用多层符号执行一些巧妙的技巧。我们将在*组合符号层*这一节中查看多层符号。
 
@@ -40,7 +40,22 @@
 
 要使用符号层，你需要移除这个默认层，并用你自己的符号层或多个符号层替换它。例如：
 
-[PRE0]
+```py
+symbol = QgsSymbolV2.defaultSymbol(layer.geometryType())
+symbol.deleteSymbolLayer(0) # Remove default symbol layer.
+
+symbol_layer_1 = QgsSimpleFillSymbolLayerV2()
+symbol_layer_1.setFillColor(QColor("yellow"))
+
+symbol_layer_2 = QgsLinePatternFillSymbolLayer()
+symbol_layer_2.setLineAngle(30)
+symbol_layer_2.setDistance(2.0)
+symbol_layer_2.setLineWidth(0.5)
+symbol_layer_2.setColor(QColor("green"))
+
+symbol.appendSymbolLayer(symbol_layer_1)
+symbol.appendSymbolLayer(symbol_layer_2)
+```
 
 可以使用以下方法来操作符号内的层：
 
@@ -60,16 +75,20 @@
 
     记住，一旦创建符号，你需要创建一个适当的渲染器，然后将该渲染器分配给你的地图层。例如：
 
-    [PRE1]
+    ```py
+    renderer = QgsSingleSymbolRendererV2(symbol)
+    layer.setRendererV2(renderer)
+
+    ```
 
 以下符号层类可供您使用：
 
-| PyQGIS类 | 描述 | 示例 |
+| PyQGIS 类 | 描述 | 示例 |
 | --- | --- | --- |
 | `QgsSimpleMarkerSymbolLayerV2` | 这将点几何形状显示为一个小彩色的圆圈。 | ![使用符号层](img/00057.jpeg) |
 | `QgsEllipseSymbolLayerV2` | 这将点几何形状显示为椭圆。 | ![使用符号层](img/00058.jpeg) |
 | `QgsFontMarkerSymbolLayerV2` | 这将点几何形状显示为单个字符。你可以选择要显示的字体和字符。 | ![使用符号层](img/00059.jpeg) |
-| `QgsSvgMarkerSymbolLayerV2` | 这使用单个SVG格式图像显示点几何形状。 | ![使用符号层](img/00060.jpeg) |
+| `QgsSvgMarkerSymbolLayerV2` | 这使用单个 SVG 格式图像显示点几何形状。 | ![使用符号层](img/00060.jpeg) |
 | `QgsVectorFieldSymbolLayer` | 这通过绘制**位移线**来显示点几何形状。线的一端是点的坐标，而另一端使用特征的属性计算得出。 | ![使用符号层](img/00061.jpeg) |
 | `QgsSimpleLineSymbolLayerV2` | 这使用给定颜色、宽度和样式的线条显示线几何形状或多边形几何形状的轮廓。 | ![使用符号层](img/00062.jpeg) |
 | `QgsMarkerLineSymbolLayerV2` | 这通过沿线的长度重复绘制标记符号来显示线几何形状或多边形几何形状的轮廓。 | ![使用符号层](img/00063.jpeg) |
@@ -78,9 +97,9 @@
 | `QgsCentroidFillSymbolLayerV2` | 这将在多边形几何形状的质心处绘制一个简单的点。 | ![使用符号层](img/00066.jpeg) |
 | `QgsLinePatternFillSymbolLayer` | 这使用重复的线绘制多边形几何形状的内部。你可以选择用于线的角度、宽度和颜色。 | ![使用符号层](img/00067.jpeg) |
 | `QgsPointPatternFillSymbolLayer` | 这使用重复的点绘制多边形几何形状的内部。 | ![使用符号层](img/00068.jpeg) |
-| `QgsSVGFillSymbolLayer` | 这使用重复的SVG格式图像绘制多边形几何形状的内部。 | ![使用符号层](img/00069.jpeg) |
+| `QgsSVGFillSymbolLayer` | 这使用重复的 SVG 格式图像绘制多边形几何形状的内部。 | ![使用符号层](img/00069.jpeg) |
 
-这些预定义的符号层，无论是单独使用还是以各种组合方式，都为你提供了在显示特征时的巨大灵活性。然而，如果您觉得这些还不够，您也可以使用Python实现自己的符号层。我们将在本章后面讨论如何实现。
+这些预定义的符号层，无论是单独使用还是以各种组合方式，都为你提供了在显示特征时的巨大灵活性。然而，如果您觉得这些还不够，您也可以使用 Python 实现自己的符号层。我们将在本章后面讨论如何实现。
 
 # 符号层的组合
 
@@ -88,7 +107,7 @@
 
 ![组合符号层](img/00070.jpeg)
 
-符号层的主要用途之一是绘制不同的LineString或PolyLine符号来表示不同类型的道路。例如，你可以通过组合多个符号层来绘制复杂的道路符号，如下所示：
+符号层的主要用途之一是绘制不同的 LineString 或 PolyLine 符号来表示不同类型的道路。例如，你可以通过组合多个符号层来绘制复杂的道路符号，如下所示：
 
 ![组合符号层](img/00071.jpeg)
 
@@ -96,9 +115,30 @@
 
 ![组合符号层](img/00072.jpeg)
 
-这里是用于生成前面地图符号的Python代码：
+这里是用于生成前面地图符号的 Python 代码：
 
-[PRE2]
+```py
+symbol =QgsLineSymbolV2.createSimple({})
+symbol.deleteSymbolLayer(0) # Remove default symbol layer.
+
+symbol_layer = QgsSimpleLineSymbolLayerV2()
+symbol_layer.setWidth(4)
+symbol_layer.setColor(QColor("light gray"))
+symbol_layer.setPenCapStyle(Qt.FlatCap)
+symbol.appendSymbolLayer(symbol_layer)
+
+symbol_layer = QgsSimpleLineSymbolLayerV2()
+symbol_layer.setColor(QColor("black"))
+symbol_layer.setWidth(2)
+symbol_layer.setPenCapStyle(Qt.FlatCap)
+symbol.appendSymbolLayer(symbol_layer)
+
+symbol_layer = QgsSimpleLineSymbolLayerV2()
+symbol_layer.setWidth(1)
+symbol_layer.setColor(QColor("white"))
+symbol_layer.setPenStyle(Qt.DotLine)
+symbol.appendSymbolLayer(symbol_layer)
+```
 
 如你所见，你可以设置线宽、颜色和样式来创建你想要的效果。像往常一样，你必须按正确的顺序定义层，最底层的符号层首先定义。通过这种方式组合线符号层，你可以创建几乎任何类型的道路符号。
 
@@ -108,7 +148,22 @@
 
 最后，你可以利用**透明度**来使各种符号层（或整个符号）相互融合。例如，你可以通过组合两个符号层来创建点状条纹效果，如下所示：
 
-[PRE3]
+```py
+symbol = QgsFillSymbolV2.createSimple({})
+symbol.deleteSymbolLayer(0) # Remove default symbol layer.
+
+symbol_layer = QgsGradientFillSymbolLayerV2()
+symbol_layer.setColor2(QColor("dark gray"))
+symbol_layer.setColor(QColor("white"))
+symbol.appendSymbolLayer(symbol_layer)
+
+symbol_layer = QgsLinePatternFillSymbolLayer()
+symbol_layer.setColor(QColor(0, 0, 0, 20))
+symbol_layer.setLineWidth(2)
+symbol_layer.setDistance(4)
+symbol_layer.setLineAngle(70)
+symbol.appendSymbolLayer(symbol_layer)
+```
 
 结果相当微妙且视觉上令人愉悦：
 
@@ -116,7 +171,9 @@
 
 除了为符号层更改透明度外，你还可以更改整个符号的透明度。这通过使用`setAlpha()`方法完成，如下所示：
 
-[PRE4]
+```py
+symbol.setAlpha(0.3)
+```
 
 结果看起来像这样：
 
@@ -124,23 +181,66 @@
 
 ### 注意
 
-注意，`setAlpha()`接受一个介于0.0和1.0之间的浮点数，而`QColor`对象（如我们之前使用的）的透明度是通过介于0和255之间的alpha值指定的。
+注意，`setAlpha()`接受一个介于 0.0 和 1.0 之间的浮点数，而`QColor`对象（如我们之前使用的）的透明度是通过介于 0 和 255 之间的 alpha 值指定的。
 
-# 在Python中实现符号层
+# 在 Python 中实现符号层
 
-如果内置的符号层不足以满足你的需求，你可以使用Python实现自己的符号层。为此，你创建适当的符号层类型的子类（`QgsMarkerSymbolLayerV2`、`QgsLineSymbolV2`或`QgsFillSymbolV2`）并自行实现各种绘图方法。例如，这里是一个简单的标记符号层，用于绘制点几何图形的十字：
+如果内置的符号层不足以满足你的需求，你可以使用 Python 实现自己的符号层。为此，你创建适当的符号层类型的子类（`QgsMarkerSymbolLayerV2`、`QgsLineSymbolV2`或`QgsFillSymbolV2`）并自行实现各种绘图方法。例如，这里是一个简单的标记符号层，用于绘制点几何图形的十字：
 
-[PRE5]
+```py
+class CrossSymbolLayer(QgsMarkerSymbolLayerV2):
+    def __init__(self, length=10.0, width=2.0):
+        QgsMarkerSymbolLayerV2.__init__(self)
+        self.length = length
+        self.width  = width
+
+    def layerType(self):
+        return "Cross"
+
+    def properties(self):
+        return {'length' : self.length,
+                'width' : self.width}
+
+    def clone(self):
+        return CrossSymbolLayer(self.length, self.width)
+
+    def startRender(self, context):
+        self.pen = QPen()
+        self.pen.setColor(self.color())
+        self.pen.setWidth(self.width)
+
+    def stopRender(self, context):
+        self.pen = None
+
+    def renderPoint(self, point, context):
+        left = point.x() - self.length
+        right = point.x() + self.length
+        bottom = point.y() - self.length
+        top = point.y() + self.length
+
+        painter = context.renderContext().painter()
+        painter.setPen(self.pen)
+        painter.drawLine(left, bottom, right, top)
+        painter.drawLine(right, bottom, left, top)
+```
 
 在你的代码中使用这个自定义符号层很简单：
 
-[PRE6]
+```py
+symbol = QgsMarkerSymbolV2.createSimple({})
+symbol.deleteSymbolLayer(0)
+
+symbol_layer = CrossSymbolLayer()
+symbol_layer.setColor(QColor("gray"))
+
+symbol.appendSymbolLayer(symbol_layer) 
+```
 
 运行此代码将在每个点几何图形的位置绘制一个十字，如下所示：
 
-![在Python中实现符号层](img/00076.jpeg)
+![在 Python 中实现符号层](img/00076.jpeg)
 
-当然，这是一个简单的例子，但它展示了如何使用在Python中实现的自定义符号层。现在让我们更仔细地看看`CrossSymbolLayer`类的实现，并看看每个方法的作用：
+当然，这是一个简单的例子，但它展示了如何使用在 Python 中实现的自定义符号层。现在让我们更仔细地看看`CrossSymbolLayer`类的实现，并看看每个方法的作用：
 
 +   `__init__()`: 注意 `__init__` 方法接受参数来定制符号层的工作方式。这些参数，它们应该始终分配有默认值，是与符号层关联的 **属性**。如果你想使你的自定义符号在 **QGIS 图层属性** 窗口中可用，你需要注册你的自定义符号层并告诉 QGIS 如何编辑符号层的属性。我们很快就会看到这一点。
 
@@ -160,33 +260,105 @@
 
 `renderPoint()` 方法仅用于绘制点几何形状的符号层。对于线几何形状，你应该实现 `renderPolyline()` 方法，该方法的签名如下：
 
-[PRE7]
+```py
+def renderPolyline(self, points, context):
+```
 
 `points` 参数将是一个包含构成 LineString 的各个点的 `QPolygonF` 对象，而 `context` 将是用于绘制几何形状的渲染上下文。
 
 如果你的符号层旨在与多边形一起工作，你应该实现 `renderPolygon()` 方法，其外观如下：
 
-[PRE8]
+```py
+def renderPolygon(self, outline, rings, context):
+```
 
 在这里，`outline`是一个包含构成多边形外部的点的`QPolygonF`对象，而`rings`是一个包含定义多边形内部环或“洞”的`QPolygonF`对象列表。一如既往地，`context`是在绘制几何形状时使用的渲染上下文。
 
-以这种方式创建的自定义符号层，如果您只想在自己的外部PyQGIS应用程序中使用它，将正常工作。但是，如果您想在运行的QGIS副本中使用自定义符号层，特别是如果您想允许最终用户使用**图层属性**窗口与符号层一起工作，您需要采取一些额外步骤，如下所述：
+以这种方式创建的自定义符号层，如果您只想在自己的外部 PyQGIS 应用程序中使用它，将正常工作。但是，如果您想在运行的 QGIS 副本中使用自定义符号层，特别是如果您想允许最终用户使用**图层属性**窗口与符号层一起工作，您需要采取一些额外步骤，如下所述：
 
 +   如果您希望在用户点击符号时符号在视觉上突出显示，您需要更改符号层的`renderXXX()`方法，以查看正在绘制的要素是否被用户选中，如果是，则更改其绘制方式。最简单的方法是更改几何形状的颜色。例如：
 
-    [PRE9]
+    ```py
+    if context.selected():
+        color = context.selectionColor()
+    else:
+        color = self.color
+    ```
 
 +   要允许用户编辑符号层的属性，您应该创建`QgsSymbolLayerV2Widget`的子类，它定义了编辑属性的用户界面。例如，可以定义一个简单的用于编辑`CrossSymbolLayer`长度和宽度的用户界面小部件，如下所示：
 
-    [PRE10]
+    ```py
+    class CrossSymbolLayerWidget(QgsSymbolLayerV2Widget):
+        def __init__(self, parent=None):
+            QgsSymbolLayerV2Widget.__init__(self, parent)
+            self.layer = None
+
+            self.lengthField = QSpinBox(self)
+            self.lengthField.setMinimum(1)
+            self.lengthField.setMaximum(100)
+            self.connect(self.lengthField,
+                         SIGNAL("valueChanged(int)"),
+                         self.lengthChanged)
+
+            self.widthField = QSpinBox(self)
+            self.widthField.setMinimum(1)
+            self.widthField.setMaximum(100)
+            self.connect(self.widthField,
+                         SIGNAL("valueChanged(int)"),
+                         self.widthChanged)
+
+            self.form = QFormLayout()
+            self.form.addRow('Length', self.lengthField)
+            self.form.addRow('Width', self.widthField)
+
+            self.setLayout(self.form)
+
+        def setSymbolLayer(self, layer):
+            if layer.layerType() == "Cross":
+                self.layer = layer
+                self.lengthField.setValue(layer.length)
+                self.widthField.setValue(layer.width)
+
+        def symbolLayer(self):
+            return self.layer
+
+        def lengthChanged(self, n):
+            self.layer.length = n
+            self.emit(SIGNAL("changed()"))
+
+        def widthChanged(self, n):
+            self.layer.width = n
+            self.emit(SIGNAL("changed()"))
+    ```
 
     我们使用标准的`__init__()`初始化器定义我们小部件的内容。如您所见，我们定义了两个字段，`lengthField`和`widthField`，允许用户分别更改符号层的`length`和`width`属性。
 
     `setSymbolLayer()`方法告诉小部件使用哪个`QgsSymbolLayerV2`对象，而`symbolLayer()`方法返回小部件正在编辑的`QgsSymbolLayerV2`对象。最后，当用户更改字段值时，会调用两个`XXXChanged()`方法，使我们能够更新符号层的属性以匹配用户设置的值。
 
-+   最后，您需要注册您的符号层。为此，创建`QgsSymbolLayerV2AbstractMetadata`的子类，并将其传递给`QgsSymbolLayerV2Registry`对象的`addSymbolLayerType()`方法。以下是我们`CrossSymbolLayer`类的元数据示例实现，以及将其在QGIS中注册的代码：
++   最后，您需要注册您的符号层。为此，创建`QgsSymbolLayerV2AbstractMetadata`的子类，并将其传递给`QgsSymbolLayerV2Registry`对象的`addSymbolLayerType()`方法。以下是我们`CrossSymbolLayer`类的元数据示例实现，以及将其在 QGIS 中注册的代码：
 
-    [PRE11]
+    ```py
+    class CrossSymbolLayerMetadata(QgsSymbolLayerV2AbstractMetadata):
+        def __init__(self):
+            QgsSymbolLayerV2AbstractMetadata.__init__(self, "Cross", "Cross marker", QgsSymbolV2.Marker)
+
+        def createSymbolLayer(self, properties):
+            if "length" in properties:
+                length = int(properties['length'])
+            else:
+                length = 10
+            if "width" in properties:
+                width = int(properties['width'])
+            else:
+                width = 2
+            return CrossSymbolLayer(length, width)
+
+        def createSymbolLayerWidget(self, layer):
+            return CrossSymbolLayerWidget()
+
+    registry = QgsSymbolLayerV2Registry.instance()
+    registry.addSymbolLayerType(CrossSymbolLayerMetadata())
+    ```
 
 注意，`QgsSymbolLayerV2AbstractMetadata.__init__()`方法的参数如下：
 
@@ -196,13 +368,44 @@
 
 +   `type`: 此符号层将要使用的符号类型。
 
-`createSymbolLayer()`方法用于根据在项目保存时存储在QGIS项目文件中的属性恢复符号层。调用`createSymbolLayerWidget()`方法来创建用户界面小部件，允许用户查看和编辑符号层的属性。
+`createSymbolLayer()`方法用于根据在项目保存时存储在 QGIS 项目文件中的属性恢复符号层。调用`createSymbolLayerWidget()`方法来创建用户界面小部件，允许用户查看和编辑符号层的属性。
 
 # 在 Python 中实现渲染器
 
 如果你需要根据比内置渲染器提供的更复杂的标准选择符号，你可以使用 Python 编写自己的自定义 `QgsFeatureRendererV2` 子类。例如，以下 Python 代码实现了一个简单的渲染器，该渲染器在显示点特征时交替使用奇数和偶数符号：
 
-[PRE12]
+```py
+class OddEvenRenderer(QgsFeatureRendererV2):
+    def __init__(self):
+        QgsFeatureRendererV2.__init__(self, "OddEvenRenderer")
+        self.evenSymbol = QgsMarkerSymbolV2.createSimple({})
+        self.evenSymbol.setColor(QColor("light gray"))
+        self.oddSymbol = QgsMarkerSymbolV2.createSimple({})
+        self.oddSymbol.setColor(QColor("black"))
+        self.n = 0
+
+    def clone(self):
+        return OddEvenRenderer()
+
+    def symbolForFeature(self, feature):
+        self.n = self.n + 1
+        if self.n % 2 == 0:
+            return self.evenSymbol
+        else:
+            return self.oddSymbol
+
+    def startRender(self, context, layer):
+        self.n = 0
+        self.oddSymbol.startRender(context)
+        self.evenSymbol.startRender(context)
+
+    def stopRender(self, context):
+        self.oddSymbol.stopRender(context)
+        self.evenSymbol.stopRender(context)
+
+    def usedAttributes(self):
+        return []
+```
 
 使用此渲染器将导致各种点几何图形以交替颜色显示，例如：
 
@@ -236,49 +439,98 @@
 
 让我们看看我们如何创建自己的 `QgsPluginLayer` 子类。我们将创建一个简单的网格，它可以作为地图中的一个层出现。让我们首先定义 `QgsPluginLayer` 子类本身：
 
-[PRE13]
+```py
+class GridLayer(QgsPluginLayer):
+    def __init__(self):
+        QgsPluginLayer.__init__(self, "GridLayer", "Grid Layer")
+        self.setValid(True)
+```
 
 在我们的 `__init__()` 方法中，我们给插件层赋予一个唯一名称（`"GridLayer"`）和一个用户可见名称（`"Grid Layer"`），然后告诉 QGIS 该层是有效的。
 
 接下来，我们需要设置我们层的坐标参考系统和范围。由于我们正在创建一个覆盖整个地球的网格，我们将使用标准的 EPSG 4236 坐标系统（即纬度/经度坐标），并将层的范围设置为覆盖整个地球表面：
 
-[PRE14]
+```py
+        self.setCrs(QgsCoordinateReferenceSystem(4326))
+        self.setExtent(QgsRectangle(-180, 90, 180, 90))
+```
 
 现在，我们准备好定义绘制层内容的方法了。正如您所想象的，这个方法被称为 `draw()`。让我们首先获取我们将用于实际绘制的 `QPainter` 对象：
 
-[PRE15]
+```py
+    def draw(self, renderContext):
+        painter = renderContext.painter()
+```
 
 接下来，我们想要找到当前可见的地球表面部分：
 
-[PRE16]
+```py
+        extent = renderContext.extent()
+```
 
 这为我们提供了想要绘制的网格部分。为了确保网格线位于整个纬度和经度上，我们将范围向上和向下取整到最接近的整数，如下所示：
 
-[PRE17]
+```py
+        xMin = int(math.floor(extent.xMinimum()))
+        xMax = int(math.ceil(extent.xMaximum()))
+        yMin = int(math.floor(extent.yMinimum()))
+        yMax = int(math.ceil(extent.yMaximum()))
+```
 
 接下来，我们需要设置绘图器来绘制网格线：
 
-[PRE18]
+```py
+        pen = QPen()
+        pen.setColor(QColor("light gray"))
+        pen.setWidth(1.0)
+        painter.setPen(pen)
+```
 
 现在，我们几乎准备好开始绘制网格了。但是，为了绘制网格线，我们需要一种方法来在经纬度值和计算机屏幕上的像素坐标之间进行转换。我们将使用 `QgsMapToPixel` 对象来完成这项工作，我们可以从渲染上下文中获取它：
 
-[PRE19]
+```py
+        mapToPixel = renderContext.mapToPixel()
+```
 
 现在，我们终于准备好绘制网格线了。让我们从在每个整度经度上绘制一条垂直网格线开始：
 
-[PRE20]
+```py
+        for x in range(xMin, xMax+1):
+            coord1 = mapToPixel.transform(x, yMin)
+            coord2 = mapToPixel.transform(x, yMax)
+            painter.drawLine(coord1.x(), coord1.y(),
+                             coord2.x(), coord2.y())
+```
 
 我们可以为水平网格线做同样的操作：
 
-[PRE21]
+```py
+        for y in range(yMin, yMax+1):
+            coord1 = mapToPixel.transform(xMin, y)
+            coord2 = mapToPixel.transform(xMax, y)
+            painter.drawLine(coord1.x(), coord1.y(),
+                             coord2.x(), coord2.y())
+```
 
 我们需要做的最后一件事是告诉 QGIS 我们已成功绘制了该层。我们通过让我们的 `draw()` 方法返回 `True` 来完成此操作：
 
-[PRE22]
+```py
+        return True
+```
 
 这完成了我们对 `GridLayer` 类的实现。如果您想在 QGIS 脚本或插件中使用此类，您需要注册该类，以便 QGIS 了解它。幸运的是，这样做很简单：
 
-[PRE23]
+```py
+class GridLayerType(QgsPluginLayerType):
+    def __init__(self):
+        QgsPluginLayerType.__init__(self, "GridLayer")
+
+    def createLayer(self):
+        return GridLayer()
+
+registry = QgsPluginLayerRegistry.instance()
+registry.addPluginLayerType(GridLayerType())
+```
 
 如果您在 QGIS 中运行此程序并将 `GridLayer` 添加到您的项目中，您将看到地图上绘制的网格线：
 
@@ -294,7 +546,34 @@
 
 我们将首先创建基本的 `QgsMapCanvasItem` 子类：
 
-[PRE24]
+```py
+class CompassRoseItem(QgsMapCanvasItem):
+    def __init__(self, canvas):
+        QgsMapCanvasItem.__init__(self, canvas)
+        self.center = QgsPoint(0, 0)
+        self.size   = 100
+
+    def setCenter(self, center):
+        self.center = center
+
+    def center(self):
+        return self.center
+
+    def setSize(self, size):
+        self.size = size
+
+    def size(self):
+        return self.size
+
+    def boundingRect(self):
+        return QRectF(self.center.x() - self.size/2,
+                      self.center.y() - self.size/2,
+                      self.center.x() + self.size/2,
+                      self.center.y() + self.size/2)
+
+    def paint(self, painter, option, widget):
+        # ...
+```
 
 如您所见，我们通过定义 `center` 和 `size` 实例变量将罗盘玫瑰放置在地图画布上，并提供方法来检索和设置这些值。我们还实现了所需的 `boundingRect()` 方法，它返回画布项的整体边界矩形，以屏幕坐标表示。
 
@@ -302,37 +581,98 @@
 
 罗盘玫瑰可能看起来相当复杂，但实现它的代码相当简单。最复杂的部分是确定 `"N"`、`"S"`、`"E"` 和 `"W"` 标签的尺寸，以便我们为罗盘玫瑰本身留出足够的空间。让我们先计算一下将要显示的标签的一些基本信息：
 
-[PRE25]
+```py
+    def paint(self, painter, option, widget):
+        fontSize = int(18 * self.size/100)
+        painter.setFont(QFont("Times", pointSize=fontSize,weight=75))
+        metrics = painter.fontMetrics()
+        labelSize = metrics.height()
+        margin    = 5
+```
 
 我们计算用于标签的字体大小（以点为单位），然后设置我们的画家使用该大小的粗体 `"Times"` 字体。然后我们获取一个 `QFontMetrics` 对象，我们将使用它来计算标签的尺寸，并定义一个硬编码的像素边距，以便我们在标签和罗盘玫瑰本身之间留出间隙。
 
 接下来，我们希望用浅灰色和黑色分别绘制罗盘玫瑰的两个中心部分。为此，我们将使用 `QPainterPath` 对象来定义要填充的区域：
 
-[PRE26]
+```py
+        x = self.center.x()
+        y = self.center.y()
+        size = self.size - labelSize - margin
+
+        path = QPainterPath()
+        path.moveTo(x, y - size * 0.23)
+        path.lineTo(x - size * 0.45, y - size * 0.45)
+        path.lineTo(x - size * 0.23, y)
+        path.lineTo(x - size * 0.45, y + size * 0.45)
+        path.lineTo(x, y + size * 0.23)
+        path.lineTo(x + size * 0.45, y + size * 0.45)
+        path.lineTo(x + size * 0.23, y)
+        path.lineTo(x + size * 0.45, y - size * 0.45)
+        path.closeSubpath()
+
+        painter.fillPath(path, QColor("light gray"))
+
+        path = QPainterPath()
+        path.moveTo(x, y - size)
+        path.lineTo(x - size * 0.18, y - size * 0.18)
+        path.lineTo(x - size, y)
+        path.lineTo(x - size * 0.18, y + size * 0.18)
+        path.lineTo(x, y + size)
+        path.lineTo(x + size * 0.18, y + size * 0.18)
+        path.lineTo(x + size, y)
+        path.lineTo(x + size * 0.18, y - size * 0.18)
+        path.closeSubpath()
+
+        painter.fillPath(path, QColor("black"))
+```
 
 最后，我们希望在四个罗盘点上绘制标签：
 
-[PRE27]
+```py
+        labelX = x - metrics.width("N")/2
+        labelY = y - self.size + labelSize - metrics.descent()
+        painter.drawText(QPoint(labelX, labelY), "N")
+
+        labelX = x - metrics.width("S")/2
+        labelY = y + self.size - labelSize + metrics.ascent()
+        painter.drawText(QPoint(labelX, labelY), "S")
+
+        labelX = x - self.size + labelSize/2 - metrics.width("E")/2
+        labelY = y - metrics.height()/2 + metrics.ascent()
+        painter.drawText(QPoint(labelX, labelY), "E")
+
+        labelX = x + self.size - labelSize/2 - metrics.width("W")/2
+        labelY = y - metrics.height()/2 + metrics.ascent()
+        painter.drawText(QPoint(labelX, labelY), "W")
+```
 
 这就完成了我们的 `QgsMapCanvasItem` 子类的实现。要使用它，我们只需创建并初始化一个新的 `CompassRoseItem`。以下是如何在地图画布中显示 `CompassRoseItem` 的示例：
 
-[PRE28]
+```py
+rose = CompassRoseItem(iface.mapCanvas())
+rose.setCenter(QPointF(150, 400))
+rose.setSize(80)
+```
 
 您的新 `QgsMapCanvasItem` 在对象初始化时将自动添加到地图画布上——您不需要显式将其添加到画布。要移除地图画布上的罗盘玫瑰，您可以执行以下操作：
 
-[PRE29]
+```py
+iface.mapCanvas().scene().removeItem(rose)
+```
 
 注意，地图画布项浮在地图图层之上，不幸的是，它们不能直接与用户交互——你不能使用地图画布项拦截和响应用户的鼠标事件。
 
 # 使用基于内存的图层
 
-通常，地图图层会显示来自外部数据源（如shapefile、栅格DEM文件或数据库）的地理空间数据，但也可以直接从你的Python代码中创建地理空间要素。例如，想象你编写了一个程序来显示道路的中点。这个中点可以用 `QgsPoint` 几何体表示，它将使用适当的标记符号在地图上显示。由于你正在计算这个点，所以这不是你想要存储在shapefile或数据库中的要素。相反，要素是在程序运行时计算并显示的。
+通常，地图图层会显示来自外部数据源（如 shapefile、栅格 DEM 文件或数据库）的地理空间数据，但也可以直接从你的 Python 代码中创建地理空间要素。例如，想象你编写了一个程序来显示道路的中点。这个中点可以用 `QgsPoint` 几何体表示，它将使用适当的标记符号在地图上显示。由于你正在计算这个点，所以这不是你想要存储在 shapefile 或数据库中的要素。相反，要素是在程序运行时计算并显示的。
 
 这是一种理想的基于内存图层的应用。这种类型的图层在内存中存储地理空间要素，允许你在运行时创建新要素并在地图图层中显示它们。
 
 要创建一个基于内存的地图图层，实例化一个新的 `QgsVectorLayer` 对象，就像正常一样。这个类的初始化器看起来如下所示：
 
-[PRE30]
+```py
+layer = QgsVectorLayer(path, baseName, providerLib)
+```
 
 ### 注意
 
@@ -342,21 +682,25 @@
 
 +   `path`：这个字符串提供了创建基于内存图层所需的信息，包括图层将存储的信息类型。我们将在稍后详细讨论这个参数。
 
-+   `baseName`：这是用于基于内存图层的名称。名称可以是任何你喜欢的，尽管用户会在QGIS图层列表中看到它。
++   `baseName`：这是用于基于内存图层的名称。名称可以是任何你喜欢的，尽管用户会在 QGIS 图层列表中看到它。
 
 +   `providerLib`：对于基于内存的图层，应该设置为 `"memory"`。
 
 要创建一个简单的基于内存的图层，你可以这样做：
 
-[PRE31]
+```py
+layer = QgsVectorLayer("Polygon", "My Layer", "memory")
+```
 
 这将创建一个名为 `"My Layer"` 的基于内存的图层，其中存储没有属性的多边形要素。
 
 `path` 参数将使我们能够做比仅仅定义要存储在图层中的几何类型更多的事情。`path` 参数具有以下总体语法：
 
-[PRE32]
+```py
+geometryType?key=value&key=value...
+```
 
-这种类似于URL的语法以几何类型开始，可以包含任意数量的键/值对，这些键/值对提供了关于内存图层的额外信息。目前支持以下几何类型：
+这种类似于 URL 的语法以几何类型开始，可以包含任意数量的键/值对，这些键/值对提供了关于内存图层的额外信息。目前支持以下几何类型：
 
 +   `Point`
 
@@ -374,17 +718,21 @@
 
 +   图层应使用的坐标参考系统。例如：
 
-    [PRE33]
+    ```py
+    crs=IGNF:WGS84G
+    ```
 
-    坐标参考系统可以使用CRS权威代码定义，就像前面的例子一样，或者你可以指定WKT格式的CRS，例如：`crs=+proj=longlat +a=69000 +b=55000 +no_defs`。
+    坐标参考系统可以使用 CRS 权威代码定义，就像前面的例子一样，或者你可以指定 WKT 格式的 CRS，例如：`crs=+proj=longlat +a=69000 +b=55000 +no_defs`。
 
     ### 注意
 
-    如果您以这种方式没有定义坐标参考系统，当您的程序运行时，QGIS将提示用户选择一个CRS。这可能会使用户感到非常困惑，因此您在创建内存层时应该始终指定一个CRS。
+    如果您以这种方式没有定义坐标参考系统，当您的程序运行时，QGIS 将提示用户选择一个 CRS。这可能会使用户感到非常困惑，因此您在创建内存层时应该始终指定一个 CRS。
 
 +   在层内为每个特征存储的属性。以下是一个属性定义的示例：
 
-    [PRE34]
+    ```py
+    field=phone_number:string
+    ```
 
     当前支持以下类型的字段：
 
@@ -400,19 +748,31 @@
 
     ### 注意
 
-    内存层的数据提供者有一个`addAttributes()`方法，您可能会认为您会使用它来定义属性。然而，`addAttributes()`方法只将属性添加到数据提供者，而不是地图层，这可能导致QGIS崩溃。为了避免这种情况，最好在设置地图层时在路径中定义您的属性，而不是尝试稍后添加它们。
+    内存层的数据提供者有一个`addAttributes()`方法，您可能会认为您会使用它来定义属性。然而，`addAttributes()`方法只将属性添加到数据提供者，而不是地图层，这可能导致 QGIS 崩溃。为了避免这种情况，最好在设置地图层时在路径中定义您的属性，而不是尝试稍后添加它们。
 
 +   该层特征的空问索引：
 
-    [PRE35]
+    ```py
+    index=yes
+    ```
 
 让我们使用这个方法来创建一个更复杂的内存层，该层使用指定的坐标参考系统、空间索引和一些属性来存储点几何形状。以下是我们可以如何实现这一点：
 
-[PRE36]
+```py
+layer = QgsVectorLayer(
+"Point?crs=EPSG:4326&field=height:double&field=name:string(255)&index=yes", "Point Layer", "memory")
+```
 
 一旦我们实例化了我们的内存层，我们就可以创建我们想要显示的各种特征，然后将它们添加到层中。以下伪代码显示了如何完成此操作：
 
-[PRE37]
+```py
+provider = layer.dataProvider()
+
+feature1 = ...
+feature2 = ...
+
+provider.addFeatures([feature1, feature2, ...])
+```
 
 如您所见，我们定义了各种特征（它们是`QgsFeature`的实例），然后一次性将它们全部添加到内存层中。当然，您也可以逐个添加特征，但通常定义一个特征列表并一次性添加它们会更有效率。
 
@@ -420,31 +780,79 @@
 
 +   实例化一个`QgsPoint`、`QgsPolyLine`、`QgsPolygon`或相关对象，然后使用`QgsGeometry.fromXXX()`方法之一来创建`QgsGeometry`对象。例如：
 
-    [PRE38]
+    ```py
+    point = QgsPoint(x, y)
+    geometry = QgsGeometry.fromPoint(point)
+    ```
 
-+   创建一个表示几何形状的WKT格式字符串，然后使用该字符串创建`QgsGeometry`对象。例如：
++   创建一个表示几何形状的 WKT 格式字符串，然后使用该字符串创建`QgsGeometry`对象。例如：
 
-    [PRE39]
+    ```py
+    geometry = QgsGeometry.fromWkt("POINT (10 10)")
+    ```
 
 +   通过使用几何形状操作方法之一从现有几何形状中创建一个新的`QgsGeometry`对象。例如：
 
-    [PRE40]
+    ```py
+    new_geometry = old_geometry.buffer(10)
+    ```
 
 一旦我们有了几何形状，我们就可以创建`QgsFeature`对象本身：
 
-[PRE41]
+```py
+feature = QgsFeature()
+feature.setGeometry(geometry)
+```
 
 接下来，我们想要设置该特征的属性。在我们能够这样做之前，我们需要告诉特征它将存储哪些属性。这是以下方式完成的：
 
-[PRE42]
+```py
+fields = provider.fields()
+feature.setFields(fields)
+```
 
 最后，我们可以设置属性值。例如：
 
-[PRE43]
+```py
+feature.setAttribute("height", 301)
+feature.setAttribute("name", "Eiffel Tower")
+```
 
 将所有这些放在一起，让我们构建一个完整的示例程序，该程序创建一个内存层，用几个`QgsPoint`特征填充它，并更新地图画布以显示这些点。以下是此示例程序：
 
-[PRE44]
+```py
+layer = QgsVectorLayer("Point?crs=EPSG:4326&field=height:double&field=name:string(255)", "Point Layer", "memory")
+provider = layer.dataProvider()
+QgsMapLayerRegistry.instance().addMapLayer(layer)
+
+fields = provider.fields()
+features = []
+
+feature = QgsFeature()
+feature.setGeometry(QgsGeometry.fromWkt("POINT (2.2945 48.8582)"))
+feature.setFields(fields)
+feature.setAttribute("height", 301)
+feature.setAttribute("name", "Eiffel Tower")
+features.append(feature)
+
+feature = QgsFeature()
+feature.setGeometry(QgsGeometry.fromWkt("POINT (0.0761 51.5081)"))
+feature.setFields(fields)
+feature.setAttribute("height", 27)
+feature.setAttribute("name", "Tower of London")
+features.append(feature)
+
+feature = QgsFeature()
+feature.setGeometry(QgsGeometry.fromWkt("POINT (10.3964 43.7231)"))
+feature.setFields(fields)
+feature.setAttribute("height", 56)
+feature.setAttribute("name", "Leaning Tower of Pisa")
+features.append(feature)
+
+provider.addFeatures(features)
+layer.updateExtents()
+iface.mapCanvas().zoomToFullExtent()
+```
 
 在 QGIS 内运行此程序将创建一个名为 `"Point Layer"` 的新基于记忆的地图层，其中包含三个要素，代表西欧三个著名塔的位置：
 

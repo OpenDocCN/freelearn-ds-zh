@@ -34,31 +34,47 @@
 
 +   Linux 版本的 7-Zip/PeaZip
 
-本书代码包也托管在 GitHub 上，地址为 [https://github.com/PacktPublishing/Learning-Geospatial-Analysis-with-Python-Third-Edition](https://github.com/PacktPublishing/Learning-Geospatial-Analysis-with-Python-Third-Edition)。如果代码有更新，它将在现有的 GitHub 仓库中更新。
+本书代码包也托管在 GitHub 上，地址为 [`github.com/PacktPublishing/Learning-Geospatial-Analysis-with-Python-Third-Edition`](https://github.com/PacktPublishing/Learning-Geospatial-Analysis-with-Python-Third-Edition)。如果代码有更新，它将在现有的 GitHub 仓库中更新。
 
-我们还提供其他代码包，这些代码包来自我们丰富的书籍和视频目录，可在 **[https://github.com/PacktPublishing/](https://github.com/PacktPublishing/)** 上找到。查看它们吧！
+我们还提供其他代码包，这些代码包来自我们丰富的书籍和视频目录，可在 **[`github.com/PacktPublishing/`](https://github.com/PacktPublishing/)** 上找到。查看它们吧！
 
 # 下载彩色图像
 
-我们还提供包含本书中使用的截图/图表的彩色图像的PDF文件。您可以从这里下载：[https://static.packt-cdn.com/downloads/9781789959277_ColorImages.pdf](https://static.packt-cdn.com/downloads/9781789959277_ColorImages.pdf)。
+我们还提供包含本书中使用的截图/图表的彩色图像的 PDF 文件。您可以从这里下载：[`static.packt-cdn.com/downloads/9781789959277_ColorImages.pdf`](https://static.packt-cdn.com/downloads/9781789959277_ColorImages.pdf)。
 
 # 使用的约定
 
 本书使用了多种文本约定。
 
-`CodeInText`：表示文本中的代码单词、数据库表名、文件夹名、文件名、文件扩展名、路径名、虚拟URL、用户输入和Twitter昵称。以下是一个示例：“为了演示这一点，以下示例访问了我们刚刚看到的相同文件，但使用`urllib`而不是`ftplib`。”
+`CodeInText`：表示文本中的代码单词、数据库表名、文件夹名、文件名、文件扩展名、路径名、虚拟 URL、用户输入和 Twitter 昵称。以下是一个示例：“为了演示这一点，以下示例访问了我们刚刚看到的相同文件，但使用`urllib`而不是`ftplib`。”
 
 代码块以如下方式设置：
 
-[PRE0]
+```py
+import ftplib
+
+server = "ftp.ngdc.noaa.gov"
+dir = "hazards/DART/20070815_peru"
+fileName = "21415_from_20070727_08_55_15_tides.txt"
+```
 
 当我们希望您注意代码块中的特定部分时，相关的行或项目将以粗体显示：
 
-[PRE1]
+```py
+ if (sinSigma == 0):
+        distance = 0  # coincident points
+        break
+    cosSigma = sinU1*sinU2 + cosU1*cosU2*cosLam
+    sigma = math.atan2(sinSigma, cosSigma)
+    sinAlpha = cosU1 * cosU2 * sinLam / sinSigma
+    cosSqAlpha = 1 - sinAlpha**2
+```
 
 任何命令行输入或输出都应如下编写：
 
-[PRE2]
+```py
+pip install virtualenv
+```
 
 **粗体**：表示新术语、重要单词或您在屏幕上看到的单词。例如，菜单或对话框中的单词在文本中显示如下。以下是一个示例：“从管理面板中选择系统信息。”
 
@@ -80,6 +96,6 @@
 
 # 评论
 
-请留下评论。一旦您阅读并使用过这本书，为何不在您购买它的网站上留下评论？潜在读者可以查看并使用您的客观意见来做出购买决定，我们Packt可以了解您对我们产品的看法，我们的作者也可以看到他们对书籍的反馈。谢谢！
+请留下评论。一旦您阅读并使用过这本书，为何不在您购买它的网站上留下评论？潜在读者可以查看并使用您的客观意见来做出购买决定，我们 Packt 可以了解您对我们产品的看法，我们的作者也可以看到他们对书籍的反馈。谢谢！
 
-如需了解Packt的更多信息，请访问 [packt.com](http://www.packt.com/)。
+如需了解 Packt 的更多信息，请访问 [packt.com](http://www.packt.com/)。

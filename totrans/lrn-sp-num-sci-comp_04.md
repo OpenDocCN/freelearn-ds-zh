@@ -1,42 +1,57 @@
-# 第4章：SciPy数值分析
+# 第四章：SciPy 数值分析
 
-几乎所有数值分析的各个领域都在某些SciPy模块中得到了考虑。例如，为了计算特殊函数的值，我们使用`scipy.special`模块。`scipy.interpolate`模块负责插值、外推和回归。对于优化，我们有`scipy.optimize`模块，最后，我们还有`scipy.integrate`模块用于数值积分。这个最后的模块还作为执行常微分方程数值解的接口。
+几乎所有数值分析的各个领域都在某些 SciPy 模块中得到了考虑。例如，为了计算特殊函数的值，我们使用`scipy.special`模块。`scipy.interpolate`模块负责插值、外推和回归。对于优化，我们有`scipy.optimize`模块，最后，我们还有`scipy.integrate`模块用于数值积分。这个最后的模块还作为执行常微分方程数值解的接口。
 
-因此，在本章中，我们将首先广泛探讨如何使用SciPy来数值评估在数学物理领域常见的特殊函数。然后，我们将讨论SciPy中可用于处理回归、插值和优化问题的模块。
+因此，在本章中，我们将首先广泛探讨如何使用 SciPy 来数值评估在数学物理领域常见的特殊函数。然后，我们将讨论 SciPy 中可用于处理回归、插值和优化问题的模块。
 
-本章以混沌洛伦兹系统的解为例，展示了SciPy在寻找常微分方程数值解方面的能力。相应的IPython Notebook将帮助您尝试涉及计算中的模块功能，并根据您的具体需求修改每个示例。
+本章以混沌洛伦兹系统的解为例，展示了 SciPy 在寻找常微分方程数值解方面的能力。相应的 IPython Notebook 将帮助您尝试涉及计算中的模块功能，并根据您的具体需求修改每个示例。
 
 # 特殊函数的评估
 
-`scipy.special`模块包含有用函数的数值稳定定义。通常，直接在单个值上评估函数并不非常高效。例如，我们宁愿使用Horner方案（[http://en.wikipedia.org/wiki/Horner%27s_method](http://en.wikipedia.org/wiki/Horner%27s_method)）来找到多项式在一点的值，而不是使用原始公式。NumPy和SciPy模块确保通过定义所有函数始终保证这种优化，无论是通过Horner方案还是更高级的技术。
+`scipy.special`模块包含有用函数的数值稳定定义。通常，直接在单个值上评估函数并不非常高效。例如，我们宁愿使用 Horner 方案（[`en.wikipedia.org/wiki/Horner%27s_method`](http://en.wikipedia.org/wiki/Horner%27s_method)）来找到多项式在一点的值，而不是使用原始公式。NumPy 和 SciPy 模块确保通过定义所有函数始终保证这种优化，无论是通过 Horner 方案还是更高级的技术。
 
 # 便利性和测试函数
 
 所有便利函数都是为了简化计算环境而设计的，用户不需要担心相对误差。这些函数乍一看似乎没有意义，但它们背后的代码中包含了最先进的思想，提供了更快、更可靠的结果。
 
-我们除了在NumPy库中定义的函数之外，还有便利函数来找到以度为单位（`cosdg`、`sindg`、`tandg`和`cotdg`）的三角函数的解；从度、分、秒的表达式计算弧度（`radian`）；常见的幂（`exp2`用于*2**x*，`exp10`用于*10**x*）；以及针对变量小值的常见函数（`log1p`用于*log(1 + x)*，`expm1`用于*exp(x) - 1*，`cosm1`用于*cos(x) - 1*）。
+我们除了在 NumPy 库中定义的函数之外，还有便利函数来找到以度为单位（`cosdg`、`sindg`、`tandg`和`cotdg`）的三角函数的解；从度、分、秒的表达式计算弧度（`radian`）；常见的幂（`exp2`用于*2**x*，`exp10`用于*10**x*）；以及针对变量小值的常见函数（`log1p`用于*log(1 + x)*，`expm1`用于*exp(x) - 1*，`cosm1`用于*cos(x) - 1*）。
 
 例如，在下面的代码片段中，`log1p`函数计算*1 + x*的自然对数。为什么不是简单地将*1*加到*1*的值上，然后再取对数呢？让我们比较一下：
 
-[PRE0]
+```py
+>>> import numpy
+>>> import scipy.special
+>>> a=scipy.special.exp10(-16)
+>>> numpy.log(1+a)
+
+```
 
 输出如下：
 
-[PRE1]
+```py
+0.0
+
+```
 
 现在让我们在`a`上使用`log1p()`函数：
 
-[PRE2]
+```py
+>>> scipy.special.log1p(a)
+
+```
 
 输出如下：
 
-[PRE3]
+```py
+9.9999999999999998e-17
 
-虽然第一次计算的绝对误差很小，但相对误差是100%。
+```
 
-与Lena图像被视为图像处理中的性能测试一样，我们有一些函数用于在不同的场景中测试不同的算法。
+虽然第一次计算的绝对误差很小，但相对误差是 100%。
 
-例如，通常我们会用Rosenbrock的香蕉函数（[http://en.wikipedia.org/wiki/Rosenbrock_function](http://en.wikipedia.org/wiki/Rosenbrock_function)）来测试最小化代码：
+与 Lena 图像被视为图像处理中的性能测试一样，我们有一些函数用于在不同的场景中测试不同的算法。
+
+例如，通常我们会用 Rosenbrock 的香蕉函数（[`en.wikipedia.org/wiki/Rosenbrock_function`](http://en.wikipedia.org/wiki/Rosenbrock_function)）来测试最小化代码：
 
 ![便利性和测试函数](img/7702OS_04_01.jpg)
 
@@ -44,135 +59,244 @@
 
 # 单变量多项式
 
-在SciPy中，多项式被定义为NumPy类`poly1d`。这个类有几个方法与多项式相关联，用于计算多项式的系数（`coeffs`或简单地`c`），计算多项式的根（`r`），计算其导数（`deriv`），计算其符号积分（`integ`），以及获取其度数（`order`或简单地`o`），以及一个方法（`variable`），它提供了一个字符串，表示我们希望在多项式的正确定义中使用该变量的名称（参见涉及`P2`的示例）。
+在 SciPy 中，多项式被定义为 NumPy 类`poly1d`。这个类有几个方法与多项式相关联，用于计算多项式的系数（`coeffs`或简单地`c`），计算多项式的根（`r`），计算其导数（`deriv`），计算其符号积分（`integ`），以及获取其度数（`order`或简单地`o`），以及一个方法（`variable`），它提供了一个字符串，表示我们希望在多项式的正确定义中使用该变量的名称（参见涉及`P2`的示例）。
 
 为了定义一个多项式，我们必须指明其系数或其根：
 
-[PRE4]
+```py
+>>> import numpy
+>>> P1=numpy.poly1d([1,0,1])           # using coefficients
+>>> print (P1)
+
+```
 
 输出如下：
 
-[PRE5]
+```py
+ 2
+1 x + 1
+
+```
 
 现在，让我们找到`P1`的根、阶数和导数：
 
-[PRE6]
+```py
+>>> print (P1.r); print (P1.o); print (P1.deriv())
+
+```
 
 输出如下：
 
-[PRE7]
+```py
+[ 0.+1.j  0.-1.j]
+2
+2 x
+
+```
 
 让我们使用`poly1d`类：
 
-[PRE8]
+```py
+>>> P2=numpy.poly1d([1,1,1], True)     # using roots
+>>> print (P2)
+
+```
 
 输出如下：
 
-[PRE9]
+```py
+ 3     2
+1 x - 3 x + 3 x – 1
+
+```
 
 让我们使用`poly1d`类和`variable`方法：
 
-[PRE10]
+```py
+>>> P2=numpy.poly1d([1,1,1], True, variable='z')
+>>> print (P2)
+
+```
 
 输出如下：
 
-[PRE11]
+```py
+ 3     2 
+1 z - 3 z + 3 z - 1
 
-我们可以通过将多项式视为（向量化）函数或使用`__call__方法`来评估多项式：
+```
 
-[PRE12]
+我们可以通过将多项式视为（向量化）函数或使用`__call__ 方法`来评估多项式：
+
+```py
+>>> P1( numpy.arange(10) )           # evaluate at 0,1,...,9
+
+```
 
 输出如下：
 
-[PRE13]
+```py
+array([ 1,  2,  5, 10, 17, 26, 37, 50, 65, 82])
+
+```
 
 让我们发出`__call__`命令：
 
-[PRE14]
+```py
+>>> P1.__call__(numpy.arange(10))    # same evaluation
+
+```
 
 输出如下：
 
-[PRE15]
+```py
+array([ 1,  2,  5, 10, 17, 26, 37, 50, 65, 82])
+
+```
 
 这些想法的一个直接应用是验证前一个例子中使用的*1 + x*的自然对数的计算。当*x*接近零时，自然对数可以用以下公式近似：
 
 ![单变量多项式](img/7702OS_04_02.jpg)
 
-这个表达式可以用Python使用前面提到的想法输入并评估，如下所示：
+这个表达式可以用 Python 使用前面提到的想法输入并评估，如下所示：
 
-[PRE16]
+```py
+>>> import numpy
+>>> Px=numpy.poly1d([-(1./2.),1,0])
+>>> print(Px)
+
+```
 
 输出如下：
 
-[PRE17]
+```py
+ 2
+-0.5 x + 1 x
+
+```
 
 让我们看看变量`a`中存储的值：
 
-[PRE18]
+```py
+>>> a=1./10000000000000000.
+>>> print(a)
+
+```
 
 存储在`a`中的值的输出如下：
 
-[PRE19]
+```py
+1e-16
+
+```
 
 我们现在在以下代码行中使用`Px`（包含一维多项式形式）在`a`上：
 
-[PRE20]
+```py
+>>> Px(a)
+
+```
 
 输出如下：
 
-[PRE21]
+```py
+9.9999999999999998e-17
 
-结果与之前使用SciPy函数`scipy.special.log1p`得到的结果相同，这验证了计算的正确性。
+```
+
+结果与之前使用 SciPy 函数`scipy.special.log1p`得到的结果相同，这验证了计算的正确性。
 
 与多项式相关的一些例程包括：`roots`（计算零点），`polyder`（计算导数），`polyint`（计算积分），`polyadd`（加多项式），`polysub`（减多项式），`polymul`（乘多项式），`polydiv`（多项式除法），`polyval`（评估多项式），以及 `polyfit`（计算两个给定数据数组的最佳拟合多项式）。
 
 常用的二元运算符 +, -, * 和 / 对多项式执行相应的操作。此外，一旦创建了一个多项式，任何与之交互的值列表都会立即转换为多项式。因此，以下四个命令是等价的：
 
-[PRE22]
+```py
+>>> P1=numpy.poly1d([1,0,1])
+>>> print(P1)
+
+```
 
 上述代码行的输出如下：
 
-[PRE23]
+```py
+ 2
+1 x + 1
+
+```
 
 让我们看看下面的 `print()` 命令：
 
-[PRE24]
+```py
+>>> print(numpy.polyadd(P1, numpy.poly1d([2,1])))
+
+```
 
 输出如下：
 
-[PRE25]
+```py
+ 2
+1 x + 2 x + 2
+
+```
 
 让我们看看下面的 `print()` 命令：
 
-[PRE26]
+```py
+>>> print(numpy.polyadd(P1, [2,1]))
+
+```
 
 输出如下：
 
-[PRE27]
+```py
+ 2
+1 x + 2 x + 2
+
+```
 
 让我们看看下面的 `print()` 命令：
 
-[PRE28]
+```py
+>>> print(P1 + numpy.poly1d([2,1]))
+
+```
 
 输出如下：
 
-[PRE29]
+```py
+ 2
+1 x + 2 x + 2
+
+```
 
 让我们看看下面的 `print()` 命令：
 
-[PRE30]
+```py
+>>> print(P1 + [2,1])
+
+```
 
 输出如下：
 
-[PRE31]
+```py
+ 2
+1 x + 2 x + 2
+
+```
 
 注意多项式除法提供了商和余数值，例如：
 
-[PRE32]
+```py
+>>> P1/[2,1]
+
+```
 
 输出如下：
 
-[PRE33]
+```py
+(poly1d([ 0.5 , -0.25]), poly1d([ 1.25]))
+
+```
 
 这也可以写成以下形式：
 
@@ -182,11 +306,22 @@
 
 对于正交多项式，由于其丰富的数学结构，通常的多项式评估可以得到改进。在这种情况下，我们永远不会使用之前介绍的通用调用方法来评估它们。相反，我们使用 `eval_` 语法。例如，我们使用以下命令来评估雅可比多项式：
 
-[PRE34]
+```py
+>>> eval_jacobi(n, alpha, beta, x)
+
+```
 
 为了获得 `alpha = 0` 和 `beta = 1` 的三阶雅可比多项式在 -1 到 1 之间均匀分布的一千个 `x` 值的图形，我们可以发出以下命令：
 
-[PRE35]
+```py
+>>> import numpy 
+>>> import scipy.special
+>>> import matplotlib.pyplot as plt
+>>> x=numpy.linspace(-1,1,1000)
+>>> plt.plot(x,scipy.special.eval_jacobi(3,0,1,x))
+>>> plt.show()
+
+```
 
 输出如下：
 
@@ -200,7 +335,7 @@
 
 ![伽玛函数](img/7702OS_04_05.jpg)
 
-在整数值处评估伽玛函数给出移位阶乘，这正是SciPy中阶乘函数编码的方式。
+在整数值处评估伽玛函数给出移位阶乘，这正是 SciPy 中阶乘函数编码的方式。
 
 `scipy.special`模块包含算法，可以快速评估伽玛函数在任意允许值处的值。它还包含执行文献中出现的伽玛函数最常见组合的评估例程：`gammaln`用于伽玛绝对值的自然对数，`rgamma`用于伽玛的倒数，`beta`用于商，`betaln`用于后者的自然对数。我们还实现了其导数的对数（`psi`）的实现。
 
@@ -210,23 +345,30 @@
 
 让我们看一下以下代码片段：
 
-[PRE36]
+```py
+>>> import scipy.special
+>>> 10**10*scipy.special.psi(10**15)
+
+```
 
 输出如下：
 
-[PRE37]
+```py
+345387763949.10681
+
+```
 
 # 黎曼ζ函数
 
-黎曼ζ函数在解析数论中非常重要，并在物理学和概率论中也有应用。它计算任何复值*p*的p级数：
+黎曼ζ函数在解析数论中非常重要，并在物理学和概率论中也有应用。它计算任何复值*p*的 p 级数：
 
 ![黎曼ζ函数](img/7702OS_04_07.jpg)
 
-SciPy中编码的定义允许对这个函数进行更灵活的推广，如下所示：
+SciPy 中编码的定义允许对这个函数进行更灵活的推广，如下所示：
 
 ![黎曼ζ函数](img/7702OS_04_08.jpg)
 
-在众多应用中，此函数在粒子物理和动力系统领域（[http://en.wikipedia.org/wiki/Hurwitz_zeta_function](http://en.wikipedia.org/wiki/Hurwitz_zeta_function)）也有应用。
+在众多应用中，此函数在粒子物理和动力系统领域（[`en.wikipedia.org/wiki/Hurwitz_zeta_function`](http://en.wikipedia.org/wiki/Hurwitz_zeta_function)）也有应用。
 
 # 艾里函数和贝里函数
 
@@ -236,7 +378,23 @@ SciPy中编码的定义允许对这个函数进行更灵活的推广，如下所
 
 这个方程有两个线性无关的解，它们都定义为独立变量的实数值的不定积分。`airy` 命令计算这两个函数（`Ai` 和 `Bi`）以及它们相应的导数（`Aip` 和 `Bip`，分别）。在下面的代码中，我们利用 `matplotlib.pyplot` 中的 `contourf` 命令展示了一个 801 x 801 的复数值数组在从 *-4 - 4j* 到 *4 + 4j* 的正方形内均匀分布的 Bairy 函数 `Bi` 输出的实部图像。我们还提供这个图作为使用 `mpl_toolkits` 的 `mplot3d` 模块的三维表面图：
 
-[PRE38]
+```py
+>>> import numpy
+>>> import scipy.special
+>>> import  matplotlib.pyplot as plt
+>>> import mpl_toolkits.mplot3d
+>>> x=numpy.mgrid[-4:4:100j,-4:4:100j]
+>>> z=x[0]+1j*x[1]
+>>> (Ai, Aip, Bi, Bip) = scipy.special.airy(z)
+>>> steps = range(int(Bi.real.min()), int(Bi.real.max()),6)
+>>> fig=plt.figure()
+>>> subplot1=fig.add_subplot(121,aspect='equal')
+>>> subplot1.contourf(x[0], x[1], Bi.real, steps)
+>>> subplot2=fig.add_subplot(122,projection='3d')
+>>> subplot2.plot_surface(x[0],x[1],Bi.real)
+>>> plt.show()
+
+```
 
 输出如下：
 
@@ -256,11 +414,19 @@ SciPy中编码的定义允许对这个函数进行更灵活的推广，如下所
 
 对于贝塞尔函数，我们有算法来生成第一类贝塞尔函数（`jv`）和第二类贝塞尔函数（`yn` 和 `yv`），第一类和第二类汉克尔函数（`hankel1` 和 `hankel2`），以及第一类和第二类的修正贝塞尔函数（`iv`，`kn` 和 `kv`）。它们的语法在所有情况下都是相似的：第一个参数是阶数，第二个参数是独立变量。定义中的 *n* 组件表示要使用整数作为阶数（因为它们针对这种情况进行了优化编码）：
 
-[PRE39]
+```py
+>>> import numpy
+>>> import scipy.special
+>>> scipy.special.jn(5,numpy.pi)
+
+```
 
 输出如下：
 
-[PRE40]
+```py
+0.052141184367118461
+
+```
 
 `scipy.special` 模块还包含最常见的贝塞尔函数的快速版本（阶数为 0 和 1 的那些）：`j0(x)`，`j1(x)`（第一类 `y0(x)` 和第二类 `y1(x)`），等等。有球面贝塞尔函数的定义，如 `sph_jn(n,z)` 和 `sph_yn(z)`；里卡提-贝塞尔函数，如 `riccati_jn(n,x)` 和 `riccati_yn(n,x)`；以及所有基本函数的导数，如 `jvp`，`yvp`，`kvp`，`ivp`，`h1vp` 和 `h2vp`。
 
@@ -268,7 +434,7 @@ SciPy中编码的定义允许对这个函数进行更灵活的推广，如下所
 
 # 其他特殊函数
 
-`scipy.special` 模块中包含更多特殊函数，这些函数在纯数学和应用数学的许多应用中非常有用。由于篇幅限制，本章不可能列出详尽的列表，我鼓励您使用每个特殊函数集的不同实用工具。其中最有趣的一些包括椭圆函数、**高斯超几何函数**、**抛物柱面函数**、**Mathieu函数**、**球面波函数**和**Kelvin函数**。
+`scipy.special` 模块中包含更多特殊函数，这些函数在纯数学和应用数学的许多应用中非常有用。由于篇幅限制，本章不可能列出详尽的列表，我鼓励您使用每个特殊函数集的不同实用工具。其中最有趣的一些包括椭圆函数、**高斯超几何函数**、**抛物柱面函数**、**Mathieu 函数**、**球面波函数**和**Kelvin 函数**。
 
 # 插值
 
@@ -276,97 +442,207 @@ SciPy中编码的定义允许对这个函数进行更灵活的推广，如下所
 
 如果前一个序列中的点位置和顺序正确，则可以找到一个单变量函数 *y = f(x)*，使得 *y_k = f(x_k)*。通常合理地要求这个插值函数是一个多项式、有理函数或更复杂的函数对象。当然，插值也可以在更高维中进行。`scipy.interpolate` 模块的目标是提供一套完整的、最优编码的应用程序，以解决在不同设置中的这个问题。
 
-让我们来看看最简单的插值数据方法：拉格朗日插值。给定一个大小为 *n* 的不同 *x* 值序列和一个同样大小的任意实值序列 *y*，我们寻求一个 *n - 1* 次的多项式 *p(x)*，它满足所有从 0 到 *n - 1* 的 *n* 个约束条件 *p(x[k]) = y[k]*。以下代码演示了如何获得一个9次多项式，它插值了区间 (-1, 1) 内的正弦函数的10个均匀分布的值：
+让我们来看看最简单的插值数据方法：拉格朗日插值。给定一个大小为 *n* 的不同 *x* 值序列和一个同样大小的任意实值序列 *y*，我们寻求一个 *n - 1* 次的多项式 *p(x)*，它满足所有从 0 到 *n - 1* 的 *n* 个约束条件 *p(x[k]) = y[k]*。以下代码演示了如何获得一个 9 次多项式，它插值了区间 (-1, 1) 内的正弦函数的 10 个均匀分布的值：
 
-[PRE41]
+```py
+>>> import numpy
+>>> import matplotlib.pyplot as plt
+>>> import scipy.interpolate
+>>> x=numpy.linspace(-1,1,10); xn=numpy.linspace(-1,1,1000)
+>>> y=numpy.sin(x)
+>>> polynomial=scipy.interpolate.lagrange(x, numpy.sin(x))
+>>> plt.plot(xn,polynomial(xn),x,y,'or')
+>>> plt.show()
+
+```
 
 我们将获得以下 `plot` 展示拉格朗日插值：
 
 ![插值](img/7702OS_04_13.jpg)
 
-拉格朗日插值存在许多问题。第一个明显的缺点是用户不能指定插值的次数；这完全取决于数据。该过程在数值上也非常不稳定，特别是对于包含超过20个点的数据集。可以通过让算法依赖于数据集的不同属性来解决此问题，而不仅仅是点的数量和位置。
+拉格朗日插值存在许多问题。第一个明显的缺点是用户不能指定插值的次数；这完全取决于数据。该过程在数值上也非常不稳定，特别是对于包含超过 20 个点的数据集。可以通过让算法依赖于数据集的不同属性来解决此问题，而不仅仅是点的数量和位置。
 
-此外，当我们需要通过添加一些更多实例来更新数据集时，这很不方便；必须从头开始重复该过程。如果数据集的大小不断增加且频繁更新，这证明是不切实际的。为了解决这个问题，`BarycentricInterpolator`具有`add_xi`和`set_yi`方法。例如，在下一个会话中，我们首先在1到10之间插值10个均匀分布的正弦函数值。完成后，我们使用1.5到10.5之间的10个更多均匀分布的值更新插值多项式。正如预期的那样，这个操作降低了在插值点内计算的（百分比）相对误差。以下命令被使用：
+此外，当我们需要通过添加一些更多实例来更新数据集时，这很不方便；必须从头开始重复该过程。如果数据集的大小不断增加且频繁更新，这证明是不切实际的。为了解决这个问题，`BarycentricInterpolator`具有`add_xi`和`set_yi`方法。例如，在下一个会话中，我们首先在 1 到 10 之间插值 10 个均匀分布的正弦函数值。完成后，我们使用 1.5 到 10.5 之间的 10 个更多均匀分布的值更新插值多项式。正如预期的那样，这个操作降低了在插值点内计算的（百分比）相对误差。以下命令被使用：
 
-[PRE42]
+```py
+>>> import numpy
+>>> import scipy.interpolate
+>>> x1=numpy.linspace(1,10,10); y1=numpy.sin(x1)
+>>> Polynomial=scipy.interpolate.BarycentricInterpolator(x1,y1)
+>>> exactValues=numpy.sin(x1+0.3)
+>>> exactValues
+
+```
 
 这是`exactValues`的输出：
 
-[PRE43]
+```py
+array([ 0.96355819,  0.74570521, -0.15774569, -0.91616594, 
+-0.83226744,
+ 0.0168139 ,  0.85043662,  0.90217183,  0.12445442, 
+-0.76768581])
+
+```
 
 通过以下命令来找到`interpolatedValues`的值：
 
-[PRE44]
+```py
+>>> interpolatedValues=Polynomial(x1+0.3)
+>>> interpolatedValues
+
+```
 
 输出如下：
 
-[PRE45]
+```py
+array([ 0.97103132,  0.74460631, -0.15742869, -0.91631362, 
+-0.83216445, 
+ 0.01670922,  0.85059283,  0.90181323,  0.12588718, 
+-0.7825744 ])
+
+```
 
 通过以下命令来找到`PercentRelativeError`的值：
 
-[PRE46]
+```py
+>>> PercentRelativeError = numpy.abs((exactValues - interpolatedValues)/interpolatedValues)*100
+>>> PercentRelativeError
+
+```
 
 输出如下：
 
-[PRE47]
+```py
+array([ 0.76960822,  0.14758101,  0.20136334,  0.01611703,  0.01237594, 
+ 0.62647084,  0.01836479,  0.0397652 ,  1.13812858,  1.90251374])
+
+```
 
 然后，我们找出`interpolatedValues2`包含的内容：
 
-[PRE48]
+```py
+>>> x2=numpy.linspace(1.5,10.5,10); y2=numpy.sin(x2)
+>>> Polynomial.add_xi(x2,y2)
+>>> interpolatedValues2=Polynomial(x1+0.3)
+>>> interpolatedValues2
+
+```
 
 输出如下：
 
-[PRE49]
+```py
+array([ 0.96355818,  0.74570521, -0.15774569, -0.91616594, -0.83226744,
+ 0.0168139 ,  0.85043662,  0.90217183,  0.12445442, -0.76768581])
+
+```
 
 让我们找到`PercentRelativeError`的值，同时考虑`interpolatedValues2`：
 
-[PRE50]
+```py
+>>> PercentRelativeError = numpy.abs((exactValues - interpolatedValues2)/interpolatedValues2)*100
+>>> PercentRelativeError
+
+```
 
 输出如下：
 
-[PRE51]
+```py
+array([  1.26241742e-07,   2.02502252e-09,   5.95225989e-10,
+ 1.84438143e-11,   8.75086862e-12,   4.14359323e-10,
+ 1.75194631e-11,   8.52321518e-11,   9.45285176e-09,
+ 1.29570657e-07])
+
+```
 
 不仅可以通过点位置进行数据插值，还可以通过这些位置处的导数进行插值。`KroghInterpolator`命令通过包含重复的*x*值并按顺序在相应的*y*值中指示位置和连续导数来实现这一点。
 
 例如，如果我们想要构造一个在原点为零、在*x = 1*处为一、在*x = 2*处为二，并且在每个这些三个位置处具有水平切线的一次多项式，我们将发出以下命令：
 
-[PRE52]
+```py
+>>> import numpy
+>>> import matplotlib.pyplot as plt
+>>> import  scipy.interpolate
+>>> x=numpy.array([0,0,1,1,2,2]); y=numpy.array([0,0,1,0,2,0])
+>>> interp=scipy.interpolate.KroghInterpolator(x,y)
+>>> xn=numpy.linspace(0,2,20)   # evaluate polynomial in larger set
+>>> plt.plot(x,y,'o',xn,interp(xn),'r')
+>>> plt.show()
+
+```
 
 这生成了以下图表：
 
 ![插值](img/7702OS_04_14.jpg)
 
-使用分段多项式（`PiecewisePolynomial`）可以实现更高级的一维插值。这允许控制不同部分的次数以及它们交点处的导数。`scipy.interpolate`模块中的其他插值选项包括**PCHIP单调三次插值**（`pchip`）或甚至是**单变量样条**（`InterpolatedUnivariateSpline`）。
+使用分段多项式（`PiecewisePolynomial`）可以实现更高级的一维插值。这允许控制不同部分的次数以及它们交点处的导数。`scipy.interpolate`模块中的其他插值选项包括**PCHIP 单调三次插值**（`pchip`）或甚至是**单变量样条**（`InterpolatedUnivariateSpline`）。
 
 让我们用一个单变量样条插值的例子来检查。其语法如下：
 
-[PRE53]
+```py
+InterpolatedUnivariateSpline(x, y, w=None, bbox=[None, None], k=3)
+```
 
 `x`和`y`数组分别包含依赖数据和独立数据。数组`w`包含用于样条拟合的正权重。双序列`bbox`参数指定近似区间的边界。最后一个选项表示平滑多项式的次数（`k`）。
 
 假设我们想要插值以下示例中的五个点。这些点按严格递增的`x`值排序。我们需要以这种方式执行插值，使用四个三次多项式（每个两个连续点一个），使得每个两个连续部分的至少一阶导数在其交点上一致。我们将按以下步骤进行：
 
-[PRE54]
+```py
+>>> import numpy
+>>> import matplotlib.pyplot as plt
+>>>import scipy.interpolate
+>>> x=numpy.arange(5); y=numpy.sin(x)
+>>> xn=numpy.linspace(0,4,40)
+>>> interp=scipy.interpolate.InterpolatedUnivariateSpline(x,y)
+>>> plt.plot(x,y,'.',xn,interp(xn))
+>>> plt.show()
+
+```
 
 这提供了以下展示使用单变量样条插值的图表：
 
 ![插值](img/7702OS_04_15.jpg)
 
-SciPy在二维网格插值方面表现出色。它与简单的分段多项式（`LinearNDInterpolator`）、分段常数（`NearestNDInterpolator`）或更高级的样条曲线（`BivariateSpline`）表现良好。它能够在平面上的矩形网格（`RectBivariateSpline`）或球面上的表面（`RectSphereBivariateSpline`）上执行样条插值。对于非结构化数据，除了基本的`scipy.interpolate.BivariateSpline`外，它还能够计算平滑近似（`SmoothBivariateSpline`）或更复杂的加权最小二乘样条曲线（`LSQBivariateSpline`）。
+SciPy 在二维网格插值方面表现出色。它与简单的分段多项式（`LinearNDInterpolator`）、分段常数（`NearestNDInterpolator`）或更高级的样条曲线（`BivariateSpline`）表现良好。它能够在平面上的矩形网格（`RectBivariateSpline`）或球面上的表面（`RectSphereBivariateSpline`）上执行样条插值。对于非结构化数据，除了基本的`scipy.interpolate.BivariateSpline`外，它还能够计算平滑近似（`SmoothBivariateSpline`）或更复杂的加权最小二乘样条曲线（`LSQBivariateSpline`）。
 
-以下代码创建了一个从(0, 0)到(9, 9)的正方形内10 x 10的均匀分布点网格，并在这些点上评估函数`sin(x) * cos(y)`。我们使用这些点创建一个`scipy.interpolate.BivariateSpline`，并在正方形上对所有值评估得到的函数：
+以下代码创建了一个从(0, 0)到(9, 9)的正方形内 10 x 10 的均匀分布点网格，并在这些点上评估函数`sin(x) * cos(y)`。我们使用这些点创建一个`scipy.interpolate.BivariateSpline`，并在正方形上对所有值评估得到的函数：
 
-[PRE55]
+```py
+>>> import numpy
+>>> import scipy.interpolate
+>>> import matplotlib.pyplot as plt
+>>> from mpl_toolkits.mplot3d import Axes3D
+>>> x=y=numpy.arange(10)
+>>> f=(lambda i,j: numpy.sin(i)*numpy.cos(j))  # function to interpolate
+>>> A=numpy.fromfunction(f, (10,10))           # generate samples
+>>> spline=scipy.interpolate.RectBivariateSpline(x,y,A)
+>>> fig=plt.figure()
+>>> subplot=fig.add_subplot(111,projection='3d')
+>>> xx=numpy.mgrid[0:9:100j, 0:9:100j]     # larger grid for plotting
+>>> A=spline(numpy.linspace(0,9,100), numpy.linspace(0,9,100))
+>>> subplot.plot_surface(xx[0],xx[1],A)
+>>> plt.show()
 
-输出如下，它显示了使用二变量样条曲线对2D数据进行插值：
+```
+
+输出如下，它显示了使用二变量样条曲线对 2D 数据进行插值：
 
 ![插值](img/7702OS_04_16.jpg)
 
 # 回归
 
-回归与插值类似。在这种情况下，我们假设数据是不精确的，我们需要一个具有预定结构的对象来尽可能紧密地拟合数据。最基本的一个例子是将单变量多项式回归应用于一系列点。我们使用`polyfit`命令来获得这些，我们在本章的“单变量多项式”部分简要讨论了它。例如，如果我们想在区间(0, π/2)内计算10个均匀分布点的回归线，以及它们在`sin`函数下的值，我们将发出以下命令：
+回归与插值类似。在这种情况下，我们假设数据是不精确的，我们需要一个具有预定结构的对象来尽可能紧密地拟合数据。最基本的一个例子是将单变量多项式回归应用于一系列点。我们使用`polyfit`命令来获得这些，我们在本章的“单变量多项式”部分简要讨论了它。例如，如果我们想在区间(0, π/2)内计算 10 个均匀分布点的回归线，以及它们在`sin`函数下的值，我们将发出以下命令：
 
-[PRE56]
+```py
+>>> import numpy
+>>> import scipy
+>>> import matplotlib.pyplot as plt
+>>> x=numpy.linspace(0,1,10)
+>>> y=numpy.sin(x*numpy.pi/2)
+>>> line=numpy.polyfit(x,y,deg=1)
+>>> plt.plot(x,y,'.',x,numpy.polyval(line,x),'r')
+>>> plt.show()
+
+```
 
 这给出了以下图表，显示了使用`polyfit`进行线性回归：
 
@@ -374,7 +650,18 @@ SciPy在二维网格插值方面表现出色。它与简单的分段多项式（
 
 如果我们明智地使用参数，曲线拟合也可以使用样条曲线。例如，在之前介绍的单变量样条曲线拟合的情况下，我们可以调整权重、平滑因子、平滑样条曲线的次数等。如果我们想为之前示例中的相同数据拟合一个抛物线样条曲线，我们可以发出以下命令：
 
-[PRE57]
+```py
+>>> import numpy
+>>> import scipy.interpolate
+>>> import matplotlib.pyplot as plt
+>>> x=numpy.linspace(0,1,10)
+>>> y=numpy.sin(x*numpy.pi/2)
+>>> spline=scipy.interpolate.UnivariateSpline(x,y,k=2)
+>>> xn=numpy.linspace(0,1,100)
+>>> plt.plot(x,y,'.', xn, spline(xn))
+>>> plt.show()
+
+```
 
 这给出了以下图表，显示了使用样条曲线进行曲线拟合：
 
@@ -382,35 +669,58 @@ SciPy在二维网格插值方面表现出色。它与简单的分段多项式（
 
 从曲线拟合的角度来看回归，有一个通用的例程：`scipy.optimize`模块中的`curve_fit`。这个例程使用**Levenberg-Marquardt**算法最小化一组方程的平方和，并从任何类型的函数（而不仅仅是多项式或样条曲线）中提供最佳拟合。语法很简单：
 
-[PRE58]
+```py
+curve_fit(f, xdata, ydata, p0=None, sigma=None, **kw)
+```
 
 `f` 参数是一个可调用的函数，代表我们寻求的函数，而 `xdata` 和 `ydata` 是相同长度的数组，包含要拟合的点 *x* 和 *y* 坐标。元组 `p0` 包含要找到的值的初始猜测，而 `sigma` 是一个权重向量，必要时可以用作数据的标准差。
 
 我们将通过一个很好的例子来展示其用法。我们首先将在正弦波的一部分生成一些点，振幅 `A=18`，角频率 *w=3π* 和相位 `h=0.5`。我们在数组 `y` 中添加一些小的随机噪声来损坏数据：
 
-[PRE59]
+```py
+>>> import numpy
+>>> import scipy
+>>> A=18; w=3*numpy.pi; h=0.5
+>>> x=numpy.linspace(0,1,100); y=A*numpy.sin(w*x+h)
+>>> y += 4*((0.5-scipy.rand(100))*numpy.exp(2*scipy.rand(100)**2))
+
+```
 
 我们希望从损坏的数据中估计 `A`、`w` 和 `h` 的值，因此从正弦波集合中技术上找到一个曲线拟合。我们首先将三个参数收集到一个列表中，并将它们初始化为一些值，例如，`A = 20`、*w = 2π* 和 `h = 1`。我们还构建了一个目标函数的可调用表达式（`target_function`）：
 
-[PRE60]
+```py
+>>> import scipy.optimize
+>>> p0 = [20, 2*numpy.pi, 1]
+>>> target_function = lambda x,AA,ww,hh: AA*numpy.sin(ww*x+hh)
+
+```
 
 我们将这些内容以及拟合数据一起输入到 `curve_fit` 中，以找到所需值：
 
-[PRE61]
+```py
+>>> pF,pVar = scipy.optimize.curve_fit(target_function, x, y, p0)
+
+```
 
 在我们的任何实验中运行 `pF` 的一个样本应该会给出三个请求值的准确结果：
 
-[PRE62]
+```py
+>>> print (pF)
+
+```
 
 前述命令的输出如下：
 
-[PRE63]
+```py
+[ 18.13799397   9.32232504   0.54808516]
+
+```
 
 这意味着 `A` 的估计值约为 18.14，`w` 的估计值非常接近 3*π*，而 `h` 在 0.46 和 0.55 之间。以下是在后续图表中显示的原始数据（左侧图表左侧的蓝色）、损坏数据（两个图表中的红色）和计算的正弦波（右侧图表中的黑色）的输出，以及正弦波的计算：
 
 ![回归](img/7702OS_04_19.jpg)
 
-代码过长，无法在此处包含。相反，完整的代码（此处未显示产生的中间图表）可以在本章对应的电子资源IPython Notebook中找到。
+代码过长，无法在此处包含。相反，完整的代码（此处未显示产生的中间图表）可以在本章对应的电子资源 IPython Notebook 中找到。
 
 # 优化
 
@@ -418,61 +728,100 @@ SciPy在二维网格插值方面表现出色。它与简单的分段多项式（
 
 `curve_fit` 例程实际上是执行最小二乘最小化的一般算法 `leastsq` 的语法糖，其具有如下强制的语法：
 
-[PRE64]
+```py
+leastsq(func, x0, args=(), Dfun=None, full_output=0,
+        col_deriv=0, ftol=1.49012e-8, xtol=1.49012e-8,
+        gtol=0.0, maxfev=0, epsfcn=0.0, factor=100, diag=None):
+```
 
 例如，`curve_fit` 例程可以用 `leastsq` 调用来代替：
 
-[PRE65]
+```py
+leastsq(error_function,p0,args=(x,y))
+```
 
 在这里，`error_function` 等于 `lambda p,x,y: target_function(x,p[0],p[1],p[2])-y`
 
-实现细节在本书相应章节的IPython笔记本中给出。SciPy中的大多数优化例程都可以通过原生Python代码或作为相应算法的Fortran或C经典实现的包装器访问。技术上，我们仍在使用Fortran或C下使用的相同包，但现在是Python内部。例如，实现截断`Newton`方法的例程可以用`fmin_ncg`（这是纯Python）或作为`fmin_tnc`（这是一个C实现的包装器）调用。
+实现细节在本书相应章节的 IPython 笔记本中给出。SciPy 中的大多数优化例程都可以通过原生 Python 代码或作为相应算法的 Fortran 或 C 经典实现的包装器访问。技术上，我们仍在使用 Fortran 或 C 下使用的相同包，但现在是 Python 内部。例如，实现截断`Newton`方法的例程可以用`fmin_ncg`（这是纯 Python）或作为`fmin_tnc`（这是一个 C 实现的包装器）调用。
 
 ## 最小化
 
-对于一般的优化问题，SciPy有许多不同的算法。到目前为止，我们已经涵盖了最小二乘算法（`leastsq`），但我们还有暴力搜索（`brute`）、**模拟退火**（`anneal`）、**Brent**或**Golden方法**（对于标量函数`brent`或`golden`）、**下降单纯形算法**（`fmin`）、**Powell方法**（`fmin_powell`）、**非线性共轭梯度**或其牛顿版本（`fmin_cg`、`fmin_ncg`），以及**BFGS算法**（`fmin_bfgs`）。
+对于一般的优化问题，SciPy 有许多不同的算法。到目前为止，我们已经涵盖了最小二乘算法（`leastsq`），但我们还有暴力搜索（`brute`）、**模拟退火**（`anneal`）、**Brent**或**Golden 方法**（对于标量函数`brent`或`golden`）、**下降单纯形算法**（`fmin`）、**Powell 方法**（`fmin_powell`）、**非线性共轭梯度**或其牛顿版本（`fmin_cg`、`fmin_ncg`），以及**BFGS 算法**（`fmin_bfgs`）。
 
-约束最小化在计算上也是可能的，SciPy有实现**L-BFGS-S算法**（`fmin_l_bfgs_s`）、截断牛顿算法（`fmin_tnc`）、**COBYLA**（`fmin_cobyla`）或顺序最小二乘规划（`fmin_slsqp`）的程序。
+约束最小化在计算上也是可能的，SciPy 有实现**L-BFGS-S 算法**（`fmin_l_bfgs_s`）、截断牛顿算法（`fmin_tnc`）、**COBYLA**（`fmin_cobyla`）或顺序最小二乘规划（`fmin_slsqp`）的程序。
 
-例如，以下代码比较了使用下降单纯形算法在原点附近寻找Rosenbrock函数局部最小值的所有不同方法的输出：
+例如，以下代码比较了使用下降单纯形算法在原点附近寻找 Rosenbrock 函数局部最小值的所有不同方法的输出：
 
-[PRE66]
+```py
+>>> import scipy.optimize
+>>> scipy.optimize.fmin(scipy.optimize.rosen,[0,0])
+
+```
 
 输出如下：
 
-[PRE67]
+```py
+Optimization terminated successfully.
+ Current function value: 0.000000
+ Iterations: 79
+ Function evaluations: 146
+array([ 1.00000439,  1.00001064])
 
-自SciPy版本0.11以来，所有最小化例程都可以通过通用的`scipy.optimize.minimize`调用，其中`method`参数指向一个字符串，例如`Nelder-Mead`（用于下降单纯形）、`Powell`、`CG`、`Newton-CG`、`BFGS`或`anneal`。对于约束最小化，相应的字符串是`L-BFGS-S`、`TNC`（截断牛顿的）、`COBYLA`或`SLSQP`：
+```
 
-[PRE68]
+自 SciPy 版本 0.11 以来，所有最小化例程都可以通过通用的`scipy.optimize.minimize`调用，其中`method`参数指向一个字符串，例如`Nelder-Mead`（用于下降单纯形）、`Powell`、`CG`、`Newton-CG`、`BFGS`或`anneal`。对于约束最小化，相应的字符串是`L-BFGS-S`、`TNC`（截断牛顿的）、`COBYLA`或`SLSQP`：
+
+```py
+minimize( fun, x0, args=(), method='BFGS', jac=None, hess=None, hessp=None, bounds=None, constraints=(),tol=None, callback=None, options=None)
+```
 
 ## 根
 
-对于包含在`scipy.special`模块中的大多数特殊函数，我们有精确的算法，允许我们找到它们的零点。例如，对于整数阶的第一类贝塞尔函数，`jn_zeros`提供了所需数量的根（按升序排列）。我们可以通过以下命令获得四阶贝塞尔J函数的前三个根：
+对于包含在`scipy.special`模块中的大多数特殊函数，我们有精确的算法，允许我们找到它们的零点。例如，对于整数阶的第一类贝塞尔函数，`jn_zeros`提供了所需数量的根（按升序排列）。我们可以通过以下命令获得四阶贝塞尔 J 函数的前三个根：
 
-[PRE69]
+```py
+>>> import scipy.special
+>>> print (scipy.special.jn_zeros(4,3))
+
+```
 
 输出如下：
 
-[PRE70]
+```py
+[  7.58834243  11.06470949  14.37253667]
 
-对于非特殊标量函数，`scipy.optimize`模块允许通过大量不同的算法进行根的近似。对于标量函数，我们有**粗略的二分法**（`bisect`）、**牛顿-拉夫森的古典割线法**（`newton`），以及更精确和更快的算法，如**Ridders算法**（`ridder`）和两种Brent方法的版本（`brentq`和`brenth`）。
+```
 
-在许多方面寻找多个变量的函数的根是非常具有挑战性的；维度越大，越困难。任何这些算法的有效性都取决于问题，投入一些时间和资源去了解它们都是个好主意。自从SciPy的0.11版本以来，可以使用相同的例程`scipy.optimize.root`调用任何设计的方法，该例程的语法如下：
+对于非特殊标量函数，`scipy.optimize`模块允许通过大量不同的算法进行根的近似。对于标量函数，我们有**粗略的二分法**（`bisect`）、**牛顿-拉夫森的古典割线法**（`newton`），以及更精确和更快的算法，如**Ridders 算法**（`ridder`）和两种 Brent 方法的版本（`brentq`和`brenth`）。
 
-[PRE71]
+在许多方面寻找多个变量的函数的根是非常具有挑战性的；维度越大，越困难。任何这些算法的有效性都取决于问题，投入一些时间和资源去了解它们都是个好主意。自从 SciPy 的 0.11 版本以来，可以使用相同的例程`scipy.optimize.root`调用任何设计的方法，该例程的语法如下：
 
-通过改变`method`参数的值到相应的方法字符串，可以得到不同的方法。我们可以选择如下方法：`'hybr'`用于改进的混合Powell方法；`'lm'`用于改进的最小二乘法；`'broyden1'`或`'broyden2'`分别用于Broyden的好方法和坏方法；`'diagbroyden'`用于对角Broyden雅可比近似；`'anderson'`用于Anderson扩展混合；`'Krylov'`用于雅可比的Krylov近似；`'linearmixing'`用于标量雅可比近似；以及`'excitingmixing'`用于调整的对角雅可比近似。
+```py
+root(fun, x0, args=(), method='hybr', jac=None, tol=None, callback=None, options=None)
+```
 
-对于大规模问题，雅可比的Krylov近似或Anderson扩展混合通常是最佳选择。
+通过改变`method`参数的值到相应的方法字符串，可以得到不同的方法。我们可以选择如下方法：`'hybr'`用于改进的混合 Powell 方法；`'lm'`用于改进的最小二乘法；`'broyden1'`或`'broyden2'`分别用于 Broyden 的好方法和坏方法；`'diagbroyden'`用于对角 Broyden 雅可比近似；`'anderson'`用于 Anderson 扩展混合；`'Krylov'`用于雅可比的 Krylov 近似；`'linearmixing'`用于标量雅可比近似；以及`'excitingmixing'`用于调整的对角雅可比近似。
+
+对于大规模问题，雅可比的 Krylov 近似或 Anderson 扩展混合通常是最佳选择。
 
 让我们通过一个示例来展示这些技术的能力。考虑以下微分方程组：
 
 ![根](img/7702OS_04_20.jpg)
 
-我们使用matplotlib.pyplot库中的quiver绘图例程来可视化`x`和`y`在-0.5和2.5之间的斜率场，从而确定该区域中可能的临界点的位置：
+我们使用 matplotlib.pyplot 库中的 quiver 绘图例程来可视化`x`和`y`在-0.5 和 2.5 之间的斜率场，从而确定该区域中可能的临界点的位置：
 
-[PRE72]
+```py
+>>> import numpy 
+>>> import matplotlib.pyplot as plt 
+>>> f=lambda x: [x[0]**2 - 2*x[0] - x[1] + 0.5, x[0]**2 + 4*x[1]**2 - 4]
+>>> x,y=numpy.mgrid[-0.5:2.5:24j,-0.5:2.5:24j]
+>>> U,V=f([x,y])
+>>> plt.quiver(x,y,U,V,color='r', \
+ linewidths=(0.2,), edgecolors=('k'), \
+ headaxislength=5)
+>>> plt.show()
+
+```
 
 输出如下：
 
@@ -480,25 +829,57 @@ SciPy在二维网格插值方面表现出色。它与简单的分段多项式（
 
 注意在平面上有一个区域，其斜率非常小。由于涉及的多项式的次数，最多有四个不同的可能临界点。在这个区域，我们应该能够识别出两个这样的点（实际上只有两个非复数解）。其中一个似乎在(0, 1)附近，另一个在(2, 0)附近。我们使用这两个位置作为搜索的初始猜测：
 
-[PRE73]
+```py
+>>> import scipy.optimize
+>>> f=lambda x: [x[0]**2 - 2*x[0] - x[1] + 0.5, x[0]**2 + 4*x[1]**2 - 4]
+>>> scipy.optimize.root(f,[0,1])
+
+```
 
 输出如下：
 
-[PRE74]
+```py
+ status: 1
+ success: True
+qtf: array([ -4.81190247e-09,  -3.83395899e-09])
+nfev: 9
+ r: array([ 2.38128242, -0.60840482, -8.35489601])
+ fun: array([  3.59529073e-12,   3.85025345e-12])
+ x: array([-0.22221456,  0.99380842])
+ message: 'The solution converged.'
+fjac: array([[-0.98918813, -0.14665209],
+ [ 0.14665209, -0.98918813]])
+
+```
 
 让我们看看第二个案例：
 
-[PRE75]
+```py
+>>> scipy.optimize.root(f,[2,0])
+
+```
 
 输出如下：
 
-[PRE76]
+```py
+ status: 1
+ success: True
+qtf: array([  2.08960516e-10,   8.61298294e-11])
+nfev: 12
+ r: array([-4.56575336, -1.67067665, -1.81464307])
+ fun: array([  2.44249065e-15,   1.42996726e-13])
+ x: array([ 1.90067673,  0.31121857])
+ message: 'The solution converged.'
+fjac: array([[-0.39612596, -0.91819618],
+ [ 0.91819618, -0.39612596]])
+
+```
 
 在第一种情况下，我们成功收敛到(-0.22221456, 0.99380842)。在第二种情况下，我们收敛到(1.90067673, 0.31121857)。例程给出了收敛的细节和近似的性质。例如，`nfev`告诉我们执行了多少次函数调用，而`fun`表示在找到的位置的函数输出。输出中的其他项反映了在程序中使用的矩阵，如`qtf`、`r`和`fjac`。
 
 # 积分
 
-SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的例程，可以准确地计算一组特殊函数的定积分。对于其他函数，`scipy.integrate`模块中有几种不同的算法可以获得可靠的近似。
+SciPy 能够执行非常稳健的数值积分。使用`scipy.special`模块中的例程，可以准确地计算一组特殊函数的定积分。对于其他函数，`scipy.integrate`模块中有几种不同的算法可以获得可靠的近似。
 
 ## 指数/对数积分
 
@@ -518,7 +899,7 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 ## 椭圆积分
 
-在计算椭圆的弧长时，椭圆积分自然出现。SciPy遵循椭圆积分的参数表示法：完全（一个参数）和不完全（两个参数）。让我们看一下以下公式：
+在计算椭圆的弧长时，椭圆积分自然出现。SciPy 遵循椭圆积分的参数表示法：完全（一个参数）和不完全（两个参数）。让我们看一下以下公式：
 
 ![椭圆积分](img/7702OS_04_25.jpg)
 
@@ -530,47 +911,85 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 ## 数值积分
 
-对于任何其他函数，我们满足于使用求积公式来近似定积分，如`quad`（自适应求积）、`fixed_quad`（固定阶数的Gauss求积）、`quadrature`（固定容差Gauss求积）和`romberg`（龙贝格积分）。对于多于一个变量的函数，我们有`dbquad`（双重积分）和`tplquad`（三重积分）方法。在所有情况下，语法都是`quad`的变体：
+对于任何其他函数，我们满足于使用求积公式来近似定积分，如`quad`（自适应求积）、`fixed_quad`（固定阶数的 Gauss 求积）、`quadrature`（固定容差 Gauss 求积）和`romberg`（龙贝格积分）。对于多于一个变量的函数，我们有`dbquad`（双重积分）和`tplquad`（三重积分）方法。在所有情况下，语法都是`quad`的变体：
 
-[PRE77]
+```py
+quad(func, a, b, args=(), full_output=0, epsabs=1.49e-08, epsrel=1.49e-08, limit=50, points=None, weight=None, wvar=None, wopts=None, maxp1=50, limlst=50)
+```
 
 如果我们有样本而不是函数，我们可以使用`trapz`、`cumtrapz`（复合梯形规则及其累积版本）、`romb`（再次使用龙贝格积分）和`simps`（辛普森规则）等例程。在这些例程中，语法更简单，并改变了参数的顺序。例如，这是调用`simps`的方式：
 
-[PRE78]
+```py
+>>> simps(y, x=None, dx=1, axis=-1, even='avg')
+
+```
 
 熟悉**QUADPACK**库的我们将会发现类似的语法、用法和性能。
 
 若需更多信息，请运行 `scipy.integrate.quad_explain()` 命令。在本章的 IPython Notebook 中，执行了替代的帮助命令 `scipy.integrate.quad`，其输出显示在相应的部分。这以极大的详细程度解释了模块结果中包含的所有不同类型的数值积分输出，包括绝对误差的估计和收敛性，以及如果需要的话，对所使用的权重的解释。让我们至少举一个有意义的例子，其中我们积分一个特殊函数，并将求积公式的输出与 `scipy.special` 中给出的更精确的例程值进行比较：
 
-[PRE79]
+```py
+>>> f=lambda t: numpy.exp(-t)*t**4
+>>> from scipy.special import gammainc
+>>> from scipy.integrate import quad
+>>> from scipy.misc import factorial
+>>> print (gammainc(5,1))
+
+```
 
 输出如下：
 
-[PRE80]
+```py
+0.00365984682734
+
+```
 
 让我们看看下面的 `print` 命令：
 
-[PRE81]
+```py
+print('%.19f' % gammainc(5,1))
+
+```
 
 输出如下：
 
-[PRE82]
+```py
+0.0036598468273437131
+
+```
 
 让我们进一步查看代码：
 
-[PRE83]
+```py
+>>> import numpy
+>>> result,error=quad(f,0,1)/factorial(4)
+>>> result
+
+```
 
 输出如下：
 
-[PRE84]
+```py
+0.0036598468273437122
+
+```
 
 要使用从样本积分的例程，我们可以灵活地指定数据的频率和长度。对于以下问题，我们可以在相同区间尝试使用 10,000 个样本：
 
-[PRE85]
+```py
+>>> import numpy 
+>>> import scipy.integrate
+>>> x=numpy.linspace(0,1,10000)
+>>> scipy.integrate.simps(f(x)/factorial(4), x)
+
+```
 
 输出如下：
 
-[PRE86]
+```py
+0.0036598468273469071
+
+```
 
 # 常微分方程
 
@@ -580,7 +999,9 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 对于实值函数，我们基本上有两种类型：`ode`（通过 `set_integrator` 方法传递选项）和 `odeint`（接口更简单）。`ode` 的语法如下：
 
-[PRE87]
+```py
+ode(f,jac=None)
+```
 
 第一个参数 `f` 是要积分的函数，第二个参数 `jac` 指的是关于依赖变量的偏导数矩阵（雅可比矩阵）。这创建了一个 `ode` 对象，具有不同的方法来指示解决系统的算法（`set_integrator`）、初始条件（`set_initial_value`）以及要发送给函数或其雅可比矩阵的不同参数。
 
@@ -592,17 +1013,62 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 我们按顺序计算每个步骤，并将其与已知的实际解进行比较，您将注意到实际上没有差异：
 
-[PRE88]
+```py
+>>> import numpy
+>>> from scipy.integrate import ode
+>>> f=lambda t,y: -20*y        # The ODE
+>>> actual_solution=lambda t:numpy.exp(-20*t)  # actual solution
+>>> dt=0.01            # time step
+>>> solver=ode(f).set_integrator('dop853')  # solver
+>>> solver.set_initial_value(1,0)      # initial value
+>>> while solver.successful() and solver.t<=1+dt:
+ # solve the equation at succesive time steps,
+ # until the time is greater than 1
+ # but make sure that the solution is successful
+ print (solver.t, solver.y, actual_solution(solver.t))
+ # We compare each numerical solution with the actual
+ # solution of the ODE
+ solver.integrate(solver.t + dt)    # solve next step
+
+```
 
 运行上述代码后，我们得到以下输出：
 
-[PRE89]
+```py
+<scipy.integrate._ode.ode at 0x10eac5e50>
+0 [ 1.] 1.0
+0.01 [ 0.81873075] 0.818730753078
+0.02 [ 0.67032005] 0.670320046036
+0.03 [ 0.54881164] 0.548811636094
+0.04 [ 0.44932896] 0.449328964117
+0.05 [ 0.36787944] 0.367879441171
+0.06 [ 0.30119421] 0.301194211912
+0.07 [ 0.24659696] 0.246596963942
+0.08 [ 0.20189652] 0.201896517995
+0.09 [ 0.16529889] 0.165298888222
+0.1 [ 0.13533528] 0.135335283237
+ ...
+0.9 [  1.52299797e-08] 1.52299797447e-08
+0.91 [  1.24692528e-08] 1.24692527858e-08
+0.92 [  1.02089607e-08] 1.02089607236e-08
+0.93 [  8.35839010e-09] 8.35839010137e-09
+0.94 [  6.84327102e-09] 6.84327102222e-09
+0.95 [  5.60279644e-09] 5.60279643754e-09
+0.96 [  4.58718175e-09] 4.58718174665e-09
+0.97 [  3.75566677e-09] 3.75566676594e-09
+0.98 [  3.07487988e-09] 3.07487987959e-09
+0.99 [  2.51749872e-09] 2.51749871944e-09
+1.0   [  2.06115362e-09] 2.06115362244e-09
 
-完整的输出显示在本章IPython笔记本的相应部分。对于具有复值函数的一阶微分方程组，我们有一个`ode`的包装器，我们用`complex_ode`命令调用它。语法和用法与`ode`类似。
+```
 
-`odeint`的语法更加直观，并且更符合Python风格：
+完整的输出显示在本章 IPython 笔记本的相应部分。对于具有复值函数的一阶微分方程组，我们有一个`ode`的包装器，我们用`complex_ode`命令调用它。语法和用法与`ode`类似。
 
-[PRE90]
+`odeint`的语法更加直观，并且更符合 Python 风格：
+
+```py
+odeint(func, y0, t, args=(), Dfun=None, col_deriv=0, full_output=0, ml=None, mu=None, rtol=None, atol=None, tcrit=None, h0=0.0, hmax=0.0, hmin=0.0, ixpr=0, mxstep=0, mxhnil=0, mxordn=12, mxords=5, printmessg=0)
+```
 
 这个例程最令人印象深刻的部分是，不仅可以指示雅可比矩阵，还可以指示这是否是带状矩阵以及有多少非零对角线位于主对角线之下或之上（使用`ml`和`mu`选项）。这可以大幅提高计算速度。`odeint`的另一个惊人特性是能够指示积分的临界点（`tcrit`）。
 
@@ -610,25 +1076,47 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 # 洛伦兹吸引子
 
-没有一本关于科学计算的书籍是不回顾洛伦兹吸引子的；SciPy在计算解和基于微分方程组的想法展示方面都非常出色，我们将在本节中展示如何以及为什么。
+没有一本关于科学计算的书籍是不回顾洛伦兹吸引子的；SciPy 在计算解和基于微分方程组的想法展示方面都非常出色，我们将在本节中展示如何以及为什么。
 
 考虑一个二维流体单元，从底部加热并从顶部冷却，这与地球大气层中发生的情况非常相似。这会产生可以通过单个偏微分方程建模的对流，对于这个方程，一个合理的近似形式是以下常微分方程组：
 
 ![洛伦兹吸引子](img/7702OS_04_29.jpg)
 
-变量*x*代表对流翻转速率。变量*y*和*z*分别代表水平和垂直温度变化。这个系统依赖于四个物理参数，它们的描述远远超出了本书的范围。重要的是，我们可以用这些方程来模拟地球大气层，在这种情况下，参数的一个好选择是`sigma = 10.0`和`b = 8/3.0`。对于第三参数的某些值，我们有一些解表现出混沌行为的系统。让我们在SciPy的帮助下探索这个效应。
+变量*x*代表对流翻转速率。变量*y*和*z*分别代表水平和垂直温度变化。这个系统依赖于四个物理参数，它们的描述远远超出了本书的范围。重要的是，我们可以用这些方程来模拟地球大气层，在这种情况下，参数的一个好选择是`sigma = 10.0`和`b = 8/3.0`。对于第三参数的某些值，我们有一些解表现出混沌行为的系统。让我们在 SciPy 的帮助下探索这个效应。
 
 在以下代码片段中，我们将使用`scipy.integrate`模块中的一个求解器以及绘图工具：
 
-[PRE91]
+```py
+>>> import numpy
+>>> from numpy import linspace
+>>> import scipy
+>>> from scipy.integrate import odeint
+>>> import matplotlib.pyplot as plt
+>>> from mpl_toolkits.mplot3d import Axes3D
+>>> sigma=10.0
+>>> b=8/3.0
+>>> r=28.0
+>>> f = lambda x,t: [sigma*(x[1]-x[0]), r*x[0]-x[1]-x[0]*x[2], x[0]*x[1]-b*x[2]]
+
+```
 
 让我们选择一个足够大且足够密集的时间间隔`t`，以及任何初始条件`y0`。然后，执行以下命令：
 
-[PRE92]
+```py
+>>> t=linspace(0,20,2000); y0=[5.0,5.0,5.0]
+>>> solution=odeint(f,y0,t)
+>>> X=solution[:,0]; Y=solution[:,1]; Z=solution[:,2]
 
-如果我们想要绘制所获得解的3D渲染图，可以按照以下方式操作：
+```
 
-[PRE93]
+如果我们想要绘制所获得解的 3D 渲染图，可以按照以下方式操作：
+
+```py
+>>> import matplotlib.pyplot as plt
+>>> plt.gca(projection='3d'); plt.plot(X,Y,Z)
+>>> plt.show()
+
+```
 
 这会产生以下图表，展示了洛伦兹吸引子：
 
@@ -636,7 +1124,13 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 这是最具说明性的，精确地展示了解的混沌行为。让我们详细观察垂直温度的波动，以及与垂直温度相比的水平温度波动。执行以下命令：
 
-[PRE94]
+```py
+>>> plt.rcParams['figure.figsize'] = (10.0, 5.0)
+>>> plt.subplot(121); plt.plot(t,Z)
+>>> plt.subplot(122); plt.plot(Y,Z)
+>>> plt.show()
+
+```
 
 这产生了以下图表，展示了垂直温度随时间的变化（左侧图表）以及水平与垂直温度的关系（右侧图表）：
 
@@ -646,4 +1140,4 @@ SciPy能够执行非常稳健的数值积分。使用`scipy.special`模块中的
 
 本章通过相应的模块（`special`、`integrate`、`interpolate`和`optimize`）探讨了特殊函数、积分、插值和优化，并讨论了常微分方程组的解法。
 
-在[第5章](ch05.html "第5章。SciPy信号处理")《SciPy信号处理》中，我们将描述SciPy模块的功能，用于分析涉及时间序列和空间信号的过程，包括如何在数值数据上执行离散傅里叶变换、如何构建信号、如何对数据进行滤波以及如何插值图像。
+在第五章《SciPy 信号处理》中，我们将描述 SciPy 模块的功能，用于分析涉及时间序列和空间信号的过程，包括如何在数值数据上执行离散傅里叶变换、如何构建信号、如何对数据进行滤波以及如何插值图像。

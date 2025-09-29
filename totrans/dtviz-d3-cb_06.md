@@ -36,7 +36,7 @@
 
 D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的能力。D3 过渡实现了一种称为 **基于插值的动画** 的动画。计算机特别擅长值插值，因此，大多数计算机动画都是基于插值的。正如其名称所暗示的，这种动画能力的基础是值插值。
 
-如果您还记得，我们已经在[第4章](ch04.html "第4章。平衡技巧")“平衡技巧”中详细介绍了D3插值器和插值函数。过渡建立在插值和缩放之上，以提供随时间改变值的能力，从而产生动画。每个过渡都可以使用起始值和结束值（在动画中也称为**关键帧**）来定义，而不同的算法和插值器将逐帧填充中间值（也称为“中间插值”或简称“tweening”）。乍一看，如果您不熟悉动画算法和技术，这似乎是一种控制动画的较为不严谨的方法。然而，在现实中恰恰相反；基于插值的过渡可以提供对产生的运动直到每一帧的直接和具体期望，从而以简单的方式为动画师提供极大的控制。事实上，D3过渡API设计得如此之好，以至于在大多数情况下，只需要几行代码就足以在数据可视化项目中实现所需的动画。现在，让我们动手尝试一些过渡，以进一步加深我们对这个主题的理解。
+如果您还记得，我们已经在第四章“平衡技巧”中详细介绍了 D3 插值器和插值函数。过渡建立在插值和缩放之上，以提供随时间改变值的能力，从而产生动画。每个过渡都可以使用起始值和结束值（在动画中也称为**关键帧**）来定义，而不同的算法和插值器将逐帧填充中间值（也称为“中间插值”或简称“tweening”）。乍一看，如果您不熟悉动画算法和技术，这似乎是一种控制动画的较为不严谨的方法。然而，在现实中恰恰相反；基于插值的过渡可以提供对产生的运动直到每一帧的直接和具体期望，从而以简单的方式为动画师提供极大的控制。事实上，D3 过渡 API 设计得如此之好，以至于在大多数情况下，只需要几行代码就足以在数据可视化项目中实现所需的动画。现在，让我们动手尝试一些过渡，以进一步加深我们对这个主题的理解。
 
 # 单元素动画
 
@@ -46,13 +46,28 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/single-element-transition.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/single-element-transition.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/single-element-transition.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/single-element-transition.html)
 
 ## 如何做...
 
 执行此简单过渡所需的代码非常简短；这对于任何动画师来说都是好消息：
 
-[PRE0]
+```py
+<script type="text/javascript">
+    var body = d3.select("body"), 
+        duration = 5000;
+
+    body.append("div") // <-A
+            .classed("box", true)
+            .style("background-color", "#e9967a") // <-B
+        .transition() // <-C
+ .duration(duration) // <-D
+            .style("background-color", "#add8e6") // <-E
+            .style("margin-left", "600px") // <-F
+            .style("width", "100px")
+            .style("height", "100px");
+</script> 
+```
 
 此代码生成一个移动、缩小和颜色变化的正方形，如下截图所示：
 
@@ -64,17 +79,31 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 您可能会惊讶地发现，我们添加以启用此动画的额外代码仅在第`C`行和`D`行：
 
-[PRE1]
+```py
+    body.append("div") // <-A
+            .classed("box", true)
+            .style("background-color", "#e9967a") // <-B
+            .transition() // <-C
+ .duration(duration) // <-D
+
+```
 
 首先，在第`C`行，我们调用`d3.selection.transition`函数来定义一个过渡。然后，`transition`函数返回一个过渡绑定的选择，它仍然代表当前选择中的相同元素。但现在，它配备了额外的功能，并允许进一步自定义过渡行为。第`C`行返回了第`A`行创建的`div`元素的过渡绑定选择。
 
 在第 `D` 行，我们使用 `duration()` 函数将过渡的持续时间设置为 `5000` 毫秒。此函数还返回当前过渡选择，从而允许函数链式调用。正如我们在本章开头提到的，基于插值的动画通常只需要指定起始值和结束值，而让插值器和算法在一段时间内填充中间值。D3 过渡将调用 `transition` 函数之前设置的值视为起始值，将调用 `transition` 函数之后设置的值视为结束值。因此，在我们的例子中：
 
-[PRE2]
+```py
+.style("background-color", "#e9967a") // <-B
+```
 
 在第 `B` 行定义的 `background-color` 样式被视为过渡的起始值。以下行中设置的样式都被视为结束值：
 
-[PRE3]
+```py
+.style("background-color", "#add8e6") // <-E
+.style("margin-left", "600px") // <-F
+.style("width", "100px")
+.style("height", "100px");
+```
 
 在这一点上，你可能想知道，*为什么这些起始值和结束值不对称？*。D3 过渡不需要每个插值值都有显式的起始值和结束值。如果缺少起始值，它将尝试使用计算后的样式；如果缺少结束值，则该值将被视为常量。一旦过渡开始，D3 将自动为每个值选择最合适的已注册插值器。在我们的例子中，第 `E` 行将使用 RGB 颜色插值器，而其余的样式值将使用字符串插值器——该插值器内部使用数字插值器来插值嵌入的数字。以下是我们将列出带有起始值和结束值的插值样式值：
 
@@ -94,13 +123,98 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 在您的网页浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/multi-element-transition.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/multi-element-transition.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/multi-element-transition.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/multi-element-transition.html)
 
 ## 如何做到这一点...
 
 如预期的那样，这个食谱比之前的稍微大一些，但并不是很大。让我们看看代码：
 
-[PRE4]
+```py
+<script type="text/javascript">
+    var id= 0, 
+        data = [], 
+        duration = 500, 
+        chartHeight = 100, 
+        chartWidth = 680;
+
+for(var i = 0; i < 20; i++){ 
+    push(data);   
+}
+
+    function render(data) {
+        var selection = d3.select("body")
+                .selectAll("div.v-bar")
+ .data(data, function(d){return d.id;}); // <-A
+
+        // enter
+        selection.enter()
+                .append("div")
+                    .attr("class", "v-bar")
+                    .style("position", "fixed")
+ .style("top", chartHeight + "px")
+ .style("left", function(d, i){
+ return barLeft(i+1) + "px"; // <-B
+ })
+ .style("height", "0px") // <-C
+                .append("span");
+
+        // update
+        selection
+ .transition().duration(duration) // <-D
+ .style("top", function (d) { 
+ return chartHeight - barHeight(d) + "px"; 
+ })
+ .style("left", function(d, i){
+ return barLeft(i) + "px";
+ })
+ .style("height", function (d) { 
+ return barHeight(d) + "px"; 
+ })
+                .select("span")
+                    .text(function (d) {return d.value;});
+
+        // exit
+        selection.exit()
+ .transition().duration(duration) // <-E
+ .style("left", function(d, i){
+ return barLeft(-1) + "px"; //<-F
+ })
+ .remove(); // <-G
+    }
+
+ function push(data) {
+ data.push({
+ id: ++id, 
+ value: Math.round(Math.random() * chartHeight)
+ });
+ }
+
+function barLeft(i) {
+ // start bar position is i * (barWidth + gap)
+ return i * (30 + 2);
+ }
+
+ function barHeight(d) {
+ return d.value;
+ }
+
+    setInterval(function () {
+        data.shift();
+        push(data);
+        render(data);
+    }, 2000);
+
+    render(data);
+
+    d3.select("body")
+       .append("div")
+           .attr("class", "baseline")
+           .style("position", "fixed")
+           .style("top", chartHeight + "px")
+           .style("left", "0px")
+           .style("width", chartWidth + "px");
+</script>
+```
 
 以下代码在您的网页浏览器中生成一个滑动条形图，如下截图所示：
 
@@ -114,7 +228,11 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 第一步，我们在行`A`上创建了一组垂直条形的数据绑定选择，然后可以使用经典的进入-更新-退出 D3 模式：
 
-[PRE5]
+```py
+var selection = d3.select("body")
+                .selectAll("div.v-bar")
+                .data(data, function(d){return d.id;}); // <-A
+```
 
 我们尚未涉及的是`d3.selection.data`函数的第二个参数。在这里，我们知道这个函数被称为**对象身份函数**。使用此函数的目的是提供对象恒常性。简单来说，我们希望数据与视觉元素之间的绑定是稳定的。为了实现对象恒常性，每个数据项都需要有一个唯一的标识符。一旦提供了 ID，D3 将确保如果`div`元素绑定到`{id: 3, value: 45}`，那么在更新选择计算时，相同的`div`元素将被用于具有相同`id`的数据项，尽管这次值可能已更改，例如`{id: 3, value: 12}`。对象恒常性在这个配方中至关重要；没有对象恒常性，滑动效果将无法工作。
 
@@ -124,15 +242,42 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 ### 备注
 
-[http://bost.ocks.org/mike/constancy/](http://bost.ocks.org/mike/constancy/)
+[`bost.ocks.org/mike/constancy/`](http://bost.ocks.org/mike/constancy/)
 
 第二步是使用`d3.selection.enter`函数创建这些垂直条形，并根据索引号计算每个条形的`left`位置（见行`B`）：
 
-[PRE6]
+```py
+        // enter
+        selection.enter()
+                .append("div")
+                    .attr("class", "v-bar")
+                    .style("position", "fixed")
+                    .style("top", chartHeight + "px")
+                    .style("left", function(d, i){
+                        return barLeft(i+1) + "px"; // <-B
+                    })
+                    .style("height", "0px") // <-C
+                .append("span");
+```
 
 值得注意的是，在`enter`部分，我们尚未调用过渡，这意味着我们在这里指定的任何值都将用作过渡的起始值。如果你注意到行`C`，条形`高度`被设置为`0px`。这使条形从零高度增长到目标`高度`的动画成为可能。同时，相同的逻辑也应用于条形的`left`位置（见行`B`），并被设置为`barLeft(i+1)`，从而实现了我们想要的滑动过渡。
 
-[PRE7]
+```py
+        // update
+        selection
+            .transition().duration(duration) // <-D
+                .style("top", function (d) { 
+                    return chartHeight - barHeight(d) + "px"; 
+                })
+                .style("left", function(d, i){
+                    return barLeft(i) + "px";
+                })
+                .style("height", function (d) { 
+                    return barHeight(d) + "px"; 
+                })
+                .select("span")
+                    .text(function (d) {return d.value;});
+```
 
 完成进入（`enter`）部分后，我们现在可以处理更新（`update`）部分，其中定义了过渡。首先，我们希望为所有更新引入过渡，因此，在应用任何样式更改之前，我们调用`transition`函数（见行`D`）。一旦创建了过渡绑定的选择，我们应用以下样式过渡：
 
@@ -144,13 +289,21 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 上述三种样式过渡就是处理新条形图以及每个现有条形图及其滑动效果所需的所有操作。最后，我们需要处理的最后一个情况是`exit`情况，当一个条形图不再需要时。因此，我们希望页面上条形图的数量保持不变。这在`exit`部分进行处理：
 
-[PRE8]
+```py
+        // exit
+        selection.exit()
+                .transition().duration(duration) // <-E
+                .style("left", function(d, i){
+                    return barLeft(-1) + "px"; // <-F
+                })
+                .remove(); // <-G
+```
 
 到目前为止，在本章之前，我们一直是在调用`d3.selection.exit`函数后立即调用`remove()`函数。这立即移除了不再需要的元素。实际上，`exit()`函数也返回一个选择集，因此可以在调用`remove()`函数之前进行动画处理。这正是我们在这里所做的事情，使用`exit`选择集在行`E`上开始过渡；然后我们使用以下过渡更改来动画化左值：
 
 +   `left`: `barLeft(i) + "px" > barLeft(i-1) + "px"`
 
-由于我们总是移除最左边的条形图，这个过渡将条形图向左移动并移出SVG画布，然后将其删除。
+由于我们总是移除最左边的条形图，这个过渡将条形图向左移动并移出 SVG 画布，然后将其删除。
 
 ### 注意
 
@@ -160,19 +313,56 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 # 使用缓动
 
-过渡可以被视为时间的函数。它是一个将时间进程映射到数值进程的函数，然后导致对象运动（如果数值用于定位）或变形（如果数值用于描述其他视觉属性）。时间总是以恒定的速度前进；换句话说，时间进程是均匀的（当然，除非你在黑洞附近进行可视化），然而，结果数值进程不需要是均匀的。**缓动**是提供这种映射灵活性和控制的标准技术。当一个过渡生成均匀的数值进程时，它被称为**线性****缓动**。D3提供了对不同类型缓动功能的支持，在本例中，我们将探索不同的内置D3缓动函数，以及如何使用D3过渡实现自定义缓动函数。
+过渡可以被视为时间的函数。它是一个将时间进程映射到数值进程的函数，然后导致对象运动（如果数值用于定位）或变形（如果数值用于描述其他视觉属性）。时间总是以恒定的速度前进；换句话说，时间进程是均匀的（当然，除非你在黑洞附近进行可视化），然而，结果数值进程不需要是均匀的。**缓动**是提供这种映射灵活性和控制的标准技术。当一个过渡生成均匀的数值进程时，它被称为**线性****缓动**。D3 提供了对不同类型缓动功能的支持，在本例中，我们将探索不同的内置 D3 缓动函数，以及如何使用 D3 过渡实现自定义缓动函数。
 
 ## 准备工作
 
 在您的网页浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/easing.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/easing.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/easing.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/easing.html)
 
 ## 如何做...
 
 在以下代码示例中，我们将演示如何基于元素逐个自定义过渡缓动：
 
-[PRE9]
+```py
+<script type="text/javascript">
+ var data = [ // <-A
+ "linear", "cubic", "cubic-in-out", 
+ "sin", "sin-out", "exp", "circle", "back", 
+ "bounce",
+ function(t){ // <-B
+ return t * t;
+ }
+ ],
+        colors = d3.scale.category10();
+
+    d3.select("body").selectAll("div")
+ .data(data) // <-C
+        .enter()
+        .append("div")
+            .attr("class", "fixed-cell")
+            .style("top", function (d, i) {
+                return i * 40 + "px";
+            })
+            .style("background-color", function (d, i) {
+                return colors(i);
+            })
+            .style("color", "white")
+            .style("left", "500px")
+            .text(function (d) {
+                if(typeof d === 'function') return "custom";
+                return d;
+            });
+
+ d3.selectAll("div").each(function(d){
+ d3.select(this)
+ .transition().ease(d) // <-D
+ .duration(1500)
+ .style("left", "10px");
+ });
+</script>
+```
 
 前面的代码生成了一组具有不同缓动效果的移动框。以下截图是在缓动效果发生时的截图：
 
@@ -182,29 +372,54 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 ## 它是如何工作的...
 
-在这个菜谱中，我们展示了多个不同的内置D3缓动函数及其对过渡的影响。让我们看看它是如何实现的。首先，我们创建了一个数组来存储我们想要展示的不同缓动模式：
+在这个菜谱中，我们展示了多个不同的内置 D3 缓动函数及其对过渡的影响。让我们看看它是如何实现的。首先，我们创建了一个数组来存储我们想要展示的不同缓动模式：
 
-[PRE10]
+```py
+var data = [ // <-A
+        "linear", 
+          "cubic", 
+          "cubic-in-out", 
+        "sin", 
+          "exp", 
+          "circle", 
+          "back", 
+        "bounce",
+        function(t){ // <-B
+            return t * t;
+        }
+        ]
+```
 
 虽然所有内置的缓动函数都简单地使用它们的名称定义，但这个数组的最后一个元素是一个自定义的缓动函数（**二次缓动**）。然后，使用这个数据数组创建了一组 `div` 元素，并为每个 `div` 元素创建了一个具有不同缓动函数的过渡，将它们从 `("left", "500px")` 移动到 `("left", "10px")`。
 
-[PRE11]
+```py
+d3.selectAll("div").each(function(d){
+        d3.select(this)
+            .transition().ease(d) // <-D
+            .duration(1500)
+            .style("left", "10px");
+    });
+```
 
-到目前为止，你可能想知道，*为什么我们没有像通常为任何其他D3属性所做的那样使用函数来指定缓动？*
+到目前为止，你可能想知道，*为什么我们没有像通常为任何其他 D3 属性所做的那样使用函数来指定缓动？*
 
-[PRE12]
+```py
+    .transition().ease(function(d){return d;}) // does not work
+    .duration(1500)
+    .style("left", "10px");
+```
 
 原因是它不适用于 `ease()` 函数。我们在行 `D` 上展示的是这个限制的解决方案，尽管在实际项目中，你很少需要按元素基础自定义缓动行为。
 
 > 注意，无法按元素或属性自定义缓动函数；
 > 
-> D3 Wiki (2013年8月)
+> D3 Wiki (2013 年 8 月)
 
 ### 提示
 
 另一种克服这种限制的方法是使用自定义缓动，我们将在下一个菜谱中介绍。
 
-如在行 `D` 所见，为D3过渡指定不同的缓动函数非常直接；你所需要做的就是在一个过渡绑定的选择上调用 `ease()` 函数。如果传入的参数是一个字符串，那么D3将尝试使用该名称查找匹配的函数；如果没有找到，则默认为 **linear**。除了命名的内置缓动函数之外，D3还提供了缓动模式修饰符，你可以将其与任何缓动函数结合使用以实现额外的效果，例如，**sin-out** 或 **quad-out-in**。可用的缓动模式修饰符：
+如在行 `D` 所见，为 D3 过渡指定不同的缓动函数非常直接；你所需要做的就是在一个过渡绑定的选择上调用 `ease()` 函数。如果传入的参数是一个字符串，那么 D3 将尝试使用该名称查找匹配的函数；如果没有找到，则默认为 **linear**。除了命名的内置缓动函数之外，D3 还提供了缓动模式修饰符，你可以将其与任何缓动函数结合使用以实现额外的效果，例如，**sin-out** 或 **quad-out-in**。可用的缓动模式修饰符：
 
 +   **in**: 默认
 
@@ -216,39 +431,84 @@ D3 过渡提供了在网页上使用 HTML 和 SVG 元素创建计算机动画的
 
 ### 提示
 
-D3使用的默认缓动效果是 **cubic-in-out**。
+D3 使用的默认缓动效果是 **cubic-in-out**。
 
-关于支持的D3缓动函数列表，请参阅以下链接：
+关于支持的 D3 缓动函数列表，请参阅以下链接：
 
-[https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_ease](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_ease)
+[`github.com/mbostock/d3/wiki/Transitions#wiki-d3_ease`](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_ease)
 
 当使用自定义缓动函数时，该函数应接受当前参数时间值作为其参数，范围在 `[0, 1]` 之间。
 
-[PRE13]
+```py
+function(t){ // <-B
+  return t * t;
+}
+```
 
-在我们的例子中，我们实现了一个简单的二次缓动函数，这实际上是一个内置的D3缓动函数，命名为 **quad**。
+在我们的例子中，我们实现了一个简单的二次缓动函数，这实际上是一个内置的 D3 缓动函数，命名为 **quad**。
 
 ### 注意
 
-关于缓动和彭纳方程（包括D3和jQuery在内的大多数现代JavaScript框架实现）的更多信息，请查看以下链接：
+关于缓动和彭纳方程（包括 D3 和 jQuery 在内的大多数现代 JavaScript 框架实现）的更多信息，请查看以下链接：
 
-[http://www.robertpenner.com/easing/](http://www.robertpenner.com/easing/)
+[`www.robertpenner.com/easing/`](http://www.robertpenner.com/easing/)
 
 # 使用缓动
 
-**Tween** 来自单词 "inbetween"，这是传统动画中的一种常见做法，在关键帧由主动画师创建后，经验较少的动画师被用来生成关键帧之间的帧。这个短语被借用到现代计算机生成的动画中，它指的是控制“inbetween”帧如何生成的技术或算法。在本食谱中，我们将检查D3过渡如何支持tweening。
+**Tween** 来自单词 "inbetween"，这是传统动画中的一种常见做法，在关键帧由主动画师创建后，经验较少的动画师被用来生成关键帧之间的帧。这个短语被借用到现代计算机生成的动画中，它指的是控制“inbetween”帧如何生成的技术或算法。在本食谱中，我们将检查 D3 过渡如何支持 tweening。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/tweening.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/tweening.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/tweening.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/tweening.html)
 
 ## 如何做...
 
-在以下代码示例中，我们将创建一个自定义的tweening函数来通过九个离散整数来动画化按钮标签：
+在以下代码示例中，我们将创建一个自定义的 tweening 函数来通过九个离散整数来动画化按钮标签：
 
-[PRE14]
+```py
+<script type="text/javascript">
+    var body = d3.select("body"), duration = 5000;
+
+    body.append("div").append("input")
+        .attr("type", "button")
+        .attr("class", "countdown")
+        .attr("value", "0")
+        .style("width", "150px")
+        .transition().duration(duration).ease("linear")
+            .style("width", "400px")
+            .attr("value", "9");
+
+    body.append("div").append("input")
+        .attr("type", "button")
+        .attr("class", "countdown")
+        .attr("value", "0")
+ .transition().duration(duration).ease("linear")
+ .styleTween("width", widthTween) // <- A
+ .attrTween("value", valueTween); // <- B
+
+ function widthTween(a){
+ var interpolate = d3.scale.quantize()
+ .domain([0, 1])
+ .range([150, 200, 250, 350, 400]);
+
+ return function(t){
+ return interpolate(t) + "px";
+ };
+ }
+
+ function valueTween(){
+ var interpolate = d3.scale.quantize() // <-C
+ .domain([0, 1])
+ .range([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+ return function(t){ // <-D
+ return interpolate(t);
+ };
+    }        
+</script>
+```
 
 以下代码生成了两个以非常不同的速率变形的按钮，以下截图是在此过程进行时的截图：
 
@@ -260,27 +520,50 @@ Tweening
 
 在这个食谱中，第一个按钮是使用简单的带有线性缓动的过渡创建的：
 
-[PRE15]
+```py
+body.append("div").append("input")
+        .attr("type", "button")
+        .attr("class", "countdown")
+        .attr("value", "0")
+        .style("width", "150px")
+        .transition().duration(duration).ease("linear")
+            .style("width", "400px")
+            .attr("value", "9");
+```
 
-过渡将按钮的宽度从 `"150px"` 变更到 `"400px"`，同时将其值从 `"0"` 变更到 `"9"`。正如预期的那样，这个过渡仅仅依赖于使用D3字符串插值器对这些值的连续线性插值。相比之下，第二个按钮的效果是分块地改变这些值。从1变到2，然后到3，依此类推，直到9。这是通过使用D3的`attrTween`和`styleTween`函数的tweening支持来实现的。让我们首先看看按钮值tweening是如何工作的：
+过渡将按钮的宽度从 `"150px"` 变更到 `"400px"`，同时将其值从 `"0"` 变更到 `"9"`。正如预期的那样，这个过渡仅仅依赖于使用 D3 字符串插值器对这些值的连续线性插值。相比之下，第二个按钮的效果是分块地改变这些值。从 1 变到 2，然后到 3，依此类推，直到 9。这是通过使用 D3 的`attrTween`和`styleTween`函数的 tweening 支持来实现的。让我们首先看看按钮值 tweening 是如何工作的：
 
-[PRE16]
+```py
+.transition().duration(duration).ease("linear")
+            .styleTween("width", widthTween) // <- A
+            .attrTween("value", valueTween); // <- B
+```
 
-在前面的代码片段中，我们可以看到，与我们在第一个按钮的情况下设置值属性的结束值不同，我们使用`attrTween`函数并提供了一个tweening函数`valueTween`，其实现如下：
+在前面的代码片段中，我们可以看到，与我们在第一个按钮的情况下设置值属性的结束值不同，我们使用`attrTween`函数并提供了一个 tweening 函数`valueTween`，其实现如下：
 
-[PRE17]
+```py
+function valueTween(){
+    var interpolate = d3.scale.quantize() // <-C
+        .domain([0, 1])
+        .range([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
-在D3中，一个tween函数预期是一个工厂函数，它构建用于执行tweening的实际函数。在这种情况下，我们定义了一个`quantize`比例尺，它将域`[0, 1]`映射到离散的整数范围`[1, 9]`，在行`C`上。实际在行`D`上定义的tweening函数简单地使用量化比例尺插值参数时间值，从而生成跳跃整数效果。
+    return function(t){ // <-D
+        return interpolate(t);
+    };
+}        
+```
+
+在 D3 中，一个 tween 函数预期是一个工厂函数，它构建用于执行 tweening 的实际函数。在这种情况下，我们定义了一个`quantize`比例尺，它将域`[0, 1]`映射到离散的整数范围`[1, 9]`，在行`C`上。实际在行`D`上定义的 tweening 函数简单地使用量化比例尺插值参数时间值，从而生成跳跃整数效果。
 
 ### 注意
 
 离散比例尺是线性比例尺的一种变体，它有一个离散的范围而不是连续的范围。有关离散比例尺的更多信息，请访问以下链接：
 
-[https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantize](https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantize)
+[`github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantize`](https://github.com/mbostock/d3/wiki/Quantitative-Scales#wiki-quantize)
 
 ## 还有更多...
 
-到目前为止，我们已经触及了与过渡相关的三个概念：缓动、tween和插值。通常，D3过渡是通过以下序列图中的三个级别定义和驱动的：
+到目前为止，我们已经触及了与过渡相关的三个概念：缓动、tween 和插值。通常，D3 过渡是通过以下序列图中的三个级别定义和驱动的：
 
 ![还有更多...](img/2162OS_06_05.jpg)
 
@@ -302,13 +585,37 @@ Tweening
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/chaining.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/chaining.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/chaining.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/chaining.html)
 
 ## 如何实现...
 
 我们简单的传送过渡代码出奇地短：
 
-[PRE18]
+```py
+<script type="text/javascript">
+    var body = d3.select("body");
+
+ function teleport(s){
+ s.transition().duration(300) // <-A
+ .style("width", "200px")
+ .style("height", "1px")
+ .transition().duration(100) // <-B
+ .style("left", "600px")
+ .transition().duration(300) // <-C
+ .style("left", "800px")
+ .style("height", "80px")
+ .style("width", "80px");
+ }
+
+    body.append("div")    
+            .style("position", "fixed")
+            .style("background-color", "steelblue")
+            .style("left", "10px")
+            .style("width", "80px")
+            .style("height", "80px")
+ .call(teleport); // <-D 
+</script> 
+```
 
 上一段代码执行了一个 `div` 传送：
 
@@ -320,7 +627,19 @@ Tweening
 
 这个简单的传送效果是通过链式连接几个过渡来实现的。在 D3 中，当过渡链式连接时，它们保证只有在之前的过渡达到完成状态后才会执行。现在，让我们看看代码中是如何实现的：
 
-[PRE19]
+```py
+function teleport(s){
+    s.transition().duration(300) // <-A
+        .style("width", "200px")
+        .style("height", "1px")
+    .transition().duration(100) // <-B
+        .style("left", "600px")
+    .transition().duration(300) // <-C
+        .style("left", "800px")
+        .style("height", "80px")
+        .style("width", "80px");
+};
+```
 
 第一个过渡在行 `A`（压缩）上定义并启动，然后在行 `B` 上创建了一个第二个过渡（光束），最后第三个过渡在行 `C`（恢复）上链式连接。过渡链式连接是一种强大而简单的技术，通过将简单的过渡连接在一起来编排复杂的过渡效果。最后在这个配方中，我们还展示了通过将传送过渡包装在函数中，然后使用 `d3.selection.call` 函数在选择上应用它（见行 `D`）的基本示例，以实现可重用组合过渡效果。可重用过渡效果对于遵循 DRY（不要重复自己）原则至关重要，尤其是在你的可视化动画变得更加复杂时。
 
@@ -332,13 +651,40 @@ Tweening
 
 在您的网页浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/filtering.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/filtering.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/filtering.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/filtering.html)
 
 ## 如何实现...
 
 在这个食谱中，我们将一组 `div` 元素（或方框）从网页的右侧移动到左侧。在将所有方框移动到左侧后，我们将仅选择性地将标记为 **Cat** 的方框移回，这样它们就不会相互争斗。让我们看看以下代码：
 
-[PRE20]
+```py
+<script type="text/javascript">
+    var data = ["Cat", "Dog", "Cat", "Dog", "Cat", "Dog", "Cat", "Dog"],
+        duration = 1500;
+
+    d3.select("body").selectAll("div")
+            .data(data)
+        .enter()
+        .append("div")
+            .attr("class", "fixed-cell")
+            .style("top", function (d, i) {
+                return i * 40 + "px";
+            })
+            .style("background-color", "steelblue")
+            .style("color", "white")
+            .style("left", "500px")
+            .text(function (d) {
+                return d;
+            })
+ .transition() // <- A
+ .duration(duration)
+ .style("left", "10px")
+ .filter(function(d){return d == "Cat";}) // <- B
+ .transition() // <- C
+ .duration(duration)
+ .style("left", "500px");
+</script>
+```
 
 页面过渡后的样子如下所示：
 
@@ -350,15 +696,23 @@ Tweening
 
 这个食谱的初始设置相当简单，因为我们希望将管道保持尽可能少，这将有助于您专注于技术的核心。我们有一个包含交错字符串 `"Cat"` 和 `"Dog"` 的数据数组。然后为数据创建了一组 `div` 方框，并创建了一个过渡（见行 `A`），将所有方框移动到网页的左侧。到目前为止，这是一个多元素过渡的简单示例，还没有任何惊喜：
 
-[PRE21]
+```py
+.transition() // <- A
+.duration(duration)
+    .style("left", "10px")
+.filter(function(d){return d == "Cat";}) // <- B
+.transition() // <- C
+.duration(duration)
+    .style("left", "500px");
+```
 
 然后在行 `B`，使用了 `d3.selection.filter` 函数来生成只包含 "cat" 方框的子选择。记住，D3 过渡仍然是一个选择（过渡绑定选择），因此，`d3.selection.filter` 函数在常规选择上的工作方式完全相同。一旦通过 `filter` 函数生成了子选择，我们就可以单独对此子选择应用一个二级过渡（见行 `C`）。`filter` 函数返回一个过渡绑定的子选择；因此，行 `C` 上创建的第二个过渡实际上是在生成一个过渡链。它将在第一个过渡完成之后才会被触发。通过使用过渡链和过滤的组合，我们可以生成一些真正有趣的数据驱动动画；这是任何数据可视化工具集中的一个有用工具。
 
 ## 参见
 
-+   关于 D3 数据驱动选择过滤的食谱，请参阅 *使用数据过滤* 食谱 [第 3 章](ch03.html "第 3 章。处理数据")，*处理数据*
++   关于 D3 数据驱动选择过滤的食谱，请参阅 *使用数据过滤* 食谱 第三章，*处理数据*
 
-+   有关 `selection.filter` 函数的 API 文档，请参阅 [https://github.com/mbostock/d3/wiki/Selections#wiki-filter](https://github.com/mbostock/d3/wiki/Selections#wiki-filter)
++   有关 `selection.filter` 函数的 API 文档，请参阅 [`github.com/mbostock/d3/wiki/Selections#wiki-filter`](https://github.com/mbostock/d3/wiki/Selections#wiki-filter)
 
 # 监听过渡事件
 
@@ -368,13 +722,37 @@ Tweening
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/events.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/events.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/events.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/events.html)
 
 ## 如何做到这一点...
 
 在这个配方中，我们将演示如何根据动画 `div` 元素的转换状态显示不同的标题。显然，这个例子可以很容易地扩展以使用相同的技术执行更有意义的任务：
 
-[PRE22]
+```py
+<script type="text/javascript">
+    var body = d3.select("body"), duration = 3000;
+
+    var div = body.append("div")
+            .classed("box", true)
+            .style("background-color", "steelblue")
+            .style("color", "white")
+ .text("waiting") // <-A
+ .transition().duration(duration) // <-B
+ .delay(1000) // <-C
+ .each("start", function(){ // <-D
+ console.log(arguments);
+ d3.select(this).text(function (d, i) {
+ return "transitioning";
+ });
+ })
+ .each("end", function(){ // <-E
+ d3.select(this).text(function (d, i) {
+ return "done";
+ });
+ })
+            .style("margin-left", "600px");
+</script>
+```
 
 上述代码产生以下视觉输出，其中出现一个带有**等待**标签的框；它向右移动，标签变为**转换中**，完成后停止移动并将标签改为**完成**：
 
@@ -386,35 +764,79 @@ Tweening
 
 在这个配方中，我们构建了一个具有简单水平移动转换的单个 `div` 元素，当它被启动时，也会根据其转换状态更改标签。让我们首先看看我们是如何显示**等待**标签的：
 
-[PRE23]
+```py
+var div = body.append("div")
+            .classed("box", true)
+            .style("background-color", "steelblue")
+            .style("color", "white")
+            .text("waiting") // <-A
+        .transition().duration(duration) // <-B
+                .delay(1000) // <-C
+```
 
 在定义在行 `B` 上的转换之前，在行 `A` 上设置了**等待**标签，然而，我们也为转换指定了延迟，因此在转换开始之前显示了**等待**标签。接下来，让我们看看我们是如何在转换期间显示**转换中**标签的：
 
-[PRE24]
+```py
+.each("start", function(){ // <-D
+    d3.select(this).text(function (d, i) {
+        return "transitioning";
+    });
+})
+```
 
 这是通过调用 `each()` 函数并选择其第一个参数设置为 `"start"` 事件名称，并将事件监听器函数作为第二个参数传递来实现的。事件监听器函数的 `this` 引用指向当前选定的元素，因此可以被 D3 包装并进行进一步操作。转换 `"end"` 事件以相同的方式处理：
 
-[PRE25]
+```py
+.each("end", function(){ // <-E
+    d3.select(this).text(function (d, i) {
+        return "done";
+    });
+})
+```
 
 这里的唯一区别是事件名称被传递到 `each()` 函数中。
 
 # 实现自定义插值
 
-在第 4 章 *Tipping the Scales* 的 *Tipping the Scales* 中，我们探讨了如何在 D3 中实现自定义插值器。在这个配方中，我们将演示如何将这种技术与 D3 转换结合使用，通过利用自定义插值生成特殊的转换效果。
+在第四章 *Tipping the Scales* 的 *Tipping the Scales* 中，我们探讨了如何在 D3 中实现自定义插值器。在这个配方中，我们将演示如何将这种技术与 D3 转换结合使用，通过利用自定义插值生成特殊的转换效果。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/custom-interpolator-transition.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/custom-interpolator-transition.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/custom-interpolator-transition.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/custom-interpolator-transition.html)
 
-这个配方建立在我们在第 4 章 *Tipping the Scales* 中讨论的 *Implementing a custom interpolator* 配方之上，*Tipping the Scales*。如果您不熟悉自定义插值的概念，请在继续此配方之前先查看相关配方。
+这个配方建立在我们在第四章 *Tipping the Scales* 中讨论的 *Implementing a custom interpolator* 配方之上，*Tipping the Scales*。如果您不熟悉自定义插值的概念，请在继续此配方之前先查看相关配方。
 
 ## 如何做到这一点...
 
 让我们看看 `custom-interpolator-transition.html` 文件的代码，看看它是如何工作的：
 
-[PRE26]
+```py
+ <script type="text/javascript">
+ d3.interpolators.push(function(a, b) { // <-A
+ var re = /^([a-z])$/, ma, mb;
+ if ((ma = re.exec(a)) && (mb = re.exec(b))) {
+ a = a.charCodeAt(0);
+ var delta = a - b.charCodeAt(0);
+ return function(t) {
+ return String.fromCharCode(Math.ceil(a - delta * t));
+ };
+ }
+ });
+
+    var body = d3.select("body");
+
+    var countdown = body.append("div").append("input");
+
+    countdown.attr("type", "button")
+        .attr("class", "countdown")
+ .attr("value", "a") // <-B
+ .transition().ease("linear") // <-C
+ .duration(4000).delay(300)
+ .attr("value", "z"); // <-D
+</script>
+```
 
 上述代码生成一个从 **a** 开始并结束于 **z** 的跳动框：
 
@@ -424,13 +846,31 @@ Tweening
 
 ## 它是如何工作的...
 
-在这个菜谱中，我们首先注册了一个自定义插值器，它与我们在第 4 章（[第 4 章. 调整比例](ch04.html "第 4 章. 调整比例")）中讨论的字母插值器相同：*调整比例*：
+在这个菜谱中，我们首先注册了一个自定义插值器，它与我们在第四章（第四章. 调整比例）中讨论的字母插值器相同：*调整比例*：
 
-[PRE27]
+```py
+d3.interpolators.push(function(a, b) { // <-A
+      var re = /^([a-z])$/, ma, mb;
+      if ((ma = re.exec(a)) && (mb = re.exec(b))) {
+        a = a.charCodeAt(0);
+        var delta = a - b.charCodeAt(0);
+        return function(t) {
+          return String.fromCharCode(Math.ceil(a - delta * t));
+        };
+      }
+});
+```
 
 一旦注册了自定义插值器，过渡部分几乎没有任何自定义逻辑。因为它基于需要插值和过渡的值，D3 会自动选择正确的插值器来完成这项任务：
 
-[PRE28]
+```py
+countdown.attr("type", "button")
+        .attr("class", "countdown")
+        .attr("value", "a") // <-B
+        .transition().ease("linear") // <-C
+        .duration(4000).delay(300)
+        .attr("value", "z"); // <-D
+```
 
 如前述代码片段所示，起始值是 `"a"`，在行 `B` 中定义。之后，在行 `C` 上创建了一个标准的 D3 过渡，最后我们只需在行 `D` 上将结束值设置为 `"z"`，然后 D3 和我们的自定义插值器就会处理剩下的部分。
 
@@ -444,13 +884,44 @@ Tweening
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/timer.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/timer.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/timer.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter6/timer.html)
 
 ## 如何实现...
 
 在这个菜谱中，我们将创建一个不依赖于 D3 过渡或插值的自定义动画；本质上是从头开始创建的自定义动画。让我们看看以下代码：
 
-[PRE29]
+```py
+<script type="text/javascript">
+    var body = d3.select("body");
+
+    var countdown = body.append("div").append("input");
+
+    countdown.attr("type", "button")
+        .attr("class", "countdown")
+        .attr("value", "0");
+
+    function countup(target){ // <-A
+        d3.timer(function(){ // <-B
+            var value = countdown.attr("value");
+            if(value == target) return true;  // <-C
+            countdown.attr("value", ++value); // <-D            
+        });
+    }
+
+    function reset(){
+        countdown.attr("value", 0);
+    }
+</script>
+
+<div class="control-group">
+    <button onclick="countup(100)">
+        Start
+    </button>
+    <button onclick="reset()">
+        Clear
+    </button>
+</div>
+```
 
 上述代码生成一个盒子，其中计时器被设置为 **0**，通过点击 **开始**，计时器增加到 **100** 并停止，如下所示：
 
@@ -462,7 +933,15 @@ Tweening
 
 在这个例子中，我们构建了一个从 0 到 100 移动整数的自定义动画。对于这样简单的动画，当然我们可以使用 D3 过渡和缓动函数来完成。然而，这样的简单例子避免了任何对技术本身的干扰。此外，即使在这样简单的例子中，基于计时器的解决方案在可伸缩性和灵活性方面也优于典型的基于过渡的解决方案。这个动画的强大之处在于 `countup` 函数（见行 `A`）：
 
-[PRE30]
+```py
+function countup(target){ // <-A
+        d3.timer(function(){ // <-B
+            var value = countdown.attr("value");
+            if(value == target) return true;  // <-C
+            countdown.attr("value", ++value); // <-D            
+        });
+    }
+```
 
 如本例所示，理解这个菜谱的关键在于 `d3.timer` 函数。
 
@@ -476,6 +955,6 @@ Tweening
 
 ## 参见
 
-+   关于 `d3.timer` 的更多信息，请访问以下链接的API：
++   关于 `d3.timer` 的更多信息，请访问以下链接的 API：
 
-    [https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_timer](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_timer)
+    [`github.com/mbostock/d3/wiki/Transitions#wiki-d3_timer`](https://github.com/mbostock/d3/wiki/Transitions#wiki-d3_timer)

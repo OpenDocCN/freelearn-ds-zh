@@ -44,7 +44,7 @@ ArcGIS Pro 允许您在单个应用程序中结合 2D 和 3D 内容。在过去�
 
 然而，这种使用现代计算机硬件的能力是有代价的。与较旧的 ArcGIS Desktop 相比，ArcGIS Pro 的最低计算机规格要求要高得多。这包括增加的硬件和操作系统要求以及支持的应用程序要求。这意味着，尽管你的当前计算机能够运行 ArcMap 等应用程序，但它不一定能够成功运行 ArcGIS Pro。如果你想使用 ArcGIS Pro 的体验是积极的而不是令人沮丧的，那么验证你的计算机是否满足或超过了推荐的最低规格是非常重要的。
 
-在以下链接中，你可以找到当前版本 ArcGIS Pro 的最低要求，**2.6**。这些要求会随着新版本的发布而变化，所以请确保根据你将使用的版本进行验证。你可以在这里找到最新的系统要求：[https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-system-requirements.htm](https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-system-requirements.htm)
+在以下链接中，你可以找到当前版本 ArcGIS Pro 的最低要求，**2.6**。这些要求会随着新版本的发布而变化，所以请确保根据你将使用的版本进行验证。你可以在这里找到最新的系统要求：[`pro.arcgis.com/en/pro-app/get-started/arcgis-pro-system-requirements.htm`](https://pro.arcgis.com/en/pro-app/get-started/arcgis-pro-system-requirements.htm)
 
 ## 了解操作系统要求
 
@@ -62,67 +62,67 @@ ArcGIS Pro 需要一个 64 位的 **操作系统**（**OS**）。它不能在 32
 
 +   **Windows Server 2012 标准版**和**数据中心版**
 
-Esri在2020年1月之后停止了对**Windows 7**和**Server 2008 R2**的支持。他们这样做是因为微软结束了对这些操作系统的支持。这意味着在这些操作系统上运行ArcGIS Pro可能仍然可行，但如果你遇到任何问题，Esri和微软都不会提供支持。这也意味着两家公司都不会提供补丁或更新来修复这些操作系统的安全漏洞或错误。因此，如果你仍在使用不受支持的操作系统，建议升级到较新的操作系统。
+Esri 在 2020 年 1 月之后停止了对**Windows 7**和**Server 2008 R2**的支持。他们这样做是因为微软结束了对这些操作系统的支持。这意味着在这些操作系统上运行 ArcGIS Pro 可能仍然可行，但如果你遇到任何问题，Esri 和微软都不会提供支持。这也意味着两家公司都不会提供补丁或更新来修复这些操作系统的安全漏洞或错误。因此，如果你仍在使用不受支持的操作系统，建议升级到较新的操作系统。
 
-ArcGIS Pro目前不支持在**Linux**或**iOS**上原生运行。鉴于Esri目前对Linux的支持，以及他们的ArcGIS Enterprise解决方案，ArcGIS Pro可能在遥远的未来被适配在平台上运行。然而，Esri已经表明ArcGIS Pro不会移植到iOS平台。这看起来是由于他们的用户基础。
+ArcGIS Pro 目前不支持在**Linux**或**iOS**上原生运行。鉴于 Esri 目前对 Linux 的支持，以及他们的 ArcGIS Enterprise 解决方案，ArcGIS Pro 可能在遥远的未来被适配在平台上运行。然而，Esri 已经表明 ArcGIS Pro 不会移植到 iOS 平台。这看起来是由于他们的用户基础。
 
-大多数ArcGIS用户在政府机构工作，这些机构通常运行基于Windows的电脑，而要获得苹果电脑则需要特殊的采购流程。因此，ArcGIS Pro不会在iOS上得到支持。如果你创建虚拟Windows机器、设置双Windows启动或运行Windows模拟器，可以在Linux或iOS电脑上运行ArcGIS Pro。
+大多数 ArcGIS 用户在政府机构工作，这些机构通常运行基于 Windows 的电脑，而要获得苹果电脑则需要特殊的采购流程。因此，ArcGIS Pro 不会在 iOS 上得到支持。如果你创建虚拟 Windows 机器、设置双 Windows 启动或运行 Windows 模拟器，可以在 Linux 或 iOS 电脑上运行 ArcGIS Pro。
 
-我确实听到一些用户声称，ArcGIS Pro在启动Windows的苹果电脑上运行得比在传统的基于Windows的电脑上更好。我没有测试这个说法，所以不能验证，但我确实看到许多Esri员工在使用苹果电脑，所以这个说法可能有一定的真实性。
+我确实听到一些用户声称，ArcGIS Pro 在启动 Windows 的苹果电脑上运行得比在传统的基于 Windows 的电脑上更好。我没有测试这个说法，所以不能验证，但我确实看到许多 Esri 员工在使用苹果电脑，所以这个说法可能有一定的真实性。
 
 ## 理解硬件要求
 
-ArcGIS Pro对硬件要求较高。它需要现代处理器和大量的RAM。它还需要一张足够强大的显卡来显示2D和3D数据。为确保ArcGIS Pro运行顺畅，你需要确保你的电脑满足或超过以下要求：
+ArcGIS Pro 对硬件要求较高。它需要现代处理器和大量的 RAM。它还需要一张足够强大的显卡来显示 2D 和 3D 数据。为确保 ArcGIS Pro 运行顺畅，你需要确保你的电脑满足或超过以下要求：
 
-+   **超线程双核**。建议使用4核心处理器，10核心或以上的处理器作为可选，例如**Intel Core i9-10900**或**AMD Ryzen 9 3900**。
++   **超线程双核**。建议使用 4 核心处理器，10 核心或以上的处理器作为可选，例如**Intel Core i9-10900**或**AMD Ryzen 9 3900**。
 
-+   建议至少4GB的RAM，8GB的RAM被认为是最佳选择。Esri认为16GB是理想的。
++   建议至少 4GB 的 RAM，8GB 的 RAM 被认为是最佳选择。Esri 认为 16GB 是理想的。
 
-+   至少32GB的硬盘空间来安装软件。建议使用固态硬盘。
++   至少 32GB 的硬盘空间来安装软件。建议使用固态硬盘。
 
-+   至少4GB显存，支持**DirectX 11**和**OpenGL 4.3**的显卡。Esri建议使用支持DirectX 11和OpenGL 4.5，且显存4GB或以上的显卡。
++   至少 4GB 显存，支持**DirectX 11**和**OpenGL 4.3**的显卡。Esri 建议使用支持 DirectX 11 和 OpenGL 4.5，且显存 4GB 或以上的显卡。
 
-与ArcGIS Desktop不同，它对可使用的RAM和处理器资源有数量限制，ArcGIS Pro将使用你所能提供的所有资源。因此，你的电脑处理能力和内存越多，ArcGIS Pro的表现就越好。
+与 ArcGIS Desktop 不同，它对可使用的 RAM 和处理器资源有数量限制，ArcGIS Pro 将使用你所能提供的所有资源。因此，你的电脑处理能力和内存越多，ArcGIS Pro 的表现就越好。
 
-如果你无法获得专门的显卡，被迫使用集成显卡，那么强烈建议你增加RAM的数量和处理器级别，以补偿两者共享使用来运行显示和软件的需求。
+如果你无法获得专门的显卡，被迫使用集成显卡，那么强烈建议你增加 RAM 的数量和处理器级别，以补偿两者共享使用来运行显示和软件的需求。
 
 最终我强烈建议获取专门的显卡。虽然这并不便宜，但如果你有一个，你会遇到更少的问题和崩溃。这反过来意味着你会更有效率，更少感到沮丧，并且数据损坏的机会更小。随着时间的推移，由于性能的提升，专门的显卡将因其自身而得到回报。 
 
 ## 其他支持软件要求
 
-ArcGIS Pro依赖于在安装之前必须安装的其他应用程序。它们提供支持服务，ArcGIS Pro依赖这些服务来运行。这些支持应用程序包括以下内容：
+ArcGIS Pro 依赖于在安装之前必须安装的其他应用程序。它们提供支持服务，ArcGIS Pro 依赖这些服务来运行。这些支持应用程序包括以下内容：
 
 +   **Microsoft .NET Framework 4.8**或更高版本
 
 +   **Microsoft Internet Explorer 11**或更高版本
 
-+   ArcGIS Online组织账户或ArcGIS Enterprise门户 – 如果使用命名用户许可，则需要此账户
++   ArcGIS Online 组织账户或 ArcGIS Enterprise 门户 – 如果使用命名用户许可，则需要此账户
 
-虽然这些是ArcGIS Pro成功运行所必需的，但实际的ArcGIS Pro安装程序不会验证或检查这些应用程序。它可以在没有它们的情况下安装，并指示安装成功。然而，当你运行应用程序时，你将开始遇到问题。这可能会包括应用程序无法启动、无法访问许可证、频繁崩溃等。
+虽然这些是 ArcGIS Pro 成功运行所必需的，但实际的 ArcGIS Pro 安装程序不会验证或检查这些应用程序。它可以在没有它们的情况下安装，并指示安装成功。然而，当你运行应用程序时，你将开始遇到问题。这可能会包括应用程序无法启动、无法访问许可证、频繁崩溃等。
 
-ArcGIS Pro不需要ArcGIS Desktop就可以在计算机上安装。它们是两个完全独立的应用程序。这意味着它们可以共存于同一台计算机上，或者单独安装。
+ArcGIS Pro 不需要 ArcGIS Desktop 就可以在计算机上安装。它们是两个完全独立的应用程序。这意味着它们可以共存于同一台计算机上，或者单独安装。
 
 ## 作者系统推荐
 
-我自从ArcGIS Pro首次以beta版本发布以来一直在使用它。这为我提供了在多种计算机上运行它的机会，因为它从多个beta版本过渡到2.6版本的发布。这种亲身体验，加上我从ArcGIS Desktop首次发布以来的使用经验，使我针对选择运行ArcGIS Pro的系统提出了一些建议。
+我自从 ArcGIS Pro 首次以 beta 版本发布以来一直在使用它。这为我提供了在多种计算机上运行它的机会，因为它从多个 beta 版本过渡到 2.6 版本的发布。这种亲身体验，加上我从 ArcGIS Desktop 首次发布以来的使用经验，使我针对选择运行 ArcGIS Pro 的系统提出了一些建议。
 
-根据我的经验，当购买用于运行ArcGIS Pro的计算机时，我建议以下规格：
+根据我的经验，当购买用于运行 ArcGIS Pro 的计算机时，我建议以下规格：
 
-+   确保您有一块独立的显卡。这包括一个专门的**图形处理单元**（**GPU**）和**专用视频内存**（**VRAM**）。ArcGIS Pro是一个图形密集型程序。每次你平移、缩放或添加新图层时，你都会对你的计算机的图形能力进行压力测试。显卡将允许你的计算机通过处理图形渲染请求来处理这种负载，而不会对你的计算机CPU和系统RAM造成负担。如果你的计算机使用集成显卡，那么计算机的CPU和系统RAM将用于处理所有处理请求，包括图形渲染。
++   确保您有一块独立的显卡。这包括一个专门的**图形处理单元**（**GPU**）和**专用视频内存**（**VRAM**）。ArcGIS Pro 是一个图形密集型程序。每次你平移、缩放或添加新图层时，你都会对你的计算机的图形能力进行压力测试。显卡将允许你的计算机通过处理图形渲染请求来处理这种负载，而不会对你的计算机 CPU 和系统 RAM 造成负担。如果你的计算机使用集成显卡，那么计算机的 CPU 和系统 RAM 将用于处理所有处理请求，包括图形渲染。
 
-由于ArcGIS Pro创建的2D和3D地图以及它执行的分析，它既是一个处理器密集型应用，也是一个图形密集型应用。这可能会对你的电脑资源造成巨大的负担。拥有一个专门用于处理电脑图形渲染负载的GPU将大大提高ArcGIS Pro的性能和用户体验。
+由于 ArcGIS Pro 创建的 2D 和 3D 地图以及它执行的分析，它既是一个处理器密集型应用，也是一个图形密集型应用。这可能会对你的电脑资源造成巨大的负担。拥有一个专门用于处理电脑图形渲染负载的 GPU 将大大提高 ArcGIS Pro 的性能和用户体验。
 
-我建议购买至少拥有6 GB VRAM的显卡。我使用带有**NVIDIA** GPU的显卡取得了很好的效果。目前，我正在使用**GeForce RTX 2070 Super**。它的表现非常出色，而且价格也不贵，在撰写这本书的时候大约是550美元。AMD显卡在最近发布的新**Radeon RX 5700系列**之前一直表现平平。这款AMD的新卡在大多数基准测试中与NVIDIA的性能相当，甚至更胜一筹，所以这也值得一试，尤其是它对于相同（或更好的）整体性能来说价格略低一些。
+我建议购买至少拥有 6 GB VRAM 的显卡。我使用带有**NVIDIA** GPU 的显卡取得了很好的效果。目前，我正在使用**GeForce RTX 2070 Super**。它的表现非常出色，而且价格也不贵，在撰写这本书的时候大约是 550 美元。AMD 显卡在最近发布的新**Radeon RX 5700 系列**之前一直表现平平。这款 AMD 的新卡在大多数基准测试中与 NVIDIA 的性能相当，甚至更胜一筹，所以这也值得一试，尤其是它对于相同（或更好的）整体性能来说价格略低一些。
 
-+   使用固态硬盘。固态硬盘在访问和存储数据方面非常快。它们的速度几乎与RAM相当，而且比最快的硬盘驱动器快得多。当ArcGIS Pro安装在固态硬盘上时，它的运行速度会像闪电一样快。如果你能获得**非易失性内存表达式**（**NVMe**）**M.2 PCIe驱动器**，这一点更是如此。这些驱动器看起来更像是一个U盘而不是硬盘，但性能比传统的**串行高级技术附件**（**SATA**）固态硬盘要好得多。这就是我在当前工作站中使用的东西。
++   使用固态硬盘。固态硬盘在访问和存储数据方面非常快。它们的速度几乎与 RAM 相当，而且比最快的硬盘驱动器快得多。当 ArcGIS Pro 安装在固态硬盘上时，它的运行速度会像闪电一样快。如果你能获得**非易失性内存表达式**（**NVMe**）**M.2 PCIe 驱动器**，这一点更是如此。这些驱动器看起来更像是一个 U 盘而不是硬盘，但性能比传统的**串行高级技术附件**（**SATA**）固态硬盘要好得多。这就是我在当前工作站中使用的东西。
 
-+   没有所谓的RAM太多。你的电脑拥有越多RAM，ArcGIS Pro的表现就会越好，尤其是如果你没有固态硬盘的话。对于任何使用ArcGIS Pro进行大量工作的人来说，我不会考虑使用少于16 GB的RAM。我目前在GIS工作站电脑上运行的是32 GB的快速**DDR 4 3000 RAM**。
++   没有所谓的 RAM 太多。你的电脑拥有越多 RAM，ArcGIS Pro 的表现就会越好，尤其是如果你没有固态硬盘的话。对于任何使用 ArcGIS Pro 进行大量工作的人来说，我不会考虑使用少于 16 GB 的 RAM。我目前在 GIS 工作站电脑上运行的是 32 GB 的快速**DDR 4 3000 RAM**。
 
-对于我处理的小型到中型数据集，它的表现很好。如果你将要处理**光探测与测距**（**LiDAR**）、**栅格**或3D数据，我鼓励你拥有超过16 GB的RAM。然而，如果你主要在2D环境中处理矢量数据，16 GB的RAM似乎在性能和成本之间达到了最佳平衡。
+对于我处理的小型到中型数据集，它的表现很好。如果你将要处理**光探测与测距**（**LiDAR**）、**栅格**或 3D 数据，我鼓励你拥有超过 16 GB 的 RAM。然而，如果你主要在 2D 环境中处理矢量数据，16 GB 的 RAM 似乎在性能和成本之间达到了最佳平衡。
 
-+   如果你被迫使用标准的机械硬盘，那么请确保它们是7200 RPM或更快，而不是5400 RPM的硬盘。较慢硬盘的寻道时间太慢，无法有效地支持有效的GIS操作。
++   如果你被迫使用标准的机械硬盘，那么请确保它们是 7200 RPM 或更快，而不是 5400 RPM 的硬盘。较慢硬盘的寻道时间太慢，无法有效地支持有效的 GIS 操作。
 
-+   如果你将要进行大量的分析或编辑，但又无法获得固态硬盘，尝试使用**独立磁盘冗余阵列**（**RAID**）系统来提高性能。RAID系统利用多个硬盘来存储数据。它们可以配置成多种方式。基于条带集的RAID，如**RAID 0**、**RAID 3**或**RAID 5**，提供了最佳的性能。
++   如果你将要进行大量的分析或编辑，但又无法获得固态硬盘，尝试使用**独立磁盘冗余阵列**（**RAID**）系统来提高性能。RAID 系统利用多个硬盘来存储数据。它们可以配置成多种方式。基于条带集的 RAID，如**RAID 0**、**RAID 3**或**RAID 5**，提供了最佳的性能。
 
 通过在多个驱动器上存储数据，计算机可以同时从每个驱动器访问所需数据。这为您的数据创建了一条多车道的高速公路。RAID 系统至少需要两个硬盘驱动器，通常还需要一个单独的控制器卡。如果需要，也可以将多个固态硬盘放入 RAID 中以提高性能。然而，对于除最大数据集之外的所有情况，我认为在大多数情况下这将是过度配置。
 
@@ -130,7 +130,7 @@ ArcGIS Pro不需要ArcGIS Desktop就可以在计算机上安装。它们是两�
 
 所有这些推荐也可以应用于其他应用程序，例如 ArcGIS Desktop、**AutoCAD**、**MicroStation**、**Photoshop** 以及其他图形密集型应用程序。我已经运行了所有这些应用程序，并且可以说，基于这些经验，任何这些推荐都将有助于它们运行得更好。
 
-您可能想观看我制作的关于这些推荐的 YouTube 视频：[https://youtu.be/tH7JemkC7SM](https://youtu.be/tH7JemkC7SM)。您还可以查看我当前 GIS 计算机的构建情况，[https://youtu.be/GPXRqpqzHaQ](https://youtu.be/GPXRqpqzHaQ)，这样您可以看到我运行 ArcGIS Pro 所使用的系统。
+您可能想观看我制作的关于这些推荐的 YouTube 视频：[`youtu.be/tH7JemkC7SM`](https://youtu.be/tH7JemkC7SM)。您还可以查看我当前 GIS 计算机的构建情况，[`youtu.be/GPXRqpqzHaQ`](https://youtu.be/GPXRqpqzHaQ)，这样您可以看到我运行 ArcGIS Pro 所使用的系统。
 
 ## 测试您的计算机是否可以运行 ArcGIS Pro
 
@@ -138,7 +138,7 @@ ArcGIS Pro不需要ArcGIS Desktop就可以在计算机上安装。它们是两�
 
 1.  您将首先打开您的网页浏览器，例如 **Chrome**、**Firefox**、**Internet Explorer** 或 **Safari**。
 
-1.  在您的网页浏览器中，访问 [http://pro.arcgis.com](http://pro.arcgis.com)。来自 Esri 的该网站允许您访问各种 ArcGIS Pro 资源。当它打开时，您应该看到以下内容：
+1.  在您的网页浏览器中，访问 [`pro.arcgis.com`](http://pro.arcgis.com)。来自 Esri 的该网站允许您访问各种 ArcGIS Pro 资源。当它打开时，您应该看到以下内容：
 
 ![](img/f429f9ad-a6dc-47d4-9017-734cb63c1772.png)
 
@@ -154,63 +154,63 @@ ArcGIS Pro不需要ArcGIS Desktop就可以在计算机上安装。它们是两�
 
 ![](img/c6e73e40-d1b5-48a3-9547-1ad9ada6c583.png)
 
-版本号将随着Esri发布的ArcGIS Pro新版本而更改。因此，当您运行此工具时，如果版本号不同，请不要感到惊讶。ArcGIS Pro 2.6是撰写本书时的最新版本。
+版本号将随着 Esri 发布的 ArcGIS Pro 新版本而更改。因此，当您运行此工具时，如果版本号不同，请不要感到惊讶。ArcGIS Pro 2.6 是撰写本书时的最新版本。
 
-请注意，前面的截图显示的是2.5。由于ArcGIS Pro 2.6刚刚发布，Esri在撰写本章时尚未更新此测试应用程序。
+请注意，前面的截图显示的是 2.5。由于 ArcGIS Pro 2.6 刚刚发布，Esri 在撰写本章时尚未更新此测试应用程序。
 
 1.  点击位于黑色横幅区域最右侧的“CAN YOU RUN IT?”按钮。这将下载一个名为`Detection.exe`的文件。该文件是您需要运行的实用程序，以检查您的计算机规格。
 
-1.  一旦下载了`Detection.exe`文件，请点击它以运行实用程序。您应该可以通过点击浏览器窗口底部的文件来完成此操作。如果您看不到它，请打开Windows文件资源管理器，它通常在系统托盘上以文件文件夹图标显示。然后，在左侧面板的快速访问下点击“下载”。您应该会看到位于那里的`Detection.exe`文件。
+1.  一旦下载了`Detection.exe`文件，请点击它以运行实用程序。您应该可以通过点击浏览器窗口底部的文件来完成此操作。如果您看不到它，请打开 Windows 文件资源管理器，它通常在系统托盘上以文件文件夹图标显示。然后，在左侧面板的快速访问下点击“下载”。您应该会看到位于那里的`Detection.exe`文件。
 
-您需要确保您在计算机上拥有运行此实用程序的管理员权限。如果您没有，您需要与您的IT工作人员协调以运行它。
+您需要确保您在计算机上拥有运行此实用程序的管理员权限。如果您没有，您需要与您的 IT 工作人员协调以运行它。
 
 当您运行检测实用程序时，您的浏览器窗口应显示正在检测您的计算机硬件，如下所示：
 
 ![](img/c694601e-3d83-468c-9918-df9e1bf91032.png)
 
-一旦实用程序审查了您的计算机规格，并将它们与Esri为ArcGIS Pro推荐的最低和推荐规格进行比较，它将生成一个报告，如下所示：
+一旦实用程序审查了您的计算机规格，并将它们与 Esri 为 ArcGIS Pro 推荐的最低和推荐规格进行比较，它将生成一个报告，如下所示：
 
 ![](img/8ee0f3f6-5a67-4e98-8114-1a96daf4046c.png)
 
-这将告诉您您的计算机是否具备运行ArcGIS Pro所需的处理能力。如果您的系统未满足任何最低要求，您将能够看到您的系统在哪些方面不足。
+这将告诉您您的计算机是否具备运行 ArcGIS Pro 所需的处理能力。如果您的系统未满足任何最低要求，您将能够看到您的系统在哪些方面不足。
 
-您现在已经了解了ArcGIS Pro的最低系统和硬件要求。我们将继续下一节，关于ArcGIS Pro的下载和安装。
+您现在已经了解了 ArcGIS Pro 的最低系统和硬件要求。我们将继续下一节，关于 ArcGIS Pro 的下载和安装。
 
-# 下载和安装ArcGIS Pro
+# 下载和安装 ArcGIS Pro
 
-现在您已经知道您的计算机可以运行ArcGIS Pro，是时候安装它了。首先，您需要从Esri下载安装文件。然后，您需要在您的计算机上运行安装程序，以便您能够运行应用程序。
+现在您已经知道您的计算机可以运行 ArcGIS Pro，是时候安装它了。首先，您需要从 Esri 下载安装文件。然后，您需要在您的计算机上运行安装程序，以便您能够运行应用程序。
 
-为了完成这两个步骤，您需要确保满足几个条件。首先，您必须有权从My Esri网络门户下载软件。其次，您必须在您的计算机上拥有安装或管理员权限。这些内容将在以下章节中介绍。
+为了完成这两个步骤，您需要确保满足几个条件。首先，您必须有权从 My Esri 网络门户下载软件。其次，您必须在您的计算机上拥有安装或管理员权限。这些内容将在以下章节中介绍。
 
 ## 如何下载安装文件
 
-为了安装ArcGIS Pro，请按照以下步骤操作：
+为了安装 ArcGIS Pro，请按照以下步骤操作：
 
-1.  您需要从My Esri网站[https://my.esri.com/](https://my.esri.com/)下载安装文件。
+1.  您需要从 My Esri 网站[`my.esri.com/`](https://my.esri.com/)下载安装文件。
 
-1.  到达那里后，你需要使用你的Esri全球账户登录。你必须确保你的全球账户与你组织的Esri客户账户相关联，以便完成此操作。最后，你需要确保你的用户账户有下载权限，如前所述。
+1.  到达那里后，你需要使用你的 Esri 全球账户登录。你必须确保你的全球账户与你组织的 Esri 客户账户相关联，以便完成此操作。最后，你需要确保你的用户账户有下载权限，如前所述。
 
-1.  一旦你登录到My Esri，你需要点击“我的组织”标签页并选择“下载”选项，如以下截图所示：
+1.  一旦你登录到 My Esri，你需要点击“我的组织”标签页并选择“下载”选项，如以下截图所示：
 
 ![图片](img/9975c077-68f0-40b5-97db-0a5e0d9c5175.png)
 
-1.  如果你不是你组织Esri账户的管理员或者没有下载权限，你可能看不到“下载”标签页。如果是这种情况，你需要从Esri那里请求查看“下载”标签页的权限。为此，你需要前往“我的组织”然后点击“概览”标签页。
+1.  如果你不是你组织 Esri 账户的管理员或者没有下载权限，你可能看不到“下载”标签页。如果是这种情况，你需要从 Esri 那里请求查看“下载”标签页的权限。为此，你需要前往“我的组织”然后点击“概览”标签页。
 
 然后，你需要点击“请求权限”。从那里，你需要点击“请求组织权限”框中的“继续”按钮。最后，填写以下截图所示的在线表格，并点击“发送请求”：
 
 ![图片](img/c36297f1-f2ce-4a51-a653-08e128e5f2dd.png)
 
-Esri更新你的权限可能需要24小时或更长时间，所以你不会立即获得访问权限。
+Esri 更新你的权限可能需要 24 小时或更长时间，所以你不会立即获得访问权限。
 
-如果你没有下载权限且不能等待，你可以通过Esri网站申请免费的ArcGIS试用许可证。你可以通过访问[https://www.esri.com/en-us/arcgis/products/arcgis-pro/trial](https://www.esri.com/en-us/arcgis/products/arcgis-pro/trial)并完成注册表单来完成此操作。然后，你会收到一封包含下载软件链接的电子邮件。这些就是你在My Esri网络门户上下载的相同安装文件。
+如果你没有下载权限且不能等待，你可以通过 Esri 网站申请免费的 ArcGIS 试用许可证。你可以通过访问[`www.esri.com/en-us/arcgis/products/arcgis-pro/trial`](https://www.esri.com/en-us/arcgis/products/arcgis-pro/trial)并完成注册表单来完成此操作。然后，你会收到一封包含下载软件链接的电子邮件。这些就是你在 My Esri 网络门户上下载的相同安装文件。
 
-1.  一旦你能够访问“下载”页面，你需要找到ArcGIS Pro并点击“查看下载”。这将带你到一个页面，允许你下载几个文件，这些文件将用于安装ArcGIS Pro和相关应用程序。你也可以检查系统要求，查看其他产品，并选择语言包：
+1.  一旦你能够访问“下载”页面，你需要找到 ArcGIS Pro 并点击“查看下载”。这将带你到一个页面，允许你下载几个文件，这些文件将用于安装 ArcGIS Pro 和相关应用程序。你也可以检查系统要求，查看其他产品，并选择语言包：
 
 ![图片](img/7cbbbf6c-0ecf-4688-87db-0770f4874ea2.png)
 
-如果你看不到下载各种安装文件的按钮，你需要展开“产品组件”。ArcGIS Pro的下载是ArcGIS Pro主应用程序的主要安装文件。如果你想安装ArcGIS Pro，你必须下载此文件。其他文件是可选的，但推荐下载。
+如果你看不到下载各种安装文件的按钮，你需要展开“产品组件”。ArcGIS Pro 的下载是 ArcGIS Pro 主应用程序的主要安装文件。如果你想安装 ArcGIS Pro，你必须下载此文件。其他文件是可选的，但推荐下载。
 
-ArcGIS Pro离线帮助选项将在你的本地计算机上安装帮助文件，这样你就可以在没有互联网连接的情况下访问它们。默认情况下，ArcGIS Pro访问位于ArcGIS Pro网站上的帮助信息，[http://pro.arcgis.com](http://pro.arcgis.com)。这意味着你将始终看到你正在使用的版本的最新帮助文档。
+ArcGIS Pro 离线帮助选项将在你的本地计算机上安装帮助文件，这样你就可以在没有互联网连接的情况下访问它们。默认情况下，ArcGIS Pro 访问位于 ArcGIS Pro 网站上的帮助信息，[`pro.arcgis.com`](http://pro.arcgis.com)。这意味着你将始终看到你正在使用的版本的最新帮助文档。
 
 如果您将在断开连接的环境中使用 ArcGIS Pro 并认为您可能需要访问帮助文档，则需要下载并安装此文件。现在您已下载安装文件，您就可以开始安装 ArcGIS Pro 了。
 
@@ -252,7 +252,7 @@ ArcGIS Pro离线帮助选项将在你的本地计算机上安装帮助文件，�
 
 您可能在没有蜂窝连接的现场工作，或者可能在通信中断的紧急情况下工作。在这些情况下，您将无法访问在线帮助。您需要在您的计算机上本地安装帮助文件。为此，请执行以下步骤：
 
-1.  打开您的网络浏览器并转到 [https://my.esri.com](https://my.esri.com)。
+1.  打开您的网络浏览器并转到 [`my.esri.com`](https://my.esri.com)。
 
 1.  使用您的 Esri 全球账户登录到 My Esri 网络门户。
 
@@ -286,19 +286,19 @@ ArcGIS Pro离线帮助选项将在你的本地计算机上安装帮助文件，�
 
 问题：*可以使用哪些类型的许可方式与 ArcGIS Pro 一起使用？*
 
-并发许可允许您在您希望的任何数量的计算机上安装软件，但只有与您组织拥有的许可数量相等的用户可以在任何给定时间内运行该应用程序。Esri正在逐步淘汰此许可方法，以支持单次使用和命名用户方法。如果您或您的组织正在使用并发使用许可，建议您在实施ArcGIS Pro时开始考虑迁移到其他两种方法之一。
+并发许可允许您在您希望的任何数量的计算机上安装软件，但只有与您组织拥有的许可数量相等的用户可以在任何给定时间内运行该应用程序。Esri 正在逐步淘汰此许可方法，以支持单次使用和命名用户方法。如果您或您的组织正在使用并发使用许可，建议您在实施 ArcGIS Pro 时开始考虑迁移到其他两种方法之一。
 
-ArcGIS Pro默认使用**命名用户许可方法**。这与**Adobe Creative Cloud**和**Microsoft Office 365**使用的许可方式类似。您可以通过ArcGIS Online或Portal for ArcGIS来管理这些许可。此方法将ArcGIS Pro许可分配给属于您的ArcGIS Online组织账户或Portal for ArcGIS的个人用户登录。因为这是ArcGIS Pro的默认许可方法，所以我们将向您展示如何在ArcGIS Online中为您的用户分配许可。如果您使用Portal for ArcGIS，同样的基本方法也将适用。
+ArcGIS Pro 默认使用**命名用户许可方法**。这与**Adobe Creative Cloud**和**Microsoft Office 365**使用的许可方式类似。您可以通过 ArcGIS Online 或 Portal for ArcGIS 来管理这些许可。此方法将 ArcGIS Pro 许可分配给属于您的 ArcGIS Online 组织账户或 Portal for ArcGIS 的个人用户登录。因为这是 ArcGIS Pro 的默认许可方法，所以我们将向您展示如何在 ArcGIS Online 中为您的用户分配许可。如果您使用 Portal for ArcGIS，同样的基本方法也将适用。
 
-## 了解ArcGIS Pro许可的数量和级别
+## 了解 ArcGIS Pro 许可的数量和级别
 
-如果您的组织一直在使用ArcGIS Desktop并支付年度软件维护费，您将获得与ArcGIS Pro许可相同数量和级别的许可。因此，如果您有2个ArcGIS Desktop **高级** 许可，4个ArcGIS Desktop **标准** 许可，以及10个ArcGIS Desktop **基本** 许可，您将拥有相同数量和级别的ArcGIS Pro许可，您可以将其分配给用户。
+如果您的组织一直在使用 ArcGIS Desktop 并支付年度软件维护费，您将获得与 ArcGIS Pro 许可相同数量和级别的许可。因此，如果您有 2 个 ArcGIS Desktop **高级** 许可，4 个 ArcGIS Desktop **标准** 许可，以及 10 个 ArcGIS Desktop **基本** 许可，您将拥有相同数量和级别的 ArcGIS Pro 许可，您可以将其分配给用户。
 
-问题：*ArcGIS Pro使用的默认许可方法是什么？*
+问题：*ArcGIS Pro 使用的默认许可方法是什么？*
 
-对于完全的新用户，许可的数量和级别将取决于您从Esri或其授权商业合作伙伴处购买的内容。Esri还为多许可以及非营利和教育机构提供折扣。
+对于完全的新用户，许可的数量和级别将取决于您从 Esri 或其授权商业合作伙伴处购买的内容。Esri 还为多许可以及非营利和教育机构提供折扣。
 
-ArcGIS Pro有三个许可级别，分别是基本、标准和高级。您拥有的或购买的许可级别将决定软件的功能。基本级别将具有最少的函数，而高级级别将具有最多的函数。以下是三个许可级别之间的一些功能差异：
+ArcGIS Pro 有三个许可级别，分别是基本、标准和高级。您拥有的或购买的许可级别将决定软件的功能。基本级别将具有最少的函数，而高级级别将具有最多的函数。以下是三个许可级别之间的一些功能差异：
 
 | **参数** | **基本** | **标准** | **高级** |
 | --- | --- | --- | --- |
@@ -313,7 +313,7 @@ ArcGIS Pro有三个许可级别，分别是基本、标准和高级。您拥有�
 | **执行叠加分析** | 限于并集和交集 | 限于并集和交集 | 是 |
 | **执行邻近分析** | 限于缓冲区和多环缓冲区 | 限于缓冲区和多环缓冲区 | 是 |
 
-要查看完整的功能比较，请访问 Esri 的产品网页 [http://pro.arcgis.com/en/pro-app/get-started/license-levels.htm](http://pro.arcgis.com/en/pro-app/get-started/license-levels.htm)。
+要查看完整的功能比较，请访问 Esri 的产品网页 [`pro.arcgis.com/en/pro-app/get-started/license-levels.htm`](http://pro.arcgis.com/en/pro-app/get-started/license-levels.htm)。
 
 问题：*ArcGIS Pro 有哪三个许可级别？*
 
@@ -343,7 +343,7 @@ ArcGIS Pro 还有一些扩展，这些扩展为基本应用程序提供了增强
 
 如前一个屏幕截图所示，Eric Pimpler 和 Polly Corbin 都已被分配了 ArcGIS Pro 基础许可证，而 Jason Kandrick、JoshuaKnight 和 NathanielKeith 则没有。作为管理员，您可以根据需要更改分配给用户的 ArcGIS Pro 许可证和扩展。您可以在添加新用户时分配许可证，或者在旧用户停用或删除时撤销许可证。
 
-要为用户分配许可证，他们必须是创建者或专业用户类型。ArcGIS Online 和 Portal for ArcGIS 至少有五种不同的用户类型，包括查看者、编辑者、现场工作人员、创建者和专业用户。如果您想了解更多关于这些用户类型以及如何分配许可证的信息，您可能会对这个视频感兴趣：[https://youtu.be/Lny22sjzg9o](https://youtu.be/Lny22sjzg9o)
+要为用户分配许可证，他们必须是创建者或专业用户类型。ArcGIS Online 和 Portal for ArcGIS 至少有五种不同的用户类型，包括查看者、编辑者、现场工作人员、创建者和专业用户。如果您想了解更多关于这些用户类型以及如何分配许可证的信息，您可能会对这个视频感兴趣：[`youtu.be/Lny22sjzg9o`](https://youtu.be/Lny22sjzg9o)
 
 如果用户的计算机上安装了 ArcGIS Desktop，ArcGIS Pro 许可证级别不必与用户可能运行的 ArcGIS for Desktop 许可证级别相匹配。这些是相互独立的。
 
@@ -351,7 +351,7 @@ ArcGIS Pro 还有一些扩展，这些扩展为基本应用程序提供了增强
 
 在您继续本书并完成练习之前，您需要下载和安装练习数据。为此，请按照以下步骤操作：
 
-1.  通过访问[https://www.packtpub.com/](https://www.packtpub.com/)并点击页面顶部的功能区菜单中的支持，从 Packt Publishing 下载练习数据。
+1.  通过访问[`www.packtpub.com/`](https://www.packtpub.com/)并点击页面顶部的功能区菜单中的支持，从 Packt Publishing 下载练习数据。
 
 1.  然后，点击代码下载，并在搜索标题框中输入`Learning ArcGIS Pro 2 - 第二版`。点击搜索框下出现的书籍标题。
 
@@ -461,10 +461,10 @@ ArcGIS Pro 使用项目，这些项目可以包含地图、数据连接、工具
 
 你可能想查看这些额外的资源，以获取本章所涵盖主题的更多信息。
 
-+   《*ArcGIS Pro 2.x 烹饪秘籍*》，作者：Tripp Corbin，GISP：[https://www.packtpub.com/application-development/arcgis-pro-2x-cookbook](https://www.packtpub.com/application-development/arcgis-pro-2x-cookbook)
++   《*ArcGIS Pro 2.x 烹饪秘籍*》，作者：Tripp Corbin，GISP：[`www.packtpub.com/application-development/arcgis-pro-2x-cookbook`](https://www.packtpub.com/application-development/arcgis-pro-2x-cookbook)
 
-+   《*比较 ArcGIS Desktop 和 ArcGIS Pro（视频）*》：[https://youtu.be/4_OOOQbLZDU](https://youtu.be/4_OOOQbLZDU)
++   《*比较 ArcGIS Desktop 和 ArcGIS Pro（视频）*》：[`youtu.be/4_OOOQbLZDU`](https://youtu.be/4_OOOQbLZDU)
 
-+   《*ArcGIS Pro 2.x：你的电脑有足够的马力吗？（视频）*》：[https://youtu.be/tH7JemkC7SM](https://youtu.be/tH7JemkC7SM)
++   《*ArcGIS Pro 2.x：你的电脑有足够的马力吗？（视频）*》：[`youtu.be/tH7JemkC7SM`](https://youtu.be/tH7JemkC7SM)
 
-+   《*通过 ArcGIS Online 分配 ArcGIS Pro 许可证（视频）*》：[https://youtu.be/Lny22sjzg9o](https://youtu.be/Lny22sjzg9o)
++   《*通过 ArcGIS Online 分配 ArcGIS Pro 许可证（视频）*》：[`youtu.be/Lny22sjzg9o`](https://youtu.be/Lny22sjzg9o)

@@ -1,50 +1,52 @@
-# 第3章 学习QGIS Python API
+# 第三章 学习 QGIS Python API
 
-在本章中，我们将更深入地了解QGIS Python开发者可用的Python库，并探讨我们可以使用这些库在QGIS中执行有用任务的多种方式。
+在本章中，我们将更深入地了解 QGIS Python 开发者可用的 Python 库，并探讨我们可以使用这些库在 QGIS 中执行有用任务的多种方式。
 
 尤其是你会学到：
 
-+   QGIS Python库是如何基于底层C++ API的
++   QGIS Python 库是如何基于底层 C++ API 的
 
-+   如何将C++ API文档作为参考来处理Python API
++   如何将 C++ API 文档作为参考来处理 Python API
 
-+   PyQGIS库是如何组织的
++   PyQGIS 库是如何组织的
 
-+   PyQGIS库中最重要概念和类以及如何使用它们
++   PyQGIS 库中最重要概念和类以及如何使用它们
 
-+   使用PyQGIS执行有用任务的实用示例
++   使用 PyQGIS 执行有用任务的实用示例
 
-# 关于QGIS Python API
+# 关于 QGIS Python API
 
-QGIS系统本身是用C++编写的，并有一套自己的API，这些API也是用C++编写的。Python API作为这些C++ API的包装器来实现。例如，有一个名为`QgisInterface`的Python类，它作为同名的C++类的包装器。`QgisInterface`的C++版本实现的所有方法、类变量等，都通过Python包装器提供。
+QGIS 系统本身是用 C++编写的，并有一套自己的 API，这些 API 也是用 C++编写的。Python API 作为这些 C++ API 的包装器来实现。例如，有一个名为`QgisInterface`的 Python 类，它作为同名的 C++类的包装器。`QgisInterface`的 C++版本实现的所有方法、类变量等，都通过 Python 包装器提供。
 
-这意味着当你访问Python QGIS API时，你不是直接访问API。相反，包装器将你的代码连接到底层的C++对象和方法，如下所示：
+这意味着当你访问 Python QGIS API 时，你不是直接访问 API。相反，包装器将你的代码连接到底层的 C++对象和方法，如下所示：
 
-![关于QGIS Python API](img/00021.jpeg)
+![关于 QGIS Python API](img/00021.jpeg)
 
-幸运的是，在大多数情况下，QGIS Python包装器简单地隐藏了底层C++代码的复杂性，所以PyQGIS库会按你期望的方式工作。然而，也有一些需要注意的问题，我们将在遇到时进行讨论。
+幸运的是，在大多数情况下，QGIS Python 包装器简单地隐藏了底层 C++代码的复杂性，所以 PyQGIS 库会按你期望的方式工作。然而，也有一些需要注意的问题，我们将在遇到时进行讨论。
 
-# 解读C++文档
+# 解读 C++文档
 
-由于QGIS是用C++实现的，因此QGIS API的文档都是基于C++的。这可能会让Python开发者难以理解和使用QGIS API。例如，`QgsInterface.zoomToActiveLayer()`方法的API文档：
+由于 QGIS 是用 C++实现的，因此 QGIS API 的文档都是基于 C++的。这可能会让 Python 开发者难以理解和使用 QGIS API。例如，`QgsInterface.zoomToActiveLayer()`方法的 API 文档：
 
-![解读C++文档](img/00022.jpeg)
+![解读 C++文档](img/00022.jpeg)
 
-如果你不太熟悉C++，这可能会相当令人困惑。幸运的是，作为一个Python程序员，你可以跳过很多复杂性，因为它们对你不适用。特别是：
+如果你不太熟悉 C++，这可能会相当令人困惑。幸运的是，作为一个 Python 程序员，你可以跳过很多复杂性，因为它们对你不适用。特别是：
 
 +   `virtual`关键字是你不需要关心的实现细节
 
 +   `void`表示该方法不返回任何值
 
-+   `QgisInterface::zoomToActiveLayer`中的双冒号是C++中用于分隔类名和方法名的约定
++   `QgisInterface::zoomToActiveLayer`中的双冒号是 C++中用于分隔类名和方法名的约定
 
-就像在Python中一样，括号表明该方法不接收任何参数。所以如果你有一个`QgisInterface`的实例（例如，作为Python控制台中的标准`iface`变量），你可以通过简单地输入以下内容来调用此方法：
+就像在 Python 中一样，括号表明该方法不接收任何参数。所以如果你有一个`QgisInterface`的实例（例如，作为 Python 控制台中的标准`iface`变量），你可以通过简单地输入以下内容来调用此方法：
 
-[PRE0]
+```py
+iface.zoomToActiveLayer()
+```
 
-现在，让我们看看一个稍微复杂一点的例子：`QgisInterface.addVectorLayer()`方法的C++文档如下所示：
+现在，让我们看看一个稍微复杂一点的例子：`QgisInterface.addVectorLayer()`方法的 C++文档如下所示：
 
-![解读C++文档](img/00023.jpeg)
+![解读 C++文档](img/00023.jpeg)
 
 注意 `virtual` 关键字后面跟随的是 `QgsVectorLayer*` 而不是 `void`。这是此方法的返回值；它返回一个 `QgsVector` 对象。
 
@@ -116,7 +118,7 @@ C++ 编译器根据提供的参数选择正确的方法。Python 没有方法重
 
 ## `qgis.core` 包
 
-`qgis.core`包定义了在整个QGIS系统中使用的根本类。这个包的大部分内容是专门用于处理矢量格式和栅格格式地理空间数据，并在地图中显示这些类型的数据。让我们看看这是如何实现的。
+`qgis.core`包定义了在整个 QGIS 系统中使用的根本类。这个包的大部分内容是专门用于处理矢量格式和栅格格式地理空间数据，并在地图中显示这些类型的数据。让我们看看这是如何实现的。
 
 ### 地图和地图图层
 
@@ -124,7 +126,7 @@ C++ 编译器根据提供的参数选择正确的方法。Python 没有方法重
 
 ![地图和地图图层](img/00030.jpeg)
 
-QGIS支持三种类型的地图图层：
+QGIS 支持三种类型的地图图层：
 
 +   **矢量图层**：此图层绘制地理空间特征，如点、线和多边形
 
@@ -142,23 +144,27 @@ QGIS支持三种类型的地图图层：
 
 ![坐标参考系统](img/00031.jpeg)
 
-地球仪图像由维基媒体提供（[http://commons.wikimedia.org/wiki/File:Rotating_globe.gif](http://commons.wikimedia.org/wiki/File:Rotating_globe.gif)）
+地球仪图像由维基媒体提供（[`commons.wikimedia.org/wiki/File:Rotating_globe.gif`](http://commons.wikimedia.org/wiki/File:Rotating_globe.gif)）
 
 坐标参考系统（CRS）有两个部分：一个**椭球体**，它是地球表面的数学模型，以及一个**投影**，它是一个将球面上各点转换为地图上的(x,y)坐标的公式。
 
-幸运的是，大多数时候，你可以简单地选择与你要使用的数据的CRS相匹配的适当CRS。然而，由于多年来已经设计了多种不同的坐标参考系统，因此在绘制你的地理空间数据时使用正确的CRS至关重要。如果你不这样做，你的特征将显示在错误的位置或具有错误的形状。
+幸运的是，大多数时候，你可以简单地选择与你要使用的数据的 CRS 相匹配的适当 CRS。然而，由于多年来已经设计了多种不同的坐标参考系统，因此在绘制你的地理空间数据时使用正确的 CRS 至关重要。如果你不这样做，你的特征将显示在错误的位置或具有错误的形状。
 
-今天大多数可用的地理空间数据使用**EPSG 4326**坐标参考系统（有时也称为WGS84）。此CRS定义坐标为经纬度值。这是将新数据导入QGIS时使用的默认CRS。但是，如果你的数据使用不同的坐标参考系统，你将需要为你的地图图层创建并使用不同的CRS。
+今天大多数可用的地理空间数据使用**EPSG 4326**坐标参考系统（有时也称为 WGS84）。此 CRS 定义坐标为经纬度值。这是将新数据导入 QGIS 时使用的默认 CRS。但是，如果你的数据使用不同的坐标参考系统，你将需要为你的地图图层创建并使用不同的 CRS。
 
-`qgis.core.QgsCoordinateReferenceSystem`类表示一个CRS。一旦你创建了你的坐标参考系统，你可以告诉你的地图图层在访问底层数据时使用该CRS。例如：
+`qgis.core.QgsCoordinateReferenceSystem`类表示一个 CRS。一旦你创建了你的坐标参考系统，你可以告诉你的地图图层在访问底层数据时使用该 CRS。例如：
 
-[PRE1]
+```py
+crs = QgsCoordinateReferenceSystem(4326,
+           QgsCoordinateReferenceSystem.EpsgCrsId)
+layer.setCrs(crs)
+```
 
-注意，不同的地图图层可以使用不同的坐标参考系统。每个图层在将图层内容绘制到地图上时都会使用其自己的CRS。
+注意，不同的地图图层可以使用不同的坐标参考系统。每个图层在将图层内容绘制到地图上时都会使用其自己的 CRS。
 
 ### 矢量图层
 
-矢量层以点、线、多边形等形式将地理空间数据绘制到地图上。矢量格式的地理空间数据通常从**矢量数据源**（如shapefile或数据库）加载。其他矢量数据源可以在内存中存储矢量数据，或从互联网上的网络服务加载数据。
+矢量层以点、线、多边形等形式将地理空间数据绘制到地图上。矢量格式的地理空间数据通常从**矢量数据源**（如 shapefile 或数据库）加载。其他矢量数据源可以在内存中存储矢量数据，或从互联网上的网络服务加载数据。
 
 矢量格式数据源具有许多特征，其中每个特征代表数据源中的单个*记录*。`qgis.core.QgsFeature`类代表数据源中的特征。每个特征具有以下组件：
 
@@ -168,7 +174,7 @@ QGIS支持三种类型的地图图层：
 
 +   **属性**：这些是键值对，提供了关于特征的额外信息。例如，代表城市的城市数据源可能具有`total_area`（总面积）、`population`（人口）、`elevation`（海拔）等属性。属性值可以是字符串、整数或浮点数。
 
-在QGIS中，**数据提供者**允许矢量层访问数据源中的特征。数据提供者是一个`qgis.core.QgsVectorDataProvider`的实例，包括：
+在 QGIS 中，**数据提供者**允许矢量层访问数据源中的特征。数据提供者是一个`qgis.core.QgsVectorDataProvider`的实例，包括：
 
 +   **几何类型**：这是在数据源中存储的几何类型
 
@@ -182,7 +188,7 @@ QGIS支持三种类型的地图图层：
 
 +   **数据提供者**：这是连接到包含要显示的地理空间信息的底层文件或数据库的连接
 
-+   **坐标参考系统**：这表示地理空间数据使用哪个CRS
++   **坐标参考系统**：这表示地理空间数据使用哪个 CRS
 
 +   **渲染器**：这决定了如何显示特征
 
@@ -192,7 +198,7 @@ QGIS支持三种类型的地图图层：
 
 矢量地图层中的特征是通过**渲染器**和**符号**对象的组合来显示的。渲染器选择用于特定特征的符号，而符号执行实际的绘制。
 
-QGIS定义了三种基本的符号类型：
+QGIS 定义了三种基本的符号类型：
 
 +   **标记符号**：这以填充圆的形式显示点
 
@@ -210,11 +216,14 @@ QGIS定义了三种基本的符号类型：
 
     ### 注意
 
-    你可能想知道为什么所有这些类的名称中都有“V2”。这是QGIS的历史特性。QGIS的早期版本支持渲染的“旧”和“新”系统，而“V2”命名指的是新的渲染系统。旧的渲染系统已不再存在，但“V2”命名继续与现有代码保持向后兼容。
+    你可能想知道为什么所有这些类的名称中都有“V2”。这是 QGIS 的历史特性。QGIS 的早期版本支持渲染的“旧”和“新”系统，而“V2”命名指的是新的渲染系统。旧的渲染系统已不再存在，但“V2”命名继续与现有代码保持向后兼容。
 
 内部来说，符号相当复杂，使用“符号层”来在彼此之上绘制多个元素。然而，在大多数情况下，你可以使用“简单”版本的符号。这使得创建新符号时不必处理符号层的内部复杂性。例如：
 
-[PRE2]
+```py
+symbol = QgsMarkerSymbolV2.createSimple({'width' : 1.0,
+                                         'color' : "255,0,0"})
+```
 
 当符号将特征绘制到地图上时，渲染器用于选择用于绘制特定特征的符号。在最简单的情况下，同一符号用于图层内的每个特征。这被称为**单个符号渲染器**，由`qgis.core.QgsSingleSymbolRenderV2`类表示。其他可能性包括：
 
@@ -224,41 +233,87 @@ QGIS定义了三种基本的符号类型：
 
 使用单个符号渲染器非常直接：
 
-[PRE3]
+```py
+symbol = ...
+renderer = QgsSingleSymbolRendererV2(symbol)
+layer.setRendererV2(renderer)
+```
 
 要使用分类符号渲染器，你首先定义一个`qgis.core.QgsRendererCategoryV2`对象的列表，然后使用它来创建渲染器。例如：
 
-[PRE4]
+```py
+symbol_male = ...
+symbol_female = ...
+
+categories = []
+categories.append(QgsRendererCategoryV2("M", symbol_male, "Male"))
+categories.append(QgsRendererCategoryV2("F", symbol_female,
+                    "Female"))
+
+renderer = QgsCategorizedSymbolRendererV2("", categories)
+renderer.setClassAttribute("GENDER")
+layer.setRendererV2(renderer)
+```
 
 注意，`QgsRendererCategoryV2`构造函数接受三个参数：所需的值、使用的符号以及用于描述该类别的标签。
 
 最后，要使用渐变符号渲染器，你首先定义一个`qgis.core.QgsRendererRangeV2`对象的列表，然后使用它来创建你的渲染器。例如：
 
-[PRE5]
+```py
+symbol1 = ...
+symbol2 = ...
+
+ranges = []
+ranges.append(QgsRendererRangeV2(0, 10, symbol1, "Range 1"))
+ranges.append(QgsRendererRange(11, 20, symbol2, "Range 2"))
+
+renderer = QgsGraduatedSymbolRendererV2("", ranges)
+renderer.setClassAttribute("FIELD")
+layer.setRendererV2(renderer)
+```
 
 #### 访问矢量数据
 
-除了在地图中显示矢量图层的内容外，你还可以使用Python直接访问底层数据。这可以通过数据提供者的`getFeatures()`方法完成。例如，要遍历图层内的所有特征，你可以执行以下操作：
+除了在地图中显示矢量图层的内容外，你还可以使用 Python 直接访问底层数据。这可以通过数据提供者的`getFeatures()`方法完成。例如，要遍历图层内的所有特征，你可以执行以下操作：
 
-[PRE6]
+```py
+provider = layer.dataProvider()
+for feature in provider.getFeatures(QgsFeatureRequest()):
+  ...
+```
 
 如果你想要根据某些标准搜索特征，你可以使用`QgsFeatureRequest`对象的`setFilterExpression()`方法，如下所示：
 
-[PRE7]
+```py
+provider = layer.dataProvider()
+request = QgsFeatureRequest()
+request.setFilterExpression('"GENDER" = "M"')
+for feature in provider.getFeatures(QgsFeatureRequest()):
+  ...
+```
 
-一旦你有了特征，很容易获取特征的几何形状、ID和属性。例如：
+一旦你有了特征，很容易获取特征的几何形状、ID 和属性。例如：
 
-[PRE8]
+```py
+  geometry = feature.geometry()
+  id = feature.id()
+  name = feature.attribute("NAME")
+```
 
 `feature.geometry()`调用返回的对象，它将是一个`qgis.core.QgsGeometry`实例，代表特征的几何形状。此对象有大量你可以使用的方法来提取底层数据并执行各种地理空间计算。
 
 #### 空间索引
 
-在前面的章节中，我们根据属性值搜索特征。然而，有时您可能希望根据它们在空间中的位置来查找特征。例如，您可能希望找到所有位于给定点一定距离内的特征。为此，您可以使用**空间索引**，该索引根据特征的位置和范围进行索引。空间索引在QGIS中由`QgsSpatialIndex`类表示。
+在前面的章节中，我们根据属性值搜索特征。然而，有时您可能希望根据它们在空间中的位置来查找特征。例如，您可能希望找到所有位于给定点一定距离内的特征。为此，您可以使用**空间索引**，该索引根据特征的位置和范围进行索引。空间索引在 QGIS 中由`QgsSpatialIndex`类表示。
 
 为了性能原因，不会为每个矢量图层自动创建空间索引。然而，当您需要时创建一个很容易：
 
-[PRE9]
+```py
+provider = layer.dataProvider()
+index = QgsSpatialIndex()
+for feature in provider.getFeatures(QgsFeatureRequest()):
+  index.insertFeature(feature)
+```
 
 不要忘记，您可以使用`QgsFeatureRequest.setFilterExpression()`方法来限制添加到索引中的特征集。
 
@@ -266,13 +321,18 @@ QGIS定义了三种基本的符号类型：
 
 +   您可以使用`nearestNeighbor()`方法找到与给定点最近的特征。例如：
 
-    [PRE10]
+    ```py
+    features = index.nearestNeighbor(QgsPoint(long, lat), 5)
+    ```
 
     注意，此方法需要两个参数：所需的点作为一个`QgsPoint`对象以及要返回的特征数量。
 
 +   您可以使用`intersects()`方法找到与给定矩形区域相交的所有特征，如下所示：
 
-    [PRE11]
+    ```py
+    features = index.intersects(QgsRectangle(left, bottom,
+                         right, top))
+    ```
 
 ### 栅格图层
 
@@ -299,15 +359,15 @@ QGIS定义了三种基本的符号类型：
 | `PalettedColor` | 对于单波段栅格数据源，调色板将每个栅格值映射到颜色。 |
 | `SingleBandGray` | 对于单波段栅格数据源，栅格值直接用作灰度值。 |
 | `SingleBandPseudoColor` | 对于单波段栅格数据源，栅格值用于计算伪颜色。 |
-| `PalettedSingleBandGray` | 对于具有调色板的单波段栅格数据源，这种绘图风格告诉QGIS忽略调色板并直接使用栅格值作为灰度值。 |
-| `PalettedSingleBandPseudoColor` | 对于具有调色板的单波段栅格数据源，这种绘图风格告诉QGIS忽略调色板并使用栅格值计算伪颜色。 |
+| `PalettedSingleBandGray` | 对于具有调色板的单波段栅格数据源，这种绘图风格告诉 QGIS 忽略调色板并直接使用栅格值作为灰度值。 |
+| `PalettedSingleBandPseudoColor` | 对于具有调色板的单波段栅格数据源，这种绘图风格告诉 QGIS 忽略调色板并使用栅格值计算伪颜色。 |
 | `MultiBandColor` | 对于多波段栅格数据源，为红色、绿色和蓝色颜色组件分别使用一个单独的波段。对于这种绘图风格，可以使用`setRedBand()`、`setGreenBand()`和`setBlueBand()`方法来选择每个颜色组件使用的波段。 |
 | `MultiBandSingleBandGray` | 对于多波段栅格数据源，选择一个波段用作灰度颜色值。对于这种绘图风格，使用`setGrayBand()`方法指定要使用的波段。 |
 | `MultiBandSingleBandPseudoColor` | 对于多波段栅格数据源，选择一个波段用于计算伪颜色。对于这种绘图风格，使用`setGrayBand()`方法指定要使用的波段。 |
 
 要设置绘图风格，使用`layer.setDrawingStyle()`方法，传入包含所需绘图风格名称的字符串。您还需要调用前面表格中描述的各个`setXXXBand()`方法，以告诉栅格层哪些波段包含用于绘制每个像素的值。
 
-注意，当您调用前面的函数来更改栅格数据的显示方式时，QGIS不会自动更新地图。要立即显示您的更改，您需要执行以下操作：
+注意，当您调用前面的函数来更改栅格数据的显示方式时，QGIS 不会自动更新地图。要立即显示您的更改，您需要执行以下操作：
 
 1.  关闭栅格图像缓存。这可以通过调用`layer.setImageCache(None)`来实现。
 
@@ -317,7 +377,14 @@ QGIS定义了三种基本的符号类型：
 
 与矢量格式数据一样，您可以通过数据提供者的`identify()`方法访问底层栅格数据。这样做最简单的方法是传入一个坐标并检索该坐标处的值或值。例如：
 
-[PRE12]
+```py
+provider = layer.dataProvider()
+values = provider.identify(QgsPoint(x, y),
+              QgsRaster.IdentifyFormatValue)
+if values.isValid():
+  for band,value in values.results().items():
+    ...
+```
 
 如您所见，您需要检查给定坐标是否存在于栅格数据中（使用`isValid()`调用）。`values.results()`方法返回一个将波段编号映射到值的字典。
 
@@ -420,39 +487,84 @@ QGIS定义了三种基本的符号类型：
 
 # 使用 PyQGIS 库
 
-在上一节中，我们查看了一些由PyQGIS库提供的类。让我们利用这些类来执行一些实际的地理空间开发任务。
+在上一节中，我们查看了一些由 PyQGIS 库提供的类。让我们利用这些类来执行一些实际的地理空间开发任务。
 
 ## 分析栅格数据
 
 我们将首先编写一个程序来加载一些栅格格式数据并分析其内容。为了使这个过程更有趣，我们将使用**数字高程模型**（**DEM**）文件，这是一种包含高程数据的栅格格式数据文件。
 
-**全球陆地一千米基础高程项目**（**GLOBE**）为全球提供免费的DEM数据，其中每个像素代表地球表面的一个平方公里。GLOBE数据可以从[http://www.ngdc.noaa.gov/mgg/topo/gltiles.html](http://www.ngdc.noaa.gov/mgg/topo/gltiles.html)下载。下载E图块，它包括美国西部的一半。生成的文件，命名为`e10g`，包含您所需的高度信息。您还需要下载`e10g.hdr`头文件，以便QGIS能够读取该文件——您可以从[http://www.ngdc.noaa.gov/mgg/topo/elev/esri/hdr](http://www.ngdc.noaa.gov/mgg/topo/elev/esri/hdr)下载。一旦下载了这两个文件，将它们合并到一个方便的目录中。
+**全球陆地一千米基础高程项目**（**GLOBE**）为全球提供免费的 DEM 数据，其中每个像素代表地球表面的一个平方公里。GLOBE 数据可以从[`www.ngdc.noaa.gov/mgg/topo/gltiles.html`](http://www.ngdc.noaa.gov/mgg/topo/gltiles.html)下载。下载 E 图块，它包括美国西部的一半。生成的文件，命名为`e10g`，包含您所需的高度信息。您还需要下载`e10g.hdr`头文件，以便 QGIS 能够读取该文件——您可以从[`www.ngdc.noaa.gov/mgg/topo/elev/esri/hdr`](http://www.ngdc.noaa.gov/mgg/topo/elev/esri/hdr)下载。一旦下载了这两个文件，将它们合并到一个方便的目录中。
 
-您现在可以使用以下代码将DEM数据加载到QGIS中：
+您现在可以使用以下代码将 DEM 数据加载到 QGIS 中：
 
-[PRE13]
+```py
+registry = QgsProviderRegistry.instance()
+provider = registry.provider("gdal", "/path/to/e10g")
+```
 
-不幸的是，这里有一点复杂性。由于QGIS不知道数据使用的是哪个坐标参考系统，它会显示一个对话框，要求您选择CRS。由于GLOBE DEM数据位于WGS84 CRS中，这是QGIS默认使用的，因此此对话框是多余的。为了禁用它，我们需要在程序顶部添加以下内容：
+不幸的是，这里有一点复杂性。由于 QGIS 不知道数据使用的是哪个坐标参考系统，它会显示一个对话框，要求您选择 CRS。由于 GLOBE DEM 数据位于 WGS84 CRS 中，这是 QGIS 默认使用的，因此此对话框是多余的。为了禁用它，我们需要在程序顶部添加以下内容：
 
-[PRE14]
+```py
+from PyQt4.QtCore import QSettings
+QSettings().setValue("/Projections/defaultBehaviour", "useGlobal")
+```
 
-现在我们已经将我们的栅格DEM数据加载到QGIS中，我们可以分析它了。虽然我们可以用DEM数据做很多事情，但让我们计算数据中每个唯一高程值出现的频率。
+现在我们已经将我们的栅格 DEM 数据加载到 QGIS 中，我们可以分析它了。虽然我们可以用 DEM 数据做很多事情，但让我们计算数据中每个唯一高程值出现的频率。
 
 ### 注意
 
-注意，我们正在直接使用`QgsRasterDataProvider`加载DEM数据。我们不想在地图上显示这些信息，因此我们不想（或不需要）将其加载到`QgsRasterLayer`中。
+注意，我们正在直接使用`QgsRasterDataProvider`加载 DEM 数据。我们不想在地图上显示这些信息，因此我们不想（或不需要）将其加载到`QgsRasterLayer`中。
 
-由于DEM数据是栅格格式，您需要遍历单个像素或单元格以获取每个高度值。`provider.xSize()`和`provider.ySize()`方法告诉我们DEM中有多少个单元格，而`provider.extent()`方法给出了DEM覆盖的地球表面区域。使用这些信息，我们可以以下述方式从DEM的内容中提取单个高程值：
+由于 DEM 数据是栅格格式，您需要遍历单个像素或单元格以获取每个高度值。`provider.xSize()`和`provider.ySize()`方法告诉我们 DEM 中有多少个单元格，而`provider.extent()`方法给出了 DEM 覆盖的地球表面区域。使用这些信息，我们可以以下述方式从 DEM 的内容中提取单个高程值：
 
-[PRE15]
+```py
+raster_extent = provider.extent()
+raster_width = provider.xSize()
+raster_height = provider.ySize()
+block = provider.block(1, raster_extent, raster_width,
+            raster_height)
+```
 
 返回的`block`变量是`QgsRasterBlock`类型的一个对象，它本质上是一个值的二维数组。让我们遍历栅格并提取单个高程值：
 
-[PRE16]
+```py
+for x in range(raster_width):
+  for y in range(raster_height):
+    elevation = block.value(x, y)
+    ....
+```
 
-现在我们已经加载了单个高程值，很容易从这些值中构建直方图。以下是整个程序，用于将DEM数据加载到内存中，然后计算并显示直方图：
+现在我们已经加载了单个高程值，很容易从这些值中构建直方图。以下是整个程序，用于将 DEM 数据加载到内存中，然后计算并显示直方图：
 
-[PRE17]
+```py
+from PyQt4.QtCore import QSettings
+QSettings().setValue("/Projections/defaultBehaviour", "useGlobal")
+
+registry = QgsProviderRegistry.instance()
+provider = registry.provider("gdal", "/path/to/e10g")
+
+raster_extent = provider.extent()
+raster_width = provider.xSize()
+raster_height = provider.ySize()
+no_data_value = provider.srcNoDataValue(1)
+
+histogram = {} # Maps elevation to number of occurrences.
+
+block = provider.block(1, raster_extent, raster_width,
+            raster_height)
+if block.isValid():
+  for x in range(raster_width):
+    for y in range(raster_height):
+      elevation = block.value(x, y)
+      if elevation != no_data_value:
+        try:
+          histogram[elevation] += 1
+        except KeyError:
+          histogram[elevation] = 1
+
+for height in sorted(histogram.keys()):
+  print height, histogram[height]
+```
 
 注意，我们在代码中添加了一个 *无数据值* 检查。栅格数据通常包括没有与之关联值的像素。在 DEM 的情况下，高程数据仅提供陆地区域的数据；海洋上的像素没有高程，我们必须排除它们，否则我们的直方图将不准确。
 
@@ -466,33 +578,76 @@ QGIS定义了三种基本的符号类型：
 
 让我们先让用户选择第一个 shapefile，并为该文件打开一个矢量数据提供者：
 
-[PRE18]
+```py
+filename_1 = QFileDialog.getOpenFileName(iface.mainWindow(),
+                     "First Shapefile",
+                     "~", "*.shp")
+if not filename_1:
+  return
+
+registry = QgsProviderRegistry.instance()
+provider_1 = registry.provider("ogr", filename_1)
+```
 
 然后，我们可以从该文件中读取几何体到内存中：
 
-[PRE19]
+```py
+geometries_1 = []
+for feature in provider_1.getFeatures(QgsFeatureRequest()):
+  geometries_1.append(QgsGeometry(feature.geometry()))
+```
 
 这段代码的最后一句包含了一个重要的特性。注意，我们使用以下方法：
 
-[PRE20]
+```py
+QgsGeometry(feature.geometry())
+```
 
 我们使用前面的行而不是以下行：
 
-[PRE21]
+```py
+feature.geometry()
+```
 
 这是为了获取要添加到列表中的几何体对象。换句话说，我们必须基于现有几何体对象创建一个新的几何体对象。这是 QGIS Python 包装器工作方式的一个限制：`feature.geometry()` 方法返回一个几何体的引用，但 C++ 代码不知道你在 Python 代码中将这个引用存储起来。所以，当特征不再需要时，特征几何体使用的内存也会被释放。如果你后来尝试访问该几何体，整个 QGIS 系统将会崩溃。为了解决这个问题，我们创建几何体的一个副本，这样我们就可以在特征内存释放后仍然引用它。
 
 现在我们已经将第一组几何体加载到内存中，让我们对第二个 shapefile 也做同样的操作：
 
-[PRE22]
+```py
+filename_2 = QFileDialog.getOpenFileName(iface.mainWindow(),
+                     "Second Shapefile",
+                     "~", "*.shp")
+if not filename_2:
+  return
+
+provider_2 = registry.provider("ogr", filename_2)
+
+geometries_2 = []
+for feature in provider_2.getFeatures(QgsFeatureRequest()):
+  geometries_2.append(QgsGeometry(feature.geometry()))
+```
 
 当两组几何体被加载到内存中后，我们就可以开始从一组中减去另一组了。然而，为了使这个过程更高效，我们将第二个 shapefile 中的几何体合并成一个大的几何体，然后一次性减去，而不是逐个减去。这将使减法过程变得更快：
 
-[PRE23]
+```py
+combined_geometry = None
+for geometry in geometries_2:
+  if combined_geometry == None:
+    combined_geometry = geometry
+  else:
+    combined_geometry = combined_geometry.combine(geometry)
+```
 
 我们现在可以通过减去一个来计算新的几何体集：
 
-[PRE24]
+```py
+dst_geometries = []
+for geometry in geometries_1:
+  dst_geometry = geometry.difference(combined_geometry)
+  if not dst_geometry.isGeosValid(): continue
+  if dst_geometry.isGeosEmpty(): continue
+  dst_geometries.append(dst_geometry)
+```
 
 注意，我们检查目标几何体是否在数学上是有效的，并且不为空。
 
@@ -502,21 +657,43 @@ QGIS定义了三种基本的符号类型：
 
 我们最后的任务是保存结果几何体到一个新的 shapefile 中。我们首先会要求用户输入目标 shapefile 的名称：
 
-[PRE25]
+```py
+dst_filename = QFileDialog.getSaveFileName(iface.mainWindow(),
+                      "Save results to:",
+                      "~", "*.shp")
+if not dst_filename:
+  return
+```
 
 我们将使用**矢量文件写入器**将几何形状保存到形状文件中。让我们首先初始化文件写入器对象：
 
-[PRE26]
+```py
+fields = QgsFields()
+writer = QgsVectorFileWriter(dst_filename, "ASCII", fields,
+               dst_geometries[0].wkbType(),
+               None, "ESRI Shapefile")
+if writer.hasError() != QgsVectorFileWriter.NoError:
+  print "Error!"
+  return
+```
 
 我们的形状文件中没有属性，因此字段列表为空。现在写入器已经设置好，我们可以将几何形状保存到文件中：
 
-[PRE27]
+```py
+for geometry in dst_geometries:
+  feature = QgsFeature()
+  feature.setGeometry(geometry)
+  writer.addFeature(feature)
+```
 
 现在所有数据都已写入磁盘，让我们显示一个消息框，通知用户我们已经完成：
 
-[PRE28]
+```py
+QMessageBox.information(iface.mainWindow(), "",
+            "Subtracted features saved to disk.")
+```
 
-如您所见，在PyQGIS中创建新的形状文件非常简单，使用Python操作几何形状也很容易——只要您复制您想要保留的`QgsGeometry`对象。如果您的Python代码在操作几何形状时开始崩溃，这可能是您应该首先查找的问题。
+如您所见，在 PyQGIS 中创建新的形状文件非常简单，使用 Python 操作几何形状也很容易——只要您复制您想要保留的`QgsGeometry`对象。如果您的 Python 代码在操作几何形状时开始崩溃，这可能是您应该首先查找的问题。
 
 ## 在地图中使用不同符号表示不同特征
 
@@ -524,19 +701,42 @@ QGIS定义了三种基本的符号类型：
 
 让我们首先创建一个地图层来显示世界边界数据集形状文件的内容：
 
-[PRE29]
+```py
+layer = iface.addVectorLayer("/path/to/TM_WORLD_BORDERS-0.3.shp", 
+               "continents", "ogr")
+```
 
 世界边界数据集形状文件中的每个唯一区域代码对应一个洲。我们想要定义每个这些区域使用的名称和颜色，并使用这些信息来设置显示地图时使用的各种类别：
 
-[PRE30]
+```py
+from PyQt4.QtGui import QColor
+categories = []
+for value,color,label in [(0,   "#660000", "Antarctica"),
+                          (2,   "#006600", "Africa"),
+                          (9,   "#000066", "Oceania"),
+                          (19,  "#660066", "The Americas"),
+                          (142, "#666600", "Asia"),
+                          (150, "#006666", "Europe")]:
+  symbol = QgsSymbolV2.defaultSymbol(layer.geometryType())
+  symbol.setColor(QColor(color))
+  categories.append(QgsRendererCategoryV2(value, symbol, label))
+```
 
 在设置好这些类别后，我们只需更新地图层以使用基于`region`属性值的分类渲染器，然后重新绘制地图：
 
-[PRE31]
+```py
+layer.setRendererV2(QgsCategorizedSymbolRendererV2("region",
+                          categories))
+layer.triggerRepaint()
+```
 
 由于这是一个可以多次运行的脚本，让我们让我们的脚本在添加新层之前自动删除现有的`continents`层（如果存在）。为此，我们可以在脚本的开头添加以下内容：
 
-[PRE32]
+```py
+layer_registry = QgsMapLayerRegistry.instance()
+for layer in layer_registry.mapLayersByName("continents"):
+  layer_registry.removeMapLayer(layer.id())
+```
 
 现在当我们的脚本运行时，它将创建一个（并且只有一个）层，显示不同颜色的各种大陆。这些在打印的书中将显示为不同的灰色阴影，但在计算机屏幕上颜色将是可见的：
 
@@ -544,19 +744,44 @@ QGIS定义了三种基本的符号类型：
 
 现在，让我们使用相同的数据集根据每个国家的相对人口对其进行着色。我们首先删除现有的`"population"`层（如果存在）：
 
-[PRE33]
+```py
+layer_registry = QgsMapLayerRegistry.instance()
+for layer in layer_registry.mapLayersByName("population"):
+  layer_registry.removeMapLayer(layer.id())
+```
 
 接下来，我们将世界边界数据集打开到一个新的层中，称为`"population"`：
 
-[PRE34]
+```py
+layer = iface.addVectorLayer("/path/to/TM_WORLD_BORDERS-0.3.shp", 
+               "population", "ogr")
+```
 
 然后，我们需要设置我们的各种人口范围：
 
-[PRE35]
+```py
+from PyQt4.QtGui import QColor
+ranges = []
+for min_pop,max_pop,color in [(0,        99999,     "#332828"),
+                              (100000,   999999,    "#4c3535"),
+                              (1000000,  4999999,   "#663d3d"),
+                              (5000000,  9999999,   "#804040"),
+                              (10000000, 19999999,  "#993d3d"),
+                              (20000000, 49999999,  "#b33535"),
+                              (50000000, 999999999, "#cc2828")]:
+  symbol = QgsSymbolV2.defaultSymbol(layer.geometryType())
+  symbol.setColor(QColor(color))
+  ranges.append(QgsRendererRangeV2(min_pop, max_pop,
+                   symbol, ""))
+```
 
 现在我们有了人口范围及其相关颜色，我们只需设置一个渐变符号渲染器，根据`pop2005`属性值选择符号，并告诉地图重新绘制自己：
 
-[PRE36]
+```py
+layer.setRendererV2(QgsGraduatedSymbolRendererV2("pop2005",
+                         ranges))
+layer.triggerRepaint()
+```
 
 结果将是一个地图层，根据每个国家的人口进行着色：
 
@@ -568,31 +793,68 @@ QGIS定义了三种基本的符号类型：
 
 这是我们的 `QgsMapTool` 子类的结构基础：
 
-[PRE37]
+```py
+class DistanceCalculator(QgsMapTool):
+  def __init__(self, iface):
+    QgsMapTool.__init__(self, iface.mapCanvas())
+    self.iface = iface
+
+  def canvasPressEvent(self, event):
+    ...
+
+  def canvasReleaseEvent(self, event):
+    ...
+```
 
 要使这个地图工具生效，我们将创建一个新的实例并将其传递给 `mapCanvas.setMapTool()` 方法。一旦完成，当用户在地图画布上点击或释放鼠标按钮时，我们的 `canvasPressEvent()` 和 `canvasReleaseEvent()` 方法将被调用。
 
 让我们从响应用户在画布上点击的代码开始。在这个方法中，我们将从用户点击的像素坐标转换为相应的地图坐标（即纬度和经度值）。然后我们将记住这些坐标，以便以后可以引用它们。以下是必要的代码：
 
-[PRE38]
+```py
+def canvasPressEvent(self, event):
+  transform = self.iface.mapCanvas().getCoordinateTransform()
+  self._startPt = transform.toMapCoordinates(event.pos().x(),
+                        event.pos().y())
+```
 
 当调用 `canvasReleaseEvent()` 方法时，我们希望对用户释放鼠标按钮的点执行相同的操作：
 
-[PRE39]
+```py
+def canvasReleaseEvent(self, event):
+  transform = self.iface.mapCanvas().getCoordinateTransform()
+  endPt = transform.toMapCoordinates(event.pos().x(),
+                    event.pos().y())
+```
 
 现在我们有了两个所需的坐标，我们想要计算它们之间的距离。我们可以使用 `QgsDistanceArea` 对象来完成这项工作：
 
-[PRE40]
+```py
+  crs = self.iface.mapCanvas().mapRenderer().destinationCrs()
+  distance_calc = QgsDistanceArea()
+  distance_calc.setSourceCrs(crs)
+  distance_calc.setEllipsoid(crs.ellipsoidAcronym())
+  distance_calc.setEllipsoidalMode(crs.geographicFlag())
+  distance = distance_calc.measureLine([self._startPt,
+                     endPt]) / 1000
+```
 
 注意，我们将结果值除以 1000。这是因为 `QgsDistanceArea` 对象返回的距离是以米为单位的，而我们希望以千米为单位显示距离。
 
 最后，我们将计算出的距离显示在 QGIS 消息栏中：
 
-[PRE41]
+```py
+  messageBar = self.iface.messageBar()
+  messageBar.pushMessage("Distance = %d km" % distance,
+              level=QgsMessageBar.INFO,
+              duration=2)
+```
 
 现在我们已经创建了我们的地图工具，我们需要激活它。我们可以通过将以下内容添加到脚本末尾来实现：
 
-[PRE42]
+```py
+calculator = DistanceCalculator(iface)
+iface.mapCanvas().setMapTool(calculator)
+```
 
 在地图工具激活后，用户可以在地图上点击并拖动。当鼠标按钮释放时，两个点之间的距离（以千米为单位）将在消息栏中显示：
 
@@ -604,12 +866,12 @@ QGIS定义了三种基本的符号类型：
 
 然后，我们看到了如何使用坐标参考系统（CRS）将地球三维表面上的点转换为二维地图平面内的坐标。
 
-我们了解到矢量格式数据由特征组成，其中每个特征都有一个ID、一个几何形状和一组属性，并且使用符号在地图层上绘制矢量几何形状，而渲染器用于选择给定特征应使用的符号。
+我们了解到矢量格式数据由特征组成，其中每个特征都有一个 ID、一个几何形状和一组属性，并且使用符号在地图层上绘制矢量几何形状，而渲染器用于选择给定特征应使用的符号。
 
 我们了解到如何使用空间索引来加速对矢量特征的访问。
 
 接着，我们看到了栅格格式数据是如何组织成代表颜色、高程等信息的光谱的，并探讨了在地图层中显示栅格数据源的各种方法。在这个过程中，我们学习了如何访问栅格数据源的内容。
 
-最后，我们探讨了使用PyQGIS库执行有用任务的各种技术。
+最后，我们探讨了使用 PyQGIS 库执行有用任务的各种技术。
 
-在下一章中，我们将学习更多关于QGIS Python插件的内容，然后继续使用插件架构作为在地图应用程序中实现有用功能的一种方式。
+在下一章中，我们将学习更多关于 QGIS Python 插件的内容，然后继续使用插件架构作为在地图应用程序中实现有用功能的一种方式。

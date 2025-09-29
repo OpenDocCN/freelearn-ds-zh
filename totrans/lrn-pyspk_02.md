@@ -1,8 +1,8 @@
-# 第 2 章。弹性分布式数据集
+# 第二章。弹性分布式数据集
 
 弹性分布式数据集（RDDs）是一组不可变的 JVM 对象的分布式集合，允许您非常快速地进行计算，它们是 Apache Spark 的 *骨干*。
 
-正如其名所示，数据集是分布式的；它根据某些键分割成块，并分布到执行节点。这样做可以非常快速地运行针对此类数据集的计算。此外，如[第 1 章](ch01.html "第 1 章。理解 Spark")中已提到的，“理解 Spark”，RDD 会跟踪（记录）对每个块应用的所有转换，以加快计算并提供回退机制，以防出现错误且该部分数据丢失；在这种情况下，RDD 可以重新计算数据。这种数据血缘关系是防止数据丢失的另一道防线，是数据复制的补充。
+正如其名所示，数据集是分布式的；它根据某些键分割成块，并分布到执行节点。这样做可以非常快速地运行针对此类数据集的计算。此外，如第一章中已提到的，“理解 Spark”，RDD 会跟踪（记录）对每个块应用的所有转换，以加快计算并提供回退机制，以防出现错误且该部分数据丢失；在这种情况下，RDD 可以重新计算数据。这种数据血缘关系是防止数据丢失的另一道防线，是数据复制的补充。
 
 本章涵盖了以下主题：
 
@@ -42,15 +42,25 @@ RDDs 以并行方式运行。这是在 Spark 中工作的最大优势：每个�
 
 在 PySpark 中创建 RDD 有两种方式：你可以 `.parallelize(...)` 一个集合（`list` 或某些元素的 `array`）：
 
-[PRE0]
+```py
+data = sc.parallelize(
+    [('Amber', 22), ('Alfred', 23), ('Skye',4), ('Albert', 12), 
+     ('Amber', 9)])
+```
 
 或者你可以引用位于本地或外部位置的文件（或文件）：
 
-[PRE1]
+```py
+data_from_file = sc.\    
+    textFile(
+        '/Users/drabast/Documents/PySpark_Data/VS14MORT.txt.gz',
+        4)
+
+```
 
 ### 注意
 
-我们从（于 2016 年 7 月 31 日访问）[ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2014us.zip](ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2014us.zip) 下载了死亡率数据集 `VS14MORT.txt` 文件；记录模式在本文档中解释 [http://www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf](http://www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf)。我们故意选择这个数据集：记录的编码将帮助我们解释如何在本章后面使用 UDFs 来转换你的数据。为了你的方便，我们还在这里托管了文件：[http://tomdrabas.com/data/VS14MORT.txt.gz](http://tomdrabas.com/data/VS14MORT.txt.gz)
+我们从（于 2016 年 7 月 31 日访问）ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/DVS/mortality/mort2014us.zip 下载了死亡率数据集 `VS14MORT.txt` 文件；记录模式在本文档中解释 [`www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf`](http://www.cdc.gov/nchs/data/dvs/Record_Layout_2014.pdf)。我们故意选择这个数据集：记录的编码将帮助我们解释如何在本章后面使用 UDFs 来转换你的数据。为了你的方便，我们还在这里托管了文件：[`tomdrabas.com/data/VS14MORT.txt.gz`](http://tomdrabas.com/data/VS14MORT.txt.gz)
 
 `sc.textFile(..., n)` 的最后一个参数指定了数据集被分割成的分区数。
 
@@ -72,17 +82,27 @@ Spark 可以从多种文件系统中读取：本地文件系统，如 NTFS、FAT
 
 RDDs 是无模式的（与我们在下一章中将要讨论的 DataFrames 不同）。因此，当使用 RDDs 时，Spark 在并行化数据集（如下代码片段所示）时是完全可以接受的：
 
-[PRE2]
+```py
+data_heterogenous = sc.parallelize([
+    ('Ferrari', 'fast'),
+    {'Porsche': 100000},
+    ['Spain','visited', 4504]
+]).collect()
+```
 
 因此，我们可以混合几乎所有东西：一个 `tuple`、一个 `dict` 或一个 `list`，Spark 不会抱怨。
 
 一旦你 `.collect()` 收集数据集（即运行一个操作将其返回到驱动程序），你就可以像在 Python 中正常那样访问对象中的数据：
 
-[PRE3]
+```py
+data_heterogenous[1]['Porsche']
+```
 
 它将产生以下输出：
 
-[PRE4]
+```py
+100000
+```
 
 `.collect()` 方法将 RDD 的所有元素返回到驱动程序，其中它被序列化为一个列表。
 
@@ -106,11 +126,30 @@ RDDs 是无模式的（与我们在下一章中将要讨论的 DataFrames 不同
 
 ### 注意
 
-请参阅我们 GitHub 仓库中这本书的详细信息，关于此方法的细节。在这里，由于空间限制，我们只展示完整方法的简略版，特别是我们创建正则表达式模式的部分。代码可以在以下位置找到：[https://github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb](https://github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb)。
+请参阅我们 GitHub 仓库中这本书的详细信息，关于此方法的细节。在这里，由于空间限制，我们只展示完整方法的简略版，特别是我们创建正则表达式模式的部分。代码可以在以下位置找到：[`github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb`](https://github.com/drabastomek/learningPySpark/tree/master/Chapter03/LearningPySpark_Chapter03.ipynb)。
 
 首先，让我们在以下代码的帮助下定义该方法，该代码将解析不可读的行，使其变得可使用：
 
-[PRE5]
+```py
+def extractInformation(row):
+    import re
+    import numpy as np
+    selected_indices = [
+         2,4,5,6,7,9,10,11,12,13,14,15,16,17,18,
+         ...
+         77,78,79,81,82,83,84,85,87,89
+    ]
+    record_split = re\
+        .compile(
+            r'([\s]{19})([0-9]{1})([\s]{40})
+            ...
+            ([\s]{33})([0-9\s]{3})([0-9\s]{1})([0-9\s]{1})')
+    try:
+        rs = np.array(record_split.split(row))[selected_indices]
+    except:
+        rs = np.array(['-99'] * len(selected_indices))
+    return rs
+```
 
 ### 小贴士
 
@@ -122,17 +161,19 @@ RDDs 是无模式的（与我们在下一章中将要讨论的 DataFrames 不同
 
 ### 注意
 
-我们不会深入描述正则表达式。关于这个主题的良善汇编可以在以下位置找到：[https://www.packtpub.com/application-development/mastering-python-regular-expressions](https://www.packtpub.com/application-development/mastering-python-regular-expressions)。
+我们不会深入描述正则表达式。关于这个主题的良善汇编可以在以下位置找到：[`www.packtpub.com/application-development/mastering-python-regular-expressions`](https://www.packtpub.com/application-development/mastering-python-regular-expressions)。
 
 一旦解析了记录，我们尝试将列表转换为 `NumPy` 数组并返回它；如果失败，我们返回一个包含默认值 `-99` 的列表，这样我们知道这个记录没有正确解析。
 
 ### 小贴士
 
-我们可以通过使用 `.flatMap(...)` 隐式过滤掉格式不正确的记录，并返回一个空列表 `[]` 而不是 `-99` 值。有关详细信息，请参阅：[http://stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd](http://stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd)
+我们可以通过使用 `.flatMap(...)` 隐式过滤掉格式不正确的记录，并返回一个空列表 `[]` 而不是 `-99` 值。有关详细信息，请参阅：[`stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd`](http://stackoverflow.com/questions/34090624/remove-elements-from-spark-rdd)
 
 现在，我们将使用 `extractInformation(...)` 方法来分割和转换我们的数据集。请注意，我们只传递方法签名到 `.map(...)`：该方法将每次在每个分区中 `hand over` 一个 RDD 元素到 `extractInformation(...)` 方法：
 
-[PRE6]
+```py
+data_from_file_conv = data_from_file.map(extractInformation)
+```
 
 运行 `data_from_file_conv.take(1)` 将产生以下结果（简略）：
 
@@ -142,37 +183,39 @@ RDDs 是无模式的（与我们在下一章中将要讨论的 DataFrames 不同
 
 作为潜在的 PySpark 用户，你需要习惯 Spark 的固有并行性。即使你精通 Python，在 PySpark 中执行脚本也需要稍微转变一下思维方式。
 
-Spark可以以两种模式运行：本地和集群。当您在本地运行Spark时，您的代码可能与您目前习惯的Python运行方式不同：更改可能更多的是语法上的，但有一个额外的变化，即数据和代码可以在不同的工作进程之间复制。
+Spark 可以以两种模式运行：本地和集群。当您在本地运行 Spark 时，您的代码可能与您目前习惯的 Python 运行方式不同：更改可能更多的是语法上的，但有一个额外的变化，即数据和代码可以在不同的工作进程之间复制。
 
-然而，如果您不小心，将相同的代码部署到集群中可能会让您感到困惑。这需要理解Spark如何在集群上执行作业。
+然而，如果您不小心，将相同的代码部署到集群中可能会让您感到困惑。这需要理解 Spark 如何在集群上执行作业。
 
-在集群模式下，当提交作业以执行时，作业被发送到驱动程序节点（或主节点）。驱动程序节点为作业创建一个DAG（见[第一章](ch01.html "第一章. 理解Spark")，*理解Spark*），并决定哪些执行器（或工作节点）将运行特定任务。
+在集群模式下，当提交作业以执行时，作业被发送到驱动程序节点（或主节点）。驱动程序节点为作业创建一个 DAG（见第一章，*理解 Spark*），并决定哪些执行器（或工作节点）将运行特定任务。
 
-然后，驱动程序指示工作进程执行其任务，并在完成后将结果返回给驱动程序。然而，在发生之前，驱动程序会为每个任务准备闭包：一组变量和方法，这些变量和方法在驱动程序上存在，以便工作进程可以在RDD上执行其任务。
+然后，驱动程序指示工作进程执行其任务，并在完成后将结果返回给驱动程序。然而，在发生之前，驱动程序会为每个任务准备闭包：一组变量和方法，这些变量和方法在驱动程序上存在，以便工作进程可以在 RDD 上执行其任务。
 
 这组变量和方法在执行器上下文中本质上是*静态的*，也就是说，每个执行器都会从驱动程序获取变量和方法的一个*副本*。如果在运行任务时，执行器更改这些变量或覆盖方法，它将这样做**而不**影响其他执行器的副本或驱动程序的变量和方法。这可能会导致一些意外的行为和运行时错误，有时很难追踪。
 
 ### 注意
 
-查看PySpark文档中的这个讨论以获取更实际的示例：[http://spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes](http://spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes)。
+查看 PySpark 文档中的这个讨论以获取更实际的示例：[`spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes`](http://spark.apache.org/docs/latest/programming-guide.html#local-vs-cluster-modes)。
 
 # 转换
 
-转换塑造了您的数据集。这包括映射、过滤、连接和转码数据集中的值。在本节中，我们将展示RDD上可用的某些转换。
+转换塑造了您的数据集。这包括映射、过滤、连接和转码数据集中的值。在本节中，我们将展示 RDD 上可用的某些转换。
 
 ### 注意
 
-由于空间限制，我们在此仅包含最常用的转换和操作。对于完整的方法集，我们建议您查看PySpark关于RDD的文档[http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD)。
+由于空间限制，我们在此仅包含最常用的转换和操作。对于完整的方法集，我们建议您查看 PySpark 关于 RDD 的文档[`spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD`](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD)。
 
-由于RDD是无模式的，在本节中我们假设您知道生成的数据集的模式。如果您无法记住解析的数据集中信息的位置，我们建议您参考GitHub上`extractInformation(...)`方法的定义，代码在`第三章`。
+由于 RDD 是无模式的，在本节中我们假设您知道生成的数据集的模式。如果您无法记住解析的数据集中信息的位置，我们建议您参考 GitHub 上`extractInformation(...)`方法的定义，代码在`第三章`。
 
 ## .map(...)转换
 
-可以说，您将最常使用`.map(...)`转换。该方法应用于RDD的每个元素：在`data_from_file_conv`数据集的情况下，您可以将其视为对每行的转换。
+可以说，您将最常使用`.map(...)`转换。该方法应用于 RDD 的每个元素：在`data_from_file_conv`数据集的情况下，您可以将其视为对每行的转换。
 
 在这个例子中，我们将创建一个新的数据集，将死亡年份转换为数值：
 
-[PRE7]
+```py
+data_2014 = data_from_file_conv.map(lambda row: int(row[16]))
+```
 
 运行`data_2014.take(10)`将产生以下结果：
 
@@ -180,11 +223,15 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 ### 小贴士
 
-如果你不太熟悉`lambda`表达式，请参阅此资源：[https://pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/](https://pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/)。
+如果你不太熟悉`lambda`表达式，请参阅此资源：[`pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/`](https://pythonconquerstheuniverse.wordpress.com/2011/08/29/lambda_tutorial/)。
 
-你当然可以引入更多的列，但你需要将它们打包成一个`tuple`、`dict`或`list`。让我们也包含行中的第17个元素，以便我们可以确认我们的`.map(...)`按预期工作：
+你当然可以引入更多的列，但你需要将它们打包成一个`tuple`、`dict`或`list`。让我们也包含行中的第 17 个元素，以便我们可以确认我们的`.map(...)`按预期工作：
 
-[PRE8]
+```py
+data_2014_2 = data_from_file_conv.map(
+    lambda row: (row[16], int(row[16]):)
+data_2014_2.take(5)
+```
 
 上述代码将产生以下结果：
 
@@ -192,9 +239,13 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 ## The .filter(...) transformation
 
-另一个最常使用的转换方法是`.filter(...)`方法，它允许你从数据集中选择符合特定标准的元素。作为一个例子，从`data_from_file_conv`数据集中，让我们计算有多少人在2014年发生了事故死亡：
+另一个最常使用的转换方法是`.filter(...)`方法，它允许你从数据集中选择符合特定标准的元素。作为一个例子，从`data_from_file_conv`数据集中，让我们计算有多少人在 2014 年发生了事故死亡：
 
-[PRE9]
+```py
+data_filtered = data_from_file_conv.filter(
+    lambda row: row[16] == '2014' and row[21] == '0')
+data_filtered.count()
+```
 
 ### 小贴士
 
@@ -204,7 +255,10 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 `.flatMap(...)`方法与`.map(...)`类似，但它返回一个扁平化的结果而不是列表。如果我们执行以下代码：
 
-[PRE10]
+```py
+data_2014_flat = data_from_file_conv.flatMap(lambda row: (row[16], int(row[16]) + 1))
+data_2014_flat.take(10)
+```
 
 它将产生以下输出：
 
@@ -216,7 +270,11 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 此方法返回指定列中的唯一值列表。如果你想要了解你的数据集或验证它，这个方法非常有用。让我们检查`gender`列是否只包含男性和女性；这将验证我们是否正确解析了数据集。让我们运行以下代码：
 
-[PRE11]
+```py
+distinct_gender = data_from_file_conv.map(
+    lambda row: row[5]).distinct()
+distinct_gender.collect()
+```
 
 此代码将产生以下结果：
 
@@ -232,11 +290,17 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 `.sample(...)` 方法从数据集中返回一个随机样本。第一个参数指定采样是否带替换，第二个参数定义要返回的数据的分数，第三个是伪随机数生成器的种子：
 
-[PRE12]
+```py
+fraction = 0.1
+data_sample = data_from_file_conv.sample(False, fraction, 666)
+```
 
 在这个例子中，我们从原始数据集中选择了 10% 的随机样本。为了确认这一点，让我们打印数据集的大小：
 
-[PRE13]
+```py
+print('Original dataset: {0}, sample: {1}'\
+.format(data_from_file_conv.count(), data_sample.count()))
+```
 
 前面的命令产生了以下输出：
 
@@ -248,7 +312,11 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 `.leftOuterJoin(...)`，就像在 SQL 世界中一样，基于两个数据集中找到的值将两个 RDD 连接起来，并返回来自左 RDD 的记录，在两个 RDD 匹配的地方附加来自右 RDD 的记录：
 
-[PRE14]
+```py
+rdd1 = sc.parallelize([('a', 1), ('b', 4), ('c',10)])
+rdd2 = sc.parallelize([('a', 4), ('a', 1), ('b', '6'), ('d', 15)])
+rdd3 = rdd1.leftOuterJoin(rdd2)
+```
 
 在 `rdd3` 上运行 `.collect(...)` 将产生以下结果：
 
@@ -262,7 +330,10 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 如果我们使用 `.join(...)` 方法，我们只会得到 `'a'` 和 `'b'` 的值，因为这两个值在这两个 RDD 之间相交。运行以下代码：
 
-[PRE15]
+```py
+rdd4 = rdd1.join(rdd2)
+rdd4.collect()
+```
 
 它将产生以下输出：
 
@@ -270,7 +341,10 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 另一个有用的方法是 `.intersection(...)`，它返回在两个 RDD 中相等的记录。执行以下代码：
 
-[PRE16]
+```py
+rdd5 = rdd1.intersection(rdd2)
+rdd5.collect()
+```
 
 输出如下：
 
@@ -280,7 +354,10 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 重新分区数据集会改变数据集被分割成的分区数量。这个功能应该谨慎使用，并且仅在真正必要时使用，因为它会在数据周围进行洗牌，这在实际上会导致性能的显著下降：
 
-[PRE17]
+```py
+rdd1 = rdd1.repartition(4)
+len(rdd1.glom().collect())
+```
 
 前面的代码打印出 `4` 作为新的分区数量。
 
@@ -288,29 +365,35 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 # 操作
 
-与转换不同，动作在数据集上执行计划的任务；一旦你完成了数据的转换，你就可以执行转换。这可能不包含任何转换（例如，`.take(n)` 将只从RDD返回 `n` 条记录，即使你没有对它进行任何转换）或执行整个转换链。
+与转换不同，动作在数据集上执行计划的任务；一旦你完成了数据的转换，你就可以执行转换。这可能不包含任何转换（例如，`.take(n)` 将只从 RDD 返回 `n` 条记录，即使你没有对它进行任何转换）或执行整个转换链。
 
 ## .take(...) 方法
 
-这可能是最有用（并且使用最频繁，例如 `.map(...)` 方法）。该方法比 `.collect(...)` 更受欢迎，因为它只从单个数据分区返回 `n` 个顶部行，而 `.collect(...)` 则返回整个RDD。这在处理大型数据集时尤为重要：
+这可能是最有用（并且使用最频繁，例如 `.map(...)` 方法）。该方法比 `.collect(...)` 更受欢迎，因为它只从单个数据分区返回 `n` 个顶部行，而 `.collect(...)` 则返回整个 RDD。这在处理大型数据集时尤为重要：
 
-[PRE18]
+```py
+data_first = data_from_file_conv.take(1)
+```
 
 如果你想要一些随机的记录，可以使用 `.takeSample(...)` 代替，它接受三个参数：第一个参数指定采样是否带替换，第二个参数指定要返回的记录数，第三个参数是伪随机数生成器的种子：
 
-[PRE19]
+```py
+data_take_sampled = data_from_file_conv.takeSample(False, 1, 667)
+```
 
 ## .collect(...) 方法
 
-此方法将RDD的所有元素返回给驱动器。正如我们刚刚已经对此提出了警告，我们在这里不再重复。
+此方法将 RDD 的所有元素返回给驱动器。正如我们刚刚已经对此提出了警告，我们在这里不再重复。
 
 ## .reduce(...) 方法
 
-`.reduce(...)` 方法使用指定的方法对RDD的元素进行归约。
+`.reduce(...)` 方法使用指定的方法对 RDD 的元素进行归约。
 
-你可以使用它来对RDD的元素进行求和：
+你可以使用它来对 RDD 的元素进行求和：
 
-[PRE20]
+```py
+rdd1.map(lambda row: row[1]).reduce(lambda x, y: x + y)
+```
 
 这将产生`15`的总和。
 
@@ -318,27 +401,39 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 ### 注意
 
-这里需要提醒一句。作为reducer传递的函数需要是**结合律**，也就是说，当元素的顺序改变时，结果不会改变，并且**交换律**，也就是说，改变操作数的顺序也不会改变结果。
+这里需要提醒一句。作为 reducer 传递的函数需要是**结合律**，也就是说，当元素的顺序改变时，结果不会改变，并且**交换律**，也就是说，改变操作数的顺序也不会改变结果。
 
-结合律的例子是 *(5 + 2) + 3 = 5 + (2 + 3)*，交换律的例子是 *5 + 2 + 3 = 3 + 2 + 5*。因此，你需要小心传递给reducer的函数。
+结合律的例子是 *(5 + 2) + 3 = 5 + (2 + 3)*，交换律的例子是 *5 + 2 + 3 = 3 + 2 + 5*。因此，你需要小心传递给 reducer 的函数。
 
-如果你忽略了前面的规则，你可能会遇到麻烦（假设你的代码能正常运行的话）。例如，假设我们有一个以下RDD（只有一个分区！）：
+如果你忽略了前面的规则，你可能会遇到麻烦（假设你的代码能正常运行的话）。例如，假设我们有一个以下 RDD（只有一个分区！）：
 
-[PRE21]
+```py
+data_reduce = sc.parallelize([1, 2, .5, .1, 5, .2], 1)
+```
 
 如果我们以我们想要将当前结果除以下一个结果的方式来减少数据，我们期望得到`10`的值：
 
-[PRE22]
+```py
+works = data_reduce.reduce(lambda x, y: x / y)
+```
 
 然而，如果你将数据分区成三个分区，结果将会是错误的：
 
-[PRE23]
+```py
+data_reduce = sc.parallelize([1, 2, .5, .1, 5, .2], 3)
+data_reduce.reduce(lambda x, y: x / y)
+```
 
 它将产生 `0.004`。
 
 `.reduceByKey(...)` 方法的工作方式与 `.reduce(...)` 方法类似，但它是在键键基础上进行归约：
 
-[PRE24]
+```py
+data_key = sc.parallelize(
+    [('a', 4),('b', 3),('c', 2),('a', 8),('d', 2),('b', 1),
+     ('d', 3)],4)
+data_key.reduceByKey(lambda x, y: x + y).collect()
+```
 
 上述代码会产生以下结果：
 
@@ -346,19 +441,25 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 ## .count(...) 方法
 
-`.count(...)` 方法计算RDD中元素的数量。使用以下代码：
+`.count(...)` 方法计算 RDD 中元素的数量。使用以下代码：
 
-[PRE25]
+```py
+data_reduce.count()
+```
 
 此代码将产生 `6`，这是 `data_reduce` RDD 中元素的确切数量。
 
 `.count(...)` 方法产生的结果与以下方法相同，但它不需要将整个数据集移动到驱动程序：
 
-[PRE26]
+```py
+len(data_reduce.collect()) # WRONG -- DON'T DO THIS!
+```
 
 如果您的数据集是键值形式，您可以使用 `.countByKey()` 方法来获取不同键的计数。运行以下代码：
 
-[PRE27]
+```py
+data_key.countByKey().items()
+```
 
 此代码将产生以下输出：
 
@@ -368,11 +469,26 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 如其名所示，`.saveAsTextFile(...)` 方法将 RDD 保存为文本文件：每个分区保存到一个单独的文件中：
 
-[PRE28]
+```py
+data_key.saveAsTextFile(
+'/Users/drabast/Documents/PySpark_Data/data_key.txt')
+```
 
 要读取它，你需要将其解析回字符串，因为所有行都被视为字符串：
 
-[PRE29]
+```py
+def parseInput(row):
+    import re    
+    pattern = re.compile(r'\(\'([a-z])\', ([0-9])\)')
+    row_split = pattern.split(row)
+    return (row_split[1], int(row_split[2]))
+
+data_key_reread = sc \
+    .textFile(
+        '/Users/drabast/Documents/PySpark_Data/data_key.txt') \
+    .map(parseInput)
+data_key_reread.collect()
+```
 
 读取的键列表与我们最初的有匹配：
 
@@ -384,7 +500,12 @@ Spark可以以两种模式运行：本地和集群。当您在本地运行Spark�
 
 在这里，我们将使用它来打印（到 CLI - 而不是 Jupyter Notebook）存储在 `data_key` RDD 中的所有记录：
 
-[PRE30]
+```py
+def f(x): 
+    print(x)
+
+data_key.foreach(f)
+```
 
 如果你现在导航到 CLI，你应该看到所有记录被打印出来。注意，每次的顺序很可能是不同的。
 
@@ -394,7 +515,7 @@ RDD 是 Spark 的骨架；这些无模式的数据库结构是我们将在 Spark
 
 在本章中，我们介绍了通过 `.parallelize(...)` 方法以及从文本文件中读取数据来创建 RDD 的方法。还展示了处理非结构化数据的一些方法。
 
-Spark 中的转换是惰性的 - 只有在调用操作时才会应用。在本章中，我们讨论并介绍了最常用的转换和操作；PySpark 文档包含更多内容[http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD)。
+Spark 中的转换是惰性的 - 只有在调用操作时才会应用。在本章中，我们讨论并介绍了最常用的转换和操作；PySpark 文档包含更多内容[`spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD`](http://spark.apache.org/docs/latest/api/python/pyspark.html#pyspark.RDD)。
 
 Scala 和 Python RDD 之间的一个主要区别是速度：Python RDD 可能比它们的 Scala 对应物慢得多。
 

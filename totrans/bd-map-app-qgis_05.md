@@ -1,6 +1,6 @@
-# 第 5 章。在外部应用程序中使用 QGIS
+# 第五章。在外部应用程序中使用 QGIS
 
-在 [第 1 章](part0014_split_000.html#page "Chapter 1. Getting Started with QGIS")，*使用 QGIS 入门*中，我们简要地查看了一个使用 PyQt 和 PyQGIS 库构建的独立 Python 程序。在本章中，我们将使用相同的技巧，使用 PyQGIS 构建一个完整的即插即用地图应用程序。在这个过程中，我们将：
+在 第一章，*使用 QGIS 入门*中，我们简要地查看了一个使用 PyQt 和 PyQGIS 库构建的独立 Python 程序。在本章中，我们将使用相同的技巧，使用 PyQGIS 构建一个完整的即插即用地图应用程序。在这个过程中，我们将：
 
 +   设计和构建一个简单但完整的独立地图应用程序
 
@@ -44,21 +44,21 @@
 
 # 获取数据
 
-Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像，以及一个**地标层**根据一组地名显示单个地标。这两个数据集都可以从自然地球数据网站下载。访问[http://www.naturalearthdata.com](http://www.naturalearthdata.com)，并点击**获取数据**链接跳转到**下载**页面。
+Lex 将使用两个地图层：一个**底图层**显示阴影高程栅格图像，以及一个**地标层**根据一组地名显示单个地标。这两个数据集都可以从自然地球数据网站下载。访问[`www.naturalearthdata.com`](http://www.naturalearthdata.com)，并点击**获取数据**链接跳转到**下载**页面。
 
 通过点击**栅格**链接可以找到底图数据。我们希望使用最高分辨率的可用数据，因此请使用**大比例尺数据，1:10m**部分中的链接。
 
-虽然你可以使用这些数据集作为底图，但我们将下载**自然地球I带阴影高程、水和排水**数据集。确保你下载这个数据集的高分辨率版本，这样当用户放大时，栅格图像仍然看起来很好。
+虽然你可以使用这些数据集作为底图，但我们将下载**自然地球 I 带阴影高程、水和排水**数据集。确保你下载这个数据集的高分辨率版本，这样当用户放大时，栅格图像仍然看起来很好。
 
 对于地标，我们将使用“人口密集地区”数据集。返回主下载页面，在**大比例尺数据，1:10m**部分点击**文化**链接。向下滚动到**人口密集地区**部分，并点击**下载人口密集地区**链接。
 
-下载完成后，你应该在电脑上有两个ZIP存档：
+下载完成后，你应该在电脑上有两个 ZIP 存档：
 
 `NE1_HR_LC_SR_W_DR.zip`
 
 `ne_10m_populated_places.zip`
 
-创建一个名为`data`的文件夹，解压缩前面的两个ZIP存档，并将生成的目录放入你的`data`文件夹中。
+创建一个名为`data`的文件夹，解压缩前面的两个 ZIP 存档，并将生成的目录放入你的`data`文件夹中。
 
 # 设计应用程序
 
@@ -68,19 +68,49 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 ![设计应用程序](img/00048.jpeg)
 
-除了主窗口外，我们的Lex应用程序还将有一个包含以下菜单的菜单栏：
+除了主窗口外，我们的 Lex 应用程序还将有一个包含以下菜单的菜单栏：
 
 ![设计应用程序](img/00049.jpeg)
 
-工具栏将使新用户通过点击工具栏图标来使用Lex变得容易，而经验丰富的用户可以利用广泛的键盘快捷键来访问程序的功能。
+工具栏将使新用户通过点击工具栏图标来使用 Lex 变得容易，而经验丰富的用户可以利用广泛的键盘快捷键来访问程序的功能。
 
 带着这个设计思路，让我们开始编码。
 
 # 创建应用程序框架
 
-首先创建一个用于存放应用程序源代码的文件夹，并将你之前创建的数据文件夹移动到其中。接下来，我们想要使用我们在[第1章](part0014_split_000.html#page "第1章。使用QGIS入门")中学习的技术来创建我们应用程序的基本框架，即*使用QGIS入门*。创建一个名为`lex.py`的模块，并将以下内容输入到该文件中：
+首先创建一个用于存放应用程序源代码的文件夹，并将你之前创建的数据文件夹移动到其中。接下来，我们想要使用我们在第一章中学习的技术来创建我们应用程序的基本框架，即*使用 QGIS 入门*。创建一个名为`lex.py`的模块，并将以下内容输入到该文件中：
 
-[PRE0]
+```py
+import os, os.path, sys
+
+from qgis.core import *
+from qgis.gui import *
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
+
+class MapExplorer(QMainWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+        self.setWindowTitle("Landmark Explorer")
+        self.resize(800, 400)
+
+def main():
+    QgsApplication.setPrefixPath(os.environ['QGIS_PREFIX'], True)
+    QgsApplication.initQgis()
+
+    app = QApplication(sys.argv)
+
+    window = MapExplorer()
+    window.show()
+    window.raise_()
+
+    app.exec_()
+    app.deleteLater()
+    QgsApplication.exitQgis()
+
+if __name__ == "__main__":
+    main()
+```
 
 我们只是导入所需的各个库，并使用我们之前学到的技术设置一个外部 PyQGIS 应用程序。然后我们创建并显示一个空白窗口，以便应用程序在启动时能做些事情。
 
@@ -92,19 +122,36 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 如果您使用的是 Microsoft Windows 计算机上的计算机，您的封装脚本看起来可能如下所示：
 
-[PRE1]
+```py
+SET OSGEO4W_ROOT=C:\OSGeo4W
+SET QGIS_PREFIX=%OSGEO4W_ROOT%\apps\qgis
+SET PATH=%QGIS_PREFIX%\bin;%OSGWO4W_ROOT\bin;%PATH%
+SET PYTHONPATH=%QGIS_PREFIX%\python;%OSEO4W_ROOT%\apps\Python27;%PYTHONPATH%
+SET PYTHONHOME=%OSGEO4W_ROOT%\apps\Python27
+python lex.py
+```
 
 将此脚本命名为有意义的名称，例如，`run.bat`，并将其放在与您的 `lex.py` 模块相同的目录中。
 
 如果您使用的是运行 Linux 的计算机，您的封装脚本将被命名为类似 `run.sh` 的名称，并看起来如下所示：
 
-[PRE2]
+```py
+export PYTHONPATH="/path/to/qgis/build/output/python/"
+export LD_LIBRARY_PATH="/path/to/qgis/build/output/lib/"
+export QGIS_PREFIX="/path/to/qgis/build/output/"
+python lex.py
+```
 
 您需要修改路径以指向 QGIS 已安装的目录。
 
 对于运行 Mac OS X 的用户，您的封装脚本也将被命名为 `run.sh`，并包含以下内容：
 
-[PRE3]
+```py
+export PYTHONPATH="$PYTHONPATH:/Applications/QGIS.app/Contents/Resources/python"
+export DYLD_FRAMEWORK_PATH="/Applications/QGIS.app/Contents/Frameworks"
+export QGIS_PREFIX="/Applications/QGIS.app/Contents/Resources"
+python lex.py
+```
 
 注意，对于 Mac OS X 和 Linux 系统，我们必须设置框架或库路径。这允许 PyQGIS 的 Python 封装器找到它们所依赖的底层 C++ 共享库。
 
@@ -126,9 +173,76 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 创建一个名为`ui_explorerWindow.py`的新模块，并将以下代码输入到该模块中：
 
-[PRE4]
+```py
+from PyQt4 import QtGui, QtCore
 
-此模块实现了我们的Lex应用程序的用户界面，为每个工具栏和菜单项定义了一个`QtAction`对象，创建了一个用于容纳我们的地图画布的小部件，并在`QtMainWindow`对象内布局一切。此模块的结构与Qt Designer和`pyuic4`命令行工具将用户界面模板提供给Python代码的方式相同。
+import resources
+
+class Ui_ExplorerWindow(object):
+    def setupUi(self, window):
+        window.setWindowTitle("Landmark Explorer")
+
+        self.centralWidget = QtGui.QWidget(window)
+        self.centralWidget.setMinimumSize(800, 400)
+        window.setCentralWidget(self.centralWidget)
+
+        self.menubar = window.menuBar()
+        self.fileMenu = self.menubar.addMenu("File")
+        self.viewMenu = self.menubar.addMenu("View")
+        self.modeMenu = self.menubar.addMenu("Mode")
+
+        self.toolBar = QtGui.QToolBar(window)
+        window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
+
+        self.actionQuit = QtGui.QAction("Quit", window)
+        self.actionQuit.setShortcut(QtGui.QKeySequence.Quit)
+
+        self.actionShowBasemapLayer = QtGui.QAction("Basemap", window)
+        self.actionShowBasemapLayer.setShortcut("Ctrl+B")
+        self.actionShowBasemapLayer.setCheckable(True)
+
+        self.actionShowLandmarkLayer = QtGui.QAction("Landmarks", window)
+        self.actionShowLandmarkLayer.setShortcut("Ctrl+L")
+        self.actionShowLandmarkLayer.setCheckable(True)
+
+        icon = QtGui.QIcon(":/icons/mActionZoomIn.png")
+        self.actionZoomIn = QtGui.QAction(icon, "Zoom In", window)
+        self.actionZoomIn.setShortcut(QtGui.QKeySequence.ZoomIn)
+
+        icon = QtGui.QIcon(":/icons/mActionZoomOut.png")
+        self.actionZoomOut = QtGui.QAction(icon, "Zoom Out", window)
+        self.actionZoomOut.setShortcut(QtGui.QKeySequence.ZoomOut)
+
+        icon = QtGui.QIcon(":/icons/mActionPan.png")
+        self.actionPan = QtGui.QAction(icon, "Pan", window)
+        self.actionPan.setShortcut("Ctrl+1")
+        self.actionPan.setCheckable(True)
+
+        icon = QtGui.QIcon(":/icons/mActionExplore.png")
+        self.actionExplore = QtGui.QAction(icon, "Explore", window)
+        self.actionExplore.setShortcut("Ctrl+2")
+        self.actionExplore.setCheckable(True)
+
+        self.fileMenu.addAction(self.actionQuit)
+
+        self.viewMenu.addAction(self.actionShowBasemapLayer)
+        self.viewMenu.addAction(self.actionShowLandmarkLayer)
+        self.viewMenu.addSeparator()
+        self.viewMenu.addAction(self.actionZoomIn)
+        self.viewMenu.addAction(self.actionZoomOut)
+
+        self.modeMenu.addAction(self.actionPan)
+        self.modeMenu.addAction(self.actionExplore)
+
+        self.toolBar.addAction(self.actionZoomIn)
+        self.toolBar.addAction(self.actionZoomOut)
+        self.toolBar.addAction(self.actionPan)
+        self.toolBar.addAction(self.actionExplore)
+
+        window.resize(window.sizeHint())
+```
+
+此模块实现了我们的 Lex 应用程序的用户界面，为每个工具栏和菜单项定义了一个`QtAction`对象，创建了一个用于容纳我们的地图画布的小部件，并在`QtMainWindow`对象内布局一切。此模块的结构与 Qt Designer 和`pyuic4`命令行工具将用户界面模板提供给 Python 代码的方式相同。
 
 注意，`Ui_ExplorerWindow`类使用了多个工具栏图标。我们需要创建这些图标图像并在资源描述文件中定义它们，就像我们在上一章中创建`resources.py`模块一样。
 
@@ -142,41 +256,93 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 +   `mActionExplore.png`
 
-如果你愿意，你可以从QGIS源代码库中下载这些图像文件（SVG格式）[https://github.com/qgis/QGIS/tree/master/images/themes/default](https://github.com/qgis/QGIS/tree/master/images/themes/default)，但你需要将它们从`.svg`转换为`.png`以避免图像文件格式问题。如果你不想自己转换图标，这些图像作为本书提供的源代码的一部分可用。完成后，将这些四个文件放置在Lex应用程序的主目录中。
+如果你愿意，你可以从 QGIS 源代码库中下载这些图像文件（SVG 格式）[`github.com/qgis/QGIS/tree/master/images/themes/default`](https://github.com/qgis/QGIS/tree/master/images/themes/default)，但你需要将它们从`.svg`转换为`.png`以避免图像文件格式问题。如果你不想自己转换图标，这些图像作为本书提供的源代码的一部分可用。完成后，将这些四个文件放置在 Lex 应用程序的主目录中。
 
 ### 小贴士
 
-注意，`mActionExplore.png`图标文件是源代码库中`mActionIdentify.svg`图像的转换副本。我们将图像文件重命名为与Lex应用程序中工具的名称相匹配。
+注意，`mActionExplore.png`图标文件是源代码库中`mActionIdentify.svg`图像的转换副本。我们将图像文件重命名为与 Lex 应用程序中工具的名称相匹配。
 
-接下来，我们需要创建我们的`resources.qrc`文件，以便PyQt可以使用这些图像。创建此文件并输入以下内容：
+接下来，我们需要创建我们的`resources.qrc`文件，以便 PyQt 可以使用这些图像。创建此文件并输入以下内容：
 
-[PRE5]
+```py
+<RCC>
+    <qresource prefix="/icons">
+        <file>mActionZoomIn.png</file>
+        <file>mActionZoomOut.png</file>
+        <file>mActionPan.png</file>
+        <file>mActionExplore.png</file>
+    </qresource>
+</RCC>
+```
 
 你需要使用`pyrcc4`编译此文件。这将为你提供用户界面所需的`resources.py`模块。
 
 现在我们已经定义了我们的用户界面，让我们修改`lex.py`模块以使用它。将以下`import`语句添加到模块的顶部：
 
-[PRE6]
+```py
+from ui_explorerWindow import Ui_ExplorerWindow
+import resources
+```
 
-接下来，我们想要用我们新的UI替换`MapExplorer`窗口的占位实现。`MapExplorer`类的定义应该如下所示：
+接下来，我们想要用我们新的 UI 替换`MapExplorer`窗口的占位实现。`MapExplorer`类的定义应该如下所示：
 
-[PRE7]
+```py
+class MapExplorer(QMainWindow, Ui_ExplorerWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+
+        self.setupUi(self)
+```
 
 如果一切顺利，我们的应用程序现在应该运行带有完整的用户界面——工具栏、菜单和我们的地图画布的空间：
 
 ![添加用户界面](img/00051.jpeg)
 
-当然，我们的用户界面目前还没有任何功能，但我们的Lex应用程序开始看起来像是一个真正的程序。现在，让我们实现UI背后的行为。
+当然，我们的用户界面目前还没有任何功能，但我们的 Lex 应用程序开始看起来像是一个真正的程序。现在，让我们实现 UI 背后的行为。
 
 # 连接操作
 
 你可能已经注意到，菜单命令和工具栏图标目前都没有任何作用——即使是**退出**命令也不工作。在我们操作之前，我们必须将它们连接到适当的方法。为此，请将以下内容添加到`MapExplorer.__init__()`方法中，紧接在调用`setupUi()`之后：
 
-[PRE8]
+```py
+        self.connect(self.actionQuit,
+                     SIGNAL("triggered()"), qApp.quit)
+        self.connect(self.actionShowBasemapLayer,
+                     SIGNAL("triggered()"), self.showBasemapLayer)
+        self.connect(self.actionShowLandmarkLayer,
+                     SIGNAL("triggered()"),
+                     self.showLandmarkLayer)
+        self.connect(self.actionZoomIn,
+                     SIGNAL("triggered()"), self.zoomIn)
+        self.connect(self.actionZoomOut,
+                     SIGNAL("triggered()"), self.zoomOut)
+        self.connect(self.actionPan,
+                     SIGNAL("triggered()"), self.setPanMode)
+        self.connect(self.actionExplore,
+                     SIGNAL("triggered()"), self.setExploreMode)
+```
 
 我们将我们的 **退出** 动作连接到 `qApp.quit()` 方法。对于其他动作，我们将在 `MapExplorer` 类本身内部调用方法。让我们为这些方法定义一些占位符：
 
-[PRE9]
+```py
+    def showBasemapLayer(self):
+        pass
+
+    def showLandmarkLayer(self):
+        pass
+
+    def zoomIn(self):
+        pass
+
+    def zoomOut(self):
+        pass
+
+    def setPanMode(self):
+        pass
+
+    def setExploreMode(self):
+        pass
+```
 
 我们将在地图画布设置好并运行之后实现这些方法。
 
@@ -184,31 +350,80 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 我们的 `Ui_ExplorerWindow` 类定义了一个名为 `centralWidget` 的实例变量，它作为窗口内容的占位符。由于我们想在窗口中放置一个 QGIS 地图画布，让我们实现创建地图画布并将其放置到这个中央小部件中的代码。将以下内容添加到 `MapExplorer` 窗口的 `__init__()` 方法的末尾（在 `lex.py` 中）：
 
-[PRE10]
+```py
+        self.mapCanvas = QgsMapCanvas()
+        self.mapCanvas.useImageToRender(False)
+        self.mapCanvas.setCanvasColor(Qt.white)
+        self.mapCanvas.show()
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.mapCanvas)
+        self.centralWidget.setLayout(layout)
+```
 
 接下来，我们希望将底图和地标图图层填充到地图画布中。为此，我们将定义一个新的方法，称为 `loadMap()`，并在适当的时候调用它。将以下方法添加到您的 `MapExplorer` 类中：
 
-[PRE11]
+```py
+    def loadMap(self):
+        cur_dir = os.path.dirname(os.path.realpath(__file__))
+        filename = os.path.join(cur_dir, "data",
+                                "NE1_HR_LC_SR_W_DR",
+                                "NE1_HR_LC_SR_W_DR.tif")
+        self.basemap_layer = QgsRasterLayer(filename, "basemap")
+        QgsMapLayerRegistry.instance().addMapLayer(
+                self.basemap_layer)
+
+        filename = os.path.join(cur_dir, "data",
+                                "ne_10m_populated_places",
+                                "ne_10m_populated_places.shp")
+        self.landmark_layer = QgsVectorLayer(filename,
+                                             "landmarks", "ogr")
+        QgsMapLayerRegistry.instance().addMapLayer(
+               self.landmark_layer)
+
+        self.showVisibleMapLayers()
+        self.mapCanvas.setExtent(QgsRectangle(-127.7, 24.4, -79.3, 49.1))
+```
 
 此方法加载我们放置在 `data` 目录中的栅格和矢量数据集。然后我们调用一个新的方法 `showVisibleMapLayers()` 来使这些图层可见，并在应用程序首次启动时设置地图画布的范围以显示美国大陆。
 
 让我们实现 `showVisibleMapLayers()` 方法：
 
-[PRE12]
+```py
+    def showVisibleMapLayers(self):
+        layers = []
+        if self.actionShowLandmarkLayer.isChecked():
+            layers.append(QgsMapCanvasLayer(self.landmark_layer))
+        if self.actionShowBasemapLayer.isChecked():
+            layers.append(QgsMapCanvasLayer(self.basemap_layer))
+        self.mapCanvas.setLayerSet(layers)
+```
 
 由于用户可以选择单独显示或隐藏底图和地标图层，我们只显示用户选择显示的图层。我们还将其放入一个单独的方法中，以便在用户切换图层的可见性时调用它。
 
 在我们的地图可以显示之前，还有一些事情要做。首先，在调用 `window.raise_()` 之后，立即在 `main()` 函数中添加以下行：
 
-[PRE13]
+```py
+    window.loadMap()
+```
 
 这将在窗口显示后加载地图。接下来，将以下内容添加到主窗口的 `__init__()` 方法的末尾：
 
-[PRE14]
+```py
+        self.actionShowBasemapLayer.setChecked(True)
+        self.actionShowLandmarkLayer.setChecked(True)
+```
 
 这使得两个图层在程序启动时可见。最后，让我们实现我们之前定义的两个方法，以便用户可以选择显示哪些图层：
 
-[PRE15]
+```py
+    def showBasemapLayer(self):
+        self.showVisibleMapLayers()
+
+    def showLandmarkLayer(self):
+        self.showVisibleMapLayers()
+```
 
 运行程序应显示两个地图图层，您可以使用 **视图** 菜单中的命令显示或隐藏每个图层：
 
@@ -218,7 +433,23 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 如前图所示，每个地标仅由一个彩色点表示。为了使程序更有用，我们希望显示每个地标的名称。这可以通过使用 QGIS 内置的 "PAL" 标签引擎来完成。将以下代码添加到您的 `loadMap()` 方法中，在调用 `self.showVisibleMapLayers()` 之前立即执行：
 
-[PRE16]
+```py
+        p = QgsPalLayerSettings()
+        p.readFromLayer(self.landmark_layer)
+        p.enabled = True
+        p.fieldName = "NAME"
+        p.placement = QgsPalLayerSettings.OverPoint
+        p.displayAll = True
+        p.setDataDefinedProperty(QgsPalLayerSettings.Size,
+                                 True, True, "12", "")
+        p.quadOffset = QgsPalLayerSettings.QuadrantBelow
+        p.yOffset = 1
+        p.labelOffsetInMapUnits = False
+        p.writeToLayer(self.landmark_layer)
+
+        labelingEngine = QgsPalLabeling()
+        self.mapCanvas.mapRenderer().setLabelingEngine(labelingEngine)
+```
 
 这将为地图上的每个点添加标签。不幸的是，有很多点，结果地图几乎无法阅读：
 
@@ -230,7 +461,39 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 在调用 `self.showVisibleMapLayers()` 之前，将以下代码添加到您的 `loadMap()` 方法中：
 
-[PRE17]
+```py
+        symbol = QgsSymbolV2.defaultSymbol(self.landmark_layer.geometryType())
+        renderer = QgsRuleBasedRendererV2(symbol)
+        root_rule = renderer.rootRule()
+        default_rule = root_rule.children()[0]
+
+        rule = default_rule.clone()
+        rule.setFilterExpression("(SCALERANK >= 0) and (SCALERANK <= 1)")
+        rule.setScaleMinDenom(0)
+        rule.setScaleMaxDenom(99999999)
+        root_rule.appendChild(rule)
+
+        rule = default_rule.clone()
+        rule.setFilterExpression("(SCALERANK >= 2) and (SCALERANK <= 4)")
+        rule.setScaleMinDenom(0)
+        rule.setScaleMaxDenom(10000000)
+        root_rule.appendChild(rule)
+
+        rule = default_rule.clone()
+        rule.setFilterExpression("(SCALERANK >= 5) and (SCALERANK <= 7)")
+        rule.setScaleMinDenom(0)
+        rule.setScaleMaxDenom(5000000)
+        root_rule.appendChild(rule)
+
+        rule = default_rule.clone()
+        rule.setFilterExpression("(SCALERANK >= 7) and (SCALERANK <= 10)")
+        rule.setScaleMinDenom(0)
+        rule.setScaleMaxDenom(2000000)
+        root_rule.appendChild(rule)
+
+        root_rule.removeChildAt(0)
+        self.landmark_layer.setRendererV2(renderer)
+```
 
 这将在地图缩放时隐藏过小的地标（即具有过大 `SCALERANK` 值的地标）。现在，我们的地图看起来更加合理：
 
@@ -238,35 +501,74 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 目前，我们还想添加一个功能；目前，所有标签的大小都是相同的。然而，我们希望较大的地标显示更大的标签。为此，将您的程序中的 `p.setDataDefinedProperty(...)` 行替换为以下内容：
 
-[PRE18]
+```py
+        expr = ("CASE WHEN SCALERANK IN (0,1) THEN 18" +
+                "WHEN SCALERANK IN (2,3,4) THEN 14 " +
+                "WHEN SCALERANK IN (5,6,7) THEN 12 " +
+                "WHEN SCALERANK IN (8,9,10) THEN 10 " +
+                "ELSE 9 END")
+        p.setDataDefinedProperty(QgsPalLayerSettings.Size, True,
+                                 True, expr, "")
+```
 
 这根据特征的 `SCALERANK` 属性值计算字体大小。正如您所想象的，以这种方式使用数据定义属性可以非常有用。
 
 # 实现缩放工具
 
-接下来，我们希望支持缩放和放大。如前所述，Lex应用程序的一个要求是它必须像Google Maps而不是QGIS一样工作，这是一个我们必须支持的地方。QGIS有一个缩放工具，用户点击它，然后在地图上点击或拖动以缩放。在Lex中，用户将直接点击工具栏图标来进行缩放。幸运的是，这很容易做到；只需以下方式实现 `zoomIn()` 和 `zoomOut()` 方法：
+接下来，我们希望支持缩放和放大。如前所述，Lex 应用程序的一个要求是它必须像 Google Maps 而不是 QGIS 一样工作，这是一个我们必须支持的地方。QGIS 有一个缩放工具，用户点击它，然后在地图上点击或拖动以缩放。在 Lex 中，用户将直接点击工具栏图标来进行缩放。幸运的是，这很容易做到；只需以下方式实现 `zoomIn()` 和 `zoomOut()` 方法：
 
-[PRE19]
+```py
+    def zoomIn(self):
+        self.mapCanvas.zoomIn()
+
+    def zoomOut(self):
+        self.mapCanvas.zoomOut()
+```
 
 现在，尝试运行您的程序。在您缩放和放大时，您可以看到各种地标的出现和消失，您也应该能够看到根据每个特征的 `SCALERANK` 值使用的不同字体大小。
 
 # 实现平移工具
 
-平移（即点击并拖动地图以移动）是另一个QGIS默认行为并不完全符合我们期望的领域。QGIS包括一个 `classQgsMapToolPan` 类，它实现了平移；然而，它还包含了一些可能会让来自Google Maps的用户感到困惑的功能。特别是，如果用户点击而不拖动，地图将重新居中到点击的点。我们不会使用 `classQgsMapToolPan`，而是将实现我们自己的平移地图工具。幸运的是，这很简单：只需在 `MapExplorer` 类定义之后，将以下类定义添加到您的 `lex.py` 模块中：
+平移（即点击并拖动地图以移动）是另一个 QGIS 默认行为并不完全符合我们期望的领域。QGIS 包括一个 `classQgsMapToolPan` 类，它实现了平移；然而，它还包含了一些可能会让来自 Google Maps 的用户感到困惑的功能。特别是，如果用户点击而不拖动，地图将重新居中到点击的点。我们不会使用 `classQgsMapToolPan`，而是将实现我们自己的平移地图工具。幸运的是，这很简单：只需在 `MapExplorer` 类定义之后，将以下类定义添加到您的 `lex.py` 模块中：
 
-[PRE20]
+```py
+class PanTool(QgsMapTool):
+    def __init__(self, mapCanvas):
+        QgsMapTool.__init__(self, mapCanvas)
+        self.setCursor(Qt.OpenHandCursor)
+        self.dragging = False
+
+    def canvasMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.dragging = True
+            self.canvas().panAction(event)
+
+    def canvasReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.dragging:
+            self.canvas().panActionEnd(event.pos())
+            self.dragging = False
+```
 
 我们需要将以下内容添加到主窗口的 `__init__()` 方法末尾，以创建我们的平移工具的实例：
 
-[PRE21]
+```py
+        self.panTool = PanTool(self.mapCanvas)
+        self.panTool.setAction(self.actionPan)
+```
 
 我们现在可以实施我们的 `setPanMode()` 方法来使用这个地图工具：
 
-[PRE22]
+```py
+    def setPanMode(self):
+        self.actionPan.setChecked(True)
+        self.mapCanvas.setMapTool(self.panTool)
+```
 
 最后，我们希望在应用程序启动时选择平移模式。为此，在调用 `window.loadMap()` 之后，将以下内容添加到您的 `main()` 函数中：
 
-[PRE23]
+```py
+    window.setPanMode()
+```
 
 # 实现探索模式
 
@@ -274,19 +576,69 @@ Lex将使用两个地图层：一个**底图层**显示阴影高程栅格图像�
 
 在上一章中，我们看到了如何使用 `QgsMapToolIdentify` 子类来响应用户点击矢量要素。我们将在这里使用相同的逻辑来实现一个新的地图工具，我们将称之为 `ExploreTool`。在 `PanTool` 类定义之后，将以下类定义添加到您的 `lex.py` 模块中：
 
-[PRE24]
+```py
+class ExploreTool(QgsMapToolIdentify):
+    def __init__(self, window):
+        QgsMapToolIdentify.__init__(self, window.mapCanvas)
+        self.window = window
+
+    def canvasReleaseEvent(self, event):
+        found_features = self.identify(event.x(), event.y(),
+                                       self.TopDownStopAtFirst,
+                                       self.VectorLayer)
+        if len(found_features) > 0:
+            layer = found_features[0].mLayer
+            feature = found_features[0].mFeature
+            geometry = feature.geometry()
+
+            info = []
+
+            name = feature.attribute("NAME")
+            if name != None: info.append(name)
+
+            admin_0 = feature.attribute("ADM0NAME")
+            admin_1 = feature.attribute("ADM1NAME")
+            if admin_0 and admin_1:
+                info.append(admin_1 + ", " + admin_0)
+
+            timezone = feature.attribute("TIMEZONE")
+            if timezone != None:
+                info.append("Timezone: " + timezone)
+
+            longitude = geometry.asPoint().x()
+            latitude  = geometry.asPoint().y()
+            info.append("Lat/Long: %0.4f, %0.4f" % (latitude,
+                                                    longitude))
+
+            QMessageBox.information(self.window,
+                                    "Feature Info",
+                                    "\n".join(info))
+```
 
 此工具识别用户点击的地标要素，提取该要素的相关属性，并在消息框中显示结果。要使用我们新的地图工具，我们必须将以下内容添加到 `MapExplorer` 窗口的 `__init__()` 方法的末尾：
 
-[PRE25]
+```py
+        self.exploreTool = ExploreTool(self)
+        self.exploreTool.setAction(self.actionExplore)
+```
 
 我们接下来需要实现我们的 `setExploreMode()` 方法来使用这个工具：
 
-[PRE26]
+```py
+        def setExploreMode(self):
+        self.actionPan.setChecked(False)
+        self.actionExplore.setChecked(True)
+        self.mapCanvas.setMapTool(self.exploreTool)
+```
 
 注意，当用户切换到探索模式时，我们必须取消勾选平移模式操作。这确保了两种模式是互斥的。我们必须采取的最后一步是修改我们的 `setPanMode()` 方法，以便当用户切换回平移模式时取消勾选探索模式操作。为此，将以下突出显示的行添加到您的 `setPanMode()` 方法中：
 
-[PRE27]
+```py
+    def setPanMode(self):
+        self.actionPan.setChecked(True)
+ self.actionExplore.setChecked(False)
+        self.mapCanvas.setMapTool(self.panTool)
+```
 
 这完成了我们的 Lex 程序。现在用户可以放大和缩小，平移地图，并点击要素以获取有关该地标的更多信息：
 

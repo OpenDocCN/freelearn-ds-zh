@@ -20,35 +20,35 @@
 
 # 本书涵盖内容
 
-[第 1 章](0cf3a7b4-6d34-4ddf-8937-09a262ffe68e.xhtml)，*介绍 ArcGIS Pro*，介绍了 ArcGIS Pro 并解释了它与其他 ArcGIS 产品的一些功能。它还提供了其功能的一般概述，并讨论了安装和许可要求。
+第一章，*介绍 ArcGIS Pro*，介绍了 ArcGIS Pro 并解释了它与其他 ArcGIS 产品的一些功能。它还提供了其功能的一般概述，并讨论了安装和许可要求。
 
-[第二章](5ff05154-4302-4ef5-8ef9-d14ca8d5bb24.xhtml)，*导航功能区界面*，介绍了ArcGIS Pro基于功能区界面和常用界面面板或窗口。它解释了如何使用它来访问ArcGIS Pro项目中的数据、地图和工具。
+第二章，*导航功能区界面*，介绍了 ArcGIS Pro 基于功能区界面和常用界面面板或窗口。它解释了如何使用它来访问 ArcGIS Pro 项目中的数据、地图和工具。
 
-[第三章](a0b88a3d-26f8-4b35-a295-2257d70802da.xhtml)，*创建二维地图*，展示了如何在ArcGIS Pro项目框架内创建二维地图。您将学习如何添加和管理图层，控制符号，标注要素，并配置其他属性。
+第三章，*创建二维地图*，展示了如何在 ArcGIS Pro 项目框架内创建二维地图。您将学习如何添加和管理图层，控制符号，标注要素，并配置其他属性。
 
-[第四章](15d59ca8-30fd-4acd-b983-02cc48c7bbc9.xhtml)，*创建三维场景*，展示了用户如何在他们的项目中创建三维地图。您将学习如何添加图层，拉伸图层以显示高度，并应用三维符号。
+第四章，*创建三维场景*，展示了用户如何在他们的项目中创建三维地图。您将学习如何添加图层，拉伸图层以显示高度，并应用三维符号。
 
-[第五章](5e7c9d7b-31d5-4032-973d-1f077aa51511.xhtml)，*创建和使用项目*，介绍了使用项目来管理GIS内容的概念。您将学习如何创建和组织项目。您还将学习如何创建模板项目。
+第五章，*创建和使用项目*，介绍了使用项目来管理 GIS 内容的概念。您将学习如何创建和组织项目。您还将学习如何创建模板项目。
 
-[第六章](c04c8690-ca59-4b0b-8fcf-1965068446f6.xhtml)，*创建布局*，展示了如何使用ArcGIS Pro创建有效的布局。
+第六章，*创建布局*，展示了如何使用 ArcGIS Pro 创建有效的布局。
 
-[第七章](8270dbdc-708c-4d2e-aef4-c49d8746356b.xhtml)，*使用地图系列创建地图集*，解释了启用和配置地图系列功能所需的过程，以便您可以生成自己的地图集。大地图难以操作，并且变得难以使用。小地图又无法在野外展示所需级别的细节。常见的做法是为该区域创建地图集或系列。ArcGIS Pro内置了创建这些地图集的功能，本章将向您展示如何操作。
+第七章，*使用地图系列创建地图集*，解释了启用和配置地图系列功能所需的过程，以便您可以生成自己的地图集。大地图难以操作，并且变得难以使用。小地图又无法在野外展示所需级别的细节。常见的做法是为该区域创建地图集或系列。ArcGIS Pro 内置了创建这些地图集的功能，本章将向您展示如何操作。
 
-[第八章](f9a95423-4c5e-4982-9a0c-6df17adaf24b.xhtml)，*学习编辑空间数据*，为您提供了ArcGIS Pro中编辑工作流程的基本理解，并解释了如何使用许多最常用的工具来维护和更新您的GIS数据。
+第八章，*学习编辑空间数据*，为您提供了 ArcGIS Pro 中编辑工作流程的基本理解，并解释了如何使用许多最常用的工具来维护和更新您的 GIS 数据。
 
-[第九章](d886e2b0-30bf-48e9-a468-126f2399e979.xhtml)，*学习编辑表格数据*，解释了如何编辑和维护您GIS中要素的属性数据。
+第九章，*学习编辑表格数据*，解释了如何编辑和维护您 GIS 中要素的属性数据。
 
-[第十章](3da9832a-f595-47f3-bd8a-2b7c40455667.xhtml)，*使用地理处理工具进行分析*，介绍了许多最常用的工具，解释了它们可以在哪里访问，并涵盖了将决定您在ArcGIS Pro中可用的工具的因素。
+第十章，*使用地理处理工具进行分析*，介绍了许多最常用的工具，解释了它们可以在哪里访问，并涵盖了将决定您在 ArcGIS Pro 中可用的工具的因素。
 
-[第十一章](c3b6080b-b627-46a5-a693-403a64eeb68b.xhtml)，*创建和使用任务*，展示了如何创建任务以改进您办公室内常见工作流程的效率和标准化。
+第十一章，*创建和使用任务*，展示了如何创建任务以改进您办公室内常见工作流程的效率和标准化。
 
-[第十二章](7747c679-b20b-47b2-946d-a1f8c5a9ded0.xhtml)，*使用ModelBuilder和Python自动化流程*，介绍了创建简单模型和Python脚本所需的基本概念和技能，用于ArcGIS Pro。
+第十二章，*使用 ModelBuilder 和 Python 自动化流程*，介绍了创建简单模型和 Python 脚本所需的基本概念和技能，用于 ArcGIS Pro。
 
-[第 13 章](aa5217dc-4e50-4e92-9b40-dcfb376f653d.xhtml)，*与他人共享您的作品*，展示了在 ArcGIS Pro 中与他人共享地图、数据和流程的不同方法。
+第十三章，*与他人共享您的作品*，展示了在 ArcGIS Pro 中与他人共享地图、数据和流程的不同方法。
 
-[第 14 章](6292840b-2580-45a1-837a-79d372d19b7d.xhtml)，*使用 Arcade 表达式进行标签和符号化*，介绍了 Arcade 的基本用法和语法。Arcade 是一种新的轻量级表达式语言，用于 ArcGIS。它允许您创建可以生成文本标签或控制符号的表达式。
+第十四章，*使用 Arcade 表达式进行标签和符号化*，介绍了 Arcade 的基本用法和语法。Arcade 是一种新的轻量级表达式语言，用于 ArcGIS。它允许您创建可以生成文本标签或控制符号的表达式。
 
-[GIS 术语表](5d7b7d34-ad22-45c3-9ad7-0fe5c416b4a1.xhtml)，提供与重要 GIS 术语相关的定义和示例描述。
+GIS 术语表，提供与重要 GIS 术语相关的定义和示例描述。
 
 # 为了充分利用本书
 
@@ -91,25 +91,30 @@
 
 +   7-Zip/PeaZip for Linux
 
-本书代码包也托管在 GitHub 上，网址为 [https://github.com/PacktPublishing/Learning-ArcGIS-Pro-2-Second-Edition](https://github.com/PacktPublishing/Learning-ArcGIS-Pro-2-Second-Edition)。如果代码有更新，它将在现有的 GitHub 仓库中更新。
+本书代码包也托管在 GitHub 上，网址为 [`github.com/PacktPublishing/Learning-ArcGIS-Pro-2-Second-Edition`](https://github.com/PacktPublishing/Learning-ArcGIS-Pro-2-Second-Edition)。如果代码有更新，它将在现有的 GitHub 仓库中更新。
 
-我们还有其他来自我们丰富图书和视频目录的代码包，可在**[https://github.com/PacktPublishing/](https://github.com/PacktPublishing/)**找到。查看它们！
+我们还有其他来自我们丰富图书和视频目录的代码包，可在**[`github.com/PacktPublishing/`](https://github.com/PacktPublishing/)**找到。查看它们！
 
 ## 下载彩色图像
 
-我们还提供了一份包含本书中使用的截图/图表的彩色图像的 PDF 文件。您可以从这里下载：[https://static.packt-cdn.com/downloads/9781839210228_ColorImages.pdf](https://static.packt-cdn.com/downloads/9781839210228_ColorImages.pdf)。
+我们还提供了一份包含本书中使用的截图/图表的彩色图像的 PDF 文件。您可以从这里下载：[`static.packt-cdn.com/downloads/9781839210228_ColorImages.pdf`](https://static.packt-cdn.com/downloads/9781839210228_ColorImages.pdf)。
 
 ## 使用的约定
 
 本书使用了多种文本约定。
 
-`CodeInText`: 表示文本中的代码单词、数据库表名、文件夹名、文件名、文件扩展名、路径名、虚拟URL、用户输入和Twitter昵称。以下是一个示例：“在注释描述之后的下一行是一个`import`命令，该命令加载`arcpy`模型，以便脚本可以访问ArcGIS功能。”
+`CodeInText`: 表示文本中的代码单词、数据库表名、文件夹名、文件名、文件扩展名、路径名、虚拟 URL、用户输入和 Twitter 昵称。以下是一个示例：“在注释描述之后的下一行是一个`import`命令，该命令加载`arcpy`模型，以便脚本可以访问 ArcGIS 功能。”
 
 代码块设置如下：
 
-[PRE0]
+```py
+#Specifies the input variables for the script tools
+#If the data is moved or in a different database then these paths will need to be updated
+Parcels = "C:\\Student\\IntroArcPro\\Databases\\Trippville_GIS.gdb\\Base\\Parcels"
+Parcels_Web = "C:\\Student\\IntroArcPro\\Chapter11\\Ex11.gdb\\Parcels_Web"
+```
 
-**粗体**：表示新术语、重要单词或您在屏幕上看到的单词。例如，菜单或对话框中的单词在文本中如下所示。以下是一个示例：“在ModelBuilder选项卡上的工具按钮组中点击工具按钮。”
+**粗体**：表示新术语、重要单词或您在屏幕上看到的单词。例如，菜单或对话框中的单词在文本中如下所示。以下是一个示例：“在 ModelBuilder 选项卡上的工具按钮组中点击工具按钮。”
 
 警告或重要注意事项如下所示。
 
@@ -129,6 +134,6 @@
 
 ## 评论
 
-请留下评论。一旦您阅读并使用了这本书，为何不在您购买书籍的网站上留下评论？潜在读者可以查看并使用您的客观意见来做出购买决定，我们Packt可以了解您对我们产品的看法，我们的作者也可以看到他们对书籍的反馈。谢谢！
+请留下评论。一旦您阅读并使用了这本书，为何不在您购买书籍的网站上留下评论？潜在读者可以查看并使用您的客观意见来做出购买决定，我们 Packt 可以了解您对我们产品的看法，我们的作者也可以看到他们对书籍的反馈。谢谢！
 
-有关Packt的更多信息，请访问 [packt.com](http://www.packt.com/)。
+有关 Packt 的更多信息，请访问 [packt.com](http://www.packt.com/)。

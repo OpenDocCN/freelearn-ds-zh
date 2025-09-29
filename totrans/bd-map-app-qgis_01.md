@@ -1,4 +1,4 @@
-# 第 1 章. QGIS 入门
+# 第一章. QGIS 入门
 
 本章概述了 QGIS 系统，以及您如何使用 Python 编程语言与之交互。特别是，本章将涵盖以下内容：
 
@@ -18,7 +18,7 @@
 
 QGIS 是一个流行的、免费的、开源的 **地理信息系统** (**GIS**)，可在所有主要操作系统上运行。人们通常使用 QGIS 来查看、编辑和分析地理空间数据。然而，对于我们来说，QGIS 不仅仅是一个 GIS 系统；它还是一个地理空间编程环境，我们可以使用它来构建自己的地理空间应用程序，使用 Python 实现。
 
-QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使得下载、安装和使用变得容易。
+QGIS 拥有一个全面的网站 ([`qgis.org`](http://qgis.org))，这使得下载、安装和使用变得容易。
 
 在继续阅读之前，您应该花 15 分钟浏览网站，熟悉应用程序和在线可用的文档。特别是，您应该查看 **文档** 页面，其中提供了三本重要的手册：*QGIS 用户指南/手册*、*QGIS 培训手册* 和 *PyQGIS 烹饪书*。
 
@@ -30,57 +30,57 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 +   对于 MS Windows，您可以下载一个可双击的安装程序，该安装程序一次安装 QGIS 和所有必需的库。请确保您使用的是 OSGeo4W 安装程序，它包括 Python 解释器、QGIS 本身以及所有必需的库。
 
-+   对于 Mac OS X，您需要访问 Kyngchaos 网站 ([http://www.kyngchaos.com/software/qgis](http://www.kyngchaos.com/software/qgis)) 下载并安装 GDAL 和 matplotlib 库，然后再安装为您的操作系统专门构建的 QGIS 版本。所有必需的软件包都可在 Kyngchaos 网站上找到。
++   对于 Mac OS X，您需要访问 Kyngchaos 网站 ([`www.kyngchaos.com/software/qgis`](http://www.kyngchaos.com/software/qgis)) 下载并安装 GDAL 和 matplotlib 库，然后再安装为您的操作系统专门构建的 QGIS 版本。所有必需的软件包都可在 Kyngchaos 网站上找到。
 
-+   对于类 Unix 系统，您将使用包管理器从适当的软件仓库下载、编译和安装 QGIS 及所需库。有关在类 Unix 系统上安装的更多信息，请参阅[http://qgis.org/en/site/forusers/alldownloads.html#linux](http://qgis.org/en/site/forusers/alldownloads.html#linux)。
++   对于类 Unix 系统，您将使用包管理器从适当的软件仓库下载、编译和安装 QGIS 及所需库。有关在类 Unix 系统上安装的更多信息，请参阅[`qgis.org/en/site/forusers/alldownloads.html#linux`](http://qgis.org/en/site/forusers/alldownloads.html#linux)。
 
-一旦您安装了QGIS系统，您就可以像在计算机上运行任何其他应用程序一样运行它，例如，通过双击您`应用程序`文件夹中的QGIS图标。
+一旦您安装了 QGIS 系统，您就可以像在计算机上运行任何其他应用程序一样运行它，例如，通过双击您`应用程序`文件夹中的 QGIS 图标。
 
-如果一切顺利，QGIS应用程序将启动，您将看到以下窗口：
+如果一切顺利，QGIS 应用程序将启动，您将看到以下窗口：
 
-![安装和运行QGIS](img/00002.jpeg)
+![安装和运行 QGIS](img/00002.jpeg)
 
 ### 注意
 
-窗口的精确外观可能因您的操作系统而异。不必担心，只要出现一个类似于前一个屏幕截图的窗口，您就是在运行QGIS。
+窗口的精确外观可能因您的操作系统而异。不必担心，只要出现一个类似于前一个屏幕截图的窗口，您就是在运行 QGIS。
 
-您现在不必太担心QGIS用户界面；QGIS用户指南详细描述了界面和各种选项。我们不如深入了解一下QGIS的工作原理。
+您现在不必太担心 QGIS 用户界面；QGIS 用户指南详细描述了界面和各种选项。我们不如深入了解一下 QGIS 的工作原理。
 
-## 理解QGIS概念
+## 理解 QGIS 概念
 
-要理解QGIS，您必须熟悉以下基本术语和概念：
+要理解 QGIS，您必须熟悉以下基本术语和概念：
 
-+   QGIS与从各种**数据源**加载的地理空间信息一起工作。这些数据源可以包括磁盘上的矢量数据和栅格数据文件、各种空间数据库，甚至提供来自互联网的地理空间数据的Web服务，如**Web地图服务**（WMS）服务器。
++   QGIS 与从各种**数据源**加载的地理空间信息一起工作。这些数据源可以包括磁盘上的矢量数据和栅格数据文件、各种空间数据库，甚至提供来自互联网的地理空间数据的 Web 服务，如**Web 地图服务**（WMS）服务器。
 
-+   无论数据来自何处，它都由QGIS检索并以**地图层**的形式显示。地图层可以显示或隐藏，并且可以通过各种方式自定义，以影响数据在地图上的显示方式。
++   无论数据来自何处，它都由 QGIS 检索并以**地图层**的形式显示。地图层可以显示或隐藏，并且可以通过各种方式自定义，以影响数据在地图上的显示方式。
 
 +   然后将地图层组合并在**地图**上显示。
 
-+   最后，各种地图层、地图和其他设置共同构成了一个项目。QGIS始终只有一个项目，并且正在处理该项目。项目包括所有地图层、地图显示选项和当前加载到QGIS中的各种设置。
++   最后，各种地图层、地图和其他设置共同构成了一个项目。QGIS 始终只有一个项目，并且正在处理该项目。项目包括所有地图层、地图显示选项和当前加载到 QGIS 中的各种设置。
 
 这些概念以以下方式相关联：
 
-![理解QGIS概念](img/00003.jpeg)
+![理解 QGIS 概念](img/00003.jpeg)
 
 ### 注意
 
-注意数据源位于QGIS之外。虽然地图层引用数据源，但数据本身存储在其他地方，例如，磁盘上的文件或数据库中。
+注意数据源位于 QGIS 之外。虽然地图层引用数据源，但数据本身存储在其他地方，例如，磁盘上的文件或数据库中。
 
-无论您何时使用QGIS，您总是在当前项目中工作。您可以保存项目并在以后重新加载它们，或者开始一个新的项目以将QGIS重置到其原始状态。
+无论您何时使用 QGIS，您总是在当前项目中工作。您可以保存项目并在以后重新加载它们，或者开始一个新的项目以将 QGIS 重置到其原始状态。
 
-# 链接QGIS和Python
+# 链接 QGIS 和 Python
 
-虽然QGIS本身是用C++编写的，但它提供了广泛的Python编程支持。内置了一个Python解释器，可以通过Python控制台交互式使用，或运行用Python编写的插件。还有一个全面的API，可以使用Python代码查询和控制QGIS应用程序。
+虽然 QGIS 本身是用 C++编写的，但它提供了广泛的 Python 编程支持。内置了一个 Python 解释器，可以通过 Python 控制台交互式使用，或运行用 Python 编写的插件。还有一个全面的 API，可以使用 Python 代码查询和控制 QGIS 应用程序。
 
-您可以使用以下三种方式使用Python与QGIS系统一起工作：
+您可以使用以下三种方式使用 Python 与 QGIS 系统一起工作：
 
-+   **Python控制台**：您可以打开这个控制台，它运行的是QGIS内置的交互式Python解释器，允许您输入命令并立即看到结果。
++   **Python 控制台**：您可以打开这个控制台，它运行的是 QGIS 内置的交互式 Python 解释器，允许您输入命令并立即看到结果。
 
-+   **Python插件**：这些是为在QGIS环境中运行而设计的Python包。
++   **Python 插件**：这些是为在 QGIS 环境中运行而设计的 Python 包。
 
 +   **外部应用程序**：你可以在自己的应用程序中使用 QGIS Python API。这让你可以使用 QGIS 作为地理空间处理引擎，甚至基于 QGIS 构建自己的交互式应用程序。
 
-无论你如何使用 Python 和 QGIS，你都将大量使用 QGIS Python 库，这些库通常被称为 **PyQGIS**。它们为 QGIS 系统提供了一个完整的程序接口，包括将数据源加载到图层中、操作地图、导出地图可视化以及使用 QGIS 用户界面构建自定义应用程序的调用。虽然对 PyQGIS 库的深入探讨将不得不等到 [第 3 章](part0021_split_000.html#page "第 3 章。学习 QGIS Python API")，即 *学习 QGIS Python API*，但我们将在下一节关于 Python 控制台的下一节中立即开始尝试。
+无论你如何使用 Python 和 QGIS，你都将大量使用 QGIS Python 库，这些库通常被称为 **PyQGIS**。它们为 QGIS 系统提供了一个完整的程序接口，包括将数据源加载到图层中、操作地图、导出地图可视化以及使用 QGIS 用户界面构建自定义应用程序的调用。虽然对 PyQGIS 库的深入探讨将不得不等到 第三章，即 *学习 QGIS Python API*，但我们将在下一节关于 Python 控制台的下一节中立即开始尝试。
 
 在本章的剩余部分，我们将检查你可以使用 QGIS 和 Python 交互的三个方法。
 
@@ -92,7 +92,7 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 虽然 Python 控制台是一个与现有 QGIS 项目交互的出色工具，但我们将用它从头开始创建一个新项目。不过，在我们这样做之前，我们需要为我们的 QGIS 项目下载一些地理空间数据源。
 
-我们将需要一个合适的 **底图** 用于我们的项目，以及一些河流和城市信息，以便在底图上显示。让我们使用自然地球网站来获取所需的信息。转到 [http://naturalearthdata.com](http://naturalearthdata.com) 并点击 **下载** 选项卡。
+我们将需要一个合适的 **底图** 用于我们的项目，以及一些河流和城市信息，以便在底图上显示。让我们使用自然地球网站来获取所需的信息。转到 [`naturalearthdata.com`](http://naturalearthdata.com) 并点击 **下载** 选项卡。
 
 首先，我们希望下载一个看起来很不错的底图。为此，在 **中等比例数据，1:50m** 部分下选择 **栅格** 链接，选择 **自然地球 1** 数据集，然后在 **自然地球 I 带阴影和水的** 标题下点击 **下载小尺寸** 链接。
 
@@ -116,7 +116,9 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 现在我们有了数据，让我们使用 QGIS Python 控制台将此数据导入到项目中。如果你已经将一些数据加载到 QGIS 中（例如，通过遵循 QGIS 用户指南中的教程），请从 **项目** 菜单中选择 **新建** 选项，以使用空白项目重新开始。然后，在 QGIS Python 控制台中输入以下内容：
 
-[PRE0]
+```py
+layer1 = iface.addRasterLayer("/path/to/NE1_50M_SR_W/NE1_50M_SR_W.tif", "basemap")
+```
 
 确保将 `/path/to/` 替换为你下载的 `NE1_50M_SR_W` 目录的完整路径。假设你输入了正确的路径，自然地球 1 基础地图应该出现在 QGIS 窗口中：
 
@@ -124,17 +126,24 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 如你所见，我们的基础地图现在有点小。你可以使用窗口顶部的工具栏中的各种平移和缩放命令将其放大，但让我们使用 Python 来做同样的事情：
 
-[PRE1]
+```py
+iface.zoomFull()
+```
 
 这将扩展基础地图以填充整个窗口。
 
 现在我们有了基础地图，让我们将我们的两个矢量图层添加到项目中。为此，请输入以下内容：
 
-[PRE2]
+```py
+layer2 = iface.addVectorLayer("/path/to/ne_50m_urban_areas/ne_50m_urban_areas.shp", "urban", "ogr")
+```
 
 再次确认，将 `/path/to/` 替换为你之前下载的 `ne_50m_urban_areas` 目录的完整路径。城市区域形状文件将被加载到 QGIS 项目中，并作为一系列彩色区域出现在基础地图上。让我们放大到加利福尼亚的一个区域，以便我们可以更清楚地看到它。为此，请在 Python 控制台窗口中输入以下命令：
 
-[PRE3]
+```py
+iface.mapCanvas().setExtent(QgsRectangle(-125, 31, -113, 38))
+iface.mapCanvas().refresh()
+```
 
 这将放大地图，以便加利福尼亚的一个区域，包括洛杉矶和旧金山的南部，现在显示在地图上：
 
@@ -142,13 +151,19 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 最后，让我们将河流和湖泊数据添加到我们的项目中。为此，请在 Python 控制台中输入以下内容：
 
-[PRE4]
+```py
+layer3 = iface.addVectorLayer("/path/to/ne_50m_rivers_lake_centerlines/ne_50m_rivers_lake_centerlines.shp", "water", "ogr")
+```
 
 如果你查看地图，你会看到河流和湖泊现在可见。然而，它们是以默认的绿色绘制的。让我们将其改为蓝色，以便水现在是蓝色：
 
-[PRE5]
+```py
+from PyQt4.QtGui import QColor
+layer3.rendererV2().symbols()[0].setColor(QColor("#4040FF"))
+iface.mapCanvas().refresh()
+```
 
-这段代码可能有点令人困惑，但别担心——我们将在 [第 3 章](part0021_split_000.html#page "第 3 章。学习 QGIS Python API") 中学习关于渲染器和符号的内容，*学习 QGIS Python API*。
+这段代码可能有点令人困惑，但别担心——我们将在 第三章 中学习关于渲染器和符号的内容，*学习 QGIS Python API*。
 
 现在我们已经完成，你可以使用 **项目** 菜单中的 **另存为...** 项保存你的项目。正如你所见，使用 Python 设置和自定义 QGIS 项目是完全可能的。
 
@@ -156,7 +171,7 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 虽然 Python 控制台是一个交互式编码的绝佳工具，但如果你想使用 Python 来扩展 QGIS 的功能，它就不是很实用了。这就是 QGIS 插件发挥作用的地方；你可以创建（或下载）一个插件，添加新功能或改变 QGIS 的工作方式。
 
-由于 QGIS 是使用 Qt 框架编写的，QGIS 插件利用了 Qt 中的 Python 绑定，这些绑定被称为 **PyQt**。当我们开始在 [第 4 章](part0026_split_000.html#page "第 4 章。创建 QGIS 插件") 中构建自己的插件时，我们将下载并安装 PyQt 和相关工具，*创建 QGIS 插件*。
+由于 QGIS 是使用 Qt 框架编写的，QGIS 插件利用了 Qt 中的 Python 绑定，这些绑定被称为 **PyQt**。当我们开始在 第四章 中构建自己的插件时，我们将下载并安装 PyQt 和相关工具，*创建 QGIS 插件*。
 
 为了了解 Python 插件是如何工作的，让我们看看 **缩放到点** 插件。正如其名所示，此插件允许你缩放以显示地图上的给定坐标。它也是用 Python 编写的，是学习插件的一般方便示例。
 
@@ -166,7 +181,7 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 ![检查 Python 插件](img/00007.jpeg)
 
-尝试输入你当前位置的经纬度（如果你不知道，你可能需要 [http://itouchmap.com/latlong.html](http://itouchmap.com/latlong.html) 的帮助）。你应该能看到你当前位置的基础地图、城市区域和水道。
+尝试输入你当前位置的经纬度（如果你不知道，你可能需要 [`itouchmap.com/latlong.html`](http://itouchmap.com/latlong.html) 的帮助）。你应该能看到你当前位置的基础地图、城市区域和水道。
 
 ### 小贴士
 
@@ -201,17 +216,41 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 在你喜欢的文本编辑器中打开 `zoomtopoint.py` 模块。正如你所看到的，它包含了插件的主要 Python 代码，形式为一个 `ZoomToPoint` 类。这个类具有以下基本结构：
 
-[PRE6]
+```py
+class ZoomToPoint:
+    def __init__(self, iface):
+        self.iface = iface
+
+    def initGui(self):
+        ...
+
+    def unload(self):
+        ...
+
+    def run(self):
+        ...
+```
 
 如果你打开 `__init__.py` 模块，你会看到这个类是如何用来定义插件行为的：
 
-[PRE7]
+```py
+def classFactory(iface): 
+      from zoomtopoint import ZoomToPoint 
+      return ZoomToPoint(iface) 
+```
 
 当插件被加载时，一个名为 `iface` 的参数传递给 `ClassFactory` 函数。这个参数是 `QgsInterface` 的一个实例，它提供了访问正在运行的 QGIS 应用程序各个部分的能力。正如你所看到的，类工厂创建了一个 `ZoomToPoint` 对象，并将 `iface` 参数传递给初始化器，以便 `ZoomToPoint` 可以使用它。
 
 注意在 `Zoomtopoint.py` 模块中的 `ZoomToPoint.__init__()`，如何将 `iface` 参数存储在一个实例变量中，这样其他方法就可以通过 `self.iface` 来引用 QGIS 接口。例如：
 
-[PRE8]
+```py
+def __init__(self, iface):
+    self.iface = iface
+
+def initGui(self):
+    ...
+    self.iface.addPluginToMenu("&Zoom to point...", self.action)
+```
 
 这使得插件能够与 QGIS 用户界面进行交互和操作。
 
@@ -227,7 +266,25 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 不要过于担心这里的所有细节；我们将在后面的章节中查看初始化和卸载插件的过程。现在，更仔细地看看 `run()` 方法。这个方法本质上看起来如下：
 
-[PRE9]
+```py
+def run(self):
+    dlg = ZoomToPointDialog()
+    ...
+    dlg.show()
+    result = dlg.exec_()
+    if result == 1:
+        x = dlg.ui.xCoord.text()
+        y = dlg.ui.yCoord.text()
+        scale = dlg.ui.spinBoxScale.value()
+        rect = QgsRectangle(float(x) – scale,
+                            float(y) - scale,
+                            float(x) + scale,
+                            float(y) + scale)
+        mc=self.iface.mapCanvas() 
+        mc.setExtent(rect)
+        mc.refresh()
+        ...
+```
 
 我们已经排除了记住用户之前输入的值并将这些值在插件运行时复制回对话框的代码。查看之前的代码，逻辑似乎相当简单，解释如下：
 
@@ -259,7 +316,7 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 +   你的插件可以按要求显示对话框，提取输入的值，并使用这些结果通过 `iface` 变量与 QGIS 交互。
 
-插件是扩展和定制 QGIS 的有用方式。我们将在 [第 4 章](part0026_split_000.html#page "第 4 章。创建 QGIS 插件") 中回到 QGIS 插件的主题，我们将从头开始创建自己的插件。
+插件是扩展和定制 QGIS 的有用方式。我们将在 第四章 中回到 QGIS 插件的主题，我们将从头开始创建自己的插件。
 
 ## 编写外部应用程序
 
@@ -275,15 +332,31 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 首先，为了使您的程序能够访问 PyQGIS 库，您需要在导入任何 QGIS 包之前修改您的 Python 路径（以及可能的一些其他环境变量）。对于 MS Windows，您可以在命令行中运行以下操作：
 
-[PRE10]
+```py
+SET OSGEO4W_ROOT=C:\OSGeo4W
+SET QGIS_PREFIX=%OSGEO4W_ROOT%\apps\qgis
+SET PATH=%PATH%;%QGIS_PREFIX%\bin
+SET PYTHONPATH=%QGIS_PREFIX%\python;%PYTHONPATH%
+
+```
 
 如果你正在运行 Mac OS X，以下命令将为你设置 Python 路径：
 
-[PRE11]
+```py
+export PYTHONPATH="$PYTHONPATH:/Applications/QGIS.app/Contents/Resources/python"
+export DYLD_FRAMEWORK_PATH="/Applications/QGIS.app/Contents/Frameworks"
+export QGIS_PREFIX="/Applications/QGIS.app/Contents/Resources"
+
+```
 
 对于运行 Linux 版本的计算机，您可以使用以下命令：
 
-[PRE12]
+```py
+export PYTHONPATH="/path/to/qgis/build/output/python/"
+export LD_LIBRARY_PATH="/path/to/qgis/build/output/lib/"
+export QGIS_PREFIX="/path/to/qgis/build/output/"
+
+```
 
 ### 注意
 
@@ -291,15 +364,24 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 如果您将 QGIS 安装在非标准位置，您可能需要修改这些命令才能使其生效。要检查它们是否已生效，请启动 Python 解释器并输入以下命令：
 
-[PRE13]
+```py
+>>> import qgis
+
+```
 
 如果一切顺利，您将简单地看到 Python 提示符：
 
-[PRE14]
+```py
+>>> 
+
+```
 
 另一方面，您可能会看到以下错误：
 
-[PRE15]
+```py
+ImportError: No module named qgis
+
+```
 
 在这种情况下，`PYTHONPATH` 变量尚未正确设置，您将不得不检查您之前输入的设置此环境变量的命令，并可能对其进行修改以允许非标准位置的 QGIS 库。
 
@@ -307,33 +389,57 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 注意，在某些情况下，这还不够，因为 Python 库只是底层 C++ 库的包装器；您可能还需要告诉您的计算机在哪里可以找到这些 C++ 库。为了检查这是否是一个问题，您可以尝试以下操作：
 
-[PRE16]
+```py
+import qgis.core
+```
 
 您可能会遇到一个看起来像这样的错误：
 
-[PRE17]
+```py
+ImportError: libqgis_core.so.1.5.0: cannot open shared object file: No such file or directory
 
-您将不得不告诉您的计算机在哪里可以找到底层共享库。我们将在查看编写我们自己的外部应用程序时返回这个问题；如果您想查看详细信息，请跳转到[第 5 章](part0033_split_000.html#page "第 5 章。在外部应用程序中使用 QGIS")，*在外部应用程序中使用 QGIS*。
+```
+
+您将不得不告诉您的计算机在哪里可以找到底层共享库。我们将在查看编写我们自己的外部应用程序时返回这个问题；如果您想查看详细信息，请跳转到第五章，*在外部应用程序中使用 QGIS*。
 
 路径设置好后，你现在可以导入你想要使用的 PyQGIS 库的各个部分，例如：
 
-[PRE18]
+```py
+from qgis.core import *
+```
 
 现在我们已经可以访问 PyQGIS 库了，我们的下一个任务是要初始化这些库。如前所述，我们必须告诉 PyQGIS 它可以找到各种 QGIS 资源。我们使用 `QgsApplication.setPrefixPath()` 函数来做这件事，如下所示：
 
-[PRE19]
+```py
+import os
+QgsApplication.setPrefixPath(os.environ['QGIS_PREFIX'], True)
+```
 
 这使用我们之前设置的 `QGIS_PREFIX` 环境变量来告诉 QGIS 它的资源在哪里。完成这个步骤后，你可以通过以下调用初始化 PyQGIS 库：
 
-[PRE20]
+```py
+QgsApplication.initQgis()
+```
 
 现在，我们可以使用 PyQGIS 在我们的应用程序中做我们想做的任何事情。当我们的程序退出时，我们还需要通知 PyQGIS 库我们正在退出：
 
-[PRE21]
+```py
+QgsApplication.exitQgis()
+```
 
 将所有这些放在一起，我们的最小 Python 应用程序看起来像这样：
 
-[PRE22]
+```py
+import os
+from qgis.core import *
+
+QgsApplication.setPrefixPath(os.environ['QGIS_PREFIX'], True)
+QgsApplication.initQgis()
+
+# ...
+
+QgsApplication.exitQgis()
+```
 
 当然，这个应用程序目前还没有做任何有用的事情——它只是启动并关闭 PyQGIS 库。所以让我们用一些有用的代码替换掉 "`...`" 行，以显示一个基本的地图小部件。为此，我们需要定义一个 `QMainWindow` 子类，它显示地图小部件，然后创建并使用一个 `QApplication` 对象来显示这个窗口，并在应用程序运行时处理各种用户界面事件。
 
@@ -343,7 +449,14 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 让我们先替换掉 "`...`" 行，用以下代码替换，该代码显示地图查看器，然后运行应用程序的主事件循环：
 
-[PRE23]
+```py
+app = QApplication(sys.argv)
+
+viewer = MapViewer("/path/to/shapefile.shp")
+viewer.show()
+
+app.exec_()
+```
 
 如你所见，创建并显示了一个 `MapViewer` 实例（我们很快就会定义它），并通过调用 `exec_()` 方法运行 `QApplication` 对象。为了简单起见，我们传递了一个 shapefile 的名称，在地图查看器中显示。
 
@@ -351,7 +464,32 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 现在，让我们定义 `MapViewer` 类。以下是类的定义看起来像这样：
 
-[PRE24]
+```py
+class MapViewer(QMainWindow):
+    def __init__(self, shapefile):
+        QMainWindow.__init__(self)
+        self.setWindowTitle("Map Viewer")
+
+        canvas = QgsMapCanvas()
+        canvas.useImageToRender(False)
+        canvas.setCanvasColor(Qt.white)
+        canvas.show()
+
+        layer = QgsVectorLayer(shapefile, "layer1", "ogr")
+        if not layer.isValid():
+            raise IOError("Invalid shapefile")
+
+        QgsMapLayerRegistry.instance().addMapLayer(layer)
+        canvas.setExtent(layer.extent())
+        canvas.setLayerSet([QgsMapCanvasLayer(layer)])
+
+        layout = QVBoxLayout()
+        layout.addWidget(canvas)
+
+        contents = QWidget()
+        contents.setLayout(layout)
+        self.setCentralWidget(contents)
+```
 
 不要过于担心这个类的细节；我们基本上只是创建一个窗口，并在其中放置一个 `QgsMapCanvas` 对象。然后我们创建一个地图图层（`QgsVectorLayer` 的实例）并将其添加到地图画布上。最后，我们将画布添加到窗口的内容中。
 
@@ -359,28 +497,32 @@ QGIS 拥有一个全面的网站 ([http://qgis.org](http://qgis.org))，这使�
 
 要将前面的代码转换成一个可工作的应用程序，我们只需要在模块顶部添加一些额外的 `import` 语句：
 
-[PRE25]
+```py
+import sys
+from PyQt4.QtGui import *
+from PyQt4.QtCore import Qt
+```
 
 ### 提示
 
 **下载示例代码**
 
-您可以从[http://www.packtpub.com](http://www.packtpub.com)下载您购买的所有Packt Publishing书籍的示例代码文件。如果您在其他地方购买了这本书，您可以访问[http://www.packtpub.com/support](http://www.packtpub.com/support)并注册，以便直接将文件通过电子邮件发送给您。
+您可以从[`www.packtpub.com`](http://www.packtpub.com)下载您购买的所有 Packt Publishing 书籍的示例代码文件。如果您在其他地方购买了这本书，您可以访问[`www.packtpub.com/support`](http://www.packtpub.com/support)并注册，以便直接将文件通过电子邮件发送给您。
 
-如果您运行此应用程序，地图查看器将显示，显示由代码引用的shapefile内容。例如：
+如果您运行此应用程序，地图查看器将显示，显示由代码引用的 shapefile 内容。例如：
 
 ![编写外部应用程序](img/00009.jpeg)
 
-这个应用程序仍然有点丑陋——您可以看到地图顶部和底部有空白，因为它们没有考虑到地图数据的长宽比。此外，也没有放大或滚动地图的功能。然而，这些功能可以很容易地添加，如您所见，创建基于QGIS的独立地图应用程序并不困难。
+这个应用程序仍然有点丑陋——您可以看到地图顶部和底部有空白，因为它们没有考虑到地图数据的长宽比。此外，也没有放大或滚动地图的功能。然而，这些功能可以很容易地添加，如您所见，创建基于 QGIS 的独立地图应用程序并不困难。
 
 # 摘要
 
-在本章中，我们熟悉了QGIS以及它作为Python地理空间开发系统可以使用的各种方式。我们安装并探索了QGIS应用程序本身，然后查看Python如何与QGIS一起使用。我们看到了QGIS如何使用数据源、地图图层、地图和项目来组织和处理地理空间数据。接下来，我们检查了您可以使用Python和QGIS的三种方式：通过在Python控制台中输入命令、编写Python插件或编写利用QGIS Python API的外部应用程序。
+在本章中，我们熟悉了 QGIS 以及它作为 Python 地理空间开发系统可以使用的各种方式。我们安装并探索了 QGIS 应用程序本身，然后查看 Python 如何与 QGIS 一起使用。我们看到了 QGIS 如何使用数据源、地图图层、地图和项目来组织和处理地理空间数据。接下来，我们检查了您可以使用 Python 和 QGIS 的三种方式：通过在 Python 控制台中输入命令、编写 Python 插件或编写利用 QGIS Python API 的外部应用程序。
 
-我们然后查看与QGIS一起提供的广泛的Python库集，称为PyQGIS，您可以使用它进行地理空间开发。我们看到了如何使用QGIS Python控制台直接操作QGIS项目，添加图层，放大缩小，更改选项等。
+我们然后查看与 QGIS 一起提供的广泛的 Python 库集，称为 PyQGIS，您可以使用它进行地理空间开发。我们看到了如何使用 QGIS Python 控制台直接操作 QGIS 项目，添加图层，放大缩小，更改选项等。
 
-接下来，我们下载并检查了一个QGIS Python插件。在这个过程中，我们了解到QGIS插件只是安装在您家目录或用户目录中名为`.qgis2`（或`.qgis`）的隐藏目录中的Python包。插件利用Qt库来定义和构建资源，例如用户界面模板。
+接下来，我们下载并检查了一个 QGIS Python 插件。在这个过程中，我们了解到 QGIS 插件只是安装在您家目录或用户目录中名为`.qgis2`（或`.qgis`）的隐藏目录中的 Python 包。插件利用 Qt 库来定义和构建资源，例如用户界面模板。
 
-最后，我们看到了如何编写外部Python应用程序，这些应用程序可以从QGIS系统中加载PyQGIS库，然后在更大的PyQt应用程序中使用这些库。
+最后，我们看到了如何编写外部 Python 应用程序，这些应用程序可以从 QGIS 系统中加载 PyQGIS 库，然后在更大的 PyQt 应用程序中使用这些库。
 
-在下一章中，我们将更详细地探讨QGIS Python控制台，并使用它来熟悉PyQGIS库，同时看看我们如何在我们的Python地理空间开发项目中使用它。
+在下一章中，我们将更详细地探讨 QGIS Python 控制台，并使用它来熟悉 PyQGIS 库，同时看看我们如何在我们的 Python 地理空间开发项目中使用它。

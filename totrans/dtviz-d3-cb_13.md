@@ -1,4 +1,4 @@
-# 第 13 章。测试驱动你的可视化
+# 第十三章。测试驱动你的可视化
 
 在本章中，我们将涵盖：
 
@@ -24,11 +24,11 @@
 
 关于测试的更多信息，请查看以下链接：
 
-+   单元测试：[http://en.wikipedia.org/wiki/Unit_testing](http://en.wikipedia.org/wiki/Unit_testing)
++   单元测试：[`en.wikipedia.org/wiki/Unit_testing`](http://en.wikipedia.org/wiki/Unit_testing)
 
-测试驱动开发：[http://en.wikipedia.org/wiki/Test-driven_development](http://en.wikipedia.org/wiki/Test-driven_development)
+测试驱动开发：[`en.wikipedia.org/wiki/Test-driven_development`](http://en.wikipedia.org/wiki/Test-driven_development)
 
-代码覆盖率：[http://en.wikipedia.org/wiki/Code_coverage](http://en.wikipedia.org/wiki/Code_coverage)
+代码覆盖率：[`en.wikipedia.org/wiki/Code_coverage`](http://en.wikipedia.org/wiki/Code_coverage)
 
 # 获取 Jasmine 并设置测试环境
 
@@ -36,17 +36,17 @@
 
 ## 准备工作
 
-Jasmine ([http://pivotal.github.io/jasmine/](http://pivotal.github.io/jasmine/)) 是一个用于测试JavaScript代码的**行为驱动开发**（**BDD**）框架。
+Jasmine ([`pivotal.github.io/jasmine/`](http://pivotal.github.io/jasmine/)) 是一个用于测试 JavaScript 代码的**行为驱动开发**（**BDD**）框架。
 
 ### 注意
 
-BDD是一种软件开发技术，它将**测试驱动开发**（**TDD**）与领域驱动设计相结合。
+BDD 是一种软件开发技术，它将**测试驱动开发**（**TDD**）与领域驱动设计相结合。
 
-我们选择Jasmine作为我们的测试框架，因为它在JavaScript社区中的流行以及它良好的BDD语法。您可以从以下位置下载Jasmine库：
+我们选择 Jasmine 作为我们的测试框架，因为它在 JavaScript 社区中的流行以及它良好的 BDD 语法。您可以从以下位置下载 Jasmine 库：
 
-[https://github.com/pivotal/jasmine/downloads](https://github.com/pivotal/jasmine/downloads)
+[`github.com/pivotal/jasmine/downloads`](https://github.com/pivotal/jasmine/downloads)
 
-下载后，您需要将其解压缩到`lib`文件夹中。除了`lib`文件夹外，我们还需要创建`src`和`spec`文件夹来存储源文件以及测试用例（在BDD术语中，测试用例被称为规范）。以下截图显示了文件夹结构：
+下载后，您需要将其解压缩到`lib`文件夹中。除了`lib`文件夹外，我们还需要创建`src`和`spec`文件夹来存储源文件以及测试用例（在 BDD 术语中，测试用例被称为规范）。以下截图显示了文件夹结构：
 
 ![准备中](img/2162OS_13_01.jpg)
 
@@ -54,41 +54,112 @@ BDD是一种软件开发技术，它将**测试驱动开发**（**TDD**）与领
 
 ## 如何操作...
 
-现在，我们已经在我们的库中有了Jasmine，接下来要做的事情是设置一个HTML页面，该页面将包括Jasmine库以及我们的源代码和测试用例，以便它们可以被执行以验证我们的程序。在我们的设置中，这个文件被命名为`SpecRunner.html`，它包括以下代码：
+现在，我们已经在我们的库中有了 Jasmine，接下来要做的事情是设置一个 HTML 页面，该页面将包括 Jasmine 库以及我们的源代码和测试用例，以便它们可以被执行以验证我们的程序。在我们的设置中，这个文件被命名为`SpecRunner.html`，它包括以下代码：
 
-[PRE0]
+```py
+<head>
+    <meta charset="utf-8">
+    <title>Jasmine Spec Runner</title>
+
+    <link rel="stylesheet" type="text/css" href="lib/jasmine-1.3.1/jasmine.css">
+    <script type="text/javascript" src="img/jasmine.js"></script>
+    <script type="text/javascript" src="img/jasmine-html.js"></script>
+    <script type="text/javascript" src="img/d3.js"></script>
+
+    <!-- include source files here... -->
+    <script type="text/javascript" src="img/bar_chart.js"></script>
+    <!-- include spec files here... -->
+    <script type="text/javascript" src="img/spec_helper.js"></script>
+    <script type="text/javascript" src="img/bar_chart_spec.js"></script>
+
+    <script type="text/javascript">
+        (function () {
+            var jasmineEnv = jasmine.getEnv();
+            jasmineEnv.updateInterval = 1000;
+
+            var htmlReporter = new jasmine.HtmlReporter();
+
+            jasmineEnv.addReporter(htmlReporter);
+
+            jasmineEnv.specFilter = function (spec) {
+                return htmlReporter.specFilter(spec);
+            };
+
+            var currentWindowOnload = window.onload;
+
+            window.onload = function () {
+                if (currentWindowOnload) {
+                    currentWindowOnload();
+                }
+                execJasmine();
+            };
+
+            function execJasmine() {
+                jasmineEnv.execute();
+            }
+
+        })();
+    </script>
+
+</head>
+```
 
 ## 如何操作...
 
-此代码遵循标准的Jasmine规范运行器结构，并将执行报告直接生成到我们的HTML页面中。现在，您已经为您的可视化开发设置了一个完整的测试环境。如果您用浏览器打开`SpecRunner.html`文件，您现在会看到一个空白页面；然而，如果您查看我们的代码示例，您将看到以下报告：
+此代码遵循标准的 Jasmine 规范运行器结构，并将执行报告直接生成到我们的 HTML 页面中。现在，您已经为您的可视化开发设置了一个完整的测试环境。如果您用浏览器打开`SpecRunner.html`文件，您现在会看到一个空白页面；然而，如果您查看我们的代码示例，您将看到以下报告：
 
 ![工作原理](img/2162OS_13_02.jpg)
 
-Jasmine报告
+Jasmine 报告
 
 ## 参见
 
-+   Jasmine参考文档：[http://pivotal.github.io/jasmine/](http://pivotal.github.io/jasmine/)
++   Jasmine 参考文档：[`pivotal.github.io/jasmine/`](http://pivotal.github.io/jasmine/)
 
 # 测试驱动你的可视化 - 图表创建
 
-在测试环境准备就绪后，我们可以继续开发一个简单的条形图，这与我们在第8章的“创建条形图”食谱中做的是非常相似的，尽管这次是以测试驱动的形式。如果你打开`tdd-bar-chart.html`页面，你可以看到条形图的外观：
+在测试环境准备就绪后，我们可以继续开发一个简单的条形图，这与我们在第八章的“创建条形图”食谱中做的是非常相似的，尽管这次是以测试驱动的形式。如果你打开`tdd-bar-chart.html`页面，你可以看到条形图的外观：
 
 ![测试驱动你的可视化 - 图表创建](img/2162OS_13_03.jpg)
 
 测试驱动条形图
 
-到目前为止，我们所有人都非常清楚如何使用D3实现条形图；然而，构建条形图并不是本食谱的重点。相反，我们想展示如何每一步都构建测试用例，并自动验证我们的条形图实现是否正在执行其应有的功能。本食谱的源代码是使用测试驱动开发方法构建的；然而，由于本书的篇幅限制，我们不会展示TDD过程中的每一步。相反，我们将多个步骤组合成三个较大的部分，每个部分在本章和本食谱中都有不同的重点，而这个食谱是我们迈出的第一步。
+到目前为止，我们所有人都非常清楚如何使用 D3 实现条形图；然而，构建条形图并不是本食谱的重点。相反，我们想展示如何每一步都构建测试用例，并自动验证我们的条形图实现是否正在执行其应有的功能。本食谱的源代码是使用测试驱动开发方法构建的；然而，由于本书的篇幅限制，我们不会展示 TDD 过程中的每一步。相反，我们将多个步骤组合成三个较大的部分，每个部分在本章和本食谱中都有不同的重点，而这个食谱是我们迈出的第一步。
 
 ## 如何操作...
 
 我们需要采取的第一步是确保我们的条形图实现存在并且可以接收数据。我们的开发起点可以是任意的，我们决定从这个最简单的函数开始，为我们的对象设置框架。以下是测试用例的样子：
 
-[PRE1]
+```py
+describe('BarChart', function () {
+    var div,
+        chart,
+        data = [
+            {x: 0, y: 0},
+            {x: 1, y: 3},
+            {x: 2, y: 6}
+        ];
+
+    beforeEach(function () {
+        div = d3.select('body').append('div');
+        chart = BarChart(div);
+    });
+
+    afterEach(function () {
+        div.remove();
+    });
+
+    describe('.data', function () {
+        it('should allow setting and retrieve chart data', function () {
+            expect(chart.data(data).data()).toBe(data);
+        });
+});
+});
+```
 
 ## 它是如何工作的...
 
-在这个第一个测试用例中，我们使用了几个Jasmine构造：
+在这个第一个测试用例中，我们使用了几个 Jasmine 构造：
 
 +   `describe`：这个函数定义了一系列测试用例；在`describe`内部可以嵌套子测试套件，并定义测试用例。
 
@@ -100,29 +171,92 @@ Jasmine报告
 
 +   `expect`：这个函数在测试用例中定义了一个期望，然后可以通过匹配器（例如，`toBe`和`toBeEmpty`）进行链式调用，以在测试用例中执行断言。
 
-在我们的例子中，我们使用`beforeEach`钩子为每个测试用例设置一个`div`容器，然后在`afterEach`钩子中删除`div`以改善不同测试用例之间的隔离。测试用例本身几乎是微不足道的；它检查条形图是否可以接收数据并正确返回数据属性。到目前为止，如果我们运行我们的SpecRunner，它将显示一条红色消息，抱怨没有`BarChart`对象，所以让我们创建我们的对象和函数：
+在我们的例子中，我们使用`beforeEach`钩子为每个测试用例设置一个`div`容器，然后在`afterEach`钩子中删除`div`以改善不同测试用例之间的隔离。测试用例本身几乎是微不足道的；它检查条形图是否可以接收数据并正确返回数据属性。到目前为止，如果我们运行我们的 SpecRunner，它将显示一条红色消息，抱怨没有`BarChart`对象，所以让我们创建我们的对象和函数：
 
-[PRE2]
+```py
+function BarChart(p) {
+var that = {};
+var _parent = p, data;
+that.data = function (d) {
+        if (!arguments.length) return _data;
+        _data = d;
+        return that;
+};
+
+return that;
+}
+```
 
 现在，如果你再次运行`SpecRunner.html`，它将显示一个快乐的绿色消息，表明我们的唯一测试用例已经通过。
 
-# 测试驱动你的可视化——SVG渲染
+# 测试驱动你的可视化——SVG 渲染
 
 现在我们已经创建了条形图对象的初步框架，并且觉得我们已经准备好尝试渲染一些内容了，所以在这个第二次迭代中，我们将尝试生成`svg:svg`元素。
 
 ## 如何做到这一点...
 
-渲染`svg:svg`元素不仅应该简单地将`svg:svg`元素添加到HTML主体中，还应该将我们的图表对象的宽度和高度设置转换为正确的SVG属性。以下是我们如何在测试用例中表达我们的期望：
+渲染`svg:svg`元素不仅应该简单地将`svg:svg`元素添加到 HTML 主体中，还应该将我们的图表对象的宽度和高度设置转换为正确的 SVG 属性。以下是我们如何在测试用例中表达我们的期望：
 
-[PRE3]
+```py
+describe('.render', function () {
+        describe('svg', function () {
+            it('should generate svg', function () {
+                chart.render();
+                expect(svg()).not.toBeEmpty();
+            });
+
+            it('should set default svg height and width', 
+              function () {
+                chart.render();
+                expect(svg().attr('width')).toBe('500');
+                expect(svg().attr('height')).toBe('350');
+            });
+
+            it('should allow changing svg height and width', 
+              function () {
+                chart.width(200).height(150).render();
+                expect(svg().attr('width')).toBe('200');
+                expect(svg().attr('height')).toBe('150');
+            });
+        });
+});
+
+function svg() {
+    return div.select('svg');
+}
+```
 
 ## 它是如何工作的...
 
 到目前为止，所有这些测试都将失败，因为我们甚至没有渲染函数；然而，它清楚地说明了我们期望渲染函数生成`svg:svg`元素并正确设置`width`和`height`属性。第二个测试用例还确保，如果用户没有提供`height`和`width`属性，我们将提供一组默认值。以下是我们将如何实现渲染方法以满足这些期望：
 
-[PRE4]
+```py
+...
+var _parent = p, _width = 500, _height = 350
+        _data;
 
-到目前为止，我们的`SpecRunner.html`再次全部显示为绿色和快乐。然而，它实际上并没有做很多事情，因为它只是在页面上生成一个空的`svg元素`，甚至没有使用任何数据。
+    that.render = function () {
+        var svg = _parent
+            .append("svg")
+            .attr("height", _height)
+            .attr("width", _width);
+    };
+
+    that.width = function (w) {
+        if (!arguments.length) return _width;
+        _width = w;
+        return that;
+    };
+
+    that.height = function (h) {
+        if (!arguments.length) return _height;
+        _height = h;
+        return that;
+};
+...
+```
+
+到目前为止，我们的`SpecRunner.html`再次全部显示为绿色和快乐。然而，它实际上并没有做很多事情，因为它只是在页面上生成一个空的`svg 元素`，甚至没有使用任何数据。
 
 # 测试驱动你的可视化——像素级完美的条形渲染
 
@@ -132,16 +266,103 @@ Jasmine报告
 
 让我们看看我们是如何测试它的：
 
-[PRE5]
+```py
+describe('chart body', function () {
+        it('should create body g', function () {
+            chart.render();
+            expect(chartBody()).not.toBeEmpty();
+        });
+
+        it('should translate to (left, top)', function () {
+            chart.render();
+             expect(chartBody().attr('transform')).toBe('translate(30,10)')
+        });
+    });
+
+    describe('bars', function () {
+        beforeEach(function () {
+            chart.data(data).width(100).height(100)
+                .x(d3.scale.linear().domain([0, 3]))
+                .y(d3.scale.linear().domain([0, 6]))
+                .render();
+        });
+
+        it('should create 3 svg:rect elements', function () {
+            expect(bars().size()).toBe(3);
+        });
+
+        it('should calculate bar width automatically', 
+          function () {
+            bars().each(function () {expect(d3.select(this).attr('width')).toBe('18');
+            });
+        });
+
+       it('should map bar x using x-scale', function () {expect(d3.select(bars()[0][0]).attr('x')).toBe('0');expect(d3.select(bars()[0][1]).attr('x')).toBe('20');expect(d3.select(bars()[0][2]).attr('x')).toBe('40');
+       });
+
+       it('should map bar y using y-scale', function () {expect(d3.select(bars()[0][0]).attr('y')).toBe('60');expect(d3.select(bars()[0][1]).attr('y')).toBe('30');expect(d3.select(bars()[0][2]).attr('y')).toBe('0');
+       });
+
+       it('should calculate bar height based on y', 
+          function () {expect(d3.select(bars()[0][0]).
+            attr('height')).toBe('10');expect(d3.select(bars()[0][1]).attr('height')).toBe('40');expect(d3.select(bars()[0][2]).attr('height')).toBe('70');
+        });
+    });
+
+ 	 function chartBody() {
+        return svg().select('g.body');
+    }
+
+    function bars() {
+        return chartBody().selectAll('rect.bar');
+}
+```
 
 ## 它是如何工作的...
 
 在先前的测试套件中，我们描述了我们期望图表主体 `svg:g` 元素能够正确变换，并且设置了正确数量的条形图，并带有适当的属性（`width`、`x`、`y`、`height`）。实际上，实现过程将比我们的测试用例要短，这在经过良好测试的实现中是很常见的：
 
-[PRE6]
+```py
+...
+var _parent = p, _width = 500, _height = 350,
+        _margins = {top: 10, left: 30, right: 10, bottom: 30},
+        _data,
+        _x = d3.scale.linear(),
+        _y = d3.scale.linear();
+
+that.render = function () {
+        var svg = _parent
+            .append("svg")
+            .attr("height", _height)
+            .attr("width", _width);
+
+        var body = svg.append("g")
+            .attr("class", 'body')
+            .attr("transform", "translate(" + _margins.left + "," + _margins.top + ")")
+
+        if (_data) {
+            _x.range([0, quadrantWidth()]);
+            _y.range([quadrantHeight(), 0]);
+
+            body.selectAll('rect.bar')
+                .data(_data).enter()
+                .append('rect')
+                .attr("class", 'bar')
+                .attr("width", function () {
+                    return quadrantWidth() / _data.length - BAR_PADDING;
+                })
+                .attr("x", function (d) {return _x(d.x); })
+                .attr("y", function (d) {return _y(d.y); })
+                .attr("height", function (d) {
+                    return _height - _margins.bottom - _y(d.y);
+                });
+        }
+};
+...
+```
 
 我想你已经明白了这个道理，现在你可以一遍又一遍地重复这个循环来推动你的实现。D3 可视化建立在 HTML 和 SVG 之上，这两种都是简单的标记语言，可以轻松验证。精心设计的测试套件可以确保你的可视化不仅像素级精确，甚至可以达到亚像素级精确。
 
 ## 参考以下内容
 
-+   测试驱动开发：[http://en.wikipedia.org/wiki/Test-driven_development](http://en.wikipedia.org/wiki/Test-driven_development)
++   测试驱动开发：[`en.wikipedia.org/wiki/Test-driven_development`](http://en.wikipedia.org/wiki/Test-driven_development)

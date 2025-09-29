@@ -1,4 +1,4 @@
-# 第3章. 处理数据
+# 第三章. 处理数据
 
 在本章中，我们将涵盖：
 
@@ -24,43 +24,43 @@
 > 
 > (Rob P., S. Morris, and Coronel C. 2009)
 
-这是在数字信息世界中传统上定义数据和信息的途径。然而，数据可视化提供了对这个定义的更丰富解释，因为信息不再是经过处理的原始事实的简单结果，而是一种事实的视觉隐喻。正如Manuel Lima在他的《信息可视化宣言》中所建议的，在物质世界中，形式被视为功能的追随者。
+这是在数字信息世界中传统上定义数据和信息的途径。然而，数据可视化提供了对这个定义的更丰富解释，因为信息不再是经过处理的原始事实的简单结果，而是一种事实的视觉隐喻。正如 Manuel Lima 在他的《信息可视化宣言》中所建议的，在物质世界中，形式被视为功能的追随者。
 
-同一个数据集可以生成任意数量的可视化，它们在有效性方面可能具有同等的要求。从某种意义上说，可视化更多的是关于传达创作者对数据的洞察，而不是其他任何事情。更进一步地说，Card、McKinlay和Shneiderman提出，信息可视化的实践可以描述为：
+同一个数据集可以生成任意数量的可视化，它们在有效性方面可能具有同等的要求。从某种意义上说，可视化更多的是关于传达创作者对数据的洞察，而不是其他任何事情。更进一步地说，Card、McKinlay 和 Shneiderman 提出，信息可视化的实践可以描述为：
 
 > 使用计算机支持的、交互的、抽象数据的视觉表示来增强认知。
 > 
 > (Card S. & Mackinly J. and Shneiderman B. 1999)
 
-在接下来的章节中，我们将探讨D3提供的各种技术，以在数据与视觉领域之间架起桥梁。这是我们能够用数据创建**认知放大器**之前需要采取的第一个步骤。
+在接下来的章节中，我们将探讨 D3 提供的各种技术，以在数据与视觉领域之间架起桥梁。这是我们能够用数据创建**认知放大器**之前需要采取的第一个步骤。
 
 ## 进入-更新-退出模式
 
-将每个数据点与其视觉表示相匹配的任务，例如，为数据集中的每个数据点绘制一个条形图，当数据点发生变化时更新条形图，然后最终在某个数据点不再存在时删除条形图，这似乎是一个复杂且繁琐的任务。这正是D3被设计用来提供一种巧妙的方法来简化这种连接的实现。这种定义数据与其视觉表示之间连接的方式通常被称为D3中的 **进入-更新-退出** 模式。这种模式与大多数开发者熟悉的典型 **命令式方法** 有着根本的不同。然而，理解这个模式对于你在D3库中的有效性至关重要，因此，在本节中，我们将重点解释这个模式背后的概念。首先，让我们看一下以下两个域的概念性插图：
+将每个数据点与其视觉表示相匹配的任务，例如，为数据集中的每个数据点绘制一个条形图，当数据点发生变化时更新条形图，然后最终在某个数据点不再存在时删除条形图，这似乎是一个复杂且繁琐的任务。这正是 D3 被设计用来提供一种巧妙的方法来简化这种连接的实现。这种定义数据与其视觉表示之间连接的方式通常被称为 D3 中的 **进入-更新-退出** 模式。这种模式与大多数开发者熟悉的典型 **命令式方法** 有着根本的不同。然而，理解这个模式对于你在 D3 库中的有效性至关重要，因此，在本节中，我们将重点解释这个模式背后的概念。首先，让我们看一下以下两个域的概念性插图：
 
 ![The enter-update-exit pattern](img/2162OS_03_01.jpg)
 
 数据和视觉集
 
-在之前的示例中，两个圆圈代表两个连接的集合。集合 **A** 描述了你的数据集，而集合 **B** 代表视觉元素。这正是D3看待数据与视觉元素之间联系的方式。你可能想知道基本的集合理论如何帮助你在这里的数据可视化工作中。让我来解释。
+在之前的示例中，两个圆圈代表两个连接的集合。集合 **A** 描述了你的数据集，而集合 **B** 代表视觉元素。这正是 D3 看待数据与视觉元素之间联系的方式。你可能想知道基本的集合理论如何帮助你在这里的数据可视化工作中。让我来解释。
 
-首先，让我们考虑这样一个问题，*我如何找到所有当前代表其对应数据点的视觉元素*？答案是 **A∩B**；这表示集合A和B的交集，存在于**数据**和**视觉**域中的元素。
+首先，让我们考虑这样一个问题，*我如何找到所有当前代表其对应数据点的视觉元素*？答案是 **A∩B**；这表示集合 A 和 B 的交集，存在于**数据**和**视觉**域中的元素。
 
 ![The enter-update-exit pattern](img/2162OS_03_02.jpg)
 
 更新模式
 
-阴影区域表示两个集合——A和B之间的交集。在D3中，可以使用 `selection.data` 函数来选择这个交集——A∩B。
+阴影区域表示两个集合——A 和 B 之间的交集。在 D3 中，可以使用 `selection.data` 函数来选择这个交集——A∩B。
 
 在选择上，`selection.data(data)` 函数设置了数据域和视觉域之间的连接，正如我们上面讨论的那样。初始选择形成了视觉集 **B**，而 `data` 函数中提供的数据形成了数据集 **A**。这个函数的返回结果是所有存在于这个交集中的新选择（数据绑定选择）。现在，你可以对这个新选择调用修改函数来更新所有现有元素。这种选择模式通常被称为 **更新** 模式。
 
-我们在这里需要回答的第二个问题是 *我如何定位尚未可视化的数据*。答案是A和B的集合差，表示为 **A\B**，或者从视觉上看，以下插图：
+我们在这里需要回答的第二个问题是 *我如何定位尚未可视化的数据*。答案是 A 和 B 的集合差，表示为 **A\B**，或者从视觉上看，以下插图：
 
 ![The enter-update-exit pattern](img/2162OS_03_03.jpg)
 
 进入模式
 
-集合 **A** 中的阴影区域表示尚未可视化的数据点。为了访问这个 **A\B** 子集，需要在数据绑定的D3选择（由 `data` 函数返回的选择）上执行以下函数。
+集合 **A** 中的阴影区域表示尚未可视化的数据点。为了访问这个 **A\B** 子集，需要在数据绑定的 D3 选择（由 `data` 函数返回的选择）上执行以下函数。
 
 `selection.data(data).enter()` 函数返回一个新的选择，表示 **A\B** 子集，其中包含所有尚未在视觉域中表示的数据。然后，常规的修改函数可以链接到这个新的选择方法，以创建表示给定数据元素的新的视觉元素。这种选择模式简单地被称为 **Enter** 模式。
 
@@ -84,13 +84,51 @@ Exit 模式
 
 在你的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/array-as-data.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/array-as-data.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/array-as-data.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/array-as-data.html)
 
 ## 如何做到这一点...
 
 可能首先想到的第一个和最自然的解决方案是遍历数据数组元素，并在页面上生成它们对应的视觉元素。这绝对是一个有效的解决方案，并且它将使用 D3 工作得很好，然而，我们在介绍中讨论的 enter-update-exit 模式提供了一个更简单、更有效的方法来生成视觉元素。让我们看看我们是如何做到这一点的：
 
-[PRE0]
+```py
+var data = [10, 15, 30, 50, 80, 65, 55, 30, 20, 10, 8]; // <- A
+
+function render(data) { // <- B
+        // Enter
+ d3.select("body").selectAll("div.h-bar") // <- C
+ .data(data) // <- D
+ .enter() // <- E
+ .append("div") // <- F
+ .attr("class", "h-bar")
+ .append("span"); // <- G
+
+        // Update
+ d3.select("body").selectAll("div.h-bar")
+ .data(data) 
+ .style("width", function (d) { // <- H
+ return (d * 3) + "px";
+ })
+ .select("span") // <- I
+ .text(function (d) {
+ return d;
+ });
+
+        // Exit
+ d3.select("body").selectAll("div.h-bar")
+ .data(data)
+ .exit() // <- J
+               .remove();        
+ }
+
+ setInterval(function () { // <- K
+        data.shift();
+        data.push(Math.round(Math.random() * 100));
+
+        render(data);
+ }, 1500);
+
+ render(data);
+```
 
 此菜谱生成以下视觉输出：
 
@@ -102,7 +140,14 @@ Exit 模式
 
 在此示例中，数据（在这种情况下是一个整数列表）存储在简单的 JavaScript 数组中，如标记为 `A` 的行所示，其左侧有一个箭头。`render` 函数定义在标记为 `B` 的行上，以便它可以被重复调用以更新我们的可视化。`Enter` 选择实现从标记为 `C` 的行开始，选择网页上所有具有 `h-bar` CSS 类的 `div` 元素。你可能想知道为什么我们要选择这些 `div` 元素，因为它们甚至还没有在网页上存在。这实际上是正确的；然而，在这个阶段的这个选择是用来定义我们在介绍中讨论的视觉集。通过发出我们在上一行所做的这个选择，我们实际上是在声明应该在网页上有一组 `div.h-bar` 元素来形成我们的视觉集。在标记为 `D` 的行上，我们调用这个初始选择上的 `data` 函数，将数组作为数据集绑定到即将创建的视觉元素。一旦定义了这两个集合，就可以使用 `enter()` 函数来选择所有尚未可视化的数据元素。当 `render` 函数第一次被调用时，它返回数据数组中的所有元素，如下面的代码片段所示：
 
-[PRE1]
+```py
+        d3.select("body").selectAll("div.h-bar") // <- C
+             .data(data) // <- D
+            .enter() // <- E
+             .append("div") // <- F
+               .attr("class", "h-bar")
+              .append("span"); // <- G
+```
 
 在行 `F` 上，创建了一个新的 `div` 元素，并将其附加到 `enter` 函数中选中的每个数据元素的 `body` 元素上；这实际上为每个数据元素创建了一个 `div` 元素。最后，在行 `G` 上，创建了一个名为 `span` 的元素并将其附加到 `div` 元素上，我们将其 CSS 类设置为 `h-bar`。到此为止，我们基本上已经创建了可视化结构的骨架，包括空的 `div` 和 `span` 元素。下一步是根据给定的数据更改元素的视觉属性。
 
@@ -114,21 +159,42 @@ D3 向 DOM 元素注入一个名为 `__data__` 的属性，以便使数据与视
 
 如前一个屏幕截图所示，当你调试可视化实现时，了解这一点非常有用。
 
-在`array-as-data.html`的`Update`部分，前两行与我们之前在`Enter`部分所做的是相同的，这本质上定义了我们的数据集和视觉集。这里的主要区别在于行`H`。在`Update`模式下，我们直接将修饰函数应用到`data`函数所做的选择上，而不是像在前面段落中提到的`Enter`代码那样调用`enter`函数。在`Update`模式下，`data`函数返回数据集和视觉集的交集（A∩B）。在行`H`上，我们应用了一个动态样式属性`width`，其值是以下代码片段中显示的每个视觉元素的整数值的3倍：
+在`array-as-data.html`的`Update`部分，前两行与我们之前在`Enter`部分所做的是相同的，这本质上定义了我们的数据集和视觉集。这里的主要区别在于行`H`。在`Update`模式下，我们直接将修饰函数应用到`data`函数所做的选择上，而不是像在前面段落中提到的`Enter`代码那样调用`enter`函数。在`Update`模式下，`data`函数返回数据集和视觉集的交集（A∩B）。在行`H`上，我们应用了一个动态样式属性`width`，其值是以下代码片段中显示的每个视觉元素的整数值的 3 倍：
 
-[PRE2]
+```py
+        d3.select("body").selectAll("div.h-bar")
+            .data(data) 
+                .style("width", function (d) { // <- H
+                    return (d * 3) + "px";
+                })
+                .select("span") // <- I
+                    .text(function (d) {
+                        return d;
+                    });
+```
 
-所有D3修饰函数都接受这种类型的动态函数来实时计算其值。这正是“数据驱动”你的可视化的含义。因此，理解这个函数在我们例子中的设计目的是至关重要的。这个函数接收一个参数`d`，它是与当前元素关联的数据。在我们的例子中，第一个`div`条形图具有与其数据关联的值`10`，而第二个条形图有`15`，依此类推。因此，这个函数本质上计算了一个数值，它是每个条形图数据的3倍，并将其作为像素值返回`width`。
+所有 D3 修饰函数都接受这种类型的动态函数来实时计算其值。这正是“数据驱动”你的可视化的含义。因此，理解这个函数在我们例子中的设计目的是至关重要的。这个函数接收一个参数`d`，它是与当前元素关联的数据。在我们的例子中，第一个`div`条形图具有与其数据关联的值`10`，而第二个条形图有`15`，依此类推。因此，这个函数本质上计算了一个数值，它是每个条形图数据的 3 倍，并将其作为像素值返回`width`。
 
-值得在此一提的另一个有趣点是关于行`I`，我们提到了`span`属性。子`span`元素也可以使用动态修饰函数，并且可以访问从其父元素传播来的相同数据。这是D3数据绑定的默认行为。任何附加到数据绑定元素的元素都会自动继承父元素的数据。
+值得在此一提的另一个有趣点是关于行`I`，我们提到了`span`属性。子`span`元素也可以使用动态修饰函数，并且可以访问从其父元素传播来的相同数据。这是 D3 数据绑定的默认行为。任何附加到数据绑定元素的元素都会自动继承父元素的数据。
 
 ### 注意
 
 **动态修饰函数**实际上接受两个参数`d`和`i`。第一个参数`d`是我们在这里讨论的关联数据，而`i`是当前元素的零基于索引号。前一章的一些食谱依赖于这个索引，在本章的其余部分，我们将看到其他利用这个索引以不同方式的应用食谱。
 
-这是更新过程产生的原始HTML代码：
+这是更新过程产生的原始 HTML 代码：
 
-[PRE3]
+```py
+<div class="h-bar" style="width: 30px;">
+<span>10</span>
+</div>
+<div class="h-bar" style="width: 45px;">
+<span>15</span>
+</div>
+....
+<div class="h-bar" style="width: 24px;">
+<span>8</span>
+   </div>
+```
 
 ### 小贴士
 
@@ -136,7 +202,12 @@ D3 向 DOM 元素注入一个名为 `__data__` 的属性，以便使数据与视
 
 最后的部分——`Exit`部分——如所示相当简单：
 
-[PRE4]
+```py
+        d3.select("body").selectAll("div.h-bar")
+            .data(data)
+            .exit() // <- J
+            .remove();
+```
 
 ### 小贴士
 
@@ -146,25 +217,81 @@ D3 向 DOM 元素注入一个名为 `__data__` 的属性，以便使数据与视
 
 现在，最后的代码块如下：
 
-[PRE5]
+```py
+setInterval(function () { // <- K
+        data.shift();
+        data.push(Math.round(Math.random() * 100));
+        render(data);
+ }, 1500);
+```
 
-在行 `K` 上，创建了一个简单的函数 `function()`，使用 `shift` 函数移除数据数组中的顶部元素，同时使用 `push()` 函数每1.5秒向数据数组中添加一个随机整数。一旦数据数组更新，就再次调用 `render()` 函数来更新我们的可视化，使其与新数据集保持同步。这就是我们的示例具有动画条形图外观的原因。
+在行 `K` 上，创建了一个简单的函数 `function()`，使用 `shift` 函数移除数据数组中的顶部元素，同时使用 `push()` 函数每 1.5 秒向数据数组中添加一个随机整数。一旦数据数组更新，就再次调用 `render()` 函数来更新我们的可视化，使其与新数据集保持同步。这就是我们的示例具有动画条形图外观的原因。
 
 # 将对象字面量绑定为数据
 
-在更复杂的可视化中，数据数组中的每个元素可能不是原始整数值或字符串，而是一个JavaScript对象本身。在这个配方中，我们将讨论如何利用这种更复杂的数据结构来驱动使用D3的可视化。
+在更复杂的可视化中，数据数组中的每个元素可能不是原始整数值或字符串，而是一个 JavaScript 对象本身。在这个配方中，我们将讨论如何利用这种更复杂的数据结构来驱动使用 D3 的可视化。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/object-as-data.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/object-as-data.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/object-as-data.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/object-as-data.html)
 
 ## 如何实现...
 
-JavaScript对象字面量可能是您在Web上加载数据源时遇到的最常见的数据结构。在这个配方中，我们将探讨如何利用这些JavaScript对象来生成丰富的可视化。以下是代码实现方式：
+JavaScript 对象字面量可能是您在 Web 上加载数据源时遇到的最常见的数据结构。在这个配方中，我们将探讨如何利用这些 JavaScript 对象来生成丰富的可视化。以下是代码实现方式：
 
-[PRE6]
+```py
+var data = [ // <- A
+ {width: 10, color: 23},{width: 15, color: 33},
+ {width: 30, color: 40},{width: 50, color: 60},
+ {width: 80, color: 22},{width: 65, color: 10},
+ {width: 55, color: 5},{width: 30, color: 30},
+ {width: 20, color: 60},{width: 10, color: 90},
+ {width: 8, color: 10}
+ ];
+
+var colorScale = d3.scale.linear()
+.domain([0, 100]).range(["#add8e6", "blue"]); // <- B
+
+    function render(data) {
+        d3.select("body").selectAll("div.h-bar")
+            .data(data)
+            .enter().append("div")
+                .attr("class", "h-bar") 
+            .append("span");
+
+        d3.select("body").selectAll("div.h-bar")
+            .data(data)
+            .exit().remove();
+
+        d3.select("body").selectAll("div.h-bar")
+            .data(data)
+                .attr("class", "h-bar")
+ .style("width", function (d) { // <- C
+ return (d.width * 5) + "px"; // <- D
+ })
+ .style("background-color", function(d){
+ return colorScale(d.color); // <- E
+ })
+            .select("span")
+ .text(function (d) {
+ return d.width; // <- F
+ });
+    }
+
+    function randomValue() {
+        return Math.round(Math.random() * 100);
+    }
+
+    setInterval(function () {
+        data.shift();
+        data.push({width: randomValue(), color: randomValue()});
+        render(data);
+    }, 1500);
+
+    render(data);
+```
 
 这个配方生成了以下可视化：
 
@@ -178,21 +305,30 @@ JavaScript对象字面量可能是您在Web上加载数据源时遇到的最常�
 
 ### 备注
 
-这个配方建立在之前的配方之上，所以如果您不熟悉基本的enter-update-exit选择模式，请首先查看之前的配方。
+这个配方建立在之前的配方之上，所以如果您不熟悉基本的 enter-update-exit 选择模式，请首先查看之前的配方。
 
 var data = [ // <- A
 
-[PRE7]
+```py
+        {width: 10, color: 23},{width: 15, color: 33},
+...
+        {width: 8, color: 10}
+    ];
+```
 
 ### 备注
 
-在行 `B` 上，定义了一个看起来很复杂的颜色比例。包括颜色比例在内的比例将在下一章中深入讨论，所以现在我们假设这是一个我们可以使用它来生成CSS兼容颜色代码的函数，给定一些整数输入值。这对于本配方来说是足够的。
+在行 `B` 上，定义了一个看起来很复杂的颜色比例。包括颜色比例在内的比例将在下一章中深入讨论，所以现在我们假设这是一个我们可以使用它来生成 CSS 兼容颜色代码的函数，给定一些整数输入值。这对于本配方来说是足够的。
 
 与上一个配方相比，这个配方的主要区别在于如何处理数据，如行 `C` 所示：
 
-[PRE8]
+```py
+function (d) { // <- C
+return (d.width * 5) + "px"; // <- D
+}
+```
 
-如前述代码片段所示，在这个配方中，与每个可视元素关联的datum实际上是一个对象，而不是整数。因此，我们可以在行 `D` 上访问 `d.width` 属性。
+如前述代码片段所示，在这个配方中，与每个可视元素关联的 datum 实际上是一个对象，而不是整数。因此，我们可以在行 `D` 上访问 `d.width` 属性。
 
 ### 小贴士
 
@@ -200,27 +336,75 @@ var data = [ // <- A
 
 类似地，在行 `E` 上，可以使用 `d.color` 属性以及我们之前定义的颜色尺度来计算 `background-color` 样式：
 
-[PRE9]
+```py
+.style("background-color", function(d){
+  return colorScale(d.color); // <- E
+})
+.select("span")
+  .text(function (d) {
+    return d.width; // <- F
+  });
+```
 
 子元素 `span` 再次继承了其父元素关联的数据，因此它在其行 `F` 上的动态修改函数中也有权访问相同的数据对象，设置文本内容为 `d.width` 属性。
 
-这个菜谱展示了如何使用与之前菜谱中讨论的完全相同的方法轻松地将JavaScript对象绑定到视觉元素上。这是D3库最强大的功能之一；它允许您使用相同的模式和方式处理不同类型的数据，无论是简单还是复杂。我们将在下一个菜谱中看到更多关于这个主题的例子。
+这个菜谱展示了如何使用与之前菜谱中讨论的完全相同的方法轻松地将 JavaScript 对象绑定到视觉元素上。这是 D3 库最强大的功能之一；它允许您使用相同的模式和方式处理不同类型的数据，无论是简单还是复杂。我们将在下一个菜谱中看到更多关于这个主题的例子。
 
 # 将函数作为数据绑定
 
-D3对函数式JavaScript编程的优秀支持带来的一个好处是，它允许将函数本身作为数据来处理。在特定情况下，这个特性可以提供一些非常强大的功能。这是一个更高级的菜谱。如果您是D3的新手，并且一开始对它有些难以理解，请不要担心。随着时间的推移，这种用法将变得自然。
+D3 对函数式 JavaScript 编程的优秀支持带来的一个好处是，它允许将函数本身作为数据来处理。在特定情况下，这个特性可以提供一些非常强大的功能。这是一个更高级的菜谱。如果您是 D3 的新手，并且一开始对它有些难以理解，请不要担心。随着时间的推移，这种用法将变得自然。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/function-as-data.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/function-as-data.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/function-as-data.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/function-as-data.html)
 
 ## 如何实现...
 
 在这个菜谱中，我们将探讨将函数本身作为数据绑定到您的视觉元素上的可能性。如果正确使用，这种能力非常强大且灵活：
 
-[PRE10]
+```py
+<div id="container"></div>
+
+<script type="text/javascript">
+    var data = []; // <- A
+
+ var next = function (x) { // <- B
+ return 15 + x * x;
+ };
+
+ var newData = function () { // <- C 
+ data.push(next);
+ return data;
+ };
+
+   function render(){
+        var selection = d3.select("#container")
+                  .selectAll("div")
+ .data(newData); // <- D
+
+        selection.enter().append("div").append("span");
+
+        selection.exit().remove();
+
+        selection.attr("class", "v-bar")
+ .style("height", function (d, i) {
+ return d(i)+"px"; // <- E
+ })
+        .select("span")
+ .text(function(d, i){ 
+ return d(i); } // <- F
+ ); 
+   }
+
+   setInterval(function () {
+       render();
+   }, 1500);
+
+   render();
+</script>
+```
 
 上述代码产生了以下条形图：
 
@@ -230,51 +414,165 @@ D3对函数式JavaScript编程的优秀支持带来的一个好处是，它允�
 
 ## 它是如何工作的...
 
-在这个菜谱中，我们选择使用一系列垂直条来可视化公式 `15 + x * x` 的输出，每个条目都附有它所代表的积分值。这种可视化每1.5秒在上一条右侧添加一个新的条目。当然，我们可以使用之前两个菜谱中讨论的技术来实现这种可视化。因此，我们使用公式生成一个整数数组，然后在重新渲染可视化之前，每1.5秒从 *n* 追加一个新的整数到 *n+1*。然而，在这个菜谱中，我们决定采取一种更函数式的方法。
+在这个菜谱中，我们选择使用一系列垂直条来可视化公式 `15 + x * x` 的输出，每个条目都附有它所代表的积分值。这种可视化每 1.5 秒在上一条右侧添加一个新的条目。当然，我们可以使用之前两个菜谱中讨论的技术来实现这种可视化。因此，我们使用公式生成一个整数数组，然后在重新渲染可视化之前，每 1.5 秒从 *n* 追加一个新的整数到 *n+1*。然而，在这个菜谱中，我们决定采取一种更函数式的方法。
 
-这次我们在行`A`上从一个空的数据数组开始。在行`B`，定义了一个简单的函数来计算公式*15+x^2*的结果。然后在行`C`，创建了一个函数来生成当前数据集，该数据集包含对`next`函数的*n+1*个引用。以下是功能数据定义的代码：
+这次我们在行`A`上从一个空的数据数组开始。在行`B`，定义了一个简单的函数来计算公式*15+x²*的结果。然后在行`C`，创建了一个函数来生成当前数据集，该数据集包含对`next`函数的*n+1*个引用。以下是功能数据定义的代码：
 
-[PRE11]
+```py
+    var data = []; // <- A
+
+    var next = function (x) { // <- B
+        return 15 + x * x;
+    };
+
+   var newData = function () { // <- C        
+        data.push(next);
+        return data;
+    };
+```
 
 这种设置似乎是为了达到我们的可视化目标而显得有些奇怪。让我们看看我们如何在可视化代码中利用所有这些函数。在行`D`，我们将数据绑定到`div`元素的选择上，就像我们在之前的食谱中所做的那样。然而，这次数据不是一个数组，而是`newData`函数：
 
-[PRE12]
+```py
+        var selection = d3.select("#container")
+                   .selectAll("div")
+                   .data(newData); // <- D
+```
 
-当涉及到数据时，D3非常灵活。如果你向`data`函数提供一个函数，D3将简单地调用该函数，并使用该函数返回的值作为`data`函数的参数。在这种情况下，`newData`函数返回的数据是一个函数引用数组。因此，现在在我们的动态修改函数中，在行`E`和`F`，传递给这些函数的数据`d`实际上是`next`函数的引用，如下面的代码所示：
+当涉及到数据时，D3 非常灵活。如果你向`data`函数提供一个函数，D3 将简单地调用该函数，并使用该函数返回的值作为`data`函数的参数。在这种情况下，`newData`函数返回的数据是一个函数引用数组。因此，现在在我们的动态修改函数中，在行`E`和`F`，传递给这些函数的数据`d`实际上是`next`函数的引用，如下面的代码所示：
 
-[PRE13]
+```py
+        selection.attr("class", "v-bar")
+            .style("height", function (d, i) {
+                return d(i)+"px"; // <- E
+            })
+            .select("span")
+                .text(function(d, i){ 
+                    return d(i); } // <- F
+                ); 
+```
 
 作为对函数的引用，现在可以使用索引`i`作为参数调用`d`，这反过来又生成了我们可视化所需的公式输出。
 
 ### 注意
 
-在JavaScript中，函数是特殊的对象，因此从语义上讲，这与绑定对象作为数据完全相同。关于这个话题的另一个注意事项是，数据也可以被认为是函数。例如，整数这样的常量值可以被视为一个静态函数，该函数简单地返回它接收的内容，而不进行任何修改。
+在 JavaScript 中，函数是特殊的对象，因此从语义上讲，这与绑定对象作为数据完全相同。关于这个话题的另一个注意事项是，数据也可以被认为是函数。例如，整数这样的常量值可以被视为一个静态函数，该函数简单地返回它接收的内容，而不进行任何修改。
 
 这种技术可能不是可视化中最常用的技术，但使用得当，它非常灵活且强大，尤其是在你有流动数据集时。
 
 ### 注意
 
-数据函数通常需要是**幂等的**才有意义。幂等性是指能够多次应用相同的函数和相同的输入，而不会改变结果超过初始应用。有关幂等性的更多详细信息，请访问：[http://en.wikipedia.org/wiki/Idempotence](http://en.wikipedia.org/wiki/Idempotence)
+数据函数通常需要是**幂等的**才有意义。幂等性是指能够多次应用相同的函数和相同的输入，而不会改变结果超过初始应用。有关幂等性的更多详细信息，请访问：[`en.wikipedia.org/wiki/Idempotence`](http://en.wikipedia.org/wiki/Idempotence)
 
 # 与数组一起工作
 
-我们的大部分数据都存储在数组中，我们花费了大量精力与数组一起工作，以格式化和重构数据。这就是为什么D3提供了一套丰富的面向数组的实用函数，使得这项任务变得容易得多。在本食谱中，我们将探讨一些在这个方面最常见和最有帮助的实用函数。
+我们的大部分数据都存储在数组中，我们花费了大量精力与数组一起工作，以格式化和重构数据。这就是为什么 D3 提供了一套丰富的面向数组的实用函数，使得这项任务变得容易得多。在本食谱中，我们将探讨一些在这个方面最常见和最有帮助的实用函数。
 
 ## 准备工作
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/working-with-array.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/working-with-array.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/working-with-array.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/working-with-array.html)
 
 ## 如何做到这一点...
 
-以下代码示例展示了D3库提供的某些最常见和最有帮助的数组实用函数及其效果：
+以下代码示例展示了 D3 库提供的某些最常见和最有帮助的数组实用函数及其效果：
 
-[PRE14]
+```py
+<script type="text/javascript">
+ // Static html code were omitted due to space constraint
+
+    var array = [3, 2, 11, 7, 6, 4, 10, 8, 15];
+
+    d3.select("#min").text(d3.min(array));
+    d3.select("#max").text(d3.max(array));
+    d3.select("#extent").text(d3.extent(array));
+    d3.select("#sum").text(d3.sum(array));
+    d3.select("#median").text(d3.median(array));
+    d3.select("#mean").text(d3.mean(array));
+    d3.select("#asc").text(array.sort(d3.ascending));
+d3.select("#desc").text(array.sort(d3.descending));      d3.select("#quantile").text(
+d3.quantile(array.sort(d3.ascending), 0.25)
+);
+d3.select("#bisect").text(
+d3.bisect(array.sort(d3.ascending), 6)
+    );
+
+    var records = [
+        {quantity: 2, total: 190, tip: 100, type: "tab"},
+        {quantity: 2, total: 190, tip: 100, type: "tab"},
+        {quantity: 1, total: 300, tip: 200, type: "visa"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 1, total: 100, tip: 0, type: "cash"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 2, total: 90, tip: 0, type: "tab"},
+        {quantity: 2, total: 200, tip: 0, type: "cash"},
+        {quantity: 1, total: 200, tip: 100, type: "visa"}
+    ];
+
+    var nest = d3.nest()
+            .key(function (d) { // <- A
+                return d.type;
+            })
+            .key(function (d) { // <- B
+                return d.tip;
+            })
+            .entries(records); // <- C
+
+    d3.select("#nest").html(printNest(nest, ""));
+
+    function printNest(nest, out, i) {
+        if(i === undefined) i = 0;
+
+        var tab = ""; 
+        for(var j = 0; j < i; ++j) 
+            tab += " ";
+
+        nest.forEach(function (e) {
+            if (e.key)
+                out += tab + e.key + "<br>";
+            else
+                out += tab + printObject(e) + "<br>";
+
+            if (e.values)
+                out = printNest(e.values, out, ++i);
+            else
+                return out;
+        });
+
+        return out;
+    }
+
+    function printObject(obj) {
+        var s = "{";
+        for (var f in obj) {
+            s += f + ": " + obj[f] + ", ";
+        }
+        s += "}";
+        return s;
+    }
+</script> 
+```
 
 前面的代码产生以下输出：
 
-[PRE15]
+```py
+d3.min => 2
+d3.max => 15
+d3.extent => 2,15
+d3.sum => 66
+d3.median => 7
+d3.mean => 7.333333333333333
+array.sort(d3.ascending) => 2,3,4,6,7,8,10,11,15
+array.sort(d3.descending) => 15,11,10,8,7,6,4,3,2
+d3.quantile(array.sort(d3.ascending), 0.25) => 4
+d3.bisect(array.sort(d3.ascending), 6) => 4
+
+tab100{quantity: 2, total: 190, tip: 100, type: tab, }{quantity: 2, total: 190, tip: 100, type: tab, }0{quantity: 2, total: 90, tip: 0, type: tab, }{quantity: 2, total: 90, tip: 0, type: tab, }{quantity: 2, total: 90, tip: 0, type: tab, }{quantity: 2, total: 90, tip: 0, type: tab, }{quantity: 2, total: 90, tip: 0, type: tab, }{quantity: 2, total: 90, tip: 0, type: tab, }visa200{quantity: 1, total: 300, tip: 200, type: visa, }100{quantity: 1, total: 200, tip: 100, type: visa, }cash, }0{quantity: 1, total: 100, tip: 0, type: cash, }{quantity: 2, total: 200, tip: 0, type: cash, }
+```
 
 ## 工作原理...
 
@@ -296,7 +594,10 @@ D3 提供了各种实用函数来帮助在 JavaScript 数组上执行操作。�
 
 +   `d3.ascending` / `d3.descending`: `d3` 对象提供了一个内置的比较函数，您可以使用它来对 JavaScript 数组进行排序
 
-    [PRE16]
+    ```py
+    d3.ascending = function(a, b) {  return a < b ? -1 : a > b ? 1 : 0; }
+    d3.descending = function(a, b) {  return b < a ? -1 : b > a ? 1 : 0; }
+    ```
 
 +   `d3.quantile`: 此函数在已排序数组中按升序计算分位数，即 `0.25` 的分位数是 `4`
 
@@ -304,11 +605,25 @@ D3 提供了各种实用函数来帮助在 JavaScript 数组上执行操作。�
 
 +   `d3.nest`: D3 的 `nest` 函数可以用来构建将平铺数组数据结构转换为层次嵌套结构的算法，特别适合某些类型的可视化。D3 的 `nest` 函数可以通过将 `key` 函数链接到 `nest` 来配置，如行 `A` 和 `B` 所示：
 
-    [PRE17]
+    ```py
+        var nest = d3.nest()
+                .key(function (d) { // <- A
+                    return d.type;
+                })
+                .key(function (d) { // <- B
+                    return d.tip;
+                })
+                .entries(records); // <- C
+    ```
 
     可以提供多个 `key` 函数来生成多个嵌套级别。在我们的例子中，嵌套由两个级别组成，首先是 `type` 数量，然后是 `tip` 数量，如下面的输出所示：
 
-    [PRE18]
+    ```py
+    tab
+     100
+      {quantity: 2, total: 190, tip: 100, type: tab, }
+      {quantity: 2, total: 190, tip: 100, type: tab, }
+    ```
 
     最后，使用 `entries()` 函数提供如行 `C` 所示的基于平铺数组的 dataset。
 
@@ -320,13 +635,79 @@ D3 提供了各种实用函数来帮助在 JavaScript 数组上执行操作。�
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-filter.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-filter.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-filter.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-filter.html)
 
 ## 如何操作...
 
 以下示例代码展示了如何利用基于数据的过滤来根据其分类突出显示不同的视觉元素：
 
-[PRE19]
+```py
+<script type="text/javascript">
+    var data = [ // <-A
+        {expense: 10, category: "Retail"},
+        {expense: 15, category: "Gas"},
+        {expense: 30, category: "Retail"},
+        {expense: 50, category: "Dining"},
+        {expense: 80, category: "Gas"},
+        {expense: 65, category: "Retail"},
+        {expense: 55, category: "Gas"},
+        {expense: 30, category: "Dining"},
+        {expense: 20, category: "Retail"},
+        {expense: 10, category: "Dining"},
+        {expense: 8, category: "Gas"}
+    ];
+    function render(data, category) {
+        d3.select("body").selectAll("div.h-bar") // <-B
+                .data(data)
+            .enter()
+            .append("div")
+                .attr("class", "h-bar")
+            .append("span");
+
+        d3.select("body").selectAll("div.h-bar") // <-C
+                .data(data)
+            .exit().remove();
+
+        d3.select("body").selectAll("div.h-bar") // <-D
+                .data(data)
+            .attr("class", "h-bar")
+            .style("width", function (d) {
+                return (d.expense * 5) + "px";}
+            )
+            .select("span")
+                .text(function (d) {
+                    return d.category;
+                });
+
+        d3.select("body").selectAll("div.h-bar")
+ .filter(function (d, i) { // <-E
+ return d.category == category;
+ })
+                .classed("selected", true);
+    }
+
+    render(data);
+
+    function select(category) {
+        render(data, category);
+    }
+</script>
+
+<div class="control-group">
+    <button onclick="select('Retail')">
+      Retail
+    </button>
+    <button onclick="select('Gas')">
+      Gas
+    </button>
+    <button onclick="select('Dining')">
+      Dining
+    </button>
+    <button onclick="select()">
+      Clear
+    </button>
+</div>
+```
 
 在点击**Dinning**按钮后，前面的代码生成以下视觉输出：
 
@@ -338,7 +719,11 @@ D3 提供了各种实用函数来帮助在 JavaScript 数组上执行操作。�
 
 在这个菜谱中，我们有一个数据集，它由一系列个人消费记录组成，这些记录以 `expense` 和 `category` 作为属性，显示在标记为 `A` 的代码块中。在 `B`、`C` 和 `D` 行，使用标准的 enter-update-exit 模式创建了一组水平条（HTML div），以表示消费记录。到目前为止，这个菜谱与 *将对象字面量绑定为数据* 的菜谱类似。现在让我们看看 `E` 行：
 
-[PRE20]
+```py
+filter(function (d, i) { // <-E
+    return d.category == category;
+})
+```
 
 D3 的 `selection.filter` 函数接受一个函数作为其参数。它将函数应用于现有选择中的每个元素。`filter` 函数提供的函数有两个参数和一个隐藏的引用：
 
@@ -362,13 +747,82 @@ D3 的 `selection.filter` 函数使用 JavaScript 的 **真值** 和 **假值** 
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-sort.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-sort.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-sort.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/data-sort.html)
 
 ## 如何做...
 
 让我们看看如何使用 D3 执行数据驱动的排序和进一步的操作。在这个例子中，我们将根据用户输入对之前菜谱中创建的条形图进行排序，基于支出（宽度）或类别：
 
-[PRE21]
+```py
+<script type="text/javascript">
+    var data = [ // <-A
+        {expense: 10, category: "Retail"},
+        {expense: 15, category: "Gas"},
+        {expense: 30, category: "Retail"},
+        {expense: 50, category: "Dining"},
+        {expense: 80, category: "Gas"},
+        {expense: 65, category: "Retail"},
+        {expense: 55, category: "Gas"},
+        {expense: 30, category: "Dining"},
+        {expense: 20, category: "Retail"},
+        {expense: 10, category: "Dining"},
+        {expense: 8, category: "Gas"}
+    ];
+
+    function render(data, comparator) {
+        d3.select("body").selectAll("div.h-bar") // <-B
+                .data(data)
+            .enter().append("div")
+                .attr("class", "h-bar")
+                .append("span");
+
+        d3.select("body").selectAll("div.h-bar") // <-C
+                .data(data)
+            .exit().remove();
+
+        d3.select("body").selectAll("div.h-bar") // <-D
+                .data(data)
+            .attr("class", "h-bar")
+            .style("width", function (d) {
+                return (d.expense * 5) + "px";
+            })
+            .select("span")
+                .text(function (d) {
+                    return d.category;
+                });
+
+ if(comparator)
+ d3.select("body")
+ .selectAll("div.h-bar") 
+ .sort(comparator); // <-E
+    }
+
+ var compareByExpense = function (a, b) {  // <-F
+ return a.expense < b.expense?-1:1;
+ };
+ var compareByCategory = function (a, b) {  // <-G
+ return a.category < b.category?-1:1;
+ };
+
+    render(data);
+
+    function sort(comparator) {
+        render(data, comparator);
+    }
+</script>
+
+<div class="control-group">
+    <button onclick="sort(compareByExpense)">
+        Sort by Width
+    </button>
+    <button onclick="sort(compareByCategory)">
+        Sort by Category
+    </button>
+    <button onclick="sort()">
+        Clear
+    </button>
+</div>
+```
 
 上述代码生成了如下截图所示的排序后的水平条：
 
@@ -380,11 +834,23 @@ D3 的 `selection.filter` 函数使用 JavaScript 的 **真值** 和 **假值** 
 
 在这个菜谱中，我们设置了一个简单的基于行的可视化（在行 `B`、`C` 和 `D`），包含一些模拟的个人消费记录，这些记录包含两个属性：`expense` 和 `category`，它们在行 `A` 上定义。这与之前的菜谱完全相同，并且与我们在 *将对象字面量绑定为数据* 菜谱中所做的工作非常相似。一旦完成基础知识，我们就在行 `E` 上选择所有现有的条形图并使用 D3 `selection.sort` 函数进行排序：
 
-[PRE22]
+```py
+d3.select("body")
+    .selectAll("div.h-bar") 
+ .sort(comparator); // <-E
+
+```
 
 `selection.sort` 函数接受一个比较器函数：
 
-[PRE23]
+```py
+var compareByExpense = function (a, b) {  // <-F
+    return a.expense < b.expense?-1:1;
+};
+var compareByCategory = function (a, b) {  // <-G
+    return a.category < b.category?-1:1;
+};
+```
 
 **比较器**函数接收两个要比较的数据元素 `a` 和 `b`，返回一个负数、正数或零值。如果值为负数，则 `a` 将被放置在 `b` 之前；如果为正数，则 `a` 将被放置在 `b` 之后；否则，`a` 和 `b` 被视为相等，顺序是**任意的**。`sort()` 函数返回一个新的选择集，其中所有元素按指定的比较器函数确定的顺序排序。新返回的选择集可以进一步操作以生成所需的可视化。
 
@@ -400,17 +866,76 @@ D3 的 `selection.filter` 函数使用 JavaScript 的 **真值** 和 **假值** 
 
 在您的网络浏览器中打开以下文件的本地副本：
 
-[https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/asyn-data-load.html](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/asyn-data-load.html)
+[`github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/asyn-data-load.html`](https://github.com/NickQiZhu/d3-cookbook/blob/master/src/chapter3/asyn-data-load.html)
 
 ## 如何做...
 
 在 `asyn-data-load.html` 文件的代码示例中，我们将根据用户请求从服务器动态加载数据，一旦数据加载完成，我们还将更新我们的可视化以反映新的扩展数据集。以下是执行此操作的代码：
 
-[PRE24]
+```py
+<script type="text/javascript">
+    var data = [ // <-A
+        {expense: 10, category: "Retail"},
+        {expense: 15, category: "Gas"},
+        {expense: 30, category: "Retail"},
+        {expense: 50, category: "Dining"},
+        {expense: 80, category: "Gas"},
+        {expense: 65, category: "Retail"},
+        {expense: 55, category: "Gas"},
+        {expense: 30, category: "Dining"},
+        {expense: 20, category: "Retail"},
+        {expense: 10, category: "Dining"},
+        {expense: 8, category: "Gas"}
+    ];
+
+    function render(data) {
+        d3.select("#chart").selectAll("div.h-bar") // <-B
+                .data(data)
+            .enter().append("div")
+            .attr("class", "h-bar")
+            .append("span");
+
+        d3.select("#chart").selectAll("div.h-bar") // <-C
+                .data(data)
+            .exit().remove();
+
+        d3.select("#chart").selectAll("div.h-bar") // <-D
+                .data(data)
+            .attr("class", "h-bar")
+            .style("width", function (d) {
+                return (d.expense * 5) + "px";
+            })
+            .select("span")
+                .text(function (d) {
+                    return d.category;
+                });
+    }
+
+    render(data);
+
+ function load(){ // <-E
+ d3.json("data.json", function(error, json){ // <-F
+ data = data.concat(json); 
+ render(data);
+ });
+ }
+</script>
+
+<div class="control-group">
+    <button onclick="load()">Load Data from JSON feed</button>
+</div>
+```
 
 这是我们 `data.json` 文件的样子：
 
-[PRE25]
+```py
+[
+    {"expense": 15,  "category": "Retail"},
+ {"expense": 18,  "category": "Gas"},
+ ...
+ {"expense": 15, "category": "Gas"}
+]
+```
 
 点击 **从 JSON 提供程序加载数据** 按钮一次后，这个菜谱将生成以下视觉输出：
 
@@ -422,7 +947,15 @@ D3 的 `selection.filter` 函数使用 JavaScript 的 **真值** 和 **假值** 
 
 在这个菜谱中，我们最初在标记为 `A` 的行上定义了一个本地数据集，以及由行 `B`、`C` 和 `D` 生成的基于行的可视化。`load` 函数在行 `E` 上定义，它响应用户点击 **从 JSON 提供程序加载数据** 按钮，该按钮从服务器提供的单独文件（`data.json`）加载数据。这是通过在行 `F` 上使用 `d3.json` 函数实现的：
 
-[PRE26]
+```py
+    function load(){ // <-E
+        d3.json("data.json", function(error, json){ // <-F
+            data = data.concat(json);  
+            render(data);
+        });
+ }
+
+```
 
 由于从 JSON 文件加载远程数据集可能需要一些时间，因此它是异步执行的。一旦加载完成，数据集将被传递给指定的处理函数，该函数在行 `F` 上指定。在这个函数中，我们只是将新加载的数据与现有数据集连接起来，然后重新渲染可视化以更新显示。
 

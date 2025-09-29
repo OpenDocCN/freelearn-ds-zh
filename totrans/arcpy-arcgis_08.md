@@ -1,4 +1,4 @@
-# 第 8 章。ArcPy.Mapping 简介
+# 第八章。ArcPy.Mapping 简介
 
 制作地图是一种艺术，需要通过多年的专注研究地图学才能掌握。信息的视觉展示既令人兴奋又具有挑战性，可以成为地理空间专业人士日常工作流程中的一项有价值的部分。一旦掌握了基础知识，地图学输出就变成了一个持续不断的战斗，以更快的速度制作出更多的地图。ArcPy 再次提供了一个强大的解决方案：`arcpy.mapping` 模块。
 
@@ -26,7 +26,15 @@
 
 `ListBrokenDataSources()` 方法需要将 MXD 路径传递给 `arcpy.mapping.MapDocument()` 方法。一旦创建地图文档对象，它就会被传递给 `ListBrokenDataSources()` 方法，并生成一个包含图层对象列表，每个损坏链接的图层都有一个图层对象。图层对象有多个属性可供使用。使用这些属性，让我们使用每个对象的名称和数据源属性打印出每个图层的名称和数据源：
 
-[PRE0]
+```py
+import arcpy
+mxdPath = 'C:\Projects\MXDs\Chapter8\BrokenLinks.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+brokenLinks = arcpy.mapping.ListBrokenDataSources(mxdObject)
+for link in brokenLinks:
+ print link.name, link.dataSource
+
+```
 
 ## 修复损坏的链接
 
@@ -34,27 +42,77 @@
 
 图层对象和地图文档对象中包含的方法可以完成此下一步。如果 MXD 的所有数据源都已移动，则最好使用 MXD 对象及其方法来修复数据源。在示例 MXD 中，数据源已全部移动到一个名为 `NewData` 的新文件夹中，因此我们将使用 `findAndReplaceWorkspacePaths()` 方法来修复链接：
 
-[PRE1]
+```py
+oldPath = r'C:\Projects\MXDs\Data'
+newPath = r'C:\Projects'
+mxdObject.findAndReplaceWorkspacePaths(oldPath,newPath)
+mxdObject.save() 
+
+```
 
 只要数据源仍然以相同的格式存在（例如，形状文件仍然是形状文件或要素类仍然是要素类），`findAndReplaceWorkspacePaths()` 方法就会起作用。如果数据源类型已更改（例如，形状文件已导入到文件地理数据库中），则必须使用 `replaceWorkspaces()` 方法代替，因为它需要一个工作空间类型作为参数：
 
-[PRE2]
+```py
+oldPath = r'C:\Projects\MXDs\Data'
+oldType = 'SHAPEFILE_WORKSPACE'
+newPath = r'C:\Projects'
+newType = 'FILEGDB_WORKSPACE'
+mxdObject.replaceWorkspaces(oldPath,oldType,newPath,newType)
+mxdObject.save()
+
+```
 
 ## 修复单个图层的链接
 
 如果各个图层不共享数据源，则需要使用图层对象可用的 `findAndReplaceWorkspacePath()` 方法进行调整。此方法与之前使用的方法类似，但它只会替换应用到的图层对象的数据源，而不是所有图层。当与字典结合使用时，可以通过图层名称属性更新图层数据源：
 
-[PRE3]
+```py
+import arcpy
+layerDic = {'Bus_Stops':[r'C:\Projects\OldDataPath', r'C:\Projects'],
+ 'stclines_streets': [r'C:\Projects\OtherPath', r'C:\Projects']}
+mxdPath = r'C:\Projects\MXDs\Chapter8\BrokenLinks.mxd'
+mxdObject = arcpy.mapping.MapDocument(mxdPath)
+brokenLinks = arcpy.mapping.ListBrokenDataSources(mxdObject)
+for layer in brokenLinks:
+ oldPath, newPath = layerDic[layer.name]
+ layer.findAndReplaceWorkspacePath(oldPath, newPath )
+ mxdObject.save()
+
+```
 
 这些解决方案适用于单个地图文档和图层。通过使用内置的 `glob` 模块的 `glob.glob()` 方法（它有助于生成匹配特定文件扩展名的文件列表）和 `os` 模块的 `os.path.join()` 方法，也可以扩展到包含 MXD 文件的文件夹：
 
-[PRE4]
+```py
+import arcpy, glob, os
+oldPath = r'C:\Projects\MXDs\Data'
+newPath = r'C:\Projects'
+folderPath = r'C:\Projects\MXDs\Chapter8'
+mxdPathList = glob.glob(os.path.join(folderPath, '*.mxd'))
+for path in mxdPathList: 
+ mxdObject = arcpy.mapping.MapDocument(mxdPath)
+ mxdObject.findAndReplaceWorkspacePaths(oldPath,newPath)
+ mxdObject.save()
+
+```
 
 ## 从 MXD 导出为 PDF
 
 `arcpy.mapping` 的下一个最重要的用途是自动导出 MXDs。以下代码将突出显示 PDF 的导出，但请注意，该模块还支持 JPEG 和其他图像格式的导出。使用 `arcpy.mapping` 进行此过程是一种乐趣，因为通常打开和导出 MXDs 的过程涉及很多等待 ArcMap 启动和地图加载，这可能会浪费很多时间：
 
-[PRE5]
+```py
+import arcpy, glob, os
+mxdFolder = r'C:\Projects\MXDs\Chapter8'
+pdfFolder = r'C:\Projects\PDFs\Chapter8'
+mxdPathList = glob.glob(os.path.join(mxdFolder, '*.mxd'))
+for mxdPath in mxdPathList:
+ mxdObject = arcpy.mapping.MapDocument(mxdPath)
+ arcpy.mapping.ExportToPDF(mxdObject,
+ os.path.join(pdfFolder,
+ basepath( 
+ mxdPath.replace('mxd','pdf')
+ )))
+
+```
 
 ### 注意
 
@@ -74,7 +132,7 @@
 
 要实现这一点，我们需要创建两个空的特征类：一个包含所有人口普查区的属性，另一个包含公交车站的属性。这将允许数据源被分析产生的数据所替换。
 
-打开`SanFrancisco.gdb`文件地理数据库，在`Chapter8Results`要素数据集上右键单击。从下拉菜单中选择**新建**，然后选择**要素类**。将第一个要素类命名为`SelectedCensusBlocks`并使其成为多边形。在下一个菜单中选择**默认关键字**，然后在接下来的菜单中，点击**导入**按钮。从SanFrancisco要素数据集中选择**CensusBlocks**要素类；这将把字段加载到新的要素类中。对第二个名为`SelectedBusStops`的要素类重复此操作，但确保它是点几何类型，并从`BusStops`要素类导入模式。对第三个名为`SelectedStopBuffers`的要素类重复相同的过程，但确保它是点几何类型，并从`Buffers`要素类导入模式。
+打开`SanFrancisco.gdb`文件地理数据库，在`Chapter8Results`要素数据集上右键单击。从下拉菜单中选择**新建**，然后选择**要素类**。将第一个要素类命名为`SelectedCensusBlocks`并使其成为多边形。在下一个菜单中选择**默认关键字**，然后在接下来的菜单中，点击**导入**按钮。从 SanFrancisco 要素数据集中选择**CensusBlocks**要素类；这将把字段加载到新的要素类中。对第二个名为`SelectedBusStops`的要素类重复此操作，但确保它是点几何类型，并从`BusStops`要素类导入模式。对第三个名为`SelectedStopBuffers`的要素类重复相同的过程，但确保它是点几何类型，并从`Buffers`要素类导入模式。
 
 一旦创建了要素类，现在就可以使用它们来加载分析的结果。我们将重新在内存中执行分析，并将结果写入新创建的要素类，这样就可以捕捉整个普查区，而不仅仅是与缓冲区相交的部分，这将更好地说明分析的结果。
 
@@ -94,53 +152,180 @@
 
 现在我们已经了解了地图文档的初始配置，我们将介绍一个将自动调整的脚本。此脚本将包括我们在本章和前几章中介绍的一些概念，并将介绍一些用于地图文档调整的新方法，我们将在以下内容中详细说明：
 
-[PRE6]
+```py
+import arcpy, os
+dirpath = os.path.dirname
+basepath = os.path.basename
+Bus_Stops = r"C:\Projects\SanFrancisco.gdb\Bus_Stops"
+selectedBusStop = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedBusStop'
+selectedStopBuffer = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedStopBuffer'
+CensusBlocks2010 = r"C:\Projects\SanFrancisco.gdb\CensusBlocks2010"
+selectedBlock = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedCensusData'
+pdfFolder = r'C:\Projects\PDFs\Chapter8\Map_{0}'
+bufferDist = 400
+sql = "(NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza')"
+mxdObject = arcpy.mapping.MapDocument("CURRENT")
+dataFrame = arcpy.mapping.ListDataFrames(mxdObject, "Layers")[0]
+elements = arcpy.mapping.ListLayoutElements(mxdObject)
+for el in elements:
+ if el.type =="TEXT_ELEMENT":
+ if el.text == 'Title Element':
+ titleText = el
+ elif el.text == 'Subtitle Element':
+ subTitleText = el
+arcpy.MakeFeatureLayer_management(CensusBlocks2010, 'blocks_lyr') 
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+layerStops = layersList[0]
+layerCensus = layersList[1]
+layerBuffer = layersList[2]
+layerBlocks = layersList[3] 
+if layerBlocks.dataSource != selectedBlock:
+ layerBlocks.replaceDataSource(dirpath(dirpath(layerBlocks.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedBlock))
+if layerStops.dataSource != selectedBusStop:
+ layerStops.replaceDataSource(dirpath(dirpath(layerStops.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedBusStop))
+if layerBuffer.dataSource != selectedStopBuffer:
+ layerBuffer.replaceDataSource(dirpath(dirpath(layerBuffer.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedStopBuffer))
+layerStops.visible = True
+layerBuffer.visible = True
+layerCensus.visible = False
+with arcpy.da.SearchCursor(Bus_Stops,['SHAPE@','STOPID','NAME',
+ 'BUS_SIGNAG' ,'OID@','SHAPE@XY'],sql) as cursor:
+ for row in cursor:
+ stopPointGeometry = row[0]
+ stopBuffer = stopPointGeometry.buffer(bufferDist)
+ with arcpy.da.UpdateCursor(layerBlocks,['OID@']) as dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
+ arcpy.SelectLayerByLocation_management('blocks_lyr', 'intersect', stopBuffer, "", "NEW_SELECTION")
+ with arcpy.da.SearchCursor('blocks_lyr',['SHAPE@','POP10','OID@']) as bcursor:
+ inCursor = arcpy.da.InsertCursor(selectedBlock,['SHAPE@','POP10'])
+ for drow in bcursor: 
+ data = drow[0],drow[1]
+ inCursor.insertRow(data)
+ del inCursor
+ with arcpy.da.UpdateCursor(selectedBusStop,['OID@']) as dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
+ inBusStopCursor = arcpy.da.InsertCursor(selectedBusStop,['SHAPE@'])
+ data = [row[0]]
+ inBusStopCursor.insertRow(data)
+ del inBusStopCursor
+ with arcpy.da.UpdateCursor(selectedStopBuffer,['OID@']) as dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
+ inBufferCursor = arcpy.da.InsertCursor(selectedStopBuffer,['SHAPE@'])
+ data = [stopBuffer]
+ inBufferCursor.insertRow(data)
+ del inBufferCursor
+ layerStops.name = "Stop #{0}".format(row[1])
+ arcpy.RefreshActiveView()
+ dataFrame.extent = arcpy.Extent(row[-1][0]-1200,row[-1][1]-1200,
+ row[-1][0]+1200,row[-1][1]-1200)
+ subTitleText.text = "Route {0}".format(row[2])
+ titleText.text = "Bus Stop {0}".format(row[1])
+ outPath  = pdfFolder.format( str(row[1])+ "_" + str(row[-2])) + '.pdf'
+ print outPath
+ arcpy.mapping.ExportToPDF(mxdObject,outPath)
+ titleText.text = 'Title Element'
+ subTitleText.text = 'Subtitle Element'
+ arcpy.RefreshActiveView()
+
+```
 
 哇！代码真的很多。让我们逐节回顾，以了解脚本的每一部分都在做什么。
 
-此代码将在MXD的Python窗口中运行，因此请确保打开MXD。一旦打开，请打开**Python**窗口，并在其中右键单击，然后从右键菜单中选择**加载**。使用文件导航浏览器，找到名为`Chapter8_6_AdjustmapCURRENT.py`的脚本，并单击它以选择它。点击**确定**，它将在Python窗口中加载。按**Enter**键将执行脚本，或使用滚动条浏览加载的行。
+此代码将在 MXD 的 Python 窗口中运行，因此请确保打开 MXD。一旦打开，请打开**Python**窗口，并在其中右键单击，然后从右键菜单中选择**加载**。使用文件导航浏览器，找到名为`Chapter8_6_AdjustmapCURRENT.py`的脚本，并单击它以选择它。点击**确定**，它将在 Python 窗口中加载。按**Enter**键将执行脚本，或使用滚动条浏览加载的行。
 
 ## 变量
 
 在脚本中，首先创建了一些变量来保存`string`文件路径、`integer`缓冲距离和用于识别感兴趣公交线路的`sql`语句：
 
-[PRE7]
+```py
+import arcpy, os
+Bus_Stops = r"C:\Projects\SanFrancisco.gdb\Bus_Stops"
+selectedBusStop = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedBusStop'
+selectedStopBuffer = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedStopBuffer'
+CensusBlocks2010 = r"C:\Projects\SanFrancisco.gdb\CensusBlocks2010"
+selectedBlock = r'C:\Projects\SanFrancisco.gdb\Chapter8Results\SelectedCensusData'
+pdfFolder = r'C:\Projects\PDFs\Chapter8\Map_{0}'
+bufferDist = 400
+sql = "(NAME = '71 IB' AND BUS_SIGNAG = 'Ferry Plaza')"
+
+```
 
 这些将在以后被用来允许我们搜索图层并对它们进行分析。
 
 ## 地图文档对象和文本元素
 
-因为此代码将在打开的地图文档中执行，所以我们不需要将MXD文件路径传递给`arcpy.mapping.MapDocument()`方法。相反，我们将使用关键字`CURRENT`来表示我们正在引用打开的地图文档：
+因为此代码将在打开的地图文档中执行，所以我们不需要将 MXD 文件路径传递给`arcpy.mapping.MapDocument()`方法。相反，我们将使用关键字`CURRENT`来表示我们正在引用打开的地图文档：
 
-[PRE8]
+```py
+mxdObject = arcpy.mapping.MapDocument("CURRENT")
+dataFrame = arcpy.mapping.ListDataFrames(mxdObject, "Layers")[0]
+elements = arcpy.mapping.ListLayoutElements(mxdObject)
+for el in elements:
+ if el.type =="TEXT_ELEMENT":
+ if el.text == 'Title Element':
+ titleText = el
+ elif el.text == 'Subtitle Element':
+ subTitleText = el
 
-一旦创建了地图文档对象，就使用`ListDataFrames()`方法从数据帧列表中选择图层数据帧，并将其传递给名为dataFrame的变量。
+```
 
-接下来，使用`ListLayoutElements()`方法将布局元素作为列表传递给elements变量。布局元素包括地图文档布局视图的各种元素：图例、整洁线、指向北方的箭头、比例尺和用作标题和描述的文本元素。不幸的是，返回的列表没有很好的顺序，因为它们在布局中的位置是不确定的。要访问我们希望分配给变量以供以后使用的文本元素，必须使用元素对象的两个属性：类型和文本。我们想要调整标题和副标题元素，因此使用`for`循环遍历元素列表，并使用属性来找到感兴趣的元素。
+一旦创建了地图文档对象，就使用`ListDataFrames()`方法从数据帧列表中选择图层数据帧，并将其传递给名为 dataFrame 的变量。
+
+接下来，使用`ListLayoutElements()`方法将布局元素作为列表传递给 elements 变量。布局元素包括地图文档布局视图的各种元素：图例、整洁线、指向北方的箭头、比例尺和用作标题和描述的文本元素。不幸的是，返回的列表没有很好的顺序，因为它们在布局中的位置是不确定的。要访问我们希望分配给变量以供以后使用的文本元素，必须使用元素对象的两个属性：类型和文本。我们想要调整标题和副标题元素，因此使用`for`循环遍历元素列表，并使用属性来找到感兴趣的元素。
 
 ### 图层对象
 
-Make Feature Layer工具是数据管理工具集的一部分，用于将数据从磁盘复制到内存中作为一个图层。ArcGIS需要生成图层来对数据进行选择和操作，而不是直接在要素类上操作。通过使用图层来执行这些操作，可以保护源要素类。
+Make Feature Layer 工具是数据管理工具集的一部分，用于将数据从磁盘复制到内存中作为一个图层。ArcGIS 需要生成图层来对数据进行选择和操作，而不是直接在要素类上操作。通过使用图层来执行这些操作，可以保护源要素类。
 
-使用ArcPy的`MakeFeatureLayer_management()`方法访问Make Feature Layer工具。当在Python窗口中使用此工具时，结果作为将在目录表中可见的图层添加到地图文档中。当在ArcMap的Python窗口中未使用此工具时，生成的图层仅存在于内存中，并不会添加到地图文档中。
+使用 ArcPy 的`MakeFeatureLayer_management()`方法访问 Make Feature Layer 工具。当在 Python 窗口中使用此工具时，结果作为将在目录表中可见的图层添加到地图文档中。当在 ArcMap 的 Python 窗口中未使用此工具时，生成的图层仅存在于内存中，并不会添加到地图文档中。
 
-在以下代码的部分中，通过传递人口普查区块要素类的文件路径，在内存中生成了一个名为`blocks_lyr`的图层。然后使用`arcpy.mapping()`模块的`ListLayers()`方法访问初始MXD中包含的图层对象。它们按照在地图文档的目录表中列出的顺序返回，并使用列表索引分配给变量，包括新创建的`blocks_lyr`：
+在以下代码的部分中，通过传递人口普查区块要素类的文件路径，在内存中生成了一个名为`blocks_lyr`的图层。然后使用`arcpy.mapping()`模块的`ListLayers()`方法访问初始 MXD 中包含的图层对象。它们按照在地图文档的目录表中列出的顺序返回，并使用列表索引分配给变量，包括新创建的`blocks_lyr`：
 
-[PRE9]
+```py
+arcpy.MakeFeatureLayer_management(CensusBlocks2010, 'blocks_lyr') 
+layersList = arcpy.mapping.ListLayers(mxdObject,"",dataFrame)
+layerStops = layersList[0]
+layerCensus = layersList[1]
+layerBuffer = layersList[2]
+layerBlocks = layersList[3] 
+
+```
 
 ### 替换数据源
 
 现在我们已经将图层对象分配给了变量，我们将检查它们的数据源是否是我们用于地图生产的正确要素类。使用每个图层对象的`dataSource`属性，我们将它们与我们要用作数据源的文件路径变量进行比较：
 
-[PRE10]
+```py
+if layerBlocks.dataSource != selectedBlock:
+ layerBlocks.replaceDataSource(dirpath(dirpath(layerBlocks.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedBlock))
+if layerStops.dataSource != selectedBusStop:
+ layerStops.replaceDataSource(dirpath(dirpath (layerStops.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedBusStop))
+if layerBuffer.dataSource != selectedStopBuffer:
+ layerBuffer.replaceDataSource(dirpath( dirpath(layerBuffer.dataSource)),
+ 'FILEGDB_WORKSPACE',basepath(selectedStopBuffer))
+
+```
 
 使用`If`语句检查数据源是否正确。如果不正确，将使用`replaceDataSource()`图层方法将它们替换为正确的数据源。此方法需要三个参数：工作空间（在这种情况下，文件地理数据库）、工作空间类型以及新要素类数据源名称，该名称必须位于同一工作空间中，以便`replaceDataSource()`方法能够工作（尽管它不需要位于同一要素数据集中）。
 
 ## 调整图层可见性
 
-图层对象有一个属性允许我们调整它们的可见性。将此布尔属性设置为`True`或`False`将调整图层的可见性（开启为True，关闭为False）：
+图层对象有一个属性允许我们调整它们的可见性。将此布尔属性设置为`True`或`False`将调整图层的可见性（开启为 True，关闭为 False）：
 
-[PRE11]
+```py
+layerStops.visible = True
+layerBuffer.visible = True
+layerCensus.visible = False
+
+```
 
 我们希望图层变量`layerCensus`，即新的`blocks_lyr`对象，被关闭，因此将其设置为`False`，但公交车站和缓冲区图层对象需要可见，因此将它们设置为`True`。
 
@@ -148,39 +333,89 @@ Make Feature Layer工具是数据管理工具集的一部分，用于将数据�
 
 所有变量都已生成或分配，所以下一步是使用`SearchCursor`搜索选定的公交车站。对于每个公交车站，将生成缓冲区对象以找到与这些单独公交车站相交的人口普查区块：
 
-[PRE12]
+```py
+with arcpy.da.SearchCursor(Bus_Stops,['SHAPE@','STOPID','NAME',
+ 'BUS_SIGNAG' ,'OID@','SHAPE@XY'],sql) as cursor:
+ for row in cursor:
+ stopPointGeometry = row[0]
+ stopBuffer = stopPointGeometry.buffer(bufferDist)
+ with arcpy.da.UpdateCursor(layerBlocks,['OID@']) as                   dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
 
-对于从公交车站特征类检索到的每一行数据，返回一系列属性，包含在一个元组中。其中第一个，row[0]，是一个`PointGeometry`对象。此对象有一个缓冲方法，用于在内存中生成一个缓冲`Polygon`对象，然后将其分配给`stopBuffer`变量。一旦创建了缓冲区对象，就使用数据访问UpdateCursor的`deleteRow()`方法来擦除人口普查区图层中的行。一旦删除了行，该图层就可以用下一节中将要识别的新选定的人口普查区重新填充。
+```
+
+对于从公交车站特征类检索到的每一行数据，返回一系列属性，包含在一个元组中。其中第一个，row[0]，是一个`PointGeometry`对象。此对象有一个缓冲方法，用于在内存中生成一个缓冲`Polygon`对象，然后将其分配给`stopBuffer`变量。一旦创建了缓冲区对象，就使用数据访问 UpdateCursor 的`deleteRow()`方法来擦除人口普查区图层中的行。一旦删除了行，该图层就可以用下一节中将要识别的新选定的人口普查区重新填充。
 
 ## 交集公交车站缓冲区和人口普查区
 
-为了识别与每个公交车站周围的缓冲区相交的人口普查区，使用ArcToolbox工具`SelectLayerByLocation`通过ArcPy方法`SelectLayerByLocation_management()`调用：
+为了识别与每个公交车站周围的缓冲区相交的人口普查区，使用 ArcToolbox 工具`SelectLayerByLocation`通过 ArcPy 方法`SelectLayerByLocation_management()`调用：
 
-[PRE13]
+```py
+arcpy.SelectLayerByLocation_management('blocks_lyr', 'intersect', stopBuffer, "", "NEW_SELECTION")
+ with arcpy.da.SearchCursor('blocks_lyr', ['SHAPE@', 'POP10','OID@']) as bcursor:
+ inCursor = arcpy.da.InsertCursor(selectedBlock,['SHAPE@', 'POP10'])
+ for drow in bcursor: 
+ data = drow[0],drow[1]
+ inCursor.insertRow(data)
+ del inCursor
+
+```
 
 此方法需要内存中的`blocks_lyr`图层对象和分配给变量`stopBuffer`的新创建的缓冲区对象。它还需要选择类型`intersect`以及另一个参数，该参数控制选择是否添加到现有选择中，或者将是一个新选择。在这种情况下，我们想要一个新选择，因为只需要与当前公交车站相交的人口普查区。
 
-一旦选择了人口普查区并进行了识别，形状数据和人口数据通过`InsertCursor`传递到由变量`selectedBlock`表示的特征类。`InsertCursor`必须使用del关键字删除，因为一次只能有一个`InsertCursor`或`UpdateCursor`在内存中。
+一旦选择了人口普查区并进行了识别，形状数据和人口数据通过`InsertCursor`传递到由变量`selectedBlock`表示的特征类。`InsertCursor`必须使用 del 关键字删除，因为一次只能有一个`InsertCursor`或`UpdateCursor`在内存中。
 
 ### 填充选定的公交车站和缓冲特征类
 
 以类似的方式，下一步是填充将在地图制作中使用的公交车站和缓冲特征类。首先使用`deleteRow()`方法将公交车站特征类清空，然后将选定的公交车站形状字段数据插入到特征类中。然后对公交车站缓冲特征类和缓冲几何对象执行相同的步骤：
 
-[PRE14]
+```py
+ with arcpy.da.UpdateCursor(selectedBusStop,['OID@']) as dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
+ inBusStopCursor = arcpy.da.InsertCursor(selectedBusStop,['SHAPE@'])
+ data = [row[0]]
+ inBusStopCursor.insertRow(data)
+ del inBusStopCursor
+ with arcpy.da.UpdateCursor(selectedStopBuffer,['OID@']) as dcursor:
+ for drow in dcursor:
+ dcursor.deleteRow()
+ inBufferCursor = arcpy.da.InsertCursor(selectedStopBuffer,['SHAPE@'])
+ data = [stopBuffer]
+ inBufferCursor.insertRow(data)
+ del inBufferCursor
+
+```
 
 ## 更新文本元素
 
 现在数据已经生成并写入创建来存储它们的特征类后，下一步是更新布局元素。这包括将影响图例、数据框架范围和文本元素的图层属性：
 
-[PRE15]
+```py
+layerStops.name = "Stop #{0}".format(row[1])
+dataFrame.extent = arcpy.Extent(row[-1][0]-1200,row[-1][1]-1200,
+ row[-1][0]+1200,row[-1][1]-1200)
+subTitleText.text = "Route {0}".format(row[2])
+titleText.text = "Bus Stop {0}".format(row[1])
+arcpy.RefreshActiveView()
 
-使用其名称属性调整公交车站图层名称，以反映当前公交车站。通过创建一个`arcpy.Extent`对象并传递四个参数：*Xmin*、*Ymin*、*Xmax*、*Ymax*来调整数据框架范围。为了生成这些值，我使用了1200英尺这个相对任意的值，在公交车站周围创建一个正方形。使用它们的文本属性更新文本元素。最后，使用`RefreshActiveView()`方法确保地图文档窗口正确更新到新的范围。
+```
 
-### 将调整后的地图导出为PDF
+使用其名称属性调整公交车站图层名称，以反映当前公交车站。通过创建一个`arcpy.Extent`对象并传递四个参数：*Xmin*、*Ymin*、*Xmax*、*Ymax*来调整数据框架范围。为了生成这些值，我使用了 1200 英尺这个相对任意的值，在公交车站周围创建一个正方形。使用它们的文本属性更新文本元素。最后，使用`RefreshActiveView()`方法确保地图文档窗口正确更新到新的范围。
+
+### 将调整后的地图导出为 PDF
 
 最后一步是将新调整的地图文档对象传递给 ArcPy 的 `ExportToPDF` 方法。此方法需要两个参数，即地图文档对象和表示 PDF 文件路径的字符串：
 
-[PRE16]
+```py
+outPath = pdfFolder.format(str(row[1])+"_"+ str(row[-2]))+'.pdf'
+arcpy.mapping.ExportToPDF(mxdObject,outPath)
+titleText.text = 'Title Element'
+subTitleText.text = 'Subtitle Element'
+arcpy.RefreshActiveView()
+
+```
 
 PDF 文件路径字符串是由 pdfFolder 字符串模板和公交站点的 ID 以及对象 ID 和文件扩展名 `.pdf` 生成的。一旦这些和变量 `mxdObject` 所表示的地图文档对象传递给 `ExportToPDF` 方法，就会生成 PDF。然后重置文本元素并刷新视图，以确保地图文档在下次使用脚本时准备就绪。
 
@@ -204,4 +439,4 @@ PDF 文件路径字符串是由 pdfFolder 字符串模板和公交站点的 ID �
 
 在本章中介绍了 arcpy.mapping 并使用它来控制需要调整以创建自定义地图的地图文档元素。通过将地理空间分析和地图制作结合起来，我们更接近于利用 ArcPy 的全部功能。
 
-在下一章中，我们将进一步探讨arcpy.mapping，并创建一个可以添加到ArcToolbox中的脚本工具，该工具将运行分析并从结果数据生成地图。我们还将完善脚本，并介绍数据驱动页面，以讨论如何在该ArcPy脚本中使用这个强大的工具。
+在下一章中，我们将进一步探讨 arcpy.mapping，并创建一个可以添加到 ArcToolbox 中的脚本工具，该工具将运行分析并从结果数据生成地图。我们还将完善脚本，并介绍数据驱动页面，以讨论如何在该 ArcPy 脚本中使用这个强大的工具。
